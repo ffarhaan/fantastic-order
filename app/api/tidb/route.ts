@@ -259,7 +259,12 @@ export async function POST(req: Request) {
     const { searchParams } = new URL(req.url);
     const action = searchParams.get("action");
     const conn = getTiDBClient();
-    const body = await req.json();
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch (e) {
+      body = {};
+    }
 
     // 1. Create new shipment return
     if (action === "create_return") {

@@ -189,8 +189,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
       // 1. Delete di TiDB Cloud
       const res = await fetch(`/api/tidb?action=delete_return&id=${id}`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, error: "Gagal membaca respon server" }));
 
       // 2. Direct browser sync fallback ke GSheet Webhook
       const webhookUrl = process.env.NEXT_PUBLIC_APPS_SCRIPT_SHIPMENT_WEBHOOK_URL;
