@@ -240,6 +240,67 @@ export async function GET(req: Request) {
       });
     }
 
+    // ==========================================
+    // 4.5. LOGISTICS ANALYTICS & PERSONNEL LEADERBOARD
+    // ==========================================
+    if (action === "personnel_stats") {
+      const rows = (await conn.execute(`
+        SELECT 
+          person,
+          COUNT(*) as total_cases,
+          SUM(CASE WHEN pbf = 'MBI' THEN 1 ELSE 0 END) as mbi_cases,
+          SUM(CASE WHEN pbf = 'MAI' THEN 1 ELSE 0 END) as mai_cases,
+          SUM(CASE WHEN status LIKE '%Resolved%' THEN 1 ELSE 0 END) as resolved_cases,
+          SUM(CASE WHEN status NOT LIKE '%Resolved%' THEN 1 ELSE 0 END) as pending_cases
+        FROM shipment_returns
+        WHERE person != '' AND person IS NOT NULL AND person != 'Admin' AND person != '#N/A'
+        GROUP BY person
+        ORDER BY total_cases DESC
+        LIMIT 50;
+      `)) as any[];
+
+      const rootCauses = (await conn.execute(`
+        SELECT 
+          root_cause,
+          COUNT(*) as total
+        FROM shipment_returns
+        WHERE root_cause != '' AND root_cause IS NOT NULL AND root_cause != '#N/A'
+        GROUP BY root_cause
+        ORDER BY total DESC
+        LIMIT 20;
+      `)) as any[];
+
+      const reasons = (await conn.execute(`
+        SELECT 
+          reason,
+          COUNT(*) as total
+        FROM shipment_returns
+        WHERE reason != '' AND reason IS NOT NULL AND reason != '#N/A'
+        GROUP BY reason
+        ORDER BY total DESC
+        LIMIT 20;
+      `)) as any[];
+
+      const pbfComparison = (await conn.execute(`
+        SELECT 
+          pbf,
+          COUNT(*) as total,
+          SUM(CASE WHEN status LIKE '%Resolved%' THEN 1 ELSE 0 END) as resolved,
+          SUM(CASE WHEN status NOT LIKE '%Resolved%' THEN 1 ELSE 0 END) as pending
+        FROM shipment_returns
+        WHERE pbf IN ('MBI', 'MAI')
+        GROUP BY pbf;
+      `)) as any[];
+
+      return compressedJsonResponse(req, {
+        success: true,
+        personnel: rows,
+        rootCauses,
+        reasons,
+        pbfComparison,
+      });
+    }
+
     if (action === "fetch_all") {
       const fakturs = (await conn.execute(
         "SELECT * FROM fakturs_archive ORDER BY order_date DESC LIMIT 5000;"
@@ -266,7 +327,7 @@ export async function POST(req: Request) {
       body = {};
     }
 
-    // 1. Create new shipment return
+    // 1. Create new shipment return (supports multi-product and photo_url)
     if (action === "create_return") {
       const {
         pbf,
@@ -286,74 +347,63 @@ export async function POST(req: Request) {
         note,
         person,
         root_cause,
+        photo_url,
+        products, // multi-product array
       } = body;
 
-      const [res] = (await conn.execute(
-        `INSERT INTO shipment_returns (
-          pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date, reason, invoice_date,
-          category, confirm, action, status, note, person, root_cause
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          pbf || "MBI",
-          customer_name || "",
-          invoice_no || "",
-          so_no || "",
-          product_name || "",
-          Number(qty) || 1,
-          batch_no || "",
-          expiry_date || "",
-          reason || "",
-          invoice_date || new Date().toISOString().split("T")[0],
-          category || "3P",
-          confirm || "Approve",
-          returnAction || "Tukar fisik",
-          status || "Pending",
-          note || "",
-          person || "Admin",
-          root_cause || "",
-        ]
-      )) as any;
+      const items =
+        Array.isArray(products) && products.length > 0
+          ? products
+          : [
+              {
+                product_name,
+                qty,
+                batch_no,
+                expiry_date,
+                reason,
+                note,
+                action: returnAction,
+                root_cause,
+                photo_url,
+              },
+            ];
 
-      // Sync new return to Google Apps Script Webhook (Append row to Google Sheets)
-      try {
-        const webhookUrl = process.env.APPS_SCRIPT_SHIPMENT_WEBHOOK_URL;
-        if (webhookUrl) {
-          fetch(webhookUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              actionType: "create",
-              pbf: pbf || "MBI",
-              namaApotek: customer_name || "",
-              invoiceNo: invoice_no || "",
-              soNo: so_no || "",
-              productName: product_name || "",
-              qty: Number(qty) || 1,
-              batchNo: batch_no || "",
-              expiryDate: expiry_date || "",
-              reason: reason || "",
-              invoiceDate: invoice_date || new Date().toISOString().split("T")[0],
-              reportDate: new Date().toISOString().split("T")[0],
-              category: category || "3P",
-              confirm: confirm || "Approve",
-              action: returnAction || "Tukar fisik",
-              status: status || "Pending",
-              note: note || "",
-              person: person || "",
-              rootCause: root_cause || "",
-            }),
-          }).catch((err) => {
-            console.error("Async webhook create forward error:", err);
-          });
-        }
-      } catch (syncErr) {
-        console.error("Failed to forward new return to Google Sheets webhook:", syncErr);
+      const insertedIds: number[] = [];
+
+      for (const item of items) {
+        const [res] = (await conn.execute(
+          `INSERT INTO shipment_returns (
+            pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date, reason, invoice_date,
+            category, confirm, action, status, note, person, root_cause, photo_url
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            pbf || item.pbf || "MBI",
+            customer_name || item.customer_name || "",
+            invoice_no || item.invoice_no || "",
+            so_no || item.so_no || "",
+            item.product_name || item.name || "",
+            Number(item.qty) || 1,
+            item.batch_no || "",
+            item.expiry_date || "",
+            item.reason || "",
+            invoice_date || item.invoice_date || new Date().toISOString().split("T")[0],
+            category || "3P",
+            confirm || "Approve",
+            item.action || returnAction || "Tukar fisik",
+            status || "Pending",
+            item.note || note || "",
+            person || "Admin",
+            item.root_cause || root_cause || "",
+            item.photo_url || photo_url || null,
+          ]
+        )) as any;
+        if (res?.insertId) insertedIds.push(res.insertId);
       }
 
-      return Response.json({ success: true, insertId: res?.insertId });
+      return Response.json({ success: true, count: items.length, insertedIds });
     }
 
-    // 2. Update existing shipment return (supports all columns)
+    // 2. Update existing shipment return (supports all columns + photo_url)
     if (action === "update_return") {
       const {
         id,
@@ -376,6 +426,7 @@ export async function POST(req: Request) {
         note,
         person,
         root_cause,
+        photo_url,
       } = body;
 
       if (!id) {
@@ -402,7 +453,8 @@ export async function POST(req: Request) {
           status = COALESCE(?, status),
           note = COALESCE(?, note),
           person = COALESCE(?, person),
-          root_cause = COALESCE(?, root_cause)
+          root_cause = COALESCE(?, root_cause),
+          photo_url = COALESCE(?, photo_url)
         WHERE id = ?`,
         [
           pbf,
@@ -424,6 +476,7 @@ export async function POST(req: Request) {
           note,
           person,
           root_cause,
+          photo_url || null,
           id,
         ]
       );

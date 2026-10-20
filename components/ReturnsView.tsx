@@ -29,6 +29,14 @@ import {
   Check,
   Share2,
   Trash2,
+  Trophy,
+  Medal,
+  Award,
+  BarChart3,
+  Users,
+  Camera,
+  Maximize2,
+  Download,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -53,6 +61,43 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
   const [isUpdating, setIsUpdating] = useState(false);
   const [editMode, setEditMode] = useState<"action" | "all">("action");
   const [linkCopied, setLinkCopied] = useState(false);
+
+  // Tab & Analytics State
+  const [activeTab, setActiveTab] = useState<"list" | "leaderboard" | "analytics">("list");
+  const [personnelStats, setPersonnelStats] = useState<{
+    personnel: any[];
+    rootCauses: any[];
+    reasons: any[];
+    pbfComparison: any[];
+  } | null>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [personnelFilterPbf, setPersonnelFilterPbf] = useState<string>("ALL");
+  const [personnelSearchQuery, setPersonnelSearchQuery] = useState<string>("");
+  const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
+
+  const fetchPersonnelStats = useCallback(async () => {
+    setLoadingStats(true);
+    try {
+      const res = await fetch("/api/tidb?action=personnel_stats");
+      const json = await res.json();
+      if (json.success) {
+        setPersonnelStats({
+          personnel: json.personnel || [],
+          rootCauses: json.rootCauses || [],
+          reasons: json.reasons || [],
+          pbfComparison: json.pbfComparison || [],
+        });
+      }
+    } catch (err) {
+      console.error("Gagal mengambil personnel stats:", err);
+    } finally {
+      setLoadingStats(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPersonnelStats();
+  }, [fetchPersonnelStats]);
 
   const handleCopyComplaintLink = () => {
     if (typeof window !== "undefined") {
@@ -426,12 +471,122 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
     XLSX.writeFile(wb, `Retur_Komplain_FantasticOrder_${new Date().toISOString().split("T")[0]}.xlsx`);
   };
 
+  const filteredPersonnel = useMemo(() => {
+    if (!personnelStats?.personnel) return [];
+    return personnelStats.personnel.filter((p) => {
+      const matchQuery =
+        !personnelSearchQuery ||
+        p.person.toLowerCase().includes(personnelSearchQuery.toLowerCase());
+      const matchPbf =
+        personnelFilterPbf === "ALL"
+          ? true
+          : personnelFilterPbf === "MBI"
+          ? Number(p.mbi_cases) > 0
+          : Number(p.mai_cases) > 0;
+      return matchQuery && matchPbf;
+    });
+  }, [personnelStats, personnelSearchQuery, personnelFilterPbf]);
+
+  const maxPersonnelCases = useMemo(() => {
+    if (!filteredPersonnel.length) return 1;
+    return Math.max(...filteredPersonnel.map((p) => Number(p.total_cases) || 0), 1);
+  }, [filteredPersonnel]);
+
+  const totalPersonnelErrors = useMemo(() => {
+    if (!personnelStats?.personnel) return 0;
+    return personnelStats.personnel.reduce((sum, p) => sum + Number(p.total_cases || 0), 0);
+  }, [personnelStats]);
+
+  const totalRootCauses = useMemo(() => {
+    if (!personnelStats?.rootCauses) return 0;
+    return personnelStats.rootCauses.reduce((sum, r) => sum + Number(r.total || 0), 0);
+  }, [personnelStats]);
+
+  const totalReasons = useMemo(() => {
+    if (!personnelStats?.reasons) return 0;
+    return personnelStats.reasons.reduce((sum, r) => sum + Number(r.total || 0), 0);
+  }, [personnelStats]);
+
   const totalPages = Math.ceil(total / limit);
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {/* ─── Executive KPI Cards ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* View Switcher Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 dark:border-slate-800 pb-3">
+        <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-slate-900 rounded-xl border border-zinc-200 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => setActiveTab("list")}
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === "list"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            <span>Daftar Retur</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-200 dark:bg-slate-700 text-zinc-800 dark:text-zinc-200 font-mono font-bold">
+              {total.toLocaleString("id-ID")}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("leaderboard");
+              fetchPersonnelStats();
+            }}
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === "leaderboard"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <Users className="w-4 h-4 text-amber-500" />
+            <span>Leaderboard Personil</span>
+            {personnelStats?.personnel?.length ? (
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-mono font-bold">
+                {personnelStats.personnel.length}
+              </span>
+            ) : null}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("analytics");
+              fetchPersonnelStats();
+            }}
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === "analytics"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 text-indigo-500" />
+            <span>Analisis & Root Cause</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              fetchReturns();
+              fetchPersonnelStats();
+            }}
+            className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-zinc-200 dark:border-slate-800 text-zinc-600 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-xs"
+            title="Muat Ulang Data"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading || loadingStats ? "animate-spin text-indigo-500" : ""}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Tab 1: Daftar Retur */}
+      {activeTab === "list" && (
+        <div className="space-y-4 animate-in fade-in duration-150">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Card 1: Total Retur */}
         <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-blue-500/20 shadow-sm hover:border-blue-500/40 transition-all group">
           <div className="absolute top-0 right-0 w-28 h-28 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
@@ -535,7 +690,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
         </div>
       </div>
 
-      {/* ─── Search and Filters Command Bar ─── */}
+      {/* â”€â”€â”€ Search and Filters Command Bar â”€â”€â”€ */}
       <div className="rounded-2xl p-2.5 sm:p-3 bg-white dark:bg-[#0c121f]/90 border border-zinc-200 dark:border-slate-800/80 shadow-xs flex flex-wrap gap-2.5 items-center justify-between">
         <div className="flex items-center gap-2 flex-1 min-w-[280px]">
           <div className="relative flex-1">
@@ -686,7 +841,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
         </div>
       </div>
 
-      {/* ─── Enterprise Returns Table ─── */}
+      {/* â”€â”€â”€ Enterprise Returns Table â”€â”€â”€ */}
       <div className="rounded-2xl border border-zinc-300 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
@@ -799,6 +954,20 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                             Qty: <strong className="text-black dark:text-slate-200">{r.qty || 1}</strong>
                             {r.batch_no && r.batch_no !== "#N/A" && ` • Batch: ${r.batch_no}`}
                           </p>
+                          {r.photo_url && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewPhotoUrl(r.photo_url || null);
+                              }}
+                              className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-300 border border-violet-200 dark:border-violet-700 hover:scale-105 transition-all shadow-xs cursor-pointer"
+                              title="Lihat foto bukti kerusakan dari apotek"
+                            >
+                              <Camera className="w-3 h-3 text-violet-600 dark:text-violet-400" />
+                              <span>Foto Bukti</span>
+                            </button>
+                          )}
                         </td>
 
                         <td className="py-2.5 px-4 max-w-[190px]">
@@ -853,12 +1022,12 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                 : "bg-zinc-100 hover:bg-zinc-200 text-black border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
                             }`}
                           >
-                            {isExpanded ? "▲ Tutup" : "Edit / Tindakan"}
+                            {isExpanded ? "â–² Tutup" : "Edit / Tindakan"}
                           </button>
                         </td>
                       </tr>
 
-                      {/* ─── OPSI 4: EXPANDABLE ROW (AKORDEON) ─── */}
+                      {/* â”€â”€â”€ OPSI 4: EXPANDABLE ROW (AKORDEON) â”€â”€â”€ */}
                       {isExpanded && (
                         <tr className="bg-zinc-100/90 dark:bg-[#070b16] border-y-2 border-indigo-500/50 animate-in fade-in duration-150">
                           <td colSpan={9} className="p-3.5 sm:p-5">
@@ -869,7 +1038,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                 <div className="flex items-center gap-2">
                                   <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 dark:bg-indigo-400"></span>
                                   <h4 className="font-black text-sm text-black dark:text-white">
-                                    Tiket #{r.id} • Faktur {r.invoice_no || "-"}
+                                    Tiket #{r.id} â€¢ Faktur {r.invoice_no || "-"}
                                   </h4>
                                   <span className="text-xs text-zinc-500 dark:text-slate-400 font-bold">({r.customer_name})</span>
                                 </div>
@@ -885,7 +1054,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                         : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
                                     }`}
                                   >
-                                    ⚡ Tindak Lanjut Cepat
+                                    âš¡ Tindak Lanjut Cepat
                                   </button>
                                   <button
                                     type="button"
@@ -896,7 +1065,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                         : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
                                     }`}
                                   >
-                                    📝 Edit Lengkap (Semua Kolom)
+                                    ðŸ“ Edit Lengkap (Semua Kolom)
                                   </button>
                                 </div>
                               </div>
@@ -915,9 +1084,37 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                       </p>
                                     </div>
                                     <p className="text-xs text-zinc-600 dark:text-slate-400 font-medium">
-                                      Produk: <strong className="text-black dark:text-white font-bold">{r.product_name}</strong> • Qty: <strong className="text-black dark:text-white font-bold">{r.qty || 1}</strong>
+                                      Produk: <strong className="text-black dark:text-white font-bold">{r.product_name}</strong> &bull; Qty: <strong className="text-black dark:text-white font-bold">{r.qty || 1}</strong>
                                     </p>
                                   </div>
+
+                                  {/* Photo Proof in Accordion */}
+                                  {r.photo_url && (
+                                    <div className="bg-violet-50/60 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/50 rounded-xl p-3 flex items-center gap-3.5">
+                                      <img
+                                        src={r.photo_url}
+                                        alt="Bukti Retur"
+                                        onClick={() => setPreviewPhotoUrl(r.photo_url || null)}
+                                        className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-lg border border-violet-300 dark:border-violet-700 shadow-xs cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-violet-700 dark:text-violet-400 block">
+                                          Foto Bukti Kerusakan / Retur dari Apotek
+                                        </span>
+                                        <p className="text-xs text-zinc-600 dark:text-slate-400 mt-0.5">
+                                          Klik foto untuk memperbesar atau mengunduh dokumen bukti fisik barang retur.
+                                        </p>
+                                        <button
+                                          type="button"
+                                          onClick={() => setPreviewPhotoUrl(r.photo_url || null)}
+                                          className="mt-1 text-xs font-bold text-violet-700 dark:text-violet-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                        >
+                                          <Maximize2 className="w-3 h-3" />
+                                          <span>Perbesar Foto Bukti</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
 
                                   {/* Quick Action Grid */}
                                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
@@ -1223,7 +1420,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                               {/* Footer Bar: Actions & Links */}
                               <div className="flex flex-wrap items-center justify-between border-t border-zinc-200 dark:border-slate-800 pt-3 gap-2">
                                 <span className="text-[11px] text-zinc-500 dark:text-slate-400 font-medium">
-                                  ⚡ Otomatis tersinkron ke TiDB Serverless & Google Sheet (SHIPMENT ERROR)
+                                  âš¡ Otomatis tersinkron ke TiDB Serverless & Google Sheet (SHIPMENT ERROR)
                                 </span>
 
                                 <div className="flex items-center gap-2">
@@ -1310,7 +1507,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
           <option value="SAHRUL / ZAID" />
         </datalist>
 
-        {/* ─── Pagination Footer ─── */}
+        {/* â”€â”€â”€ Pagination Footer â”€â”€â”€ */}
         <div className="bg-white dark:bg-[#070b14] border-t border-zinc-300 dark:border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-700 dark:text-slate-400">
           <div>
             Menampilkan{" "}
@@ -1344,8 +1541,572 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
           </div>
         </div>
       </div>
+      </div>
+      )}
 
-      {/* ─── ADD NEW RETURN MODAL ─── */}
+      {/* ─── TAB 2: LEADERBOARD PERSONIL (PELAKU KESALAHAN GUDANG) ─── */}
+      {activeTab === "leaderboard" && (
+        <div className="space-y-4 animate-in fade-in duration-150">
+          {/* Top Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-zinc-200 dark:border-slate-800 shadow-xs">
+              <span className="text-[11px] font-bold text-zinc-500 dark:text-slate-400 uppercase tracking-wider block">
+                Total Kesalahan Personil Gudang
+              </span>
+              <h3 className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-1">
+                {totalPersonnelErrors.toLocaleString("id-ID")} Kasus
+              </h3>
+              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">
+                Tercatat di data shipment return
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-zinc-200 dark:border-slate-800 shadow-xs">
+              <span className="text-[11px] font-bold text-zinc-500 dark:text-slate-400 uppercase tracking-wider block">
+                Jumlah Personil Terlibat
+              </span>
+              <h3 className="text-2xl font-black text-zinc-900 dark:text-white mt-1">
+                {personnelStats?.personnel?.length || 0} Orang
+              </h3>
+              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">
+                Picker & Checker MBI & MAI
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-zinc-200 dark:border-slate-800 shadow-xs">
+              <span className="text-[11px] font-bold text-zinc-500 dark:text-slate-400 uppercase tracking-wider block">
+                Rata-rata Kasus per Personil
+              </span>
+              <h3 className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">
+                {personnelStats?.personnel?.length
+                  ? (totalPersonnelErrors / personnelStats.personnel.length).toFixed(1)
+                  : 0}{" "}
+                Kasus
+              </h3>
+              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">
+                Tingkat distribusi kesalahan
+              </p>
+            </div>
+          </div>
+
+          {/* Top 3 Spotlight Cards (Matching Friend's Apps Script App) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Rank 1 (Gold) */}
+            {filteredPersonnel[0] && (
+              <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border-2 border-amber-400/70 dark:border-amber-400/50 shadow-sm flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500 text-black flex items-center gap-1 font-mono">
+                      <Trophy className="w-3 h-3 text-black" />
+                      <span>PERINGKAT #1</span>
+                    </span>
+                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
+                      {totalPersonnelErrors > 0
+                        ? ((Number(filteredPersonnel[0].total_cases) / totalPersonnelErrors) * 100).toFixed(1)
+                        : 0}
+                      % dari total
+                    </span>
+                  </div>
+                  <h4 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white mt-2.5 truncate" title={filteredPersonnel[0].person}>
+                    {filteredPersonnel[0].person}
+                  </h4>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="text-3xl font-black text-rose-600 dark:text-rose-400">
+                      {filteredPersonnel[0].total_cases}
+                    </span>
+                    <span className="text-xs font-bold text-zinc-600 dark:text-slate-400">
+                      Kesalahan Pengiriman
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-amber-300/40 dark:border-amber-500/20 flex items-center justify-between text-xs font-medium text-zinc-700 dark:text-slate-300">
+                  <div className="flex items-center gap-2">
+                    <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[10px] font-bold">
+                      MBI: {filteredPersonnel[0].mbi_cases || 0}
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 text-[10px] font-bold">
+                      MAI: {filteredPersonnel[0].mai_cases || 0}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch(filteredPersonnel[0].person);
+                      setActiveTab("list");
+                    }}
+                    className="text-xs text-amber-700 dark:text-amber-300 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Lihat Tiket</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Rank 2 (Silver) */}
+            {filteredPersonnel[1] && (
+              <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-slate-300/20 via-slate-400/5 to-transparent border border-slate-300 dark:border-slate-600 shadow-sm flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-800 dark:text-slate-200 flex items-center gap-1 font-mono">
+                      <Medal className="w-3 h-3" />
+                      <span>PERINGKAT #2</span>
+                    </span>
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">
+                      {totalPersonnelErrors > 0
+                        ? ((Number(filteredPersonnel[1].total_cases) / totalPersonnelErrors) * 100).toFixed(1)
+                        : 0}
+                      % dari total
+                    </span>
+                  </div>
+                  <h4 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white mt-2.5 truncate" title={filteredPersonnel[1].person}>
+                    {filteredPersonnel[1].person}
+                  </h4>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="text-3xl font-black text-rose-600 dark:text-rose-400">
+                      {filteredPersonnel[1].total_cases}
+                    </span>
+                    <span className="text-xs font-bold text-zinc-600 dark:text-slate-400">
+                      Kesalahan Pengiriman
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-xs font-medium text-zinc-700 dark:text-slate-300">
+                  <div className="flex items-center gap-2">
+                    <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[10px] font-bold">
+                      MBI: {filteredPersonnel[1].mbi_cases || 0}
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 text-[10px] font-bold">
+                      MAI: {filteredPersonnel[1].mai_cases || 0}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch(filteredPersonnel[1].person);
+                      setActiveTab("list");
+                    }}
+                    className="text-xs text-zinc-700 dark:text-slate-300 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Lihat Tiket</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Rank 3 (Bronze) */}
+            {filteredPersonnel[2] && (
+              <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-amber-700/10 via-amber-800/5 to-transparent border border-amber-600/40 dark:border-amber-700/50 shadow-sm flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-700/20 text-amber-800 dark:text-amber-300 flex items-center gap-1 font-mono">
+                      <Award className="w-3 h-3" />
+                      <span>PERINGKAT #3</span>
+                    </span>
+                    <span className="text-xs font-bold text-amber-700 dark:text-amber-400">
+                      {totalPersonnelErrors > 0
+                        ? ((Number(filteredPersonnel[2].total_cases) / totalPersonnelErrors) * 100).toFixed(1)
+                        : 0}
+                      % dari total
+                    </span>
+                  </div>
+                  <h4 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white mt-2.5 truncate" title={filteredPersonnel[2].person}>
+                    {filteredPersonnel[2].person}
+                  </h4>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="text-3xl font-black text-rose-600 dark:text-rose-400">
+                      {filteredPersonnel[2].total_cases}
+                    </span>
+                    <span className="text-xs font-bold text-zinc-600 dark:text-slate-400">
+                      Kesalahan Pengiriman
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-amber-600/20 flex items-center justify-between text-xs font-medium text-zinc-700 dark:text-slate-300">
+                  <div className="flex items-center gap-2">
+                    <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[10px] font-bold">
+                      MBI: {filteredPersonnel[2].mbi_cases || 0}
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 text-[10px] font-bold">
+                      MAI: {filteredPersonnel[2].mai_cases || 0}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch(filteredPersonnel[2].person);
+                      setActiveTab("list");
+                    }}
+                    className="text-xs text-amber-700 dark:text-amber-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Lihat Tiket</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Filter Bar */}
+          <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl border border-zinc-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={personnelSearchQuery}
+                onChange={(e) => setPersonnelSearchQuery(e.target.value)}
+                placeholder="Cari nama personil (picker / checker)..."
+                className="w-full pl-9 pr-4 py-2 text-xs sm:text-sm bg-zinc-50 dark:bg-slate-950 border border-zinc-200 dark:border-slate-700 rounded-xl outline-none focus:border-black dark:focus:border-white transition-all"
+              />
+            </div>
+
+            <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
+              {[
+                { id: "ALL", label: "Semua PBF" },
+                { id: "MBI", label: "MBI Saja" },
+                { id: "MAI", label: "MAI Saja" },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPersonnelFilterPbf(p.id)}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    personnelFilterPbf === p.id
+                      ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                      : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Leaderboard Table with Horizontal Progress Bars */}
+          <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-zinc-50 dark:bg-slate-950 text-zinc-600 dark:text-slate-400 font-bold border-b border-zinc-200 dark:border-slate-800">
+                <tr>
+                  <th className="py-3 px-4 w-14 text-center">Rank</th>
+                  <th className="py-3 px-4">Nama Personil</th>
+                  <th className="py-3 px-4">Intensitas & Total Kesalahan</th>
+                  <th className="py-3 px-3 text-center">MBI</th>
+                  <th className="py-3 px-3 text-center">MAI</th>
+                  <th className="py-3 px-3 text-center">Selesai</th>
+                  <th className="py-3 px-3 text-center">Pending</th>
+                  <th className="py-3 px-4 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200 dark:divide-slate-800">
+                {filteredPersonnel.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-zinc-400 dark:text-slate-500">
+                      Tidak ada data personil yang cocok dengan pencarian.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredPersonnel.map((p, idx) => {
+                    const percent = Math.round((Number(p.total_cases) / maxPersonnelCases) * 100);
+                    return (
+                      <tr
+                        key={p.person}
+                        className="hover:bg-zinc-50 dark:hover:bg-slate-800/40 transition-colors"
+                      >
+                        <td className="py-3 px-4 text-center">
+                          <span
+                            className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-black ${
+                              idx === 0
+                                ? "bg-amber-400 text-black shadow-xs"
+                                : idx === 1
+                                ? "bg-slate-300 dark:bg-slate-600 text-black dark:text-white"
+                                : idx === 2
+                                ? "bg-amber-700/40 text-amber-800 dark:text-amber-300"
+                                : "text-zinc-500 dark:text-slate-400 font-mono"
+                            }`}
+                          >
+                            {idx + 1}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 font-bold text-zinc-900 dark:text-white">
+                          <span className="truncate block max-w-[200px]" title={p.person}>
+                            {p.person}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3">
+                            <span className="w-10 font-black text-rose-600 dark:text-rose-400 text-sm">
+                              {p.total_cases}
+                            </span>
+                            <div className="flex-1 max-w-xs h-2.5 bg-zinc-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  idx === 0
+                                    ? "bg-rose-500"
+                                    : idx < 3
+                                    ? "bg-amber-500"
+                                    : "bg-indigo-500"
+                                }`}
+                                style={{ width: `${percent}%` }}
+                              />
+                            </div>
+                            <span className="text-[11px] text-zinc-400 dark:text-slate-500 w-10 text-right">
+                              {totalPersonnelErrors > 0
+                                ? ((Number(p.total_cases) / totalPersonnelErrors) * 100).toFixed(0)
+                                : 0}
+                              %
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-center font-bold text-blue-600 dark:text-blue-400">
+                          {p.mbi_cases || 0}
+                        </td>
+                        <td className="py-3 px-3 text-center font-bold text-purple-600 dark:text-purple-400">
+                          {p.mai_cases || 0}
+                        </td>
+                        <td className="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">
+                          {p.resolved_cases || 0}
+                        </td>
+                        <td className="py-3 px-3 text-center font-bold text-amber-600 dark:text-amber-400">
+                          {p.pending_cases || 0}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSearch(p.person);
+                              setActiveTab("list");
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-800 dark:text-slate-200 font-bold text-[11px] transition-colors cursor-pointer"
+                          >
+                            Lihat Tiket
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ─── TAB 3: ANALISIS & ROOT CAUSE ─── */}
+      {activeTab === "analytics" && (
+        <div className="space-y-4 animate-in fade-in duration-150">
+          {/* PBF MBI & MAI Comparison Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* MBI Card */}
+            {(() => {
+              const mbiData = personnelStats?.pbfComparison?.find((p) => p.pbf === "MBI") || {
+                total: 0,
+                resolved: 0,
+                pending: 0,
+              };
+              const resRate =
+                Number(mbiData.total) > 0
+                  ? ((Number(mbiData.resolved) / Number(mbiData.total)) * 100).toFixed(1)
+                  : 0;
+              return (
+                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-900/40 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                      MBI (PT Medika Bina Investama)
+                    </span>
+                    <span className="text-xs font-bold text-zinc-500 dark:text-slate-400">
+                      {resRate}% Diselesaikan
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-2 text-center">
+                    <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-slate-950">
+                      <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase block">
+                        Total Kasus
+                      </span>
+                      <span className="text-xl font-black text-zinc-900 dark:text-white">
+                        {Number(mbiData.total).toLocaleString("id-ID")}
+                      </span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30">
+                      <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold uppercase block">
+                        Selesai
+                      </span>
+                      <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                        {Number(mbiData.resolved).toLocaleString("id-ID")}
+                      </span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30">
+                      <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold uppercase block">
+                        Pending
+                      </span>
+                      <span className="text-xl font-black text-amber-600 dark:text-amber-400">
+                        {Number(mbiData.pending).toLocaleString("id-ID")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* MAI Card */}
+            {(() => {
+              const maiData = personnelStats?.pbfComparison?.find((p) => p.pbf === "MAI") || {
+                total: 0,
+                resolved: 0,
+                pending: 0,
+              };
+              const resRate =
+                Number(maiData.total) > 0
+                  ? ((Number(maiData.resolved) / Number(maiData.total)) * 100).toFixed(1)
+                  : 0;
+              return (
+                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900/40 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
+                      MAI (PT Medika Abadi Investama)
+                    </span>
+                    <span className="text-xs font-bold text-zinc-500 dark:text-slate-400">
+                      {resRate}% Diselesaikan
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-2 text-center">
+                    <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-slate-950">
+                      <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase block">
+                        Total Kasus
+                      </span>
+                      <span className="text-xl font-black text-zinc-900 dark:text-white">
+                        {Number(maiData.total).toLocaleString("id-ID")}
+                      </span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30">
+                      <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold uppercase block">
+                        Selesai
+                      </span>
+                      <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                        {Number(maiData.resolved).toLocaleString("id-ID")}
+                      </span>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30">
+                      <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold uppercase block">
+                        Pending
+                      </span>
+                      <span className="text-xl font-black text-amber-600 dark:text-amber-400">
+                        {Number(maiData.pending).toLocaleString("id-ID")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Root Causes and Return Reasons Breakdown */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Root Causes Breakdown */}
+            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-zinc-200 dark:border-slate-800 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-rose-500" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-white">
+                    Penyebab Masalah (Root Cause)
+                  </h3>
+                </div>
+                <span className="text-xs font-bold text-zinc-500 dark:text-slate-400 font-mono">
+                  {totalRootCauses} Kasus
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {(!personnelStats?.rootCauses || personnelStats.rootCauses.length === 0) ? (
+                  <p className="text-xs text-zinc-400 py-6 text-center">Belum ada data root cause.</p>
+                ) : (
+                  personnelStats.rootCauses.map((rc, idx) => {
+                    const pct = totalRootCauses > 0 ? ((Number(rc.total) / totalRootCauses) * 100).toFixed(1) : "0";
+                    return (
+                      <div key={rc.root_cause} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-zinc-800 dark:text-slate-200 truncate max-w-[240px]">
+                            {rc.root_cause}
+                          </span>
+                          <span className="font-mono text-zinc-500 dark:text-slate-400 font-bold">
+                            {rc.total} ({pct}%)
+                          </span>
+                        </div>
+                        <div className="h-2 bg-zinc-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              idx === 0
+                                ? "bg-rose-500"
+                                : idx === 1
+                                ? "bg-amber-500"
+                                : "bg-indigo-500"
+                            }`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Reasons Breakdown */}
+            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-zinc-200 dark:border-slate-800 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Package className="w-4 h-4 text-amber-500" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-white">
+                    Alasan Komplain Dilaporkan (Reasons)
+                  </h3>
+                </div>
+                <span className="text-xs font-bold text-zinc-500 dark:text-slate-400 font-mono">
+                  {totalReasons} Kasus
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {(!personnelStats?.reasons || personnelStats.reasons.length === 0) ? (
+                  <p className="text-xs text-zinc-400 py-6 text-center">Belum ada data alasan.</p>
+                ) : (
+                  personnelStats.reasons.map((r, idx) => {
+                    const pct = totalReasons > 0 ? ((Number(r.total) / totalReasons) * 100).toFixed(1) : "0";
+                    return (
+                      <div key={r.reason} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-zinc-800 dark:text-slate-200 truncate max-w-[240px]">
+                            {r.reason}
+                          </span>
+                          <span className="font-mono text-zinc-500 dark:text-slate-400 font-bold">
+                            {r.total} ({pct}%)
+                          </span>
+                        </div>
+                        <div className="h-2 bg-zinc-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              idx === 0
+                                ? "bg-amber-500"
+                                : idx === 1
+                                ? "bg-blue-500"
+                                : "bg-teal-500"
+                            }`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* â”€â”€â”€ ADD NEW RETURN MODAL â”€â”€â”€ */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
           <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-xl w-full p-5 sm:p-6 space-y-4 shadow-2xl relative overflow-hidden">
@@ -1529,6 +2290,51 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── FULLSCREEN PHOTO PREVIEW MODAL ─── */}
+      {previewPhotoUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setPreviewPhotoUrl(null)}
+        >
+          <div
+            className="relative max-w-3xl max-h-[90vh] bg-zinc-950 border border-zinc-800 rounded-2xl p-2 shadow-2xl flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full flex items-center justify-between p-2 border-b border-zinc-800 mb-2">
+              <span className="text-xs font-bold text-zinc-300 flex items-center gap-2">
+                <Camera className="w-4 h-4 text-violet-400" />
+                <span>Foto Bukti Kerusakan / Retur dari Apotek</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewPhotoUrl}
+                  download="bukti-retur.jpg"
+                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold flex items-center gap-1 transition-colors"
+                  title="Unduh foto"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Unduh</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewPhotoUrl(null)}
+                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-auto max-h-[75vh] flex items-center justify-center p-1">
+              <img
+                src={previewPhotoUrl}
+                alt="Bukti Retur Full"
+                className="max-h-[72vh] max-w-full rounded-xl object-contain shadow-lg"
+              />
+            </div>
           </div>
         </div>
       )}

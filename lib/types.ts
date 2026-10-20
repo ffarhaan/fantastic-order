@@ -200,5 +200,6 @@ export interface ShipmentReturnRecord {
   note: string;
   person: string;
   root_cause: string;
+  photo_url?: string;
   created_at?: string;
 }

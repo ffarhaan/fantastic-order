@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import {
   Send,
   CheckCircle2,
   AlertCircle,
-  FileSpreadsheet,
   ArrowLeft,
   Copy,
   Check,
@@ -14,9 +13,14 @@ import {
   Building2,
   Calendar,
   Sparkles,
-  ExternalLink,
-  ClipboardCheck,
   Share2,
+  Plus,
+  Trash2,
+  Camera,
+  Image as ImageIcon,
+  X,
+  ExternalLink,
+  MessageCircle,
 } from "lucide-react";
 
 const COMMON_REASONS = [
@@ -32,21 +36,45 @@ const COMMON_REASONS = [
   "Lainnya",
 ];
 
+interface ReturnProductItem {
+  id: string;
+  product_name: string;
+  qty: number;
+  unit: string;
+  batch_no: string;
+  expiry_date: string;
+  reason: string;
+  custom_reason: string;
+  note: string;
+}
+
 export default function KomplainPage() {
-  const [formData, setFormData] = useState({
+  const [headerData, setHeaderData] = useState({
     pbf: "MBI",
     customer_name: "",
     invoice_no: "",
     so_no: "",
-    product_name: "",
-    qty: 1,
-    unit: "pcs",
-    batch_no: "",
-    expiry_date: "",
-    reason: "Damage on Delivery (Barang rusak / bocor saat pengiriman)",
-    custom_reason: "",
-    note: "",
   });
+
+  const [products, setProducts] = useState<ReturnProductItem[]>([
+    {
+      id: "prod-1",
+      product_name: "",
+      qty: 1,
+      unit: "pcs",
+      batch_no: "",
+      expiry_date: "",
+      reason: "Damage on Delivery (Barang rusak / bocor saat pengiriman)",
+      custom_reason: "",
+      note: "",
+    },
+  ]);
+
+  // Photo state
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [photoSizeKb, setPhotoSizeKb] = useState<number>(0);
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -55,6 +83,104 @@ export default function KomplainPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedWaText, setCopiedWaText] = useState(false);
+
+  // Compress photo via Canvas
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsCompressingPhoto(true);
+    setErrorMessage("");
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          const MAX_WIDTH = 1200;
+          const MAX_HEIGHT = 1200;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height = Math.round((height * MAX_WIDTH) / width);
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width = Math.round((width * MAX_HEIGHT) / height);
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            throw new Error("Gagal mengolah gambar");
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Compress to JPEG with 0.72 quality
+          const compressed = canvas.toDataURL("image/jpeg", 0.72);
+          const sizeInKb = Math.round((compressed.length * 3) / 4 / 1024);
+
+          setPhotoBase64(compressed);
+          setPhotoSizeKb(sizeInKb);
+        } catch (err: any) {
+          console.error("Compression error:", err);
+          setErrorMessage("Gagal mengompres foto. Silakan coba file lain.");
+        } finally {
+          setIsCompressingPhoto(false);
+        }
+      };
+      img.onerror = () => {
+        setIsCompressingPhoto(false);
+        setErrorMessage("Format gambar tidak valid.");
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoBase64(null);
+    setPhotoSizeKb(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // Add & Remove Product rows
+  const handleAddProduct = () => {
+    setProducts((prev) => [
+      ...prev,
+      {
+        id: `prod-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        product_name: "",
+        qty: 1,
+        unit: "pcs",
+        batch_no: "",
+        expiry_date: "",
+        reason: "Damage on Delivery (Barang rusak / bocor saat pengiriman)",
+        custom_reason: "",
+        note: "",
+      },
+    ]);
+  };
+
+  const handleRemoveProduct = (id: string) => {
+    if (products.length <= 1) return;
+    setProducts((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const handleUpdateProduct = (id: string, field: keyof ReturnProductItem, value: any) => {
+    setProducts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, [field]: value } : p))
+    );
+  };
 
   const handleCopyLink = () => {
     if (typeof window !== "undefined") {
@@ -72,25 +198,37 @@ export default function KomplainPage() {
         ? "MBI (PT Medika Bina Investama)"
         : "MAI (PT Medika Abadi Investama)";
 
-    return `📋 PENGAJUAN RETUR BARANG
-────────────────────
-🏢 PBF         : ${pbfName}
-🏪 Apotek      : ${submittedData.customer_name}
-🧾 No. Invoice : ${submittedData.invoice_no}
-📦 No. SO      : ${submittedData.so_no || "-"}
+    const itemsList = submittedData.products
+      ?.map((p: any, idx: number) => {
+        const itemReason = p.reason || "-";
+        const itemNote = p.note ? `\n   📝 Catatan: ${p.note}` : "";
+        const itemBatch = p.batch_no ? `Batch: ${p.batch_no}` : "Batch: -";
+        const itemED = p.expiry_date ? `ED: ${p.expiry_date}` : "ED: -";
+        return `${idx + 1}. 💊 *${p.product_name}*
+   🔢 Qty: ${p.qty} ${p.unit || "pcs"}
+   🏷️ ${itemBatch} | ${itemED}
+   ⚠️ Alasan: ${itemReason}${itemNote}`;
+      })
+      .join("\n\n");
 
-💊 Nama Produk : ${submittedData.product_name}
-🔢 Kuantitas   : ${submittedData.qty} ${submittedData.unit || "pcs"}
-🏷️ Batch No.   : ${submittedData.batch_no || "-"}
-📅 Expiry Date : ${submittedData.expiry_date || "-"}
+    const photoStatus = submittedData.hasPhoto
+      ? "📸 Bukti Foto: Terlampir di Sistem & WhatsApp"
+      : "📸 Bukti Foto: Tidak dilampirkan";
 
-⚠️ Reason      : ${submittedData.reason}${
-      submittedData.note ? `\n📝 Catatan     : ${submittedData.note}` : ""
-    }
+    return `📋 *FORM PENGAJUAN RETUR BARANG*
+────────────────────────
+🏢 *PBF*         : ${pbfName}
+🏪 *Apotek*      : ${submittedData.customer_name}
+🧾 *No. Faktur*  : ${submittedData.invoice_no}
+📦 *No. SO*      : ${submittedData.so_no || "-"}
 
-⏰ Waktu Kirim : ${submittedTimestamp}
-────────────────────
-✅ Tiket retur telah dicatat ke sistem Fantastic Order & Google Sheet SHIPMENT ERROR.`;
+📦 *DAFTAR ITEM RETUR (${submittedData.products?.length || 1} Produk):*
+${itemsList}
+
+${photoStatus}
+⏰ *Waktu Kirim* : ${submittedTimestamp}
+────────────────────────
+✅ *Status*: Tiket telah dicatat ke Master Database Fantastic Order.`;
   };
 
   const handleCopyWaText = () => {
@@ -103,31 +241,39 @@ export default function KomplainPage() {
     }
   };
 
+  const handleSendToWhatsApp = () => {
+    const text = getWaSummaryText();
+    if (typeof window !== "undefined" && text) {
+      const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+      window.open(waUrl, "_blank");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage("");
 
-    if (!formData.customer_name.trim()) {
+    if (!headerData.customer_name.trim()) {
       setErrorMessage("Nama Apotek wajib diisi.");
       return;
     }
-    if (!formData.invoice_no.trim()) {
+    if (!headerData.invoice_no.trim()) {
       setErrorMessage("Nomor Invoice / Faktur wajib diisi.");
       return;
     }
-    if (!formData.product_name.trim()) {
-      setErrorMessage("Nama Produk wajib diisi.");
-      return;
-    }
-    if (Number(formData.qty) <= 0) {
-      setErrorMessage("Kuantitas minimal 1.");
-      return;
-    }
 
-    const finalReason =
-      formData.reason === "Lainnya" && formData.custom_reason.trim()
-        ? formData.custom_reason.trim()
-        : formData.reason;
+    // Validate products
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      if (!p.product_name.trim()) {
+        setErrorMessage(`Nama Produk pada item #${i + 1} wajib diisi.`);
+        return;
+      }
+      if (Number(p.qty) <= 0) {
+        setErrorMessage(`Kuantitas pada item #${i + 1} minimal 1.`);
+        return;
+      }
+    }
 
     const now = new Date();
     const formattedTimestamp = now.toLocaleString("id-ID", {
@@ -138,25 +284,37 @@ export default function KomplainPage() {
       minute: "2-digit",
     }).replace(/\./g, ":");
 
+    const processedProducts = products.map((p) => {
+      const finalReason =
+        p.reason === "Lainnya" && p.custom_reason.trim()
+          ? p.custom_reason.trim()
+          : p.reason;
+
+      return {
+        product_name: p.product_name.trim(),
+        qty: Number(p.qty),
+        unit: p.unit || "pcs",
+        batch_no: p.batch_no.trim(),
+        expiry_date: p.expiry_date.trim(),
+        reason: finalReason,
+        note: p.note.trim(),
+      };
+    });
+
     const payload = {
-      pbf: formData.pbf,
-      customer_name: formData.customer_name.trim(),
-      invoice_no: formData.invoice_no.trim(),
-      so_no: formData.so_no.trim(),
-      product_name: formData.product_name.trim(),
-      qty: Number(formData.qty),
-      unit: formData.unit,
-      batch_no: formData.batch_no.trim(),
-      expiry_date: formData.expiry_date.trim(),
-      reason: finalReason,
+      pbf: headerData.pbf,
+      customer_name: headerData.customer_name.trim(),
+      invoice_no: headerData.invoice_no.trim(),
+      so_no: headerData.so_no.trim(),
       invoice_date: now.toISOString().split("T")[0],
       category: "3P", // default standard
       confirm: "Approve",
-      action: "", // dikerjakan internal tim PBF
+      action: "Tukar fisik",
       status: "Pending",
-      note: formData.note.trim(),
-      person: "", // dikerjakan internal tim PBF
-      root_cause: "", // dikerjakan internal tim PBF
+      person: "Apotek Submission",
+      root_cause: "",
+      photo_url: photoBase64 || null,
+      products: processedProducts,
     };
 
     setIsSubmitting(true);
@@ -174,7 +332,11 @@ export default function KomplainPage() {
         throw new Error(data.error || "Gagal menyimpan pengajuan komplain ke database.");
       }
 
-      setSubmittedData({ ...payload, insertId: data.insertId });
+      setSubmittedData({
+        ...payload,
+        hasPhoto: Boolean(photoBase64),
+        insertedCount: data.count || processedProducts.length,
+      });
       setSubmittedTimestamp(formattedTimestamp);
       setIsSuccess(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -186,20 +348,30 @@ export default function KomplainPage() {
   };
 
   const handleReset = () => {
-    setFormData({
+    setHeaderData({
       pbf: "MBI",
       customer_name: "",
       invoice_no: "",
       so_no: "",
-      product_name: "",
-      qty: 1,
-      unit: "pcs",
-      batch_no: "",
-      expiry_date: "",
-      reason: "Damage on Delivery (Barang rusak / bocor saat pengiriman)",
-      custom_reason: "",
-      note: "",
     });
+    setProducts([
+      {
+        id: "prod-1",
+        product_name: "",
+        qty: 1,
+        unit: "pcs",
+        batch_no: "",
+        expiry_date: "",
+        reason: "Damage on Delivery (Barang rusak / bocor saat pengiriman)",
+        custom_reason: "",
+        note: "",
+      },
+    ]);
+    setPhotoBase64(null);
+    setPhotoSizeKb(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     setSubmittedData(null);
     setSubmittedTimestamp("");
     setIsSuccess(false);
@@ -210,7 +382,7 @@ export default function KomplainPage() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 flex flex-col font-sans transition-colors">
       {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#0a0a0c]/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800">
+      <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#0a0a0c]/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 shadow-xs">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <Link
@@ -221,9 +393,14 @@ export default function KomplainPage() {
               <ArrowLeft className="w-5 h-5" />
             </Link>
             <div>
-              <span className="text-[10px] font-black tracking-widest uppercase px-1.5 py-0.5 rounded bg-black text-white dark:bg-white dark:text-black">
-                MBI & MAI
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black tracking-widest uppercase px-1.5 py-0.5 rounded bg-black text-white dark:bg-white dark:text-black">
+                  MBI & MAI
+                </span>
+                <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">
+                  Logistik Retur
+                </span>
+              </div>
               <h1 className="text-sm sm:text-base font-extrabold tracking-tight text-zinc-900 dark:text-white leading-tight">
                 Form Pengajuan Retur Barang
               </h1>
@@ -239,7 +416,7 @@ export default function KomplainPage() {
                   ? "bg-emerald-600 text-white border-emerald-600"
                   : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               }`}
-              title="Salin link form ini untuk dibagikan ke WhatsApp"
+              title="Salin tautan form ini untuk dibagikan ke WhatsApp"
             >
               {copiedLink ? (
                 <>
@@ -260,22 +437,42 @@ export default function KomplainPage() {
       {/* Main Content */}
       <main className="max-w-2xl mx-auto w-full px-4 py-6 sm:py-8 flex-1">
         {isSuccess ? (
-          /* SUCCESS STATE WITH WHATSAPP COPY FORMAT */
+          /* SUCCESS STATE WITH WHATSAPP COPY & SHARE */
           <div className="bg-white dark:bg-[#0c0c0e] border border-emerald-500/40 rounded-2xl p-6 sm:p-8 shadow-sm text-center animate-in fade-in zoom-in-95 duration-200">
             <div className="w-14 h-14 bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 rounded-full flex items-center justify-center mx-auto text-emerald-600 dark:text-emerald-400 mb-3 shadow-sm">
               <CheckCircle2 className="w-8 h-8" />
             </div>
 
             <span className="text-[11px] font-black uppercase tracking-wider px-3 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-              Pengajuan Berhasil Terkirim
+              Pengajuan Berhasil Disimpan
             </span>
 
             <h2 className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-white mt-3">
-              Laporan Retur Berhasil Dicatat!
+              {submittedData?.products?.length || 1} Produk Retur Berhasil Dicatat!
             </h2>
             <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 max-w-md mx-auto mt-1.5 leading-relaxed">
-              Data tiket komplain telah otomatis disimpan ke sistem Fantastic Order dan otomatis tersinkron ke spreadsheet Google Sheet.
+              Data tiket komplain telah otomatis disimpan ke sistem Fantastic Order. Silakan salin format pesan di bawah untuk dikirim ke grup WhatsApp.
             </p>
+
+            {/* Photo Thumbnail if uploaded */}
+            {photoBase64 && (
+              <div className="mt-4 p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-xl flex items-center gap-3 text-left">
+                <img
+                  src={photoBase64}
+                  alt="Bukti Retur"
+                  className="w-14 h-14 object-cover rounded-lg border border-zinc-300 dark:border-zinc-700 shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Foto Bukti Tersimpan ({photoSizeKb} KB)</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    Foto bukti aman tersimpan di sistem dan dapat dilihat langsung oleh admin logistik.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* WhatsApp Ready Format Card */}
             <div className="mt-5 text-left bg-zinc-900 text-zinc-100 rounded-xl p-4 sm:p-5 font-mono text-xs sm:text-[13px] leading-relaxed shadow-md border border-zinc-700/80 relative">
@@ -284,27 +481,37 @@ export default function KomplainPage() {
                   <Share2 className="w-4 h-4 text-emerald-400" />
                   <span>Format WhatsApp Siap Kirim</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={handleCopyWaText}
-                  className={`px-3 py-1.5 rounded-lg font-sans font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all ${
-                    copiedWaText
-                      ? "bg-emerald-500 text-white"
-                      : "bg-white text-zinc-900 hover:bg-zinc-200"
-                  }`}
-                >
-                  {copiedWaText ? (
-                    <>
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Tersalin ke WA!</span>
-                    </>
-                  ) : (
-                    <>
-                      <ClipboardCheck className="w-3.5 h-3.5" />
-                      <span>Salin Format WA</span>
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSendToWhatsApp}
+                    className="px-3 py-1.5 rounded-lg font-sans font-bold text-xs flex items-center gap-1.5 cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-all"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>Buka WA</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyWaText}
+                    className={`px-3 py-1.5 rounded-lg font-sans font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all ${
+                      copiedWaText
+                        ? "bg-emerald-500 text-white"
+                        : "bg-white text-zinc-900 hover:bg-zinc-200"
+                    }`}
+                  >
+                    {copiedWaText ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Tersalin!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Salin Format</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               <pre className="whitespace-pre-wrap font-mono text-zinc-200 selection:bg-emerald-800">
@@ -332,7 +539,7 @@ export default function KomplainPage() {
             </div>
           </div>
         ) : (
-          /* CLEAN APOTEK / CUSTOMER FORM */
+          /* FORM APOTEK (MULTI-PRODUCT + PHOTO UPLOAD) */
           <form onSubmit={handleSubmit} className="space-y-5">
             {errorMessage && (
               <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 text-red-700 dark:text-red-400 text-xs flex items-center gap-2 font-medium animate-in fade-in">
@@ -363,9 +570,9 @@ export default function KomplainPage() {
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => setFormData({ ...formData, pbf: p.id })}
+                      onClick={() => setHeaderData({ ...headerData, pbf: p.id })}
                       className={`py-2.5 px-3 rounded-xl text-left border transition-all cursor-pointer ${
-                        formData.pbf === p.id
+                        headerData.pbf === p.id
                           ? "bg-black text-white border-black dark:bg-white dark:text-black dark:border-white shadow-xs"
                           : "bg-zinc-50 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400"
                       }`}
@@ -385,8 +592,8 @@ export default function KomplainPage() {
                 <input
                   type="text"
                   required
-                  value={formData.customer_name}
-                  onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
+                  value={headerData.customer_name}
+                  onChange={(e) => setHeaderData({ ...headerData, customer_name: e.target.value })}
                   placeholder="Contoh: Apotek Halomedika Bungur Malang"
                   className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black dark:focus:ring-white transition-all"
                 />
@@ -401,8 +608,8 @@ export default function KomplainPage() {
                   <input
                     type="text"
                     required
-                    value={formData.invoice_no}
-                    onChange={(e) => setFormData({ ...formData, invoice_no: e.target.value })}
+                    value={headerData.invoice_no}
+                    onChange={(e) => setHeaderData({ ...headerData, invoice_no: e.target.value })}
                     placeholder="Contoh: Inv-cfo-2610-20414"
                     className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono font-bold text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black dark:focus:ring-white transition-all"
                   />
@@ -415,164 +622,281 @@ export default function KomplainPage() {
                   </label>
                   <input
                     type="text"
-                    value={formData.so_no}
-                    onChange={(e) => setFormData({ ...formData, so_no: e.target.value })}
+                    value={headerData.so_no}
+                    onChange={(e) => setHeaderData({ ...headerData, so_no: e.target.value })}
                     placeholder="Contoh: So-5yen4y-5539 (opsional)"
-                    className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black dark:focus:ring-white transition-all"
+                    className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white transition-all"
                   />
                 </div>
               </div>
             </div>
 
-            {/* CARD 2: DETAIL PRODUK & ALASAN */}
-            <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
-              <div className="flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-800/80 pb-3">
-                <Package className="w-4 h-4 text-zinc-500" />
-                <h2 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-white">
-                  Detail Produk & Alasan Retur
-                </h2>
+            {/* CARD 2: FOTO BUKTI RETUR (KAMERA / UPLOAD) */}
+            <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Camera className="w-4 h-4 text-zinc-500" />
+                  <h2 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-white">
+                    Foto Bukti Retur / Kerusakan
+                  </h2>
+                </div>
+                <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                  Opsional tapi sangat dianjurkan
+                </span>
               </div>
 
-              {/* Nama Produk */}
-              <div>
-                <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                  💊 Nama Produk <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.product_name}
-                  onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
-                  placeholder="Contoh: Ceradan ceramide dominant skin barrier cream 80g"
-                  className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black dark:focus:ring-white transition-all"
-                />
-              </div>
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept="image/*"
+                capture="environment"
+                onChange={handlePhotoUpload}
+                className="hidden"
+                id="return-photo-input"
+              />
 
-              {/* Kuantitas & Satuan */}
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                    🔢 Kuantitas <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={formData.qty}
-                    onChange={(e) => setFormData({ ...formData, qty: Number(e.target.value) })}
-                    className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-zinc-900 dark:text-white focus:outline-none focus:border-black dark:focus:border-white transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                    Satuan
-                  </label>
-                  <select
-                    value={formData.unit}
-                    onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                    className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-zinc-900 dark:text-white focus:outline-none focus:border-black dark:focus:border-white transition-all cursor-pointer"
-                  >
-                    <option value="pcs">pcs</option>
-                    <option value="box">box</option>
-                    <option value="botol">botol</option>
-                    <option value="tube">tube</option>
-                    <option value="strip">strip</option>
-                    <option value="blister">blister</option>
-                    <option value="ampul">ampul</option>
-                    <option value="vial">vial</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Batch No & Expiry Date */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                    🏷️ Batch No. (Nomor Bets)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.batch_no}
-                    onChange={(e) => setFormData({ ...formData, batch_no: e.target.value })}
-                    placeholder="Contoh: Bn-160603 (opsional)"
-                    className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                    📅 Expiry Date (ED)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.expiry_date}
-                    onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
-                    placeholder="Contoh: 06/2028 atau MM/YYYY"
-                    className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white transition-all"
-                  />
-                </div>
-              </div>
-
-              {/* Reason */}
-              <div>
-                <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                  ⚠️ Reason (Alasan Retur) <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formData.reason}
-                  onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                  className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-zinc-900 dark:text-white focus:outline-none focus:border-black dark:focus:border-white transition-all cursor-pointer"
+              {!photoBase64 ? (
+                <label
+                  htmlFor="return-photo-input"
+                  className={`border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-zinc-500 dark:hover:border-zinc-500 rounded-xl p-5 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all bg-zinc-50/50 dark:bg-zinc-900/40 text-center ${
+                    isCompressingPhoto ? "opacity-50 pointer-events-none" : ""
+                  }`}
                 >
-                  {COMMON_REASONS.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-
-                {formData.reason === "Lainnya" && (
-                  <input
-                    type="text"
-                    required
-                    value={formData.custom_reason}
-                    onChange={(e) => setFormData({ ...formData, custom_reason: e.target.value })}
-                    placeholder="Tuliskan alasan retur lainnya..."
-                    className="w-full mt-2 bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white transition-all"
-                  />
-                )}
-              </div>
-
-              {/* Catatan Tambahan */}
-              <div>
-                <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                  📝 Catatan Tambahan (Opsional)
+                  <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-300 shadow-xs">
+                    {isCompressingPhoto ? (
+                      <div className="w-5 h-5 border-2 border-zinc-600 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Camera className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
+                      {isCompressingPhoto ? "Sedang Mengompres Foto..." : "Ambil Foto / Pilih dari Galeri"}
+                    </span>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      Foto otomatis dikompres agar hemat kuota dan cepat terkirim
+                    </p>
+                  </div>
                 </label>
-                <textarea
-                  rows={2}
-                  value={formData.note}
-                  onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                  placeholder="Keterangan kondisi barang, foto bukti, atau catatan lainnya..."
-                  className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white transition-all resize-y"
-                />
+              ) : (
+                <div className="relative rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 bg-zinc-50 dark:bg-zinc-900 flex items-center gap-3">
+                  <img
+                    src={photoBase64}
+                    alt="Preview Bukti Retur"
+                    className="w-16 h-16 object-cover rounded-lg border border-zinc-300 dark:border-zinc-700 shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Foto Berhasil Diunggah</span>
+                    </div>
+                    <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                      Ukuran: {photoSizeKb} KB (Terkompres optimal)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                    title="Hapus foto"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* CARD 3: DAFTAR PRODUK RETUR (MULTI-PRODUCT SUPPORT) */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Package className="w-4 h-4 text-zinc-500" />
+                  <h2 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-white">
+                    Daftar Produk Retur ({products.length} Item)
+                  </h2>
+                </div>
+                <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                  Dapat menambah lebih dari 1 produk
+                </span>
               </div>
+
+              {products.map((item, index) => (
+                <div
+                  key={item.id}
+                  className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4 relative"
+                >
+                  <div className="flex items-center justify-between pb-2 border-b border-zinc-100 dark:border-zinc-800/80">
+                    <span className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-zinc-900 text-white dark:bg-white dark:text-black flex items-center justify-center text-[10px] font-bold">
+                        {index + 1}
+                      </span>
+                      <span>Item #{index + 1}</span>
+                    </span>
+
+                    {products.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveProduct(item.id)}
+                        className="text-red-500 hover:text-red-700 dark:hover:text-red-400 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors px-2 py-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Hapus</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Nama Produk */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
+                      💊 Nama Produk <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={item.product_name}
+                      onChange={(e) => handleUpdateProduct(item.id, "product_name", e.target.value)}
+                      placeholder="Contoh: Ceradan ceramide dominant skin barrier cream 80g"
+                      className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                    />
+                  </div>
+
+                  {/* Kuantitas & Satuan */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
+                        🔢 Kuantitas <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={item.qty}
+                        onChange={(e) => handleUpdateProduct(item.id, "qty", Number(e.target.value))}
+                        className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-zinc-900 dark:text-white focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
+                        Satuan
+                      </label>
+                      <select
+                        value={item.unit}
+                        onChange={(e) => handleUpdateProduct(item.id, "unit", e.target.value)}
+                        className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-zinc-900 dark:text-white focus:outline-none focus:border-black dark:focus:border-white transition-all cursor-pointer"
+                      >
+                        <option value="pcs">pcs</option>
+                        <option value="box">box</option>
+                        <option value="botol">botol</option>
+                        <option value="tube">tube</option>
+                        <option value="strip">strip</option>
+                        <option value="blister">blister</option>
+                        <option value="ampul">ampul</option>
+                        <option value="vial">vial</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Batch No & Expiry Date */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
+                        🏷️ Batch No. (Nomor Bets)
+                      </label>
+                      <input
+                        type="text"
+                        value={item.batch_no}
+                        onChange={(e) => handleUpdateProduct(item.id, "batch_no", e.target.value)}
+                        placeholder="Contoh: Bn-160603 (opsional)"
+                        className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
+                        📅 Expiry Date (ED)
+                      </label>
+                      <input
+                        type="text"
+                        value={item.expiry_date}
+                        onChange={(e) => handleUpdateProduct(item.id, "expiry_date", e.target.value)}
+                        placeholder="Contoh: 06/2028 atau MM/YYYY"
+                        className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Reason */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
+                      ⚠️ Reason (Alasan Retur) <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={item.reason}
+                      onChange={(e) => handleUpdateProduct(item.id, "reason", e.target.value)}
+                      className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-zinc-900 dark:text-white focus:outline-none focus:border-black dark:focus:border-white transition-all cursor-pointer"
+                    >
+                      {COMMON_REASONS.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+
+                    {item.reason === "Lainnya" && (
+                      <input
+                        type="text"
+                        required
+                        value={item.custom_reason}
+                        onChange={(e) => handleUpdateProduct(item.id, "custom_reason", e.target.value)}
+                        placeholder="Tuliskan alasan retur lainnya..."
+                        className="w-full mt-2 bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                      />
+                    )}
+                  </div>
+
+                  {/* Catatan Tambahan Per Item */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
+                      📝 Catatan Tambahan Produk (Opsional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={item.note}
+                      onChange={(e) => handleUpdateProduct(item.id, "note", e.target.value)}
+                      placeholder="Keterangan spesifik kondisi produk ini..."
+                      className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white transition-all resize-y"
+                    />
+                  </div>
+                </div>
+              ))}
+
+              {/* Button: + Tambah Produk Lain */}
+              <button
+                type="button"
+                onClick={handleAddProduct}
+                className="w-full py-3 px-4 border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-zinc-500 dark:hover:border-zinc-500 rounded-2xl text-xs font-bold text-zinc-700 dark:text-zinc-300 flex items-center justify-center gap-2 transition-all cursor-pointer bg-white/50 dark:bg-[#0c0c0e]/50 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              >
+                <Plus className="w-4 h-4 text-emerald-500" />
+                <span>+ Tambah Produk Lain Untuk Faktur Ini</span>
+              </button>
             </div>
 
             {/* SUBMIT BUTTON */}
             <div className="pt-2">
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isCompressingPhoto}
                 className="w-full py-3.5 rounded-xl bg-black hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black text-sm font-black flex items-center justify-center gap-2 shadow-sm transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
               >
                 {isSubmitting ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white dark:border-black border-t-transparent rounded-full animate-spin" />
-                    <span>Mengirim Pengajuan...</span>
+                    <span>Menyimpan {products.length} Pengajuan Retur...</span>
                   </>
                 ) : (
                   <>
                     <Send className="w-4 h-4" />
-                    <span>Kirim Pengajuan Retur</span>
+                    <span>Kirim Pengajuan Retur ({products.length} Produk)</span>
                   </>
                 )}
               </button>
