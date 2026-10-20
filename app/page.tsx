@@ -2567,7 +2567,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     ? (isDarkMode ? "bg-zinc-800 text-white shadow-xs" : "bg-zinc-900 text-white shadow-xs")
                     : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
                 }`}
-                title="Deployments (Faktur)"
+                title="Daftar Faktur"
               >
                 <Boxes className="w-4 h-4" />
                 {workspaceStats.belumCount > 0 && (
@@ -2652,7 +2652,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 }`}
               >
                 <Boxes className={`w-4 h-4 ${mainView === "workspace" ? "text-white" : isDarkMode ? "text-zinc-400" : "text-zinc-500"}`} />
-                <span className="flex-1">Deployments</span>
+                <span className="flex-1">Daftar Faktur</span>
                 {workspaceStats.belumCount > 0 && (
                   <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold ${
                     isDarkMode
@@ -2947,7 +2947,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <ChevronsUpDown className={`w-3.5 h-3.5 shrink-0 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} />
               <span className={isDarkMode ? "text-zinc-600" : "text-zinc-300"}>/</span>
               <span className={`text-xs font-semibold capitalize truncate ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
-                {mainView === "workspace" ? "Deployments" : mainView === "dashboard" ? "Overview" : mainView === "returns" ? "Logs / Retur" : "Master Customer"}
+                {mainView === "workspace" ? "Daftar Faktur" : mainView === "dashboard" ? "Overview" : mainView === "returns" ? "Logs / Retur" : "Master Customer"}
               </span>
             </div>
           </div>
@@ -3525,7 +3525,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h1 className={`text-xl sm:text-2xl font-bold tracking-tight ${isDarkMode ? "text-white" : "text-zinc-900"}`}>
-              Deployments
+              Daftar Faktur
             </h1>
           </div>
 

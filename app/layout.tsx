@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "fantastic-order — Deployments & Logistics Hub",
+  title: "fantastic-order — Manajemen Faktur & Penjualan",
   description: "Platform Terpadu Pengelolaan Faktur, Tracking Retur, dan Direktori Master Customer",
   icons: {
     icon: "/icon.svg",
