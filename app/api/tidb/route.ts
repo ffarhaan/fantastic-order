@@ -312,25 +312,79 @@ export async function POST(req: Request) {
       return Response.json({ success: true, insertId: res?.insertId });
     }
 
-    // 2. Update existing shipment return
+    // 2. Update existing shipment return (supports all columns)
     if (action === "update_return") {
-      const { id, status, confirm, action: returnAction, note, resolved_date, root_cause, person, nota_retur_no } = body;
+      const {
+        id,
+        pbf,
+        customer_name,
+        invoice_no,
+        so_no,
+        product_name,
+        qty,
+        batch_no,
+        expiry_date,
+        reason,
+        invoice_date,
+        category,
+        confirm,
+        action: returnAction,
+        nota_retur_no,
+        resolved_date,
+        status,
+        note,
+        person,
+        root_cause,
+      } = body;
+
       if (!id) {
         return Response.json({ success: false, error: "Missing return id" }, { status: 400 });
       }
 
       await conn.execute(
         `UPDATE shipment_returns SET 
-          status = COALESCE(?, status),
+          pbf = COALESCE(?, pbf),
+          customer_name = COALESCE(?, customer_name),
+          invoice_no = COALESCE(?, invoice_no),
+          so_no = COALESCE(?, so_no),
+          product_name = COALESCE(?, product_name),
+          qty = COALESCE(?, qty),
+          batch_no = COALESCE(?, batch_no),
+          expiry_date = COALESCE(?, expiry_date),
+          reason = COALESCE(?, reason),
+          invoice_date = COALESCE(?, invoice_date),
+          category = COALESCE(?, category),
           confirm = COALESCE(?, confirm),
           action = COALESCE(?, action),
-          note = COALESCE(?, note),
+          nota_retur_no = COALESCE(?, nota_retur_no),
           resolved_date = COALESCE(?, resolved_date),
-          root_cause = COALESCE(?, root_cause),
+          status = COALESCE(?, status),
+          note = COALESCE(?, note),
           person = COALESCE(?, person),
-          nota_retur_no = COALESCE(?, nota_retur_no)
+          root_cause = COALESCE(?, root_cause)
         WHERE id = ?`,
-        [status, confirm, returnAction, note, resolved_date, root_cause, person, nota_retur_no, id]
+        [
+          pbf,
+          customer_name,
+          invoice_no,
+          so_no,
+          product_name,
+          qty !== undefined ? Number(qty) : null,
+          batch_no,
+          expiry_date,
+          reason,
+          invoice_date,
+          category,
+          confirm,
+          returnAction,
+          nota_retur_no,
+          resolved_date,
+          status,
+          note,
+          person,
+          root_cause,
+          id,
+        ]
       );
 
       // Fetch updated record for webhook sync
@@ -344,15 +398,25 @@ export async function POST(req: Request) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              pbf: updatedRow.pbf,
+              namaApotek: updatedRow.customer_name,
               invoiceNo: updatedRow.invoice_no,
-              status: updatedRow.status,
+              soNo: updatedRow.so_no,
+              productName: updatedRow.product_name,
+              qty: updatedRow.qty,
+              batchNo: updatedRow.batch_no,
+              expiryDate: updatedRow.expiry_date,
+              reason: updatedRow.reason,
+              invoiceDate: updatedRow.invoice_date,
+              category: updatedRow.category,
               confirm: updatedRow.confirm,
               action: updatedRow.action,
-              note: updatedRow.note,
-              rootCause: updatedRow.root_cause,
-              resolvedDate: updatedRow.resolved_date,
               notaReturNo: updatedRow.nota_retur_no,
+              resolvedDate: updatedRow.resolved_date,
+              status: updatedRow.status,
+              note: updatedRow.note,
               person: updatedRow.person,
+              rootCause: updatedRow.root_cause,
             }),
           }).catch((err) => {
             console.error("Async webhook forward error:", err);
