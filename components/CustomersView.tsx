@@ -121,60 +121,60 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
       {/* ─── Modern Executive KPI Header ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Card 1: Total Merchant */}
-        <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-slate-900/90 to-slate-950/90 dark:from-[#0d1322] dark:to-[#070b14] border border-indigo-500/20 shadow-lg group hover:border-indigo-500/40 transition-all">
-          <div className="absolute top-0 right-0 w-28 h-28 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+        <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-indigo-500/20 shadow-sm hover:border-indigo-500/40 transition-all group">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
           <div className="flex items-center justify-between relative z-10">
             <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-indigo-300">
-                <Store className="w-3.5 h-3.5 text-indigo-400" />
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">
+                <Store className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
                 <span>Direktori Mitra</span>
               </div>
-              <h3 className="text-2xl font-black text-white mt-1.5 tracking-tight">
+              <h3 className="text-2xl font-black text-zinc-900 dark:text-white mt-1.5 tracking-tight">
                 {total > 0 ? total.toLocaleString("id-ID") : "3.599"}
               </h3>
-              <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse" />
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
                 Apotek, Klinik, RS & PBF Terdaftar
               </p>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-600/20 to-indigo-400/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-inner group-hover:scale-105 transition-transform">
+            <div className="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-600/20 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-xs group-hover:scale-105 transition-transform">
               <Building2 className="w-5 h-5" />
             </div>
           </div>
         </div>
 
         {/* Card 2: TiDB Cloud Sync */}
-        <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-slate-900/90 to-slate-950/90 dark:from-[#0d1322] dark:to-[#070b14] border border-emerald-500/20 shadow-lg group hover:border-emerald-500/40 transition-all">
-          <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+        <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-emerald-500/20 shadow-sm hover:border-emerald-500/40 transition-all group">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
           <div className="flex items-center justify-between relative z-10">
             <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-                <Database className="w-3.5 h-3.5 text-emerald-400" />
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">
+                <Database className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
                 <span>TiDB Serverless</span>
               </div>
-              <h3 className="text-2xl font-black text-emerald-400 mt-1.5 tracking-tight flex items-center gap-2">
+              <h3 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1.5 tracking-tight flex items-center gap-2">
                 Live Cloud
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-semibold">
                   0ms Latency
                 </span>
               </h3>
-              <p className="text-[11px] text-slate-400 mt-1">
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
                 Sinkronisasi Realtime Terhubung
               </p>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-emerald-600/20 to-emerald-400/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-inner group-hover:scale-105 transition-transform">
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-600/20 border border-emerald-200 dark:border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xs group-hover:scale-105 transition-transform">
               <ShieldCheck className="w-5 h-5" />
             </div>
           </div>
         </div>
 
         {/* Card 3: Distribusi Kategori */}
-        <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-slate-900/90 to-slate-950/90 dark:from-[#0d1322] dark:to-[#070b14] border border-cyan-500/20 shadow-lg group hover:border-cyan-500/40 transition-all">
-          <div className="absolute top-0 right-0 w-28 h-28 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+        <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-cyan-500/20 shadow-sm hover:border-cyan-500/40 transition-all group">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-cyan-500/5 dark:bg-cyan-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
           <div className="flex items-center justify-between relative z-10">
             <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-cyan-300">
-                <Layers className="w-3.5 h-3.5 text-cyan-400" />
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-300">
+                <Layers className="w-3.5 h-3.5 text-cyan-500 dark:text-cyan-400" />
                 <span>Kategori Merchant</span>
               </div>
               <div className="flex items-center gap-1.5 mt-2">
@@ -183,8 +183,8 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                   onClick={() => { setCategoryFilter(categoryFilter === "1P" ? "ALL" : "1P"); setPage(0); }}
                   className={`text-[10px] px-2 py-0.5 rounded-md font-bold border transition ${
                     categoryFilter === "1P"
-                      ? "bg-purple-500 text-white border-purple-400 shadow-sm"
-                      : "bg-purple-950/50 text-purple-300 border-purple-800/40 hover:bg-purple-900/60"
+                      ? "bg-purple-600 text-white border-purple-500 shadow-xs"
+                      : "bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-800/40"
                   }`}
                 >
                   1P
@@ -194,8 +194,8 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                   onClick={() => { setCategoryFilter(categoryFilter === "2P" ? "ALL" : "2P"); setPage(0); }}
                   className={`text-[10px] px-2 py-0.5 rounded-md font-bold border transition ${
                     categoryFilter === "2P"
-                      ? "bg-cyan-500 text-white border-cyan-400 shadow-sm"
-                      : "bg-cyan-950/50 text-cyan-300 border-cyan-800/40 hover:bg-cyan-900/60"
+                      ? "bg-cyan-600 text-white border-cyan-500 shadow-xs"
+                      : "bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100 dark:bg-cyan-950/50 dark:text-cyan-300 dark:border-cyan-800/40"
                   }`}
                 >
                   2P
@@ -205,8 +205,8 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                   onClick={() => { setCategoryFilter(categoryFilter === "3P" ? "ALL" : "3P"); setPage(0); }}
                   className={`text-[10px] px-2 py-0.5 rounded-md font-bold border transition ${
                     categoryFilter === "3P"
-                      ? "bg-amber-500 text-slate-900 border-amber-400 shadow-sm"
-                      : "bg-amber-950/50 text-amber-300 border-amber-800/40 hover:bg-amber-900/60"
+                      ? "bg-amber-500 text-zinc-950 border-amber-400 shadow-xs"
+                      : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/40"
                   }`}
                 >
                   3P
@@ -216,40 +216,40 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                   onClick={() => { setCategoryFilter("ALL"); setPage(0); }}
                   className={`text-[10px] px-2 py-0.5 rounded-md font-bold border transition ${
                     categoryFilter === "ALL"
-                      ? "bg-slate-700 text-white border-slate-600"
-                      : "bg-slate-800/60 text-slate-400 border-slate-700 hover:text-slate-200"
+                      ? "bg-zinc-800 text-white border-zinc-700 dark:bg-zinc-700 dark:border-zinc-600"
+                      : "bg-zinc-100 text-zinc-600 border-zinc-200 hover:bg-zinc-200 dark:bg-zinc-800/60 dark:text-zinc-400 dark:border-zinc-700"
                   }`}
                 >
                   Semua
                 </button>
               </div>
-              <p className="text-[10px] text-slate-400 mt-1.5">Klik filter cepat jenis apotek</p>
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1.5">Klik filter cepat jenis apotek</p>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-cyan-600/20 to-cyan-400/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner group-hover:scale-105 transition-transform">
+            <div className="w-11 h-11 rounded-xl bg-cyan-50 dark:bg-cyan-600/20 border border-cyan-200 dark:border-cyan-500/30 flex items-center justify-center text-cyan-600 dark:text-cyan-400 shadow-xs group-hover:scale-105 transition-transform">
               <Sparkles className="w-5 h-5" />
             </div>
           </div>
         </div>
 
         {/* Card 4: Ekspor & Tools */}
-        <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-slate-900/90 to-slate-950/90 dark:from-[#0d1322] dark:to-[#070b14] border border-blue-500/20 shadow-lg group hover:border-blue-500/40 transition-all flex flex-col justify-between">
-          <div className="absolute top-0 right-0 w-28 h-28 bg-blue-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+        <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-blue-500/20 shadow-sm hover:border-blue-500/40 transition-all flex flex-col justify-between group">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
           <div className="flex items-center justify-between relative z-10">
             <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-300">
-                <FileSpreadsheet className="w-3.5 h-3.5 text-blue-400" />
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-300">
+                <FileSpreadsheet className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
                 <span>Ekspor Direktori</span>
               </div>
-              <h4 className="text-sm font-semibold text-white mt-1">Unduh Format Excel</h4>
+              <h4 className="text-sm font-semibold text-zinc-900 dark:text-white mt-1">Unduh Format Excel</h4>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600/20 to-blue-400/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shadow-inner">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-600/20 border border-blue-200 dark:border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shadow-xs">
               <FileSpreadsheet className="w-4 h-4" />
             </div>
           </div>
           <button
             type="button"
             onClick={handleExportExcel}
-            className="mt-3 w-full py-1.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.98]"
+            className="mt-3 w-full py-1.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all active:scale-[0.98] cursor-pointer"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
             <span>Unduh Excel ({customers.length} data)</span>
@@ -258,23 +258,23 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
       </div>
 
       {/* ─── Modern Search & Filter Command Bar ─── */}
-      <div className="rounded-2xl p-2.5 sm:p-3 bg-slate-900/80 dark:bg-[#0c121f]/90 border border-slate-800/80 shadow-md flex flex-wrap gap-2.5 items-center justify-between">
+      <div className="rounded-2xl p-2.5 sm:p-3 bg-white dark:bg-[#0c121f]/90 border border-zinc-200 dark:border-zinc-800/80 shadow-xs flex flex-wrap gap-2.5 items-center justify-between">
         {/* Search Input */}
         <div className="flex items-center gap-2 flex-1 min-w-[280px]">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cari Nama Apotek, ID Oracle, Alamat, atau Nama APJ..."
-              className="w-full bg-slate-950/80 dark:bg-[#070b13] border border-slate-700/60 rounded-xl pl-10 pr-9 py-2 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+              className="w-full bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-zinc-700/60 rounded-xl pl-10 pr-9 py-2 text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
             />
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-white p-1"
                 title="Hapus pencarian"
               >
                 <X className="w-3.5 h-3.5" />
@@ -286,38 +286,38 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
         {/* Filter Controls Cluster */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Status Merchant Dropdown */}
-          <div className="flex items-center gap-1.5 bg-slate-950/80 dark:bg-[#070b13] border border-slate-700/60 rounded-xl px-2.5 py-1">
-            <span className="text-[10px] text-slate-400 font-medium">Status:</span>
+          <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-zinc-700/60 rounded-xl px-2.5 py-1">
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium">Status:</span>
             <select
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
                 setPage(0);
               }}
-              className="bg-transparent border-none text-xs font-bold text-slate-200 focus:outline-none cursor-pointer pr-1"
+              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-zinc-200 focus:outline-none cursor-pointer pr-1"
             >
-              <option value="ALL" className="bg-slate-900 text-white">Semua Status</option>
-              <option value="ACTIVE" className="bg-slate-900 text-emerald-400">ACTIVE</option>
-              <option value="INACTIVE" className="bg-slate-900 text-rose-400">INACTIVE</option>
+              <option value="ALL">Semua Status</option>
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="INACTIVE">INACTIVE</option>
             </select>
           </div>
 
           {/* Kategori Dropdown */}
-          <div className="flex items-center gap-1.5 bg-slate-950/80 dark:bg-[#070b13] border border-slate-700/60 rounded-xl px-2.5 py-1">
-            <span className="text-[10px] text-slate-400 font-medium">Kategori:</span>
+          <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-zinc-700/60 rounded-xl px-2.5 py-1">
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium">Kategori:</span>
             <select
               value={categoryFilter}
               onChange={(e) => {
                 setCategoryFilter(e.target.value);
                 setPage(0);
               }}
-              className="bg-transparent border-none text-xs font-bold text-slate-200 focus:outline-none cursor-pointer pr-1"
+              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-zinc-200 focus:outline-none cursor-pointer pr-1"
             >
-              <option value="ALL" className="bg-slate-900 text-white">Semua Kategori</option>
-              <option value="1P" className="bg-slate-900 text-purple-400">1P (Prioritas 1)</option>
-              <option value="2P" className="bg-slate-900 text-cyan-400">2P (Prioritas 2)</option>
-              <option value="3P" className="bg-slate-900 text-amber-400">3P (Reguler)</option>
-              <option value="REG" className="bg-slate-900 text-slate-300">REG</option>
+              <option value="ALL">Semua Kategori</option>
+              <option value="1P">1P (Prioritas 1)</option>
+              <option value="2P">2P (Prioritas 2)</option>
+              <option value="3P">3P (Reguler)</option>
+              <option value="REG">REG</option>
             </select>
           </div>
 
@@ -326,20 +326,20 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
             type="button"
             onClick={fetchCustomers}
             disabled={loading}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition-all active:scale-95 shadow-sm"
+            className="p-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700/80 transition-all active:scale-95 shadow-xs cursor-pointer"
             title="Refresh Data dari TiDB"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-400" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-500" : ""}`} />
           </button>
         </div>
       </div>
 
       {/* ─── Enterprise Data Grid ─── */}
-      <div className="rounded-2xl border border-slate-800/90 bg-slate-900/60 dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xl">
+      <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-slate-950/90 dark:bg-[#070b14] border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              <tr className="bg-zinc-50 dark:bg-[#070b14] border-b border-zinc-200 dark:border-zinc-800 text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
                 <th className="py-3 px-3.5 w-16">ID</th>
                 <th className="py-3 px-3">ID Oracle</th>
                 <th className="py-3 px-4">Nama Apotek / Merchant</th>
@@ -351,7 +351,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                 <th className="py-3 px-3 text-center">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/50">
+            <tbody className="divide-y divide-zinc-200/80 dark:divide-zinc-800/50">
               {loading && customers.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="py-16 text-center text-slate-400">
@@ -390,8 +390,8 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                       </td>
 
                       {/* Nama Apotek */}
-                      <td className="py-2.5 px-4 font-bold text-slate-100 max-w-[240px]">
-                        <span className="truncate block group-hover:text-indigo-200 transition-colors" title={c.name}>
+                      <td className="py-2.5 px-4 font-bold text-zinc-900 dark:text-slate-100 max-w-[240px]">
+                        <span className="truncate block group-hover:text-indigo-600 dark:group-hover:text-indigo-200 transition-colors" title={c.name}>
                           {c.name}
                         </span>
                       </td>
@@ -401,13 +401,13 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                             isActive
-                              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                              : "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                              : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
                           }`}
                         >
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
-                              isActive ? "bg-emerald-400 animate-pulse" : "bg-rose-400"
+                              isActive ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
                             }`}
                           />
                           {c.status_merchant || "N/A"}
@@ -415,19 +415,19 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                       </td>
 
                       {/* Alamat */}
-                      <td className="py-2.5 px-4 max-w-[260px] text-slate-300">
-                        <span className="truncate block text-slate-400 group-hover:text-slate-200 transition-colors" title={c.address}>
+                      <td className="py-2.5 px-4 max-w-[260px] text-zinc-600 dark:text-slate-300">
+                        <span className="truncate block text-zinc-500 dark:text-slate-400 group-hover:text-zinc-800 dark:group-hover:text-slate-200 transition-colors" title={c.address}>
                           {c.address || "-"}
                         </span>
                       </td>
 
                       {/* Nama APJ */}
-                      <td className="py-2.5 px-3 text-slate-300 truncate max-w-[140px] font-medium">
+                      <td className="py-2.5 px-3 text-zinc-700 dark:text-slate-300 truncate max-w-[140px] font-medium">
                         {c.apj_name || "-"}
                       </td>
 
                       {/* SIPA Expired */}
-                      <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400">
+                      <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-500 dark:text-slate-400">
                         {c.sipa_expired || "-"}
                       </td>
 

@@ -45,6 +45,8 @@ import {
   Download,
   Plus,
   Pill,
+  PanelLeftClose,
+  PanelLeftOpen,
   Database,
   Search,
   CheckCircle2,
@@ -288,8 +290,90 @@ export default function Home() {
   const [showChangelogModal, setShowChangelogModal] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  // Theme state & persistence
   const [isDarkMode, setIsDarkMode] = useState(true);
+
+  // Sync theme with localStorage and documentElement class
+  useEffect(() => {
+    try {
+      const savedTheme = localStorage.getItem("fo_theme");
+      if (savedTheme) {
+        setIsDarkMode(savedTheme === "dark");
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      if (isDarkMode) {
+        document.documentElement.classList.add("dark");
+        document.body.className = "bg-black text-zinc-100 min-h-screen antialiased selection:bg-blue-600/30 selection:text-blue-200";
+      } else {
+        document.documentElement.classList.remove("dark");
+        document.body.className = "bg-zinc-50 text-zinc-900 min-h-screen antialiased selection:bg-blue-600/20 selection:text-blue-900";
+      }
+      try {
+        localStorage.setItem("fo_theme", isDarkMode ? "dark" : "light");
+      } catch {}
+    }
+  }, [isDarkMode]);
+
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Sidebar Resizable & Collapsible State (TiDB Cloud style)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(240);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [isResizing, setIsResizing] = useState<boolean>(false);
+  const isResizingRef = useRef(false);
+
+  // Load saved sidebar width preference
+  useEffect(() => {
+    try {
+      const savedWidth = localStorage.getItem("fo_sidebar_width");
+      const savedCollapsed = localStorage.getItem("fo_sidebar_collapsed");
+      if (savedWidth) setSidebarWidth(Number(savedWidth));
+      if (savedCollapsed) setIsSidebarCollapsed(savedCollapsed === "true");
+    } catch {}
+  }, []);
+
+  const startResizing = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    isResizingRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const newWidth = Math.min(Math.max(e.clientX, 64), 420);
+      if (newWidth < 120) {
+        setIsSidebarCollapsed(true);
+        setSidebarWidth(64);
+        try { localStorage.setItem("fo_sidebar_collapsed", "true"); } catch {}
+      } else {
+        setIsSidebarCollapsed(false);
+        setSidebarWidth(newWidth);
+        try {
+          localStorage.setItem("fo_sidebar_collapsed", "false");
+          localStorage.setItem("fo_sidebar_width", String(newWidth));
+        } catch {}
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (isResizingRef.current) {
+        isResizingRef.current = false;
+        setIsResizing(false);
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
   const deviceIdRef = useRef<string>(Math.random().toString(36).substring(2, 9));
   const [uploadNotification, setUploadNotification] = useState<UploadNotification | null>(null);
 
@@ -2326,280 +2410,528 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       )}
 
       {/* ─── LEFT SIDEBAR (TiDB Cloud / Vercel Console Style) ─── */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-black border-r border-zinc-800/80 transition-transform duration-200 md:static md:translate-x-0 shrink-0 ${
-        mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
-      }`}>
-        {/* Top Workspace Header (Exact replica of user's uploaded image) */}
-        <div className="p-3 border-b border-zinc-800/80">
-          <button
-            type="button"
-            onClick={() => setShowLoginModal(true)}
-            className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-zinc-900 transition text-left cursor-pointer"
+      <aside
+        style={{ width: isSidebarCollapsed ? 64 : `${sidebarWidth}px` }}
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-[width] duration-150 md:static md:translate-x-0 shrink-0 relative select-none ${
+          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        } ${
+          isDarkMode
+            ? "bg-[#09090b] border-zinc-800 text-zinc-200"
+            : "bg-white border-zinc-200 text-zinc-800 shadow-xs"
+        }`}
+      >
+        {/* Drag Resizer Handle on right border (Hidden when collapsed or on mobile) */}
+        {!isSidebarCollapsed && (
+          <div
+            onMouseDown={startResizing}
+            className={`hidden md:flex absolute top-0 -right-1 w-2.5 h-full cursor-col-resize hover:bg-blue-500/60 active:bg-blue-500 transition-colors z-50 select-none items-center justify-center group ${
+              isResizing ? "bg-blue-500" : "bg-transparent"
+            }`}
+            title="Tarik / Geser untuk mengubah lebar sidebar (Drag to resize)"
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-sm">
-                {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "S"}
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-semibold text-zinc-200 truncate max-w-[110px]">
-                    {currentUser?.name ? currentUser.name.toLowerCase() : "satriapranajara"}
-                  </span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded font-medium bg-zinc-800 text-zinc-400 border border-zinc-700/60">
-                    {currentUser?.role === "readonly" ? "Viewer" : "Hobby"}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <ChevronsUpDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-          </button>
-
-          {/* Search Box with Shortcut F */}
-          <div className="mt-2.5 relative">
-            <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Find"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-md pl-8 pr-7 py-1 text-xs text-zinc-300 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 transition"
-            />
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-mono text-zinc-500 border border-zinc-800 bg-zinc-900 px-1 py-0.2 rounded">
-              F
-            </span>
+            <div className={`w-0.5 h-8 rounded-full transition-colors ${
+              isDarkMode ? "bg-zinc-700 group-hover:bg-blue-400" : "bg-zinc-300 group-hover:bg-blue-500"
+            }`} />
           </div>
+        )}
+
+        {/* Top Header */}
+        <div className={`p-2.5 border-b shrink-0 ${isDarkMode ? "border-zinc-800/80" : "border-zinc-200"}`}>
+          {isSidebarCollapsed ? (
+            /* Collapsed view top icon */
+            <div className="flex flex-col items-center gap-2 py-1">
+              <button
+                type="button"
+                onClick={() => setShowLoginModal(true)}
+                className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shadow-sm hover:scale-105 transition cursor-pointer"
+                title={`${currentUser?.name || "User"} (${currentUser?.role === "readonly" ? "Viewer" : "Hobby"})`}
+              >
+                {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "S"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSidebarCollapsed(false)}
+                className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                  isDarkMode
+                    ? "border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                    : "border-zinc-200 text-zinc-600 hover:text-black hover:bg-zinc-100"
+                }`}
+                title="Perluas Sidebar (Expand)"
+              >
+                <PanelLeftOpen className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            /* Expanded view workspace header */
+            <>
+              <div className="flex items-center justify-between gap-1">
+                <button
+                  type="button"
+                  onClick={() => setShowLoginModal(true)}
+                  className={`flex-1 min-w-0 flex items-center justify-between p-1.5 rounded-lg transition text-left cursor-pointer ${
+                    isDarkMode ? "hover:bg-zinc-900" : "hover:bg-zinc-100"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-sm">
+                      {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "S"}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-xs font-semibold truncate max-w-[105px] ${
+                          isDarkMode ? "text-zinc-200" : "text-zinc-900"
+                        }`}>
+                          {currentUser?.name ? currentUser.name.toLowerCase() : "satriapranajara"}
+                        </span>
+                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-medium border ${
+                          isDarkMode
+                            ? "bg-zinc-800 text-zinc-400 border-zinc-700/60"
+                            : "bg-zinc-100 text-zinc-600 border-zinc-200"
+                        }`}>
+                          {currentUser?.role === "readonly" ? "Viewer" : "Hobby"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronsUpDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                </button>
+
+                {/* Sidebar Collapse Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsSidebarCollapsed(true)}
+                  className={`p-1.5 rounded-lg border transition cursor-pointer shrink-0 ${
+                    isDarkMode
+                      ? "border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                      : "border-zinc-200 text-zinc-600 hover:text-black hover:bg-zinc-100"
+                  }`}
+                  title="Ciutkan Sidebar (Collapse)"
+                >
+                  <PanelLeftClose className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Search Box with Shortcut F */}
+              <div className="mt-2 relative">
+                <Search className={`w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 ${
+                  isDarkMode ? "text-zinc-500" : "text-zinc-400"
+                }`} />
+                <input
+                  type="text"
+                  placeholder="Find"
+                  value={search}
+                  onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+                  className={`w-full rounded-md pl-8 pr-7 py-1 text-xs transition border focus:outline-none ${
+                    isDarkMode
+                      ? "bg-zinc-950 border-zinc-800 text-zinc-300 placeholder:text-zinc-500 focus:border-zinc-700"
+                      : "bg-zinc-50 border-zinc-200 text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400"
+                  }`}
+                />
+                <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-mono px-1 py-0.2 rounded border ${
+                  isDarkMode
+                    ? "text-zinc-500 border-zinc-800 bg-zinc-900"
+                    : "text-zinc-500 border-zinc-200 bg-zinc-100"
+                }`}>
+                  F
+                </span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Scrollable Navigation Menu */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1 text-xs font-medium no-scrollbar">
-          {/* Main Navigation Links */}
-          <button
-            type="button"
-            onClick={() => { setMainView("dashboard"); setMobileSidebarOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
-              mainView === "dashboard"
-                ? "bg-zinc-800 text-white font-semibold shadow-xs"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4 text-zinc-400" />
-            <span>Overview</span>
-          </button>
+          {isSidebarCollapsed ? (
+            /* Collapsed Icons Only */
+            <div className="flex flex-col items-center space-y-2">
+              <button
+                type="button"
+                onClick={() => { setMainView("dashboard"); setMobileSidebarOpen(false); }}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer ${
+                  mainView === "dashboard"
+                    ? (isDarkMode ? "bg-zinc-800 text-white shadow-xs" : "bg-zinc-900 text-white shadow-xs")
+                    : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
+                }`}
+                title="Overview (Dashboard)"
+              >
+                <LayoutDashboard className="w-4 h-4" />
+              </button>
 
-          <button
-            type="button"
-            onClick={() => { setMainView("workspace"); setMobileSidebarOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
-              mainView === "workspace"
-                ? "bg-zinc-800 text-white font-semibold shadow-xs"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
-            }`}
-          >
-            <Boxes className="w-4 h-4 text-zinc-400" />
-            <span className="flex-1">Deployments</span>
-            {workspaceStats.belumCount > 0 && (
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-blue-950 text-blue-400 border border-blue-800/60 font-bold">
-                {workspaceStats.belumCount}
-              </span>
-            )}
-          </button>
+              <button
+                type="button"
+                onClick={() => { setMainView("workspace"); setMobileSidebarOpen(false); }}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer relative ${
+                  mainView === "workspace"
+                    ? (isDarkMode ? "bg-zinc-800 text-white shadow-xs" : "bg-zinc-900 text-white shadow-xs")
+                    : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
+                }`}
+                title="Deployments (Faktur)"
+              >
+                <Boxes className="w-4 h-4" />
+                {workspaceStats.belumCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-blue-500 absolute top-1.5 right-1.5 ring-2 ring-black" />
+                )}
+              </button>
 
-          <button
-            type="button"
-            onClick={() => { setMainView("returns"); setMobileSidebarOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
-              mainView === "returns"
-                ? "bg-zinc-800 text-white font-semibold shadow-xs"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
-            }`}
-          >
-            <RotateCcw className="w-4 h-4 text-zinc-400" />
-            <span>Logs / Retur</span>
-          </button>
+              <button
+                type="button"
+                onClick={() => { setMainView("returns"); setMobileSidebarOpen(false); }}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer relative ${
+                  mainView === "returns"
+                    ? (isDarkMode ? "bg-zinc-800 text-white shadow-xs" : "bg-zinc-900 text-white shadow-xs")
+                    : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
+                }`}
+                title="Logs / Retur"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
 
-          <button
-            type="button"
-            onClick={() => { setMainView("customers"); setMobileSidebarOpen(false); }}
-            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
-              mainView === "customers"
-                ? "bg-zinc-800 text-white font-semibold shadow-xs"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
-            }`}
-          >
-            <Building2 className="w-4 h-4 text-zinc-400" />
-            <span>Master Customer</span>
-          </button>
+              <button
+                type="button"
+                onClick={() => { setMainView("customers"); setMobileSidebarOpen(false); }}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer relative ${
+                  mainView === "customers"
+                    ? (isDarkMode ? "bg-zinc-800 text-white shadow-xs" : "bg-zinc-900 text-white shadow-xs")
+                    : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
+                }`}
+                title="Master Customer"
+              >
+                <Building2 className="w-4 h-4" />
+              </button>
 
-          {/* Section: Master Data & Management */}
-          <div className="pt-3 pb-1">
-            <div className="h-px bg-zinc-800/80 mb-2" />
-            <span className="px-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
-              Data &amp; Tools
-            </span>
-          </div>
+              <div className={`w-8 h-px my-1 ${isDarkMode ? "bg-zinc-800" : "bg-zinc-200"}`} />
 
-          <button
-            type="button"
-            onClick={() => { setShowApotekModal(true); setMobileSidebarOpen(false); }}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition text-left cursor-pointer"
-          >
-            <Building2 className="w-4 h-4 text-zinc-500" />
-            <span>Master Apotek (1P/2P/3P)</span>
-          </button>
+              <button
+                type="button"
+                onClick={() => { handleExportExcel(); setMobileSidebarOpen(false); }}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer ${
+                  isDarkMode ? "text-emerald-400 hover:bg-zinc-800/60" : "text-emerald-600 hover:bg-zinc-100"
+                }`}
+                title="Ekspor Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+              </button>
 
-          <button
-            type="button"
-            onClick={() => { setShowProductModal(true); setMobileSidebarOpen(false); }}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition text-left cursor-pointer"
-          >
-            <Pill className="w-4 h-4 text-zinc-500" />
-            <span>Master Produk (Farma/Alkes)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { handleExportExcel(); setMobileSidebarOpen(false); }}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition text-left cursor-pointer"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-            <span>Ekspor Excel (.xlsx)</span>
-          </button>
-
-          {/* Section: System & Database */}
-          <div className="pt-3 pb-1">
-            <div className="h-px bg-zinc-800/80 mb-2" />
-            <span className="px-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
-              System &amp; TiDB Cloud
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between px-2.5 py-2 rounded-lg text-zinc-400 text-xs">
-            <div className="flex items-center gap-2.5">
-              <Database className="w-4 h-4 text-emerald-400" />
-              <span>TiDB Serverless</span>
+              <button
+                type="button"
+                onClick={() => setIsDarkMode(prev => !prev)}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer ${
+                  isDarkMode ? "text-amber-400 hover:bg-zinc-800/60" : "text-blue-500 hover:bg-zinc-100"
+                }`}
+                title={isDarkMode ? "Ganti ke Mode Terang" : "Ganti ke Mode Gelap"}
+              >
+                {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
             </div>
-            <span className="flex items-center gap-1.5 font-mono text-[10px] text-emerald-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Live
-            </span>
-          </div>
+          ) : (
+            /* Expanded Full Navigation */
+            <>
+              {/* Main Navigation Links */}
+              <button
+                type="button"
+                onClick={() => { setMainView("dashboard"); setMobileSidebarOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                  mainView === "dashboard"
+                    ? (isDarkMode ? "bg-zinc-800 text-white font-semibold shadow-xs" : "bg-zinc-900 text-white font-semibold shadow-xs")
+                    : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
+                }`}
+              >
+                <LayoutDashboard className={`w-4 h-4 ${mainView === "dashboard" ? "text-white" : isDarkMode ? "text-zinc-400" : "text-zinc-500"}`} />
+                <span>Overview</span>
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setIsDarkMode(prev => !prev)}
-            className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition text-left cursor-pointer"
-          >
-            <div className="flex items-center gap-2.5">
-              {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-400" />}
-              <span>{isDarkMode ? "Mode Terang" : "Mode Gelap"}</span>
-            </div>
-            <span className="text-[10px] text-zinc-500 font-mono">{isDarkMode ? "Dark" : "Light"}</span>
-          </button>
+              <button
+                type="button"
+                onClick={() => { setMainView("workspace"); setMobileSidebarOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                  mainView === "workspace"
+                    ? (isDarkMode ? "bg-zinc-800 text-white font-semibold shadow-xs" : "bg-zinc-900 text-white font-semibold shadow-xs")
+                    : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
+                }`}
+              >
+                <Boxes className={`w-4 h-4 ${mainView === "workspace" ? "text-white" : isDarkMode ? "text-zinc-400" : "text-zinc-500"}`} />
+                <span className="flex-1">Deployments</span>
+                {workspaceStats.belumCount > 0 && (
+                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold ${
+                    isDarkMode
+                      ? "bg-blue-950 text-blue-400 border border-blue-800/60"
+                      : "bg-blue-100 text-blue-700 border border-blue-200"
+                  }`}>
+                    {workspaceStats.belumCount}
+                  </span>
+                )}
+              </button>
 
-          {currentUser && currentUser.role !== "readonly" && (
-            <button
-              type="button"
-              onClick={() => { setShowChangePasswordModal(true); setMobileSidebarOpen(false); }}
-              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition text-left cursor-pointer"
-            >
-              <Key className="w-4 h-4 text-zinc-500" />
-              <span>Ganti Password</span>
-            </button>
-          )}
+              <button
+                type="button"
+                onClick={() => { setMainView("returns"); setMobileSidebarOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                  mainView === "returns"
+                    ? (isDarkMode ? "bg-zinc-800 text-white font-semibold shadow-xs" : "bg-zinc-900 text-white font-semibold shadow-xs")
+                    : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
+                }`}
+              >
+                <RotateCcw className={`w-4 h-4 ${mainView === "returns" ? "text-white" : isDarkMode ? "text-zinc-400" : "text-zinc-500"}`} />
+                <span>Logs / Retur</span>
+              </button>
 
-          {currentUser && currentUser.role !== "readonly" && (
-            <button
-              type="button"
-              onClick={() => { handleClearAll(); setMobileSidebarOpen(false); }}
-              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-rose-400/80 hover:text-rose-300 hover:bg-rose-950/20 transition text-left cursor-pointer"
-            >
-              <X className="w-4 h-4 text-rose-500" />
-              <span>Reset Data</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => { setMainView("customers"); setMobileSidebarOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                  mainView === "customers"
+                    ? (isDarkMode ? "bg-zinc-800 text-white font-semibold shadow-xs" : "bg-zinc-900 text-white font-semibold shadow-xs")
+                    : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
+                }`}
+              >
+                <Building2 className={`w-4 h-4 ${mainView === "customers" ? "text-white" : isDarkMode ? "text-zinc-400" : "text-zinc-500"}`} />
+                <span>Master Customer</span>
+              </button>
+
+              {/* Section: Master Data & Management */}
+              <div className="pt-3 pb-1">
+                <div className={`h-px mb-2 ${isDarkMode ? "bg-zinc-800/80" : "bg-zinc-200"}`} />
+                <span className={`px-2.5 text-[10px] font-bold uppercase tracking-wider block mb-1 ${
+                  isDarkMode ? "text-zinc-500" : "text-zinc-400"
+                }`}>
+                  Data &amp; Tools
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => { setShowApotekModal(true); setMobileSidebarOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                  isDarkMode
+                    ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
+                    : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                }`}
+              >
+                <Building2 className={`w-4 h-4 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} />
+                <span>Master Apotek (1P/2P/3P)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setShowProductModal(true); setMobileSidebarOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                  isDarkMode
+                    ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
+                    : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                }`}
+              >
+                <Pill className={`w-4 h-4 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} />
+                <span>Master Produk (Farma/Alkes)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { handleExportExcel(); setMobileSidebarOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                  isDarkMode
+                    ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
+                    : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                }`}
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+                <span>Ekspor Excel (.xlsx)</span>
+              </button>
+
+              {/* Section: System & Database */}
+              <div className="pt-3 pb-1">
+                <div className={`h-px mb-2 ${isDarkMode ? "bg-zinc-800/80" : "bg-zinc-200"}`} />
+                <span className={`px-2.5 text-[10px] font-bold uppercase tracking-wider block mb-1 ${
+                  isDarkMode ? "text-zinc-500" : "text-zinc-400"
+                }`}>
+                  System &amp; TiDB Cloud
+                </span>
+              </div>
+
+              <div className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs ${
+                isDarkMode ? "text-zinc-400" : "text-zinc-600"
+              }`}>
+                <div className="flex items-center gap-2.5">
+                  <Database className="w-4 h-4 text-emerald-500" />
+                  <span>TiDB Serverless</span>
+                </div>
+                <span className="flex items-center gap-1.5 font-mono text-[10px] text-emerald-500">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsDarkMode(prev => !prev)}
+                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                  isDarkMode
+                    ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
+                    : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-500" />}
+                  <span>{isDarkMode ? "Mode Terang" : "Mode Gelap"}</span>
+                </div>
+                <span className={`text-[10px] font-mono ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>
+                  {isDarkMode ? "Dark" : "Light"}
+                </span>
+              </button>
+
+              {currentUser && currentUser.role !== "readonly" && (
+                <button
+                  type="button"
+                  onClick={() => { setShowChangePasswordModal(true); setMobileSidebarOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                    isDarkMode
+                      ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
+                      : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                  }`}
+                >
+                  <Key className={`w-4 h-4 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} />
+                  <span>Ganti Password</span>
+                </button>
+              )}
+
+              {currentUser && currentUser.role !== "readonly" && (
+                <button
+                  type="button"
+                  onClick={() => { handleClearAll(); setMobileSidebarOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 transition text-left cursor-pointer"
+                >
+                  <X className="w-4 h-4 text-rose-500" />
+                  <span>Reset Data</span>
+                </button>
+              )}
+            </>
           )}
         </div>
 
         {/* Sidebar Footer with Online Presence & User Status */}
-        <div className="p-3 border-t border-zinc-800/80 space-y-2">
-          {/* Online Presence Dropdown Trigger */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowOnlinePopover(prev => !prev)}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-300 transition cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span className="text-[11px] font-bold">Online ({onlineUsers.filter(u => u && u.name).length}):</span>
-              </div>
-              <span className="text-[10px] text-zinc-400 truncate max-w-[80px]">
-                {currentUser?.name || "User"}
-              </span>
-            </button>
-
-            {/* Popover Card */}
-            {showOnlinePopover && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setShowOnlinePopover(false)}
-                />
-                <div className={`absolute bottom-full mb-2 left-0 w-72 rounded-xl shadow-2xl border p-3 z-50 bg-[#09090b] border-zinc-800 text-zinc-100 shadow-black/80`}>
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-800">
-                    <span className="text-xs font-bold flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      Pengguna Sedang ON ({onlineUsers.filter(u => u && u.name).length})
-                    </span>
-                    <button
-                      onClick={() => setShowOnlinePopover(false)}
-                      className="text-xs text-zinc-400 hover:text-white"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto text-xs">
-                    {onlineUsers.filter(u => u && u.name).map((u) => {
-                      const isMe = u.name === currentUser?.name;
-                      return (
-                        <div
-                          key={u.deviceId || u.name}
-                          className={`flex items-center justify-between p-2 rounded-lg ${
-                            isMe ? "bg-zinc-800 border border-zinc-700" : "bg-zinc-900/60"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                            <span className="font-semibold">{u.name} {isMe && "(Anda)"}</span>
-                          </div>
-                          <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-800/40">
-                            Online
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+        <div className={`p-2.5 border-t shrink-0 ${isDarkMode ? "border-zinc-800/80" : "border-zinc-200"}`}>
+          {isSidebarCollapsed ? (
+            <div className="flex justify-center py-1">
+              <button
+                type="button"
+                onClick={() => setShowOnlinePopover(prev => !prev)}
+                className="relative p-2 rounded-lg hover:bg-zinc-800/60 transition cursor-pointer"
+                title={`Online (${onlineUsers.filter(u => u && u.name).length}): ${currentUser?.name || "User"}`}
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 block animate-pulse" />
+              </button>
+            </div>
+          ) : (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowOnlinePopover(prev => !prev)}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs transition cursor-pointer ${
+                  isDarkMode
+                    ? "bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300"
+                    : "bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span className="text-[11px] font-bold">Online ({onlineUsers.filter(u => u && u.name).length}):</span>
                 </div>
-              </>
-            )}
-          </div>
+                <span className={`text-[10px] truncate max-w-[80px] ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+                  {currentUser?.name || "User"}
+                </span>
+              </button>
+
+              {/* Popover Card */}
+              {showOnlinePopover && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowOnlinePopover(false)}
+                  />
+                  <div className={`absolute bottom-full mb-2 left-0 w-72 rounded-xl shadow-2xl border p-3 z-50 ${
+                    isDarkMode
+                      ? "bg-[#09090b] border-zinc-800 text-zinc-100 shadow-black/80"
+                      : "bg-white border-zinc-200 text-zinc-900 shadow-xl"
+                  }`}>
+                    <div className={`flex items-center justify-between pb-2 mb-2 border-b ${
+                      isDarkMode ? "border-zinc-800" : "border-zinc-200"
+                    }`}>
+                      <span className="text-xs font-bold flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Pengguna Sedang ON ({onlineUsers.filter(u => u && u.name).length})
+                      </span>
+                      <button
+                        onClick={() => setShowOnlinePopover(false)}
+                        className={`text-xs ${isDarkMode ? "text-zinc-400 hover:text-white" : "text-zinc-500 hover:text-black"}`}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto text-xs">
+                      {onlineUsers.filter(u => u && u.name).map((u) => {
+                        const isMe = u.name === currentUser?.name;
+                        return (
+                          <div
+                            key={u.deviceId || u.name}
+                            className={`flex items-center justify-between p-2 rounded-lg ${
+                              isMe
+                                ? (isDarkMode ? "bg-zinc-800 border border-zinc-700" : "bg-zinc-100 border border-zinc-300")
+                                : (isDarkMode ? "bg-zinc-900/60" : "bg-zinc-50")
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              <span className="font-semibold">{u.name} {isMe && "(Anda)"}</span>
+                            </div>
+                            <span className="text-[9px] font-mono text-emerald-500 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
+                              Online
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </aside>
 
       {/* ─── RIGHT MAIN CONTENT AREA ─── */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen bg-black">
+      <div className={`flex-1 flex flex-col min-w-0 min-h-screen ${
+        isDarkMode ? "bg-[#000000] text-zinc-100" : "bg-zinc-50/70 text-zinc-900"
+      }`}>
         {/* Top Navbar Header (Vercel Style Breadcrumb & Action Bar) */}
-        <header className="h-12 border-b border-zinc-800/80 px-4 flex items-center justify-between bg-black shrink-0 z-30 sticky top-0">
+        <header className={`h-12 border-b px-4 flex items-center justify-between shrink-0 z-30 sticky top-0 ${
+          isDarkMode ? "bg-[#09090b] border-zinc-800 text-zinc-100" : "bg-white border-zinc-200 text-zinc-900 shadow-xs"
+        }`}>
           <div className="flex items-center gap-3 min-w-0">
             {/* Mobile Hamburger Menu */}
             <button
               type="button"
               onClick={() => setMobileSidebarOpen(prev => !prev)}
-              className="md:hidden p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 cursor-pointer"
+              className={`md:hidden p-1.5 rounded-lg cursor-pointer ${
+                isDarkMode ? "text-zinc-400 hover:text-white hover:bg-zinc-900" : "text-zinc-600 hover:text-black hover:bg-zinc-100"
+              }`}
             >
               <Menu className="w-4 h-4" />
+            </button>
+
+            {/* Desktop Sidebar Toggle (TiDB / Vercel style) */}
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed(prev => !prev)}
+              className={`hidden md:flex p-1.5 rounded-lg border transition cursor-pointer ${
+                isDarkMode
+                  ? "border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-900"
+                  : "border-zinc-200 text-zinc-600 hover:text-black hover:bg-zinc-100"
+              }`}
+              title={isSidebarCollapsed ? "Perluas Sidebar (Expand)" : "Ciutkan Sidebar (Collapse)"}
+            >
+              {isSidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             </button>
 
             {/* Breadcrumb Navigation (Exact copy of user's image) */}
@@ -2607,10 +2939,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-[10px] text-white font-black shadow-sm shrink-0">
                 ✦
               </div>
-              <span className="text-xs font-semibold text-zinc-200 truncate">fantastic-order</span>
-              <ChevronsUpDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-              <span className="text-zinc-600">/</span>
-              <span className="text-xs font-semibold text-zinc-400 capitalize truncate">
+              <span className={`text-xs font-semibold truncate ${isDarkMode ? "text-zinc-200" : "text-zinc-900"}`}>
+                fantastic-order
+              </span>
+              <ChevronsUpDown className={`w-3.5 h-3.5 shrink-0 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} />
+              <span className={isDarkMode ? "text-zinc-600" : "text-zinc-300"}>/</span>
+              <span className={`text-xs font-semibold capitalize truncate ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
                 {mainView === "workspace" ? "Deployments" : mainView === "dashboard" ? "Overview" : mainView === "returns" ? "Logs / Retur" : "Master Customer"}
               </span>
             </div>
@@ -2623,17 +2957,25 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               type="button"
               onClick={handleManualRefresh}
               disabled={loading}
-              className="p-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-900 text-zinc-400 hover:text-white transition cursor-pointer"
+              className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                isDarkMode
+                  ? "border-zinc-800 hover:bg-zinc-900 text-zinc-400 hover:text-white"
+                  : "border-zinc-200 hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900"
+              }`}
               title="Refresh Data dari Server"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-blue-400" : ""}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-blue-500" : ""}`} />
             </button>
 
             {/* Ekspor Excel */}
             <button
               type="button"
               onClick={handleExportExcel}
-              className="px-2.5 py-1 rounded-lg border border-zinc-800 hover:bg-zinc-900 text-xs text-zinc-300 font-semibold transition flex items-center gap-1.5 cursor-pointer"
+              className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer ${
+                isDarkMode
+                  ? "border-zinc-800 hover:bg-zinc-900 text-zinc-300"
+                  : "border-zinc-200 hover:bg-zinc-100 text-zinc-700"
+              }`}
             >
               <Download className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Ekspor Excel</span>
@@ -2667,8 +3009,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 currentUser?.role === "readonly"
                   ? "opacity-50 cursor-not-allowed bg-zinc-800 text-zinc-500"
                   : dragOver
-                  ? "bg-zinc-800 text-white border-2 border-dashed border-zinc-400"
-                  : "bg-white hover:bg-zinc-200 text-black font-semibold active:scale-95"
+                  ? "bg-blue-600 text-white border-2 border-dashed border-blue-400"
+                  : isDarkMode
+                  ? "bg-white hover:bg-zinc-200 text-black font-semibold active:scale-95"
+                  : "bg-blue-600 hover:bg-blue-700 text-white font-semibold active:scale-95"
               }`}
               title="Upload file export Oracle (.xls / .xlsx)"
             >
@@ -3178,7 +3522,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         {/* Page Title & Status Header (Matching TiDB Cloud / Vercel style) */}
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+            <h1 className={`text-xl sm:text-2xl font-bold tracking-tight ${isDarkMode ? "text-white" : "text-zinc-900"}`}>
               Deployments
             </h1>
           </div>
@@ -3188,7 +3532,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             <button
               type="button"
               onClick={() => { setFilter("all"); setKatFilter("all"); setJenisFilter("all"); setKlasFilter("all"); setPage(0); }}
-              className="px-2.5 py-1 rounded-full border border-dashed border-zinc-700 hover:border-zinc-500 text-zinc-300 flex items-center gap-1.5 transition font-medium cursor-pointer"
+              className={`px-2.5 py-1 rounded-full border border-dashed flex items-center gap-1.5 transition font-medium cursor-pointer ${
+                isDarkMode ? "border-zinc-700 hover:border-zinc-500 text-zinc-300" : "border-zinc-300 hover:border-zinc-400 text-zinc-600 bg-white shadow-2xs"
+              }`}
             >
               <Filter className="w-3 h-3 text-zinc-400" />
               <span>Reset Filter</span>
@@ -3199,8 +3545,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               onClick={() => { setFilter(filter === "belum" ? "all" : "belum"); setPage(0); }}
               className={`px-3 py-1 rounded-full border text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
                 filter === "belum"
-                  ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs"
-                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+                  ? (isDarkMode ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs" : "bg-zinc-900 text-white border-zinc-900 font-bold shadow-xs")
+                  : (isDarkMode ? "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900" : "border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 bg-white shadow-2xs")
               }`}
             >
               <span>Belum Terprint ({workspaceStats.belumCount})</span>
@@ -3211,8 +3557,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               onClick={() => { setFilter("all"); setPage(0); }}
               className={`px-3 py-1 rounded-full border text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
                 filter === "all"
-                  ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs"
-                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+                  ? (isDarkMode ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs" : "bg-zinc-900 text-white border-zinc-900 font-bold shadow-xs")
+                  : (isDarkMode ? "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900" : "border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 bg-white shadow-2xs")
               }`}
             >
               <span>Semua Faktur ({workspaceStats.totalCount})</span>
@@ -3223,8 +3569,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               onClick={() => { setKatFilter(katFilter === "1P" ? "all" : "1P"); setPage(0); }}
               className={`px-2.5 py-1 rounded-full border text-xs font-medium transition cursor-pointer ${
                 katFilter === "1P"
-                  ? "bg-purple-950/80 text-purple-300 border-purple-500 font-bold"
-                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+                  ? "bg-purple-600 text-white border-purple-500 font-bold shadow-xs"
+                  : (isDarkMode ? "border-zinc-800 text-purple-300 hover:bg-zinc-900" : "border-purple-200 text-purple-700 bg-purple-50/70 hover:bg-purple-100/70")
               }`}
             >
               <span>1P ({dashboardStats.katCounts["1P"] || 0})</span>
@@ -3235,8 +3581,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               onClick={() => { setKatFilter(katFilter === "2P" ? "all" : "2P"); setPage(0); }}
               className={`px-2.5 py-1 rounded-full border text-xs font-medium transition cursor-pointer ${
                 katFilter === "2P"
-                  ? "bg-cyan-950/80 text-cyan-300 border-cyan-500 font-bold"
-                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+                  ? "bg-cyan-600 text-white border-cyan-500 font-bold shadow-xs"
+                  : (isDarkMode ? "border-zinc-800 text-cyan-300 hover:bg-zinc-900" : "border-cyan-200 text-cyan-700 bg-cyan-50/70 hover:bg-cyan-100/70")
               }`}
             >
               <span>2P ({dashboardStats.katCounts["2P"] || 0})</span>
@@ -3247,8 +3593,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               onClick={() => { setKatFilter(katFilter === "3P" ? "all" : "3P"); setPage(0); }}
               className={`px-2.5 py-1 rounded-full border text-xs font-medium transition cursor-pointer ${
                 katFilter === "3P"
-                  ? "bg-amber-950/80 text-amber-300 border-amber-500 font-bold"
-                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+                  ? "bg-amber-500 text-zinc-950 border-amber-400 font-bold shadow-xs"
+                  : (isDarkMode ? "border-zinc-800 text-amber-300 hover:bg-zinc-900" : "border-amber-200 text-amber-700 bg-amber-50/70 hover:bg-amber-100/70")
               }`}
             >
               <span>3P ({dashboardStats.katCounts["3P"] || 0})</span>
@@ -3259,8 +3605,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               onClick={() => { setFilter(filter === "double" ? "all" : "double"); setPage(0); }}
               className={`px-3 py-1 rounded-full border text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
                 filter === "double"
-                  ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs"
-                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+                  ? (isDarkMode ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs" : "bg-zinc-900 text-white border-zinc-900 font-bold shadow-xs")
+                  : (isDarkMode ? "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900" : "border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 bg-white shadow-2xs")
               }`}
             >
               <span>Double SO ({workspaceStats.doubleCount})</span>
@@ -3271,8 +3617,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               onClick={() => { setFilter(filter === "retur" ? "all" : "retur"); setPage(0); }}
               className={`px-3 py-1 rounded-full border text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
                 filter === "retur"
-                  ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs"
-                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+                  ? (isDarkMode ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs" : "bg-zinc-900 text-white border-zinc-900 font-bold shadow-xs")
+                  : (isDarkMode ? "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900" : "border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 bg-white shadow-2xs")
               }`}
             >
               <span>Retur ({workspaceStats.returCount})</span>
@@ -3280,25 +3626,33 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           </div>
 
           {/* Deployment Status Pill Bar (Matching exact user uploaded image) */}
-          <div className="rounded-lg border border-zinc-800/90 bg-zinc-950/80 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2 text-zinc-200 font-mono">
-              <span className="text-zinc-500 font-normal">feat:</span>
-              <span className="font-semibold text-zinc-100">live Oracle ERP &amp; TiDB dual-sync hub</span>
+          <div className={`rounded-lg border p-3 flex flex-wrap items-center justify-between gap-3 text-xs ${
+            isDarkMode ? "border-zinc-800/90 bg-zinc-950/80 text-zinc-200" : "border-zinc-200 bg-white text-zinc-800 shadow-xs"
+          }`}>
+            <div className="flex items-center gap-2 font-mono">
+              <span className={isDarkMode ? "text-zinc-500" : "text-zinc-400"}>feat:</span>
+              <span className={`font-semibold ${isDarkMode ? "text-zinc-100" : "text-zinc-900"}`}>
+                live Oracle ERP &amp; TiDB dual-sync hub
+              </span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="inline-flex items-center gap-1.5 text-zinc-300 font-mono text-[11px]">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className={`inline-flex items-center gap-1.5 font-mono text-[11px] ${
+                isDarkMode ? "text-zinc-300" : "text-zinc-700"
+              }`}>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="font-semibold">Ready</span>
-                <span className="text-zinc-500 font-normal">0ms latency</span>
+                <span className={isDarkMode ? "text-zinc-500" : "text-zinc-400"}>0ms latency</span>
               </span>
               <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white font-bold text-[10px] tracking-wide">
                 Production
               </span>
-              <span className="font-mono text-zinc-400 text-[11px] flex items-center gap-1">
+              <span className={`font-mono text-[11px] flex items-center gap-1 ${
+                isDarkMode ? "text-zinc-400" : "text-zinc-500"
+              }`}>
                 <span>-o-</span>
-                <span className="text-zinc-300">live</span>
+                <span className={isDarkMode ? "text-zinc-300" : "text-zinc-700"}>live</span>
               </span>
-              <span className="font-mono text-zinc-500 text-[11px]">main</span>
+              <span className={`font-mono text-[11px] ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>main</span>
             </div>
           </div>
         </div>
