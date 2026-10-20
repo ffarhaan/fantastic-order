@@ -2444,7 +2444,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 type="button"
                 onClick={() => setShowLoginModal(true)}
                 className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shadow-sm hover:scale-105 transition cursor-pointer"
-                title={`${currentUser?.name || "User"} (${currentUser?.role === "readonly" ? "Viewer" : "Hobby"})`}
+                title={`${currentUser?.name || "User"}${currentUser?.role === "readonly" ? " (Viewer)" : ""}`}
               >
                 {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "S"}
               </button>
@@ -2478,18 +2478,20 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className={`text-xs font-semibold truncate max-w-[105px] ${
+                        <span className={`text-xs font-semibold truncate max-w-[140px] ${
                           isDarkMode ? "text-zinc-200" : "text-zinc-900"
                         }`}>
                           {currentUser?.name ? currentUser.name.toLowerCase() : "satriapranajara"}
                         </span>
-                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-medium border ${
-                          isDarkMode
-                            ? "bg-zinc-800 text-zinc-400 border-zinc-700/60"
-                            : "bg-zinc-100 text-zinc-600 border-zinc-200"
-                        }`}>
-                          {currentUser?.role === "readonly" ? "Viewer" : "Hobby"}
-                        </span>
+                        {currentUser?.role === "readonly" && (
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded font-medium border ${
+                            isDarkMode
+                              ? "bg-zinc-800 text-zinc-400 border-zinc-700/60"
+                              : "bg-zinc-100 text-zinc-600 border-zinc-200"
+                          }`}>
+                            Viewer
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

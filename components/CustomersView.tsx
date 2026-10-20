@@ -29,6 +29,64 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
+/**
+ * Format date values (including Excel serial numbers like 48010) into Indonesian format:
+ * "DD MMMM YYYY" (tanggal bulan tahun).
+ */
+export function formatIndonesianDate(val: any): string {
+  if (!val || val === "-" || val === "null" || val === "undefined") return "-";
+  const strVal = String(val).trim();
+  if (!strVal || strVal === "-") return "-";
+
+  // Check if it's an Excel numeric date serial (e.g. 48010 -> 11 Juni 2031)
+  const num = Number(strVal);
+  if (!isNaN(num) && num > 20000 && num < 80000) {
+    const d = new Date(Math.round((num - 25569) * 86400 * 1000));
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      const monthNames = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+      ];
+      const month = monthNames[d.getUTCMonth()];
+      const year = d.getUTCFullYear();
+      return `${day} ${month} ${year}`;
+    }
+  }
+
+  // Check if standard date string like YYYY-MM-DD or YYYY/MM/DD
+  const isoMatch = strVal.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (isoMatch) {
+    const year = isoMatch[1];
+    const monthIdx = parseInt(isoMatch[2], 10) - 1;
+    const day = String(parseInt(isoMatch[3], 10)).padStart(2, "0");
+    const monthNames = [
+      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+      "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    ];
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${day} ${monthNames[monthIdx]} ${year}`;
+    }
+  }
+
+  // Check if standard date string like DD-MM-YYYY or DD/MM/YYYY
+  const dmyMatch = strVal.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (dmyMatch) {
+    const day = String(parseInt(dmyMatch[1], 10)).padStart(2, "0");
+    const monthIdx = parseInt(dmyMatch[2], 10) - 1;
+    const year = dmyMatch[3];
+    const monthNames = [
+      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+      "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    ];
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${day} ${monthNames[monthIdx]} ${year}`;
+    }
+  }
+
+  return strVal;
+}
+
 interface CustomersViewProps {
   onSelectCustomerForFilter?: (name: string) => void;
 }
@@ -346,7 +404,8 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                 <th className="py-3 px-3 text-center">Status</th>
                 <th className="py-3 px-4">Alamat Default</th>
                 <th className="py-3 px-3">Nama APJ</th>
-                <th className="py-3 px-3">SIPA Expired</th>
+                <th className="py-3 px-3" title="Masa Berlaku SIA (Surat Izin Apotek)">SIA Expired</th>
+                <th className="py-3 px-3" title="Masa Berlaku SIPA (Surat Izin Praktik Apoteker)">SIPA Expired</th>
                 <th className="py-3 px-3 text-center">Kategori</th>
                 <th className="py-3 px-3 text-center">Aksi</th>
               </tr>
@@ -422,13 +481,18 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                       </td>
 
                       {/* Nama APJ */}
-                      <td className="py-2.5 px-3 text-zinc-700 dark:text-slate-300 truncate max-w-[140px] font-medium">
+                      <td className="py-2.5 px-3 text-zinc-700 dark:text-slate-300 truncate max-w-[140px] font-medium" title={c.apj_name}>
                         {c.apj_name || "-"}
                       </td>
 
+                      {/* SIA Expired */}
+                      <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-700 dark:text-cyan-300 whitespace-nowrap">
+                        {formatIndonesianDate(c.sia_expired)}
+                      </td>
+
                       {/* SIPA Expired */}
-                      <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-500 dark:text-slate-400">
-                        {c.sipa_expired || "-"}
+                      <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-700 dark:text-indigo-300 whitespace-nowrap">
+                        {formatIndonesianDate(c.sipa_expired)}
                       </td>
 
                       {/* Kategori */}
@@ -508,111 +572,220 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
         </div>
       </div>
 
-      {/* ─── CUSTOMER DETAIL MODAL / DRAWER ─── */}
+      {/* ─── CUSTOMER DETAIL MODAL / DRAWER (100% COMPLETE DATA) ─── */}
       {selectedCust && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl relative overflow-hidden">
+          <div className="bg-white dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden text-zinc-900 dark:text-zinc-100">
             {/* Modal Header */}
-            <div className="p-5 sm:p-6 border-b border-slate-800 bg-slate-950/80 flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-600/20 to-cyan-500/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center shadow-inner shrink-0">
+            <div className="p-4 sm:p-6 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/90 flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-600/20 to-cyan-500/20 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-inner shrink-0">
                   <Building2 className="w-6 h-6" />
                 </div>
-                <div>
-                  <h3 className="text-lg font-black text-white flex items-center gap-2 flex-wrap">
-                    <span>{selectedCust.name}</span>
+                <div className="min-w-0">
+                  <h3 className="text-lg font-black text-zinc-900 dark:text-white flex items-center gap-2 flex-wrap">
+                    <span className="truncate">{selectedCust.name}</span>
                     <span
-                      className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
+                      className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase ${
                         selectedCust.status_merchant === "ACTIVE"
-                          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                          : "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                          : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
                       }`}
                     >
-                      {selectedCust.status_merchant}
+                      {selectedCust.status_merchant || "N/A"}
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
-                    <span>ID: <strong className="font-mono text-slate-200">{selectedCust.id}</strong></span>
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 flex items-center gap-2 flex-wrap font-medium">
+                    <span>ID: <strong className="font-mono text-zinc-800 dark:text-zinc-200">{selectedCust.id}</strong></span>
                     <span>•</span>
-                    <span>Oracle: <strong className="font-mono text-indigo-300">{selectedCust.customer_id_oracle || "-"}</strong></span>
+                    <span>Oracle: <strong className="font-mono text-indigo-600 dark:text-indigo-300">{selectedCust.customer_id_oracle || "-"}</strong></span>
                     <span>•</span>
-                    <span>Kategori: <strong className="text-amber-400">{selectedCust.category || "REG"}</strong></span>
-                  </p>
+                    <span>Kategori: <strong className="text-amber-600 dark:text-amber-400 font-bold">{selectedCust.category || "REG"}</strong></span>
+                    {selectedCust.is_active_2p && (
+                      <>
+                        <span>•</span>
+                        <span className="text-[10px] px-2 py-0.2 rounded bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20 font-bold">
+                          {selectedCust.is_active_2p}
+                        </span>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
               <button
                 type="button"
                 onClick={() => setSelectedCust(null)}
-                className="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors shrink-0"
+                className="w-8 h-8 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700 text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+                title="Tutup (Esc)"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-5 sm:p-6 overflow-y-auto space-y-5 text-xs">
-              {/* Kontak & Lokasi */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950/70 p-4 rounded-xl border border-slate-800/80">
-                <div>
-                  <p className="text-slate-400 font-semibold flex items-center gap-1.5 text-xs">
-                    <MapPin className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Alamat Pengiriman (Default)</span>
-                  </p>
-                  <p className="text-slate-200 mt-1.5 leading-relaxed font-medium">
-                    {selectedCust.address || "-"}
-                  </p>
+            {/* Modal Body (Complete Data Canvas) */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs">
+
+              {/* SECTION 1: LEGALITAS APOTEK & APJ (SIA & SIPA) */}
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800/80 bg-zinc-50/80 dark:bg-zinc-950/70 p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+                  <span className="font-black text-xs uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Legalitas Izin Apotek &amp; APJ (SIA / SIPA)</span>
+                  </span>
+                  <span className="text-[10px] text-zinc-500 font-mono">Format: Tanggal Bulan Tahun</span>
                 </div>
 
-                <div className="space-y-2.5">
-                  <div>
-                    <p className="text-slate-400 font-semibold flex items-center gap-1.5 text-xs">
-                      <Phone className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>No. Telepon / Hotline</span>
-                    </p>
-                    <p className="text-slate-200 mt-1 font-mono font-semibold">
-                      {selectedCust.phone || "-"}
-                    </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-2xs">
+                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Apoteker PJ (APJ)</span>
+                    <strong className="text-zinc-900 dark:text-zinc-100 block mt-1 text-xs">{selectedCust.apj_name || "-"}</strong>
                   </div>
-                  <div>
-                    <p className="text-slate-400 font-semibold flex items-center gap-1.5 text-xs">
-                      <Mail className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Email Resmi</span>
-                    </p>
-                    <p className="text-slate-200 mt-1 font-medium">
-                      {selectedCust.email || "-"}
-                    </p>
-                  </div>
-                </div>
 
-                <div className="col-span-1 md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-3 border-t border-slate-800/80 pt-3 text-[11px]">
-                  <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800/60">
-                    <span className="text-slate-500 block text-[10px]">Nama APJ</span>
-                    <strong className="text-slate-200 truncate block mt-0.5">{selectedCust.apj_name || "-"}</strong>
+                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-2xs">
+                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Nomor SIPA</span>
+                    <strong className="text-zinc-900 dark:text-indigo-300 font-mono block mt-1 text-xs truncate" title={selectedCust.sipa_number || "-"}>
+                      {selectedCust.sipa_number || "-"}
+                    </strong>
                   </div>
-                  <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800/60">
-                    <span className="text-slate-500 block text-[10px]">SIPA Expired</span>
-                    <strong className="text-indigo-300 font-mono block mt-0.5">{selectedCust.sipa_expired || "-"}</strong>
+
+                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-indigo-200 dark:border-indigo-500/30 shadow-2xs">
+                    <span className="text-indigo-600 dark:text-indigo-400 block text-[10px] uppercase font-bold">Masa Berlaku SIPA (Expired)</span>
+                    <strong className="text-indigo-700 dark:text-indigo-300 font-mono block mt-1 text-xs font-black">
+                      {formatIndonesianDate(selectedCust.sipa_expired)}
+                    </strong>
                   </div>
-                  <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800/60">
-                    <span className="text-slate-500 block text-[10px]">SIA Expired</span>
-                    <strong className="text-cyan-300 font-mono block mt-0.5">{selectedCust.sia_expired || "-"}</strong>
+
+                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-2xs">
+                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Kode SIPNAP</span>
+                    <strong className="text-zinc-900 dark:text-zinc-200 font-mono block mt-1 text-xs">{selectedCust.sipnap_code || "-"}</strong>
                   </div>
-                  <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800/60">
-                    <span className="text-slate-500 block text-[10px]">Site (Ship / Bill)</span>
-                    <strong className="text-slate-200 font-mono block mt-0.5">
-                      {selectedCust.site_ship_to || "-"} / {selectedCust.site_bill_to || "-"}
+
+                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-2xs">
+                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Nomor SIA (Izin Apotek)</span>
+                    <strong className="text-zinc-900 dark:text-cyan-300 font-mono block mt-1 text-xs truncate" title={selectedCust.sia_number || "-"}>
+                      {selectedCust.sia_number || "-"}
+                    </strong>
+                  </div>
+
+                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-cyan-200 dark:border-cyan-500/30 shadow-2xs">
+                    <span className="text-cyan-600 dark:text-cyan-400 block text-[10px] uppercase font-bold">Masa Berlaku SIA (Expired)</span>
+                    <strong className="text-cyan-700 dark:text-cyan-300 font-mono block mt-1 text-xs font-black">
+                      {formatIndonesianDate(selectedCust.sia_expired)}
                     </strong>
                   </div>
                 </div>
               </div>
 
-              {/* Riwayat Retur / Komplain */}
+              {/* SECTION 2: LOKASI PENGIRIMAN & KONTAK LOGISTIK */}
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800/80 bg-zinc-50/80 dark:bg-zinc-950/70 p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+                  <span className="font-black text-xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    <MapPin className="w-4 h-4" />
+                    <span>Lokasi Pengiriman &amp; Distribusi Logistik</span>
+                  </span>
+                  <span className="text-[10px] text-zinc-500 font-mono">{selectedCust.branch || "-"} ({selectedCust.zone || "-"})</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold mb-1">
+                      Alamat Pengiriman (Default Delivery)
+                    </span>
+                    <p className="text-zinc-800 dark:text-zinc-200 leading-relaxed font-medium bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                      {selectedCust.address || "-"}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-emerald-500" />
+                        No. Telepon / HP
+                      </span>
+                      <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">{selectedCust.phone || "-"}</strong>
+                    </div>
+
+                    <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold flex items-center gap-1">
+                        <Mail className="w-3 h-3 text-cyan-500" />
+                        Email Resmi
+                      </span>
+                      <strong className="text-zinc-900 dark:text-zinc-100 block mt-1 text-xs truncate" title={selectedCust.email || "-"}>
+                        {selectedCust.email || "-"}
+                      </strong>
+                    </div>
+
+                    <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Site Ship To</span>
+                      <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">{selectedCust.site_ship_to || "-"}</strong>
+                    </div>
+
+                    <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Site Bill To</span>
+                      <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">{selectedCust.site_bill_to || "-"}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {selectedCust.halodoc_pharma && (
+                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center justify-between text-xs">
+                    <span className="text-zinc-500 dark:text-zinc-400 font-bold text-[10px] uppercase">Halodoc Pharma Alias</span>
+                    <span className="font-semibold text-zinc-900 dark:text-zinc-100">{selectedCust.halodoc_pharma}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION 3: DATA PEMILIK (PSA) & PERPAJAKAN */}
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800/80 bg-zinc-50/80 dark:bg-zinc-950/70 p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+                  <span className="font-black text-xs uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4" />
+                    <span>Data Pemilik Sarana Apotek (PSA) &amp; Perpajakan</span>
+                  </span>
+                  <span className="text-[10px] text-zinc-500 font-mono">Tax &amp; Identity</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Nama Pemilik / PSA</span>
+                    <strong className="text-zinc-900 dark:text-zinc-100 block mt-1 text-xs truncate" title={selectedCust.owner_name || "-"}>
+                      {selectedCust.owner_name || "-"}
+                    </strong>
+                  </div>
+
+                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">NPWP (VAT ID)</span>
+                    <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">{selectedCust.vat_id || "-"}</strong>
+                  </div>
+
+                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">NIK Pemilik</span>
+                    <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">{selectedCust.nik || "-"}</strong>
+                  </div>
+
+                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Waktu Terdaftar</span>
+                    <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">
+                      {selectedCust.created_at ? formatIndonesianDate(selectedCust.created_at) : "-"}
+                    </strong>
+                  </div>
+
+                  {selectedCust.owner_address && (
+                    <div className="col-span-1 sm:col-span-2 md:col-span-4 bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold mb-0.5">Alamat Pemilik (PSA)</span>
+                      <p className="text-zinc-800 dark:text-zinc-200 text-xs font-medium">{selectedCust.owner_address}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* SECTION 4: RIWAYAT RETUR / KOMPLAIN */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Riwayat Komplain & Retur ({customerReturns.length})</span>
+                  <h4 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2 text-zinc-900 dark:text-white">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Riwayat Komplain &amp; Retur ({customerReturns.length})</span>
                   </h4>
                   {onSelectCustomerForFilter && (
                     <button
@@ -621,7 +794,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                         onSelectCustomerForFilter(selectedCust.name);
                         setSelectedCust(null);
                       }}
-                      className="text-[11px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1"
+                      className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-1 cursor-pointer"
                     >
                       <span>Lihat Semua Faktur Apotek Ini</span>
                       <ArrowRight className="w-3 h-3" />
@@ -630,13 +803,13 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                 </div>
 
                 {detailLoading ? (
-                  <div className="py-8 text-center text-slate-500 bg-slate-950/60 rounded-xl border border-slate-800/80">
-                    <RefreshCw className="w-5 h-5 animate-spin mx-auto text-indigo-400 mb-1" />
+                  <div className="py-8 text-center text-zinc-500 bg-zinc-50 dark:bg-zinc-950/60 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                    <RefreshCw className="w-5 h-5 animate-spin mx-auto text-indigo-500 mb-1" />
                     <span>Memeriksa catatan retur apotek...</span>
                   </div>
                 ) : customerReturns.length === 0 ? (
-                  <div className="bg-emerald-950/20 border border-emerald-800/30 p-3.5 rounded-xl text-center text-slate-400 flex items-center justify-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/30 p-3.5 rounded-xl text-center text-zinc-600 dark:text-zinc-400 flex items-center justify-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                     <span>Tidak ada catatan komplain atau retur untuk merchant ini (Catatan Bersih ✨)</span>
                   </div>
                 ) : (
@@ -644,25 +817,25 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                     {customerReturns.map((cr) => (
                       <div
                         key={cr.id}
-                        className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3 text-xs"
+                        className="bg-white dark:bg-zinc-950/80 p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-3 text-xs shadow-2xs"
                       >
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-slate-200">{cr.product_name}</span>
-                            <span className="text-slate-400 text-[10px] bg-slate-800 px-1.5 py-0.2 rounded font-mono">
+                            <span className="font-bold text-zinc-900 dark:text-zinc-100">{cr.product_name}</span>
+                            <span className="text-zinc-600 dark:text-zinc-400 text-[10px] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.2 rounded font-mono">
                               Qty: {cr.qty}
                             </span>
-                            <span className="font-mono text-indigo-400 text-[10px]">
+                            <span className="font-mono text-indigo-600 dark:text-indigo-400 text-[10px]">
                               Inv: {cr.invoice_no || "-"}
                             </span>
                           </div>
-                          <p className="text-amber-300 text-[11px] mt-1 font-medium">Alasan: {cr.reason}</p>
+                          <p className="text-amber-600 dark:text-amber-300 text-[11px] mt-1 font-medium">Alasan: {cr.reason}</p>
                         </div>
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
                             (cr.status || "").toLowerCase().includes("resolved")
-                              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                              : "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                              : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
                           }`}
                         >
                           {cr.status || "Pending"}
@@ -675,14 +848,14 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
-              <span className="text-[11px] text-slate-500">
-                Fantastic Order Master Customer Hub
+            <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/90 flex items-center justify-between">
+              <span className="text-[11px] text-zinc-500 font-medium">
+                Fantastic Order Master Customer Hub • Data Terverifikasi
               </span>
               <button
                 type="button"
                 onClick={() => setSelectedCust(null)}
-                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs transition"
+                className="px-4 py-1.5 bg-zinc-900 hover:bg-black text-white dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-200 font-bold rounded-xl text-xs transition cursor-pointer"
               >
                 Tutup
               </button>
