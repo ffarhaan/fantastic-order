@@ -3660,35 +3660,35 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         </div>
 
         {/* 9 Metric KPI - Executive High-Performance Bar */}
-        <div className={`rounded-2xl overflow-hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 divide-y sm:divide-y-0 sm:divide-x border shadow-md ${
+        <div className={`rounded-xl overflow-hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 divide-y sm:divide-y-0 sm:divide-x border shadow-xs transition-colors ${
           isDarkMode
-            ? "border-slate-800 divide-slate-800 bg-slate-900/90 dark:bg-[#0a0f1c]"
-            : "border-slate-300 divide-slate-200 bg-white"
+            ? "border-zinc-800 divide-zinc-800 bg-[#09090b]"
+            : "border-zinc-200 divide-zinc-200 bg-white"
         }`}>
           {/* Cell 1: Belum Terprint (Clickable Filter) */}
           <button
             type="button"
             onClick={() => { setFilter(filter === "belum" ? "all" : "belum"); setPage(0); }}
-            className={`py-1.5 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
+            className={`py-2 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
               filter === "belum"
-                ? (isDarkMode ? "bg-slate-800 ring-2 ring-inset ring-white" : "bg-slate-200 ring-2 ring-inset ring-slate-900")
-                : (isDarkMode ? "hover:bg-slate-800/60" : "hover:bg-slate-100")
+                ? (isDarkMode ? "bg-zinc-800 text-white shadow-inner font-bold" : "bg-blue-50/90 text-blue-900 border-b-2 border-b-blue-600 shadow-inner font-bold")
+                : (isDarkMode ? "hover:bg-zinc-900/60" : "hover:bg-zinc-50")
             }`}
             title="Klik untuk filter Belum Terprint"
           >
-            <span className={`text-[10px] font-black uppercase tracking-wider ${
-              filter === "belum" ? (isDarkMode ? "text-white" : "text-slate-900") : (isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-700 group-hover:text-black")
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${
+              filter === "belum" ? (isDarkMode ? "text-white" : "text-blue-900") : (isDarkMode ? "text-zinc-400 group-hover:text-white" : "text-zinc-500 group-hover:text-zinc-900")
             }`}>
               Belum Terprint
             </span>
-            <div className={`my-0.5 px-2.5 py-0.2 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
+            <div className={`my-0.5 px-2 py-0.5 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
               isDarkMode
-                ? "bg-slate-800 border-slate-600 text-white"
-                : "bg-slate-100 border-slate-300 text-slate-900"
+                ? "bg-amber-950/60 border-amber-800/60 text-amber-300"
+                : "bg-amber-50 border-amber-200 text-amber-800"
             }`}>
               {workspaceStats.belumCount}
             </div>
-            <span className={`text-[9px] font-bold leading-none ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
+            <span className={`text-[9px] font-semibold leading-none ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
               {filter === "belum" ? "● Aktif" : "Sisa Antrean"}
             </span>
           </button>
@@ -3697,89 +3697,89 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <button
             type="button"
             onClick={() => { setFilter("all"); setPage(0); }}
-            className={`py-1.5 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
+            className={`py-2 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
               filter === "all"
-                ? (isDarkMode ? "bg-slate-800 ring-2 ring-inset ring-white" : "bg-slate-200 ring-2 ring-inset ring-slate-900")
-                : (isDarkMode ? "hover:bg-slate-800/60" : "hover:bg-slate-100")
+                ? (isDarkMode ? "bg-zinc-800 text-white shadow-inner font-bold" : "bg-blue-50/90 text-blue-900 border-b-2 border-b-blue-600 shadow-inner font-bold")
+                : (isDarkMode ? "hover:bg-zinc-900/60" : "hover:bg-zinc-50")
             }`}
             title="Klik untuk tampilkan Semua Faktur"
           >
-            <span className={`text-[10px] font-black uppercase tracking-wider ${
-              filter === "all" ? (isDarkMode ? "text-white" : "text-slate-900") : (isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-700 group-hover:text-black")
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${
+              filter === "all" ? (isDarkMode ? "text-white" : "text-blue-900") : (isDarkMode ? "text-zinc-400 group-hover:text-white" : "text-zinc-500 group-hover:text-zinc-900")
             }`}>
               Total Faktur
             </span>
-            <div className={`my-0.5 font-black text-xs sm:text-sm font-mono tracking-tight ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+            <div className={`my-0.5 font-black text-xs sm:text-sm font-mono tracking-tight ${isDarkMode ? "text-white" : "text-zinc-900"}`}>
               {workspaceStats.totalCount}
             </div>
-            <span className={`text-[9px] font-bold leading-none ${
-              filter === "all" ? (isDarkMode ? "text-white" : "text-slate-900") : (isDarkMode ? "text-slate-400" : "text-slate-500")
+            <span className={`text-[9px] font-semibold leading-none ${
+              filter === "all" ? (isDarkMode ? "text-white" : "text-blue-700") : (isDarkMode ? "text-zinc-500" : "text-zinc-400")
             }`}>
               {filter === "all" ? "● Semua Aktif" : "Semua Data"}
             </span>
           </button>
 
           {/* Cell 3: Total SO */}
-          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
+          <div className="py-2 px-1.5 flex flex-col justify-between items-center text-center">
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
               Total SO
             </span>
-            <div className={`my-0.5 font-black text-xs sm:text-sm font-mono tracking-tight ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+            <div className={`my-0.5 font-black text-xs sm:text-sm font-mono tracking-tight ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>
               {workspaceStats.totalSO}
             </div>
-            <span className={`text-[9px] font-semibold leading-none ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+            <span className={`text-[9px] font-medium leading-none ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>
               SO Terdata
             </span>
           </div>
 
           {/* Cell 4: 1P ORA */}
-          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
+          <div className="py-2 px-1.5 flex flex-col justify-between items-center text-center">
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
               1P (ORA)
             </span>
-            <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+            <div className={`my-0.5 font-bold text-xs font-mono ${isDarkMode ? "text-zinc-200" : "text-zinc-800"}`}>
               {highestInvoices.maxOraStr}
             </div>
-            <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.rangeOra || ""}>
+            <span className={`text-[9px] font-medium leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} title={invoiceProgression?.rangeOra || ""}>
               {invoiceProgression?.rangeOra ? `R: ${invoiceProgression.rangeOra}` : "Belum ada"}
             </span>
           </div>
 
           {/* Cell 5: 1P DOO */}
-          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
+          <div className="py-2 px-1.5 flex flex-col justify-between items-center text-center">
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
               1P (DOO)
             </span>
-            <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+            <div className={`my-0.5 font-bold text-xs font-mono ${isDarkMode ? "text-zinc-200" : "text-zinc-800"}`}>
               {highestInvoices.max1PDooStr}
             </div>
-            <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.range1PDoo || ""}>
+            <span className={`text-[9px] font-medium leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} title={invoiceProgression?.range1PDoo || ""}>
               {invoiceProgression?.range1PDoo ? `R: ${invoiceProgression.range1PDoo}` : "Belum ada"}
             </span>
           </div>
 
           {/* Cell 6: 2P */}
-          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
+          <div className="py-2 px-1.5 flex flex-col justify-between items-center text-center">
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
               2P
             </span>
-            <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+            <div className={`my-0.5 font-bold text-xs font-mono ${isDarkMode ? "text-zinc-200" : "text-zinc-800"}`}>
               {highestInvoices.max2PStr}
             </div>
-            <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.range2P || ""}>
+            <span className={`text-[9px] font-medium leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} title={invoiceProgression?.range2P || ""}>
               {invoiceProgression?.range2P ? `R: ${invoiceProgression.range2P}` : "Belum ada"}
             </span>
           </div>
 
           {/* Cell 7: 3P */}
-          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
+          <div className="py-2 px-1.5 flex flex-col justify-between items-center text-center">
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
               3P
             </span>
-            <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+            <div className={`my-0.5 font-bold text-xs font-mono ${isDarkMode ? "text-zinc-200" : "text-zinc-800"}`}>
               {highestInvoices.max3PStr}
             </div>
-            <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.range3P || ""}>
+            <span className={`text-[9px] font-medium leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} title={invoiceProgression?.range3P || ""}>
               {invoiceProgression?.range3P ? `R: ${invoiceProgression.range3P}` : "Belum ada"}
             </span>
           </div>
@@ -3788,26 +3788,26 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <button
             type="button"
             onClick={() => { setFilter(filter === "double" ? "all" : "double"); setPage(0); }}
-            className={`py-1.5 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
+            className={`py-2 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
               filter === "double"
-                ? (isDarkMode ? "bg-slate-800 ring-2 ring-inset ring-white" : "bg-slate-200 ring-2 ring-inset ring-slate-900")
-                : (isDarkMode ? "hover:bg-slate-800/60" : "hover:bg-slate-100")
+                ? (isDarkMode ? "bg-zinc-800 text-white shadow-inner font-bold" : "bg-blue-50/90 text-blue-900 border-b-2 border-b-blue-600 shadow-inner font-bold")
+                : (isDarkMode ? "hover:bg-zinc-900/60" : "hover:bg-zinc-50")
             }`}
             title="Klik untuk filter Double INV"
           >
-            <span className={`text-[10px] font-black uppercase tracking-wider ${
-              filter === "double" ? (isDarkMode ? "text-white" : "text-slate-900") : (isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-700 group-hover:text-black")
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${
+              filter === "double" ? (isDarkMode ? "text-white" : "text-blue-900") : (isDarkMode ? "text-zinc-400 group-hover:text-white" : "text-zinc-500 group-hover:text-zinc-900")
             }`}>
               Double INV
             </span>
-            <div className={`my-0.5 px-2 py-0.2 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
+            <div className={`my-0.5 px-2 py-0.5 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
               isDarkMode
-                ? "bg-slate-800 border-slate-600 text-white"
-                : "bg-slate-100 border-slate-300 text-slate-900"
+                ? "bg-rose-950/60 border-rose-800/60 text-rose-300"
+                : "bg-rose-50 border-rose-200 text-rose-800"
             }`}>
               {workspaceStats.doubleCount}
             </div>
-            <span className={`text-[9px] font-bold leading-none ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+            <span className={`text-[9px] font-semibold leading-none ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
               {filter === "double" ? "● Aktif" : "Perlu Cek"}
             </span>
           </button>
@@ -3816,26 +3816,26 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <button
             type="button"
             onClick={() => { setFilter(filter === "retur" ? "all" : "retur"); setPage(0); }}
-            className={`py-1.5 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
+            className={`py-2 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
               filter === "retur"
-                ? (isDarkMode ? "bg-slate-800 ring-2 ring-inset ring-white" : "bg-slate-200 ring-2 ring-inset ring-slate-900")
-                : (isDarkMode ? "hover:bg-slate-800/60" : "hover:bg-slate-100")
+                ? (isDarkMode ? "bg-zinc-800 text-white shadow-inner font-bold" : "bg-blue-50/90 text-blue-900 border-b-2 border-b-blue-600 shadow-inner font-bold")
+                : (isDarkMode ? "hover:bg-zinc-900/60" : "hover:bg-zinc-50")
             }`}
             title="Klik untuk filter Retur"
           >
-            <span className={`text-[10px] font-black uppercase tracking-wider ${
-              filter === "retur" ? (isDarkMode ? "text-white" : "text-slate-900") : (isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-700 group-hover:text-black")
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${
+              filter === "retur" ? (isDarkMode ? "text-white" : "text-blue-900") : (isDarkMode ? "text-zinc-400 group-hover:text-white" : "text-zinc-500 group-hover:text-zinc-900")
             }`}>
               Retur
             </span>
-            <div className={`my-0.5 px-2 py-0.2 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
+            <div className={`my-0.5 px-2 py-0.5 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
               isDarkMode
-                ? "bg-slate-800 border-slate-600 text-white"
-                : "bg-slate-100 border-slate-300 text-slate-900"
+                ? "bg-indigo-950/60 border-indigo-800/60 text-indigo-300"
+                : "bg-indigo-50 border-indigo-200 text-indigo-800"
             }`}>
               {workspaceStats.returCount}
             </div>
-            <span className={`text-[9px] font-bold leading-none ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+            <span className={`text-[9px] font-semibold leading-none ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
               {filter === "retur" ? "● Aktif" : "Faktur Retur"}
             </span>
           </button>
@@ -3844,18 +3844,20 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         {/* Search Bar & Quick Action Section - Modern Toolbar */}
         <div className="flex items-center gap-2 w-full">
           {/* Expanded Full-Width Search Input Capsule */}
-          <div className={`relative flex items-center rounded-xl flex-1 min-w-0 border shadow-xs ${
-            isDarkMode ? "bg-slate-900/90 dark:bg-[#0a0f1c] border-slate-700/80" : "bg-white border-slate-300"
+          <div className={`relative flex items-center rounded-xl flex-1 min-w-0 border shadow-xs transition-colors ${
+            isDarkMode
+              ? "bg-[#09090b] border-zinc-800 focus-within:border-zinc-700"
+              : "bg-white border-zinc-200 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20"
           }`}>
-            <span className="pl-3.5 text-sm text-slate-400">🔍</span>
+            <span className={`pl-3 text-sm ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>🔍</span>
             <input
               ref={searchInputRef}
               type="text"
               placeholder="Cari no faktur, no SO, nama pelanggan, produk obat... (Ctrl+K)"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-              className={`w-full pl-2.5 pr-12 py-2 rounded-xl text-xs font-bold focus:outline-none transition-colors bg-transparent ${
-                isDarkMode ? "text-white placeholder:text-slate-500" : "text-slate-900 placeholder:text-slate-400"
+              className={`w-full pl-2.5 pr-12 py-2 rounded-xl text-xs font-semibold focus:outline-none transition-colors bg-transparent ${
+                isDarkMode ? "text-zinc-100 placeholder:text-zinc-500" : "text-zinc-900 placeholder:text-zinc-400"
               }`}
             />
             {search && (
@@ -3863,7 +3865,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 type="button"
                 onClick={() => { setSearch(""); setPage(0); searchInputRef.current?.focus(); }}
                 className={`mr-7 px-1.5 py-0.2 rounded text-xs font-bold transition-colors cursor-pointer ${
-                  isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900"
+                  isDarkMode ? "text-zinc-400 hover:text-white" : "text-zinc-400 hover:text-zinc-900"
                 }`}
                 title="Hapus pencarian"
               >
@@ -3871,7 +3873,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               </button>
             )}
             <span className={`absolute right-2 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md border pointer-events-none ${
-              isDarkMode ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-700 border-slate-300 shadow-2xs"
+              isDarkMode ? "bg-zinc-900 text-zinc-400 border-zinc-800" : "bg-zinc-100 text-zinc-600 border-zinc-200 shadow-2xs"
             }`}>
               ⌘K
             </span>
@@ -3881,7 +3883,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           {unprintedCountInFiltered > 0 && currentUser?.role !== "readonly" && (
             <button
               onClick={handleMarkAllPrinted}
-              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer shrink-0 active:scale-95"
+              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0 active:scale-95"
             >
               <span>✓</span>
               <span>Tandai Selesai ({unprintedCountInFiltered})</span>
@@ -3889,18 +3891,18 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           )}
         </div>
 
-        {/* Filter Dropdowns - Single Compact Row */}
-        <div className={`p-1.5 rounded-xl border grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5 shadow-xs ${
-          isDarkMode ? "bg-slate-900/90 dark:bg-[#0a0f1c] border-slate-800" : "bg-white border-slate-300"
+        {/* Filter Dropdowns - Modern Clean Row */}
+        <div className={`p-2 rounded-xl border grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 shadow-xs transition-colors ${
+          isDarkMode ? "bg-[#09090b] border-zinc-800" : "bg-white border-zinc-200"
         }`}>
           {/* Kategori Filter */}
           <select
             value={katFilter}
             onChange={(e) => { setKatFilter(e.target.value as KatFilter); setPage(0); }}
-            className={`w-full px-2 py-1 rounded-md text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border ${
+            className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border cursor-pointer ${
               isDarkMode
-                ? "bg-slate-900 border-slate-700 text-white"
-                : "bg-slate-50 border-slate-300 text-slate-900"
+                ? "bg-zinc-950 border-zinc-800 text-zinc-200 hover:border-zinc-700"
+                : "bg-zinc-50 border-zinc-200 text-zinc-800 hover:border-zinc-300"
             }`}
           >
             <option value="all">Semua Kategori (1P/2P/3P)</option>
@@ -3913,10 +3915,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <select
             value={jenisFilter}
             onChange={(e) => { setJenisFilter(e.target.value as JenisFilter); setPage(0); }}
-            className={`w-full px-2 py-1 rounded-md text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border ${
+            className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border cursor-pointer ${
               isDarkMode
-                ? "bg-slate-900 border-slate-700 text-white"
-                : "bg-slate-50 border-slate-300 text-slate-900"
+                ? "bg-zinc-950 border-zinc-800 text-zinc-200 hover:border-zinc-700"
+                : "bg-zinc-50 border-zinc-200 text-zinc-800 hover:border-zinc-300"
             }`}
           >
             <option value="all">Semua Jenis (ORA/DOO)</option>
@@ -3928,10 +3930,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <select
             value={klasFilter}
             onChange={(e) => { setKlasFilter(e.target.value as KlasFilter); setPage(0); }}
-            className={`w-full px-2 py-1 rounded-md text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border ${
+            className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border cursor-pointer ${
               isDarkMode
-                ? "bg-slate-900 border-slate-700 text-white"
-                : "bg-slate-50 border-slate-300 text-slate-900"
+                ? "bg-zinc-950 border-zinc-800 text-zinc-200 hover:border-zinc-700"
+                : "bg-zinc-50 border-zinc-200 text-zinc-800 hover:border-zinc-300"
             }`}
           >
             <option value="all">Semua Produk</option>
@@ -3946,10 +3948,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <select
             value={txDateFilter}
             onChange={(e) => { setTxDateFilter(e.target.value); setPage(0); }}
-            className={`w-full px-2 py-1 rounded-md text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border ${
+            className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border cursor-pointer ${
               isDarkMode
-                ? "bg-slate-900 border-slate-700 text-white"
-                : "bg-slate-50 border-slate-300 text-slate-900"
+                ? "bg-zinc-950 border-zinc-800 text-zinc-200 hover:border-zinc-700"
+                : "bg-zinc-50 border-zinc-200 text-zinc-800 hover:border-zinc-300"
             }`}
             title="Filter berdasarkan Tanggal Faktur (Tx)"
           >
@@ -3963,10 +3965,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <select
             value={orderDateFilter}
             onChange={(e) => { setOrderDateFilter(e.target.value); setPage(0); }}
-            className={`w-full px-2 py-1 rounded-md text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border ${
+            className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border cursor-pointer ${
               isDarkMode
-                ? "bg-slate-900 border-slate-700 text-white"
-                : "bg-slate-50 border-slate-300 text-slate-900"
+                ? "bg-zinc-950 border-zinc-800 text-zinc-200 hover:border-zinc-700"
+                : "bg-zinc-50 border-zinc-200 text-zinc-800 hover:border-zinc-300"
             }`}
             title="Filter berdasarkan Tanggal SO (Order Date)"
           >
@@ -3978,47 +3980,47 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         </div>
 
         {/* Faktur Table Card - Clean High-Contrast Table Canvas */}
-        <div className={`rounded-xl overflow-hidden border-2 ${
-          isDarkMode ? "bg-[#0b101b] border-slate-800" : "bg-white border-slate-300 shadow-sm"
+        <div className={`rounded-xl overflow-hidden border shadow-xs transition-colors ${
+          isDarkMode ? "bg-[#09090b] border-zinc-800" : "bg-white border-zinc-200"
         }`}>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className={`border-b-2 font-black text-[11px] tracking-wider uppercase ${
+                <tr className={`border-b font-bold text-[11px] tracking-wider uppercase transition-colors ${
                   isDarkMode
-                    ? "bg-[#0c1322] border-slate-800 text-slate-200"
-                    : "bg-slate-100 border-slate-300 text-slate-800"
+                    ? "bg-zinc-950 border-zinc-800 text-zinc-400"
+                    : "bg-zinc-50/90 border-zinc-200 text-zinc-600"
                 }`}>
-                  <th className="px-1.5 py-2 w-6 text-center">#</th>
-                  <th className="px-1.5 py-2 w-10 text-center">Print</th>
-                  <th className="px-2 py-2">No SO</th>
-                  <th className="px-2 py-2">No Invoice</th>
-                  <th className="px-1.5 py-2">Kat Produk</th>
-                  <th className="px-1.5 py-2 text-center">Jenis</th>
-                  <th className="px-2 py-2">Pelanggan</th>
-                  <th className="px-1.5 py-2 text-center" title="Tanggal Faktur / Invoice Date (Transaction Date)">Tgl Faktur</th>
-                  <th className="px-1.5 py-2 text-center" title="Tanggal Sales Order Masuk (Order Date)">Tgl Order</th>
-                  <th className="px-1.5 py-2 text-center">Kat</th>
-                  <th className="px-2 py-2">Done Print (Waktu)</th>
-                  <th className="px-2 py-2 text-right" title="Grand Total sudah termasuk PPN 11% (sesuai faktur fisik)">Total (+PPN)</th>
+                  <th className="px-2 py-2.5 w-7 text-center">#</th>
+                  <th className="px-2 py-2.5 w-12 text-center">Print</th>
+                  <th className="px-2.5 py-2.5">No SO</th>
+                  <th className="px-2.5 py-2.5">No Invoice</th>
+                  <th className="px-2.5 py-2.5">Kat Produk</th>
+                  <th className="px-2.5 py-2.5 text-center">Jenis</th>
+                  <th className="px-2.5 py-2.5">Pelanggan</th>
+                  <th className="px-2.5 py-2.5 text-center" title="Tanggal Faktur / Invoice Date (Transaction Date)">Tgl Faktur</th>
+                  <th className="px-2.5 py-2.5 text-center" title="Tanggal Sales Order Masuk (Order Date)">Tgl Order</th>
+                  <th className="px-2.5 py-2.5 text-center">Kat</th>
+                  <th className="px-2.5 py-2.5">Done Print (Waktu)</th>
+                  <th className="px-2.5 py-2.5 text-right" title="Grand Total sudah termasuk PPN 11% (sesuai faktur fisik)">Total (+PPN)</th>
                 </tr>
               </thead>
-              <tbody className={`divide-y-2 ${isDarkMode ? "divide-slate-800/80" : "divide-slate-200"}`}>
+              <tbody className={`divide-y ${isDarkMode ? "divide-zinc-800/70" : "divide-zinc-200/70"}`}>
                 {loading && records.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className={`text-center py-8 ${isDarkMode ? "text-slate-400" : "text-slate-400"}`}>
-                      <div className="flex flex-col items-center gap-1.5">
-                        <span className="text-xl animate-spin text-blue-400">🔄</span>
-                        <span className="text-xs font-bold">Memuat data faktur...</span>
+                    <td colSpan={12} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+                      <div className="flex flex-col items-center gap-2">
+                        <span className="text-2xl animate-spin text-blue-500">🔄</span>
+                        <span className="text-xs font-semibold">Memuat data faktur...</span>
                       </div>
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className={`text-center py-8 ${isDarkMode ? "text-slate-400" : "text-slate-400"}`}>
-                      <div className="flex flex-col items-center gap-1.5">
-                        <span className="text-2xl">{filter === "belum" ? "🎉" : "📄"}</span>
-                        <span className="text-xs font-bold">
+                    <td colSpan={12} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+                      <div className="flex flex-col items-center gap-2">
+                        <span className="text-3xl">{filter === "belum" ? "🎉" : "📄"}</span>
+                        <span className="text-xs font-semibold">
                           {filter === "belum"
                             ? "Semua faktur sudah dicetak (tidak ada yang belum)."
                             : filter === "sudah"
@@ -4039,8 +4041,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     const getCellCls = (colIdx: number) =>
                       isRowSelected && selectedColIdx === colIdx
                         ? (isDarkMode
-                            ? "ring-2 ring-white ring-inset bg-slate-800 text-white font-bold"
-                            : "ring-2 ring-slate-900 ring-inset bg-slate-200 text-slate-900 font-bold")
+                            ? "ring-2 ring-white ring-inset bg-zinc-800 text-white font-bold"
+                            : "ring-2 ring-blue-600 ring-inset bg-blue-50 text-blue-900 font-bold")
                         : "";
 
                     const onSelectCell = (colIdx: number) => {
@@ -4059,19 +4061,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           className={`cursor-pointer transition-colors ${
                             isRowSelected
                               ? (isDarkMode
-                                  ? "bg-slate-800 border-l-4 border-l-white text-white"
-                                  : "bg-slate-200 border-l-4 border-l-black text-black")
+                                  ? "bg-zinc-800/90 border-l-4 border-l-blue-500 text-white font-semibold"
+                                  : "bg-blue-50/80 border-l-4 border-l-blue-600 text-zinc-900 font-semibold")
                               : g.isDoubleInv
-                              ? (isDarkMode ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-100 hover:bg-slate-200")
-                              : g.allPrinted
-                              ? (isDarkMode ? "bg-[#0b101b] hover:bg-slate-800/70" : "bg-slate-50 hover:bg-slate-100")
-                              : (isDarkMode ? "bg-[#0d1424] hover:bg-slate-800/70" : "bg-white hover:bg-slate-100")
+                              ? (isDarkMode ? "bg-rose-950/20 hover:bg-rose-950/30" : "bg-rose-50/30 hover:bg-rose-50/50")
+                              : (isDarkMode ? "bg-[#09090b] hover:bg-zinc-900/60" : "bg-white hover:bg-zinc-50")
                           }`}
                         >
                           {/* Col 0: Expand */}
                           <td
-                            className={`px-1.5 py-1 text-center text-[11px] font-black ${
-                              isDarkMode ? "text-white" : "text-black"
+                            className={`px-2 py-1.5 text-center text-[10px] font-bold ${
+                              isDarkMode ? "text-zinc-400 hover:text-white" : "text-zinc-400 hover:text-zinc-800"
                             } ${getCellCls(0)}`}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -4084,7 +4084,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                           {/* Col 1: Print Checkbox */}
                           <td
-                            className={`px-1.5 py-1 text-center ${getCellCls(1)}`}
+                            className={`px-2 py-1.5 text-center ${getCellCls(1)}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectCell(1);
@@ -4094,23 +4094,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             <button
                               type="button"
                               disabled={currentUser?.role === "readonly"}
-                              className={`w-5 h-5 mx-auto rounded flex items-center justify-center text-xs font-black shadow-xs transition-all ${
+                              className={`w-6 h-6 mx-auto rounded-md flex items-center justify-center text-xs font-black transition-all ${
                                 currentUser?.role === "readonly"
                                   ? "cursor-not-allowed opacity-50"
-                                  : ""
+                                  : "cursor-pointer active:scale-95"
                               } ${
                                 g.allPrinted
-                                  ? "bg-slate-200 dark:bg-slate-800 text-black dark:text-white border-2 border-slate-400 dark:border-slate-500 hover:bg-slate-300"
+                                  ? "bg-emerald-500 text-white shadow-xs hover:bg-emerald-600 border border-emerald-600"
                                   : isDarkMode
-                                  ? "bg-white text-black hover:bg-slate-200 shadow-sm"
-                                  : "bg-black text-white hover:bg-slate-800 shadow-sm"
+                                  ? "border-2 border-zinc-700 hover:border-emerald-500 text-transparent hover:text-emerald-400 bg-zinc-900/80"
+                                  : "border-2 border-zinc-300 hover:border-emerald-500 hover:bg-emerald-50 text-transparent hover:text-emerald-600 bg-white shadow-2xs"
                               }`}
                               title={
                                 currentUser?.role === "readonly"
                                   ? "Akses Stranger (Hanya Lihat)"
                                   : g.allPrinted
-                                  ? "Klik untuk UNPRINT"
-                                  : "Klik untuk TANDAI PRINT"
+                                  ? "Sudah Dicetak (Klik untuk batalkan/unprint)"
+                                  : "Belum Dicetak (Klik untuk tandai selesai cetak)"
                               }
                             >
                               {g.allPrinted ? "✓" : "○"}
@@ -4119,40 +4119,40 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                           {/* Col 2: No SO */}
                           <td
-                            className={`px-2 py-1 font-mono font-bold text-xs whitespace-nowrap ${
-                              isDarkMode ? "text-white" : "text-black"
+                            className={`px-2.5 py-1.5 font-mono font-bold text-xs whitespace-nowrap ${
+                              isDarkMode ? "text-zinc-100" : "text-zinc-900"
                             } ${getCellCls(2)}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectCell(2);
                             }}
                           >
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1.5">
                               <span>{g.so}</span>
                               {g.isDoubleInv && (
-                                <span className="font-black text-black dark:text-white" title="Double Invoice Detected">⚠</span>
+                                <span className="text-amber-500 font-bold" title="Double Invoice Detected">⚠</span>
                               )}
                             </div>
                           </td>
 
                           {/* Col 3: No Invoice */}
                           <td
-                            className={`px-2 py-1 font-mono font-black text-xs whitespace-nowrap ${
-                              isDarkMode ? "text-white" : "text-black"
+                            className={`px-2.5 py-1.5 font-mono font-black text-xs whitespace-nowrap ${
+                              isDarkMode ? "text-blue-400" : "text-blue-600"
                             } ${getCellCls(3)}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectCell(3);
                             }}
                           >
-                            <div className="flex items-center gap-1 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span>{g.invoiceNumber}</span>
                               {g.isRetur && (
                                 <span
-                                  className={`px-1 py-0.2 rounded text-[9px] font-black uppercase border border-black dark:border-white ${
+                                  className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase border ${
                                     isDarkMode
-                                      ? "bg-slate-800 text-white"
-                                      : "bg-slate-200 text-black"
+                                      ? "bg-rose-950/80 text-rose-300 border-rose-800"
+                                      : "bg-rose-50 text-rose-700 border-rose-200"
                                   }`}
                                   title="Faktur Retur / Credit Memo (Nilai Minus)"
                                 >
@@ -4164,7 +4164,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                           {/* Col 4: Kat Produk */}
                           <td
-                            className={`px-1.5 py-1 whitespace-nowrap ${getCellCls(4)}`}
+                            className={`px-2 py-1.5 whitespace-nowrap ${getCellCls(4)}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectCell(4);
@@ -4173,8 +4173,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             <span
                               className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${
                                 isDarkMode
-                                  ? "bg-slate-800 text-white border-slate-600"
-                                  : "bg-slate-100 text-black border-slate-400"
+                                  ? "bg-zinc-800 text-zinc-300 border-zinc-700"
+                                  : "bg-zinc-100 text-zinc-700 border-zinc-200"
                               }`}
                             >
                               {g.kategoriProduk}
@@ -4183,7 +4183,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                           {/* Col 5: Jenis */}
                           <td
-                            className={`px-1.5 py-1 text-center whitespace-nowrap ${getCellCls(5)}`}
+                            className={`px-2 py-1.5 text-center whitespace-nowrap ${getCellCls(5)}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectCell(5);
@@ -4191,8 +4191,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           >
                             <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-black border ${
                               g.jenisTransaksi === "ORA"
-                                ? (isDarkMode ? "bg-slate-700 text-white border-slate-500" : "bg-slate-300 text-black border-slate-500")
-                                : (isDarkMode ? "bg-slate-800 text-slate-100 border-slate-600" : "bg-slate-100 text-black border-slate-400")
+                                ? (isDarkMode ? "bg-purple-950/50 text-purple-300 border-purple-800/40" : "bg-purple-50 text-purple-700 border-purple-200")
+                                : (isDarkMode ? "bg-zinc-800 text-zinc-300 border-zinc-700" : "bg-zinc-100 text-zinc-700 border-zinc-200")
                             }`}>
                               {g.jenisTransaksi}
                             </span>
@@ -4200,8 +4200,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                           {/* Col 6: Pelanggan */}
                           <td
-                            className={`px-2 py-1 max-w-[180px] lg:max-w-xs truncate font-bold text-xs ${
-                              isDarkMode ? "text-white" : "text-black"
+                            className={`px-2.5 py-1.5 max-w-[200px] lg:max-w-xs truncate font-semibold text-xs ${
+                              isDarkMode ? "text-zinc-200" : "text-zinc-900"
                             } ${getCellCls(6)}`}
                             title={g.customerName}
                             onClick={(e) => {
@@ -4214,8 +4214,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                           {/* Col 7: Tgl Faktur (Transaction Date) */}
                           <td
-                            className={`px-1.5 py-1 text-center whitespace-nowrap font-mono text-[11px] font-semibold ${
-                              isDarkMode ? "text-white" : "text-black"
+                            className={`px-2 py-1.5 text-center whitespace-nowrap font-mono text-[11px] font-medium ${
+                              isDarkMode ? "text-zinc-300" : "text-zinc-700"
                             } ${getCellCls(7)}`}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -4227,8 +4227,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                           {/* Col 8: Tgl Order (Order Date / SO) */}
                           <td
-                            className={`px-1.5 py-1 text-center whitespace-nowrap font-mono text-[11px] font-semibold ${
-                              isDarkMode ? "text-slate-300" : "text-slate-700"
+                            className={`px-2 py-1.5 text-center whitespace-nowrap font-mono text-[11px] font-medium ${
+                              isDarkMode ? "text-zinc-500" : "text-zinc-500"
                             } ${getCellCls(8)}`}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -4240,7 +4240,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                           {/* Col 9: Kat (Editable Dropdown) */}
                           <td
-                            className={`px-1.5 py-1 text-center whitespace-nowrap ${getCellCls(9)}`}
+                            className={`px-2 py-1.5 text-center whitespace-nowrap ${getCellCls(9)}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectCell(9);
@@ -4252,12 +4252,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                               onChange={(e) => {
                                 handleUpdateCategory(g.invoiceKey, e.target.value as "1P" | "2P" | "3P", g.customerName);
                               }}
-                              className={`px-1.5 py-0.5 rounded text-xs font-black border ${
-                                currentUser?.role === "readonly" ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+                              className={`px-1.5 py-0.5 rounded text-xs font-bold border cursor-pointer ${
+                                currentUser?.role === "readonly" ? "cursor-not-allowed opacity-70" : ""
                               } ${
                                 isDarkMode
-                                  ? "bg-slate-800 text-white border-slate-600 hover:border-slate-400"
-                                  : "bg-white text-black border-slate-400 hover:border-slate-600"
+                                  ? "bg-zinc-800 text-zinc-100 border-zinc-700 hover:border-zinc-500"
+                                  : "bg-white text-zinc-900 border-zinc-200 hover:border-zinc-300 shadow-2xs"
                               }`}
                               title={
                                 currentUser?.role === "readonly"
@@ -4273,7 +4273,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                           {/* Col 10: Done Print Waktu */}
                           <td
-                            className={`px-2 py-1 whitespace-nowrap font-mono text-[11px] ${getCellCls(10)}`}
+                            className={`px-2.5 py-1.5 whitespace-nowrap font-mono text-[11px] ${getCellCls(10)}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectCell(10);
@@ -4283,30 +4283,30 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                               <div className="flex flex-col gap-0.5">
                                 <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded border font-semibold text-[11px] ${
                                   isDarkMode
-                                    ? "text-white bg-slate-800 border-slate-600"
-                                    : "text-black bg-slate-100 border-slate-300"
+                                    ? "text-emerald-400 bg-emerald-950/40 border-emerald-800/40"
+                                    : "text-emerald-700 bg-emerald-50 border-emerald-200"
                                 }`}>
                                   ⏱ {formatPrintTime(g.printedAt)}
                                 </span>
                                 {g.printedBy && (
                                   <span className={`text-[9px] font-sans font-medium px-0.5 ${
-                                    isDarkMode ? "text-slate-300" : "text-slate-700"
+                                    isDarkMode ? "text-zinc-500" : "text-zinc-500"
                                   }`}>
                                     oleh: <strong>{String(g.printedBy)}</strong>
                                   </span>
                                 )}
                               </div>
                             ) : (
-                              <span className={isDarkMode ? "text-slate-500 font-bold" : "text-slate-400 font-bold"}>-</span>
+                              <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
                             )}
                           </td>
 
                           {/* Col 11: Total Harga (Grand Total include PPN 11%) */}
                           <td
-                            className={`px-2 py-1 text-right font-medium whitespace-nowrap ${
+                            className={`px-2.5 py-1.5 text-right font-medium whitespace-nowrap ${
                               isDarkMode
                                 ? "text-white"
-                                : "text-black"
+                                : "text-zinc-900"
                             } ${getCellCls(11)}`}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -4316,7 +4316,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             <div className="font-mono font-black text-xs">
                               {formatRupiah(Math.round(g.totalHarga * 1.11 * 100) / 100)}
                             </div>
-                            <div className={`text-[9px] font-mono font-medium ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
+                            <div className={`text-[9px] font-mono font-medium ${isDarkMode ? "text-zinc-500" : "text-zinc-500"}`}>
                               DPP: {formatRupiah(Math.round(g.totalHarga * 100) / 100)}
                             </div>
                           </td>
