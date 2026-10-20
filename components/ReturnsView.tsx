@@ -121,15 +121,15 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
     expiry_date: "",
     reason: "",
     invoice_date: "",
-    category: "3P",
-    confirm: "Approve",
-    action: "Tukar fisik",
+    category: "",
+    confirm: "",
+    action: "",
     nota_retur_no: "",
     resolved_date: "",
     status: "Pending",
     note: "",
     person: "",
-    root_cause: "Human error",
+    root_cause: "",
   });
 
   useEffect(() => {
@@ -145,15 +145,15 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
         expiry_date: selectedReturn.expiry_date || "",
         reason: selectedReturn.reason || "",
         invoice_date: selectedReturn.invoice_date || "",
-        category: selectedReturn.category || "3P",
-        confirm: selectedReturn.confirm || "Approve",
-        action: selectedReturn.action || "Tukar fisik",
+        category: selectedReturn.category || "",
+        confirm: selectedReturn.confirm || "",
+        action: selectedReturn.action || "",
         nota_retur_no: selectedReturn.nota_retur_no || "",
         resolved_date: selectedReturn.resolved_date || "",
         status: selectedReturn.status || "Pending",
         note: selectedReturn.note || "",
         person: selectedReturn.person || "",
-        root_cause: selectedReturn.root_cause || "Human error",
+        root_cause: selectedReturn.root_cause || "",
       });
     }
   }, [selectedReturn]);
@@ -169,12 +169,12 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
     batch_no: "",
     expiry_date: "",
     reason: "Fisik yang dikirim salah",
-    category: "3P",
-    confirm: "Approve",
-    action: "Tukar fisik",
+    category: "",
+    confirm: "",
+    action: "",
     status: "Pending",
     person: "",
-    root_cause: "Human error",
+    root_cause: "",
     note: "",
   });
 
@@ -358,12 +358,12 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
           batch_no: "",
           expiry_date: "",
           reason: "Fisik yang dikirim salah",
-          category: "3P",
-          confirm: "Approve",
-          action: "Tukar fisik",
+          category: "",
+          confirm: "",
+          action: "",
           status: "Pending",
           person: "",
-          root_cause: "Human error",
+          root_cause: "",
           note: "",
         });
         fetchReturns();
@@ -1066,6 +1066,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                         onChange={(e) => setEditForm({ ...editForm, confirm: e.target.value })}
                                         className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-white font-bold focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
                                       >
+                                        <option value="">-- Belum Ditentukan (Diisi Tim) --</option>
                                         <option value="Approve">Approve (Disetujui)</option>
                                         <option value="Reject">Reject (Ditolak)</option>
                                         <option value="Pending">Pending</option>
@@ -1167,6 +1168,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                           onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                                           className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
                                         >
+                                          <option value="">-- Belum Ditentukan --</option>
                                           <option value="1P">1P</option>
                                           <option value="2P">2P</option>
                                           <option value="3P">3P</option>
@@ -1256,6 +1258,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                           onChange={(e) => setEditForm({ ...editForm, confirm: e.target.value })}
                                           className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
                                         >
+                                          <option value="">-- Belum Ditentukan (Diisi Tim) --</option>
                                           <option value="Approve">Approve</option>
                                           <option value="Reject">Reject</option>
                                           <option value="Pending">Pending</option>
@@ -2070,6 +2073,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                     onChange={(e) => setNewForm({ ...newForm, category: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200 font-semibold"
                   >
+                    <option value="">-- Belum Ditentukan --</option>
                     <option value="1P">1P</option>
                     <option value="2P">2P</option>
                     <option value="3P">3P</option>

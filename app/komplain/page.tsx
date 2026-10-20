@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef } from "react";
-import Link from "next/link";
 import {
   Send,
   CheckCircle2,
@@ -21,6 +20,7 @@ import {
   X,
   ExternalLink,
   MessageCircle,
+  Download,
 } from "lucide-react";
 
 const COMMON_REASONS = [
@@ -83,6 +83,8 @@ export default function KomplainPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedWaText, setCopiedWaText] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [waNotification, setWaNotification] = useState("");
 
   // Compress photo via Canvas
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -228,7 +230,7 @@ ${itemsList}
 ${photoStatus}
 ⏰ *Waktu Kirim* : ${submittedTimestamp}
 ────────────────────────
-✅ *Status*: Tiket telah dicatat ke Master Database Fantastic Order.`;
+✅ *Status*: Tiket telah dicatat ke sistem logistik.`;
   };
 
   const handleCopyWaText = () => {
@@ -241,7 +243,82 @@ ${photoStatus}
     }
   };
 
-  const handleSendToWhatsApp = () => {
+  const handleDownloadPhoto = () => {
+    if (!photoBase64) return;
+    const a = document.createElement("a");
+    a.href = photoBase64;
+    a.download = `bukti-retur-${submittedData?.invoice_no || "faktur"}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handleShareToWhatsApp = async () => {
+    const text = getWaSummaryText();
+    if (!text) return;
+
+    setIsSharing(true);
+    setWaNotification("");
+
+    try {
+      // 1. Try native Web Share API with image file attached (Mobile Android/iOS)
+      if (photoBase64 && typeof navigator !== "undefined" && (navigator as any).canShare) {
+        try {
+          const arr = photoBase64.split(",");
+          const mimeMatch = arr[0].match(/:(.*?);/);
+          const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          const file = new File(
+            [u8arr],
+            `bukti-retur-${submittedData?.invoice_no || "faktur"}.jpg`,
+            { type: mime }
+          );
+
+          if ((navigator as any).canShare({ files: [file] })) {
+            await (navigator as any).share({
+              files: [file],
+              title: "Pengajuan Retur Barang",
+              text: text,
+            });
+            setIsSharing(false);
+            return;
+          }
+        } catch (shareErr: any) {
+          if (shareErr.name === "AbortError") {
+            setIsSharing(false);
+            return;
+          }
+          console.warn("Web Share failed, fallback to download + WA URL", shareErr);
+        }
+      }
+
+      // 2. Fallback (Desktop PC or browser without file sharing)
+      if (photoBase64) {
+        handleDownloadPhoto();
+        setWaNotification("📸 Foto bukti berhasil diunduh & teks disalin! Silakan lampirkan foto saat WhatsApp terbuka.");
+      } else {
+        setWaNotification("📋 Teks format pengajuan berhasil disalin!");
+      }
+
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(text).catch(() => {});
+      }
+
+      if (typeof window !== "undefined") {
+        const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+        window.open(waUrl, "_blank");
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleDirectWaLink = () => {
     const text = getWaSummaryText();
     if (typeof window !== "undefined" && text) {
       const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
@@ -301,18 +378,20 @@ ${photoStatus}
       };
     });
 
+    // PENTING: Kolom-kolom evaluasi internal (category, confirm, action, person, root_cause)
+    // TIDAK BOLEH diisi otomatis. Harus dibiarkan kosong agar nanti diisi & diinvestigasi oleh tim internal.
     const payload = {
       pbf: headerData.pbf,
       customer_name: headerData.customer_name.trim(),
       invoice_no: headerData.invoice_no.trim(),
       so_no: headerData.so_no.trim(),
       invoice_date: now.toISOString().split("T")[0],
-      category: "3P", // default standard
-      confirm: "Approve",
-      action: "Tukar fisik",
-      status: "Pending",
-      person: "Apotek Submission",
-      root_cause: "",
+      category: "", // Kosong: diisi oleh tim internal
+      confirm: "",  // Kosong: diisi oleh tim internal
+      action: "",   // Kosong: diisi oleh tim internal
+      status: "Pending", // Status awal tiket
+      person: "",   // Kosong: diisi oleh tim internal (picker/checker bersangkutan)
+      root_cause: "", // Kosong: diisi oleh tim internal
       photo_url: photoBase64 || null,
       products: processedProducts,
     };
@@ -385,20 +464,16 @@ ${photoStatus}
       <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#0a0a0c]/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 shadow-xs">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <Link
-              href="/"
-              className="p-1.5 rounded-lg text-zinc-500 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-              title="Ke Beranda"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
+            <div className="w-9 h-9 rounded-xl bg-black text-white dark:bg-white dark:text-black flex items-center justify-center font-black shadow-xs shrink-0">
+              <Package className="w-5 h-5" />
+            </div>
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-black tracking-widest uppercase px-1.5 py-0.5 rounded bg-black text-white dark:bg-white dark:text-black">
                   MBI & MAI
                 </span>
                 <span className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">
-                  Logistik Retur
+                  Layanan Pelanggan Apotek
                 </span>
               </div>
               <h1 className="text-sm sm:text-base font-extrabold tracking-tight text-zinc-900 dark:text-white leading-tight">
@@ -451,44 +526,57 @@ ${photoStatus}
               {submittedData?.products?.length || 1} Produk Retur Berhasil Dicatat!
             </h2>
             <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 max-w-md mx-auto mt-1.5 leading-relaxed">
-              Data tiket komplain telah otomatis disimpan ke sistem Fantastic Order. Silakan salin format pesan di bawah untuk dikirim ke grup WhatsApp.
+              Data tiket komplain telah otomatis dicatat ke sistem logistik. Silakan kirim pesan ringkasan beserta foto bukti di bawah ke WhatsApp kami.
             </p>
 
             {/* Photo Thumbnail if uploaded */}
             {photoBase64 && (
-              <div className="mt-4 p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-xl flex items-center gap-3 text-left">
-                <img
-                  src={photoBase64}
-                  alt="Bukti Retur"
-                  className="w-14 h-14 object-cover rounded-lg border border-zinc-300 dark:border-zinc-700 shrink-0"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Foto Bukti Tersimpan ({photoSizeKb} KB)</span>
+              <div className="mt-4 p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-xl flex items-center justify-between gap-3 text-left">
+                <div className="flex items-center gap-3 min-w-0">
+                  <img
+                    src={photoBase64}
+                    alt="Bukti Retur"
+                    className="w-14 h-14 object-cover rounded-lg border border-zinc-300 dark:border-zinc-700 shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Foto Bukti Tersimpan ({photoSizeKb} KB)</span>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">
+                      Foto bukti siap dikirim ke WhatsApp dan tersimpan di sistem kami.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                    Foto bukti aman tersimpan di sistem dan dapat dilihat langsung oleh admin logistik.
-                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadPhoto}
+                  className="px-3 py-1.5 bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer shadow-2xs"
+                  title="Unduh foto bukti ke galeri/komputer"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span className="hidden sm:inline">Unduh Foto</span>
+                </button>
               </div>
             )}
 
             {/* WhatsApp Ready Format Card */}
             <div className="mt-5 text-left bg-zinc-900 text-zinc-100 rounded-xl p-4 sm:p-5 font-mono text-xs sm:text-[13px] leading-relaxed shadow-md border border-zinc-700/80 relative">
-              <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-700">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 mb-3 border-b border-zinc-700">
                 <span className="font-sans font-bold text-xs text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
                   <Share2 className="w-4 h-4 text-emerald-400" />
                   <span>Format WhatsApp Siap Kirim</span>
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
-                    onClick={handleSendToWhatsApp}
-                    className="px-3 py-1.5 rounded-lg font-sans font-bold text-xs flex items-center gap-1.5 cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-all"
+                    onClick={handleShareToWhatsApp}
+                    disabled={isSharing}
+                    className="px-3.5 py-1.5 rounded-lg font-sans font-bold text-xs flex items-center gap-1.5 cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-all active:scale-95 disabled:opacity-50"
+                    title={photoBase64 ? "Kirim teks dan foto langsung ke WhatsApp" : "Buka WhatsApp"}
                   >
                     <MessageCircle className="w-3.5 h-3.5" />
-                    <span>Buka WA</span>
+                    <span>{photoBase64 ? "Kirim ke WA + Foto" : "Buka WA"}</span>
                   </button>
                   <button
                     type="button"
@@ -514,28 +602,42 @@ ${photoStatus}
                 </div>
               </div>
 
+              {waNotification && (
+                <div className="mb-3 p-2 bg-emerald-950/80 border border-emerald-700 rounded-lg text-emerald-300 text-xs font-sans animate-in fade-in flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                  <span>{waNotification}</span>
+                </div>
+              )}
+
               <pre className="whitespace-pre-wrap font-mono text-zinc-200 selection:bg-emerald-800">
                 {getWaSummaryText()}
               </pre>
+
+              {photoBase64 && (
+                <div className="mt-3 pt-3 border-t border-zinc-800 flex items-center justify-between gap-2 text-[11px] text-zinc-400 font-sans">
+                  <span>💡 Foto bukti tersimpan: <strong>{photoSizeKb} KB</strong></span>
+                  <button
+                    type="button"
+                    onClick={handleDownloadPhoto}
+                    className="text-emerald-400 hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>Unduh Foto</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-6">
+            <div className="flex items-center justify-center gap-3 mt-6">
               <button
                 type="button"
                 onClick={handleReset}
-                className="w-full sm:w-auto px-5 py-2.5 bg-black hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                className="w-full sm:w-auto px-6 py-2.5 bg-black hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
               >
                 <Sparkles className="w-4 h-4" />
                 <span>Ajukan Retur Lainnya</span>
               </button>
-              <Link
-                href="/"
-                className="w-full sm:w-auto px-4 py-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-zinc-300 dark:border-zinc-700 transition-all"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Ke Beranda Fantastic Order</span>
-              </Link>
             </div>
           </div>
         ) : (
