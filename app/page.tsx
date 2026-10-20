@@ -3521,26 +3521,26 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <button
             type="button"
             onClick={() => { setFilter(filter === "belum" ? "all" : "belum"); setPage(0); }}
-            className={`py-2 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
+            className={`py-1.5 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
               filter === "belum"
-                ? (isDarkMode ? "bg-zinc-800 text-white shadow-inner font-bold" : "bg-black text-white border-b-2 border-b-black shadow-inner font-bold")
-                : (isDarkMode ? "hover:bg-zinc-900/60" : "hover:bg-zinc-100")
+                ? (isDarkMode ? "bg-slate-800 ring-2 ring-inset ring-white" : "bg-slate-200 ring-2 ring-inset ring-slate-900")
+                : (isDarkMode ? "hover:bg-slate-800/60" : "hover:bg-slate-100")
             }`}
             title="Klik untuk filter Belum Terprint"
           >
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${
-              filter === "belum" ? "text-white" : (isDarkMode ? "text-zinc-400 group-hover:text-white" : "text-zinc-700 group-hover:text-black")
+            <span className={`text-[10px] font-black uppercase tracking-wider ${
+              filter === "belum" ? (isDarkMode ? "text-white" : "text-slate-900") : (isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-700 group-hover:text-black")
             }`}>
               Belum Terprint
             </span>
-            <div className={`my-0.5 px-2 py-0.5 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
+            <div className={`my-0.5 px-2.5 py-0.2 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
               isDarkMode
-                ? "bg-amber-950/60 border-amber-800/60 text-amber-300"
-                : "bg-amber-50 border-amber-200 text-amber-800"
+                ? "bg-slate-800 border-slate-600 text-white"
+                : "bg-white border-slate-300 text-slate-900"
             }`}>
               {workspaceStats.belumCount}
             </div>
-            <span className={`text-[9px] font-semibold leading-none ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+            <span className={`text-[9px] font-bold leading-none ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
               {filter === "belum" ? "● Aktif" : "Sisa Antrean"}
             </span>
           </button>
@@ -3549,89 +3549,93 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <button
             type="button"
             onClick={() => { setFilter("all"); setPage(0); }}
-            className={`py-2 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
+            className={`py-1.5 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
               filter === "all"
-                ? (isDarkMode ? "bg-zinc-800 text-white shadow-inner font-bold" : "bg-black text-white border-b-2 border-b-black shadow-inner font-bold")
-                : (isDarkMode ? "hover:bg-zinc-900/60" : "hover:bg-zinc-100")
+                ? (isDarkMode ? "bg-slate-800 ring-2 ring-inset ring-white" : "bg-slate-200 ring-2 ring-inset ring-slate-900")
+                : (isDarkMode ? "hover:bg-slate-800/60" : "hover:bg-slate-100")
             }`}
             title="Klik untuk tampilkan Semua Faktur"
           >
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${
-              filter === "all" ? "text-white" : (isDarkMode ? "text-zinc-400 group-hover:text-white" : "text-zinc-700 group-hover:text-black")
+            <span className={`text-[10px] font-black uppercase tracking-wider ${
+              filter === "all" ? (isDarkMode ? "text-white" : "text-slate-900") : (isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-700 group-hover:text-black")
             }`}>
               Total Faktur
             </span>
-            <div className={`my-0.5 font-black text-xs sm:text-sm font-mono tracking-tight ${isDarkMode ? "text-white" : "text-zinc-900"}`}>
+            <div className={`my-0.5 px-2.5 py-0.2 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
+              isDarkMode
+                ? "bg-slate-800 border-slate-600 text-white"
+                : "bg-white border-slate-300 text-slate-900"
+            }`}>
               {workspaceStats.totalCount}
             </div>
-            <span className={`text-[9px] font-semibold leading-none ${
-              filter === "all" ? (isDarkMode ? "text-white" : "text-blue-700") : (isDarkMode ? "text-zinc-500" : "text-zinc-400")
+            <span className={`text-[9px] font-bold leading-none ${
+              filter === "all" ? (isDarkMode ? "text-white" : "text-slate-900") : (isDarkMode ? "text-slate-400" : "text-slate-500")
             }`}>
               {filter === "all" ? "● Semua Aktif" : "Semua Data"}
             </span>
           </button>
 
           {/* Cell 3: Total SO */}
-          <div className="py-2 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
               Total SO
             </span>
-            <div className={`my-0.5 font-black text-xs sm:text-sm font-mono tracking-tight ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>
+            <div className={`my-0.5 font-black text-xs sm:text-sm font-mono tracking-tight ${isDarkMode ? "text-white" : "text-slate-900"}`}>
               {workspaceStats.totalSO}
             </div>
-            <span className={`text-[9px] font-medium leading-none ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>
+            <span className={`text-[9px] font-semibold leading-none ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
               SO Terdata
             </span>
           </div>
 
           {/* Cell 4: 1P ORA */}
-          <div className="py-2 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
               1P (ORA)
             </span>
-            <div className={`my-0.5 font-bold text-xs font-mono ${isDarkMode ? "text-zinc-200" : "text-zinc-800"}`}>
+            <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
               {highestInvoices.maxOraStr}
             </div>
-            <span className={`text-[9px] font-medium leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} title={invoiceProgression?.rangeOra || ""}>
+            <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.rangeOra || ""}>
               {invoiceProgression?.rangeOra ? `R: ${invoiceProgression.rangeOra}` : "Belum ada"}
             </span>
           </div>
 
           {/* Cell 5: 1P DOO */}
-          <div className="py-2 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
               1P (DOO)
             </span>
-            <div className={`my-0.5 font-bold text-xs font-mono ${isDarkMode ? "text-zinc-200" : "text-zinc-800"}`}>
+            <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
               {highestInvoices.max1PDooStr}
             </div>
-            <span className={`text-[9px] font-medium leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} title={invoiceProgression?.range1PDoo || ""}>
+            <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.range1PDoo || ""}>
               {invoiceProgression?.range1PDoo ? `R: ${invoiceProgression.range1PDoo}` : "Belum ada"}
             </span>
           </div>
 
           {/* Cell 6: 2P */}
-          <div className="py-2 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
               2P
             </span>
-            <div className={`my-0.5 font-bold text-xs font-mono ${isDarkMode ? "text-zinc-200" : "text-zinc-800"}`}>
+            <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
               {highestInvoices.max2PStr}
             </div>
-            <span className={`text-[9px] font-medium leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} title={invoiceProgression?.range2P || ""}>
+            <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.range2P || ""}>
               {invoiceProgression?.range2P ? `R: ${invoiceProgression.range2P}` : "Belum ada"}
             </span>
           </div>
 
           {/* Cell 7: 3P */}
-          <div className="py-2 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
               3P
             </span>
-            <div className={`my-0.5 font-bold text-xs font-mono ${isDarkMode ? "text-zinc-200" : "text-zinc-800"}`}>
+            <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
               {highestInvoices.max3PStr}
             </div>
-            <span className={`text-[9px] font-medium leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} title={invoiceProgression?.range3P || ""}>
+            <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.range3P || ""}>
               {invoiceProgression?.range3P ? `R: ${invoiceProgression.range3P}` : "Belum ada"}
             </span>
           </div>
@@ -3640,26 +3644,26 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <button
             type="button"
             onClick={() => { setFilter(filter === "double" ? "all" : "double"); setPage(0); }}
-            className={`py-2 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
+            className={`py-1.5 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
               filter === "double"
-                ? (isDarkMode ? "bg-zinc-800 text-white shadow-inner font-bold" : "bg-black text-white border-b-2 border-b-black shadow-inner font-bold")
-                : (isDarkMode ? "hover:bg-zinc-900/60" : "hover:bg-zinc-100")
+                ? (isDarkMode ? "bg-slate-800 ring-2 ring-inset ring-white" : "bg-slate-200 ring-2 ring-inset ring-slate-900")
+                : (isDarkMode ? "hover:bg-slate-800/60" : "hover:bg-slate-100")
             }`}
             title="Klik untuk filter Double INV"
           >
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${
-              filter === "double" ? "text-white" : (isDarkMode ? "text-zinc-400 group-hover:text-white" : "text-zinc-700 group-hover:text-black")
+            <span className={`text-[10px] font-black uppercase tracking-wider ${
+              filter === "double" ? (isDarkMode ? "text-white" : "text-slate-900") : (isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-700 group-hover:text-black")
             }`}>
               Double INV
             </span>
-            <div className={`my-0.5 px-2 py-0.5 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
+            <div className={`my-0.5 px-2.5 py-0.2 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
               isDarkMode
                 ? "bg-rose-950/60 border-rose-800/60 text-rose-300"
                 : "bg-rose-50 border-rose-200 text-rose-800"
             }`}>
               {workspaceStats.doubleCount}
             </div>
-            <span className={`text-[9px] font-semibold leading-none ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+            <span className={`text-[9px] font-bold leading-none ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
               {filter === "double" ? "● Aktif" : "Perlu Cek"}
             </span>
           </button>
@@ -3668,26 +3672,26 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <button
             type="button"
             onClick={() => { setFilter(filter === "retur" ? "all" : "retur"); setPage(0); }}
-            className={`py-2 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
+            className={`py-1.5 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
               filter === "retur"
-                ? (isDarkMode ? "bg-zinc-800 text-white shadow-inner font-bold" : "bg-black text-white border-b-2 border-b-black shadow-inner font-bold")
-                : (isDarkMode ? "hover:bg-zinc-900/60" : "hover:bg-zinc-100")
+                ? (isDarkMode ? "bg-slate-800 ring-2 ring-inset ring-white" : "bg-slate-200 ring-2 ring-inset ring-slate-900")
+                : (isDarkMode ? "hover:bg-slate-800/60" : "hover:bg-slate-100")
             }`}
             title="Klik untuk filter Retur"
           >
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${
-              filter === "retur" ? "text-white" : (isDarkMode ? "text-zinc-400 group-hover:text-white" : "text-zinc-700 group-hover:text-black")
+            <span className={`text-[10px] font-black uppercase tracking-wider ${
+              filter === "retur" ? (isDarkMode ? "text-white" : "text-slate-900") : (isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-700 group-hover:text-black")
             }`}>
               Retur
             </span>
-            <div className={`my-0.5 px-2 py-0.5 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
+            <div className={`my-0.5 px-2.5 py-0.2 rounded font-black text-xs sm:text-sm font-mono tracking-tight border ${
               isDarkMode
-                ? "bg-indigo-950/60 border-indigo-800/60 text-indigo-300"
-                : "bg-indigo-50 border-indigo-200 text-indigo-800"
+                ? "bg-slate-800 border-slate-600 text-white"
+                : "bg-white border-slate-300 text-slate-900"
             }`}>
               {workspaceStats.returCount}
             </div>
-            <span className={`text-[9px] font-semibold leading-none ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+            <span className={`text-[9px] font-bold leading-none ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
               {filter === "retur" ? "● Aktif" : "Faktur Retur"}
             </span>
           </button>

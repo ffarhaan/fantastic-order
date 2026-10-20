@@ -393,20 +393,20 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
       </div>
 
       {/* ─── Enterprise Returns Table ─── */}
-      <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
+      <div className="rounded-2xl border border-zinc-300 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-zinc-50 dark:bg-[#070b14] border-b border-zinc-200 dark:border-zinc-800 text-[11px] font-bold text-zinc-500 dark:text-slate-400 uppercase tracking-wider">
-                <th className="py-3 px-3 w-16">PBF</th>
-                <th className="py-3 px-4">Nama Apotek</th>
-                <th className="py-3 px-3">No. Faktur</th>
-                <th className="py-3 px-3">No. SO</th>
-                <th className="py-3 px-4">Nama Produk & Qty</th>
-                <th className="py-3 px-4">Alasan (Reason)</th>
-                <th className="py-3 px-3 text-center">Status</th>
-                <th className="py-3 px-3">Tindakan</th>
-                <th className="py-3 px-3 text-center">Aksi</th>
+              <tr className="bg-zinc-100 dark:bg-[#070b14] border-b-2 border-zinc-300 dark:border-zinc-800 text-[11px] font-black text-black dark:text-slate-400 uppercase tracking-wider">
+                <th className="py-2.5 px-3 w-16">PBF</th>
+                <th className="py-2.5 px-4">Nama Apotek</th>
+                <th className="py-2.5 px-3">No. Faktur</th>
+                <th className="py-2.5 px-3">No. SO</th>
+                <th className="py-2.5 px-4">Nama Produk & Qty</th>
+                <th className="py-2.5 px-4">Alasan (Reason)</th>
+                <th className="py-2.5 px-3 text-center">Status</th>
+                <th className="py-2.5 px-3">Tindakan</th>
+                <th className="py-2.5 px-3 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200/80 dark:divide-slate-800/50">
@@ -434,33 +434,33 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                     <tr
                       key={r.id}
                       onClick={() => setSelectedReturn(r)}
-                      className="group hover:bg-zinc-50 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
+                      className="group hover:bg-zinc-100 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
                     >
                       <td className="py-2.5 px-3">
                         <span
                           className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
                             r.pbf === "MAI"
-                              ? "bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30"
-                              : "bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30"
+                              ? "bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30"
+                              : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
                           }`}
                         >
-                          {r.pbf || "MBI"}
+                          {r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"}
                         </span>
                       </td>
 
-                      <td className="py-2.5 px-4 font-bold text-zinc-900 dark:text-slate-100">
+                      <td className="py-2.5 px-4 font-bold text-black dark:text-slate-100">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="truncate max-w-[200px] group-hover:text-indigo-600 dark:group-hover:text-indigo-200 transition-colors" title={r.customer_name}>
-                            {r.customer_name || "-"}
+                          <span className="truncate max-w-[200px]" title={r.customer_name}>
+                            {r.customer_name && r.customer_name !== "#N/A" ? r.customer_name : "-"}
                           </span>
-                          {r.category && (
+                          {r.category && r.category !== "#N/A" && (
                             <span
                               className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
                                 r.category === "1P"
-                                  ? "bg-purple-900/50 text-purple-300"
+                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300"
                                   : r.category === "2P"
-                                  ? "bg-cyan-900/50 text-cyan-300"
-                                  : "bg-amber-900/50 text-amber-300"
+                                  ? "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/50 dark:text-cyan-300"
+                                  : "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300"
                               }`}
                             >
                               {r.category}
@@ -470,42 +470,44 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                       </td>
 
                       <td className="py-2.5 px-3 font-mono text-[11px]">
-                        {r.invoice_no ? (
+                        {r.invoice_no && r.invoice_no !== "#N/A" ? (
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               if (onSelectInvoice) onSelectInvoice(r.invoice_no);
                             }}
-                            className="font-bold text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1"
+                            className="font-bold text-blue-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
                             title="Buka Faktur Terkait"
                           >
                             <span>{r.invoice_no}</span>
                             <ExternalLink className="w-2.5 h-2.5" />
                           </button>
                         ) : (
-                          <span className="text-slate-600">-</span>
+                          <span className="text-zinc-400 dark:text-slate-600">-</span>
                         )}
                       </td>
 
-                      <td className="py-2.5 px-3 font-mono text-slate-400 text-[11px]">{r.so_no || "-"}</td>
+                      <td className="py-2.5 px-3 font-mono text-zinc-600 dark:text-slate-400 text-[11px]">
+                        {r.so_no && r.so_no !== "#N/A" ? r.so_no : "-"}
+                      </td>
 
                       <td className="py-2.5 px-4 max-w-[220px]">
-                        <p className="truncate font-semibold text-slate-200" title={r.product_name}>
-                          {r.product_name}
+                        <p className="truncate font-bold text-black dark:text-slate-200" title={r.product_name}>
+                          {r.product_name && r.product_name !== "#N/A" ? r.product_name : "-"}
                         </p>
-                        <p className="text-[10px] text-slate-400">
-                          Qty: <strong className="text-slate-200">{r.qty}</strong>
-                          {r.batch_no && ` • Batch: ${r.batch_no}`}
+                        <p className="text-[10px] text-zinc-600 dark:text-slate-400">
+                          Qty: <strong className="text-black dark:text-slate-200">{r.qty || 1}</strong>
+                          {r.batch_no && r.batch_no !== "#N/A" && ` • Batch: ${r.batch_no}`}
                         </p>
                       </td>
 
                       <td className="py-2.5 px-4 max-w-[190px]">
-                        <span className="truncate block text-slate-300 font-medium" title={r.reason}>
-                          {r.reason || "-"}
+                        <span className="truncate block text-zinc-800 dark:text-slate-300 font-semibold" title={r.reason}>
+                          {r.reason && r.reason !== "#N/A" ? r.reason : "-"}
                         </span>
-                        {r.root_cause && (
-                          <span className="text-[10px] text-slate-500 truncate block">
+                        {r.root_cause && r.root_cause !== "#N/A" && (
+                          <span className="text-[10px] text-zinc-500 dark:text-slate-500 truncate block">
                             Penyebab: {r.root_cause}
                           </span>
                         )}
@@ -515,10 +517,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                         <span
                           className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                             isResolved
-                              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                              ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30"
                               : isPending
-                              ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
-                              : "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                              ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
+                              : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/30"
                           }`}
                         >
                           {isResolved ? (
@@ -530,7 +532,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                         </span>
                       </td>
 
-                      <td className="py-2.5 px-3 text-slate-300 max-w-[130px] truncate">{r.action || "-"}</td>
+                      <td className="py-2.5 px-3 text-zinc-800 dark:text-slate-300 max-w-[130px] truncate font-medium">
+                        {r.action && r.action !== "#N/A" ? r.action : "-"}
+                      </td>
 
                       <td className="py-2.5 px-3 text-center">
                         <button
@@ -539,7 +543,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                             e.stopPropagation();
                             setSelectedReturn(r);
                           }}
-                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white text-[11px] font-semibold border border-slate-700 transition-all shadow-xs"
+                          className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-black text-[11px] font-bold border border-zinc-300 dark:bg-slate-800 dark:hover:bg-indigo-600 dark:text-slate-200 dark:hover:text-white dark:border-slate-700 transition-all shadow-xs"
                         >
                           Detail
                         </button>
@@ -553,32 +557,32 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
         </div>
 
         {/* ─── Pagination Footer ─── */}
-        <div className="bg-slate-950/90 dark:bg-[#070b14] border-t border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+        <div className="bg-white dark:bg-[#070b14] border-t border-zinc-300 dark:border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-700 dark:text-slate-400">
           <div>
             Menampilkan{" "}
-            <strong className="text-white">
+            <strong className="text-black dark:text-white">
               {total === 0 ? 0 : page * limit + 1} - {Math.min((page + 1) * limit, total)}
             </strong>{" "}
-            dari <strong className="text-indigo-300">{total.toLocaleString("id-ID")}</strong> komplain
+            dari <strong className="text-black dark:text-indigo-300">{total.toLocaleString("id-ID")}</strong> komplain
           </div>
           <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0 || loading}
-              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-30 border border-slate-700 flex items-center gap-1 transition-all"
+              className="px-2.5 py-1 rounded-lg bg-white hover:bg-zinc-100 text-black disabled:opacity-30 border border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 flex items-center gap-1 transition-all font-semibold"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
               <span>Sebelumnya</span>
             </button>
-            <span className="px-3 py-1 font-bold text-slate-200">
+            <span className="px-3 py-1 font-bold text-black dark:text-slate-200">
               Hal {page + 1} / {totalPages || 1}
             </span>
             <button
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1 || loading}
-              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-30 border border-slate-700 flex items-center gap-1 transition-all"
+              className="px-2.5 py-1 rounded-lg bg-white hover:bg-zinc-100 text-black disabled:opacity-30 border border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 flex items-center gap-1 transition-all font-semibold"
             >
               <span>Berikutnya</span>
               <ChevronRight className="w-3.5 h-3.5" />

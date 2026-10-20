@@ -50,7 +50,7 @@ export async function GET(req: Request) {
       const limit = Math.min(Number(searchParams.get("limit")) || 50, 200);
       const offset = Number(searchParams.get("offset")) || 0;
 
-      let whereClause = "WHERE 1=1";
+      let whereClause = "WHERE customer_name != '#N/A' AND customer_name != '' AND customer_name IS NOT NULL";
       const params: (string | number)[] = [];
 
       if (search) {
@@ -137,7 +137,7 @@ export async function GET(req: Request) {
       const limit = Math.min(Number(searchParams.get("limit")) || 50, 500);
       const offset = Number(searchParams.get("offset")) || 0;
 
-      let whereClause = "WHERE 1=1";
+      let whereClause = "WHERE customer_name != '#N/A' AND customer_name != '' AND customer_name IS NOT NULL";
       const params: (string | number)[] = [];
 
       if (search) {
