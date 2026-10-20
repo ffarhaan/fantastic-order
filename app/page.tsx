@@ -2513,30 +2513,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 </button>
               </div>
 
-              {/* Search Box with Shortcut F */}
-              <div className="mt-2 relative">
-                <Search className={`w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 ${
-                  isDarkMode ? "text-zinc-500" : "text-zinc-400"
-                }`} />
-                <input
-                  type="text"
-                  placeholder="Find"
-                  value={search}
-                  onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-                  className={`w-full rounded-md pl-8 pr-7 py-1 text-xs transition border focus:outline-none ${
-                    isDarkMode
-                      ? "bg-zinc-950 border-zinc-800 text-zinc-300 placeholder:text-zinc-500 focus:border-zinc-700"
-                      : "bg-zinc-50 border-zinc-200 text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400"
-                  }`}
-                />
-                <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-mono px-1 py-0.2 rounded border ${
-                  isDarkMode
-                    ? "text-zinc-500 border-zinc-800 bg-zinc-900"
-                    : "text-zinc-500 border-zinc-200 bg-zinc-100"
-                }`}>
-                  F
-                </span>
-              </div>
             </>
           )}
         </div>
@@ -2768,15 +2744,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
                   isDarkMode
                     ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
-                    : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                    : "text-zinc-700 hover:text-black hover:bg-zinc-100"
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-500" />}
-                  <span>{isDarkMode ? "Mode Terang" : "Mode Gelap"}</span>
+                  {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-zinc-700" />}
+                  <span className="font-semibold">{isDarkMode ? "Ganti ke Terang" : "Ganti ke Gelap"}</span>
                 </div>
-                <span className={`text-[10px] font-mono ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>
-                  {isDarkMode ? "Dark" : "Light"}
+                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
+                  isDarkMode ? "bg-zinc-900 text-zinc-400 border-zinc-800" : "bg-zinc-100 text-zinc-800 border-zinc-300"
+                }`}>
+                  {isDarkMode ? "Gelap" : "Terang"}
                 </span>
               </button>
 
@@ -3533,144 +3511,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           </div>
         ) : (
           <>
-        {/* Page Title & Status Header (Matching TiDB Cloud / Vercel style) */}
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className={`text-xl sm:text-2xl font-bold tracking-tight ${isDarkMode ? "text-white" : "text-zinc-900"}`}>
-              Daftar Faktur
-            </h1>
-          </div>
-
-          {/* Quick Filter Pills Row (Exact replica of user's uploaded image) */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <button
-              type="button"
-              onClick={() => { setFilter("all"); setKatFilter("all"); setJenisFilter("all"); setKlasFilter("all"); setPage(0); }}
-              className={`px-2.5 py-1 rounded-full border border-dashed flex items-center gap-1.5 transition font-medium cursor-pointer ${
-                isDarkMode ? "border-zinc-700 hover:border-zinc-500 text-zinc-300" : "border-zinc-300 hover:border-zinc-400 text-zinc-600 bg-white shadow-2xs"
-              }`}
-            >
-              <Filter className="w-3 h-3 text-zinc-400" />
-              <span>Reset Filter</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setFilter(filter === "belum" ? "all" : "belum"); setPage(0); }}
-              className={`px-3 py-1 rounded-full border text-xs transition cursor-pointer flex items-center gap-1.5 ${
-                filter === "belum"
-                  ? (isDarkMode ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs" : "bg-black text-white border-black font-bold shadow-sm")
-                  : (isDarkMode ? "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900" : "border-zinc-300 text-black hover:border-black hover:bg-zinc-100 bg-white font-semibold shadow-2xs")
-              }`}
-            >
-              <span>Belum Terprint ({workspaceStats.belumCount})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setFilter("all"); setPage(0); }}
-              className={`px-3 py-1 rounded-full border text-xs transition cursor-pointer flex items-center gap-1.5 ${
-                filter === "all"
-                  ? (isDarkMode ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs" : "bg-black text-white border-black font-bold shadow-sm")
-                  : (isDarkMode ? "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900" : "border-zinc-300 text-black hover:border-black hover:bg-zinc-100 bg-white font-semibold shadow-2xs")
-              }`}
-            >
-              <span>Semua Faktur ({workspaceStats.totalCount})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setKatFilter(katFilter === "1P" ? "all" : "1P"); setPage(0); }}
-              className={`px-2.5 py-1 rounded-full border text-xs font-medium transition cursor-pointer ${
-                katFilter === "1P"
-                  ? "bg-purple-600 text-white border-purple-500 font-bold shadow-xs"
-                  : (isDarkMode ? "border-zinc-800 text-purple-300 hover:bg-zinc-900" : "border-purple-200 text-purple-700 bg-purple-50/70 hover:bg-purple-100/70")
-              }`}
-            >
-              <span>1P ({dashboardStats.katCounts["1P"] || 0})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setKatFilter(katFilter === "2P" ? "all" : "2P"); setPage(0); }}
-              className={`px-2.5 py-1 rounded-full border text-xs font-medium transition cursor-pointer ${
-                katFilter === "2P"
-                  ? "bg-cyan-600 text-white border-cyan-500 font-bold shadow-xs"
-                  : (isDarkMode ? "border-zinc-800 text-cyan-300 hover:bg-zinc-900" : "border-cyan-200 text-cyan-700 bg-cyan-50/70 hover:bg-cyan-100/70")
-              }`}
-            >
-              <span>2P ({dashboardStats.katCounts["2P"] || 0})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setKatFilter(katFilter === "3P" ? "all" : "3P"); setPage(0); }}
-              className={`px-2.5 py-1 rounded-full border text-xs font-medium transition cursor-pointer ${
-                katFilter === "3P"
-                  ? "bg-amber-500 text-zinc-950 border-amber-400 font-bold shadow-xs"
-                  : (isDarkMode ? "border-zinc-800 text-amber-300 hover:bg-zinc-900" : "border-amber-200 text-amber-700 bg-amber-50/70 hover:bg-amber-100/70")
-              }`}
-            >
-              <span>3P ({dashboardStats.katCounts["3P"] || 0})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setFilter(filter === "double" ? "all" : "double"); setPage(0); }}
-              className={`px-3 py-1 rounded-full border text-xs transition cursor-pointer flex items-center gap-1.5 ${
-                filter === "double"
-                  ? (isDarkMode ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs" : "bg-black text-white border-black font-bold shadow-sm")
-                  : (isDarkMode ? "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900" : "border-zinc-300 text-black hover:border-black hover:bg-zinc-100 bg-white font-semibold shadow-2xs")
-              }`}
-            >
-              <span>Double SO ({workspaceStats.doubleCount})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setFilter(filter === "retur" ? "all" : "retur"); setPage(0); }}
-              className={`px-3 py-1 rounded-full border text-xs transition cursor-pointer flex items-center gap-1.5 ${
-                filter === "retur"
-                  ? (isDarkMode ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs" : "bg-black text-white border-black font-bold shadow-sm")
-                  : (isDarkMode ? "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900" : "border-zinc-300 text-black hover:border-black hover:bg-zinc-100 bg-white font-semibold shadow-2xs")
-              }`}
-            >
-              <span>Retur ({workspaceStats.returCount})</span>
-            </button>
-          </div>
-
-          {/* Deployment Status Pill Bar (Matching exact user uploaded image) */}
-          <div className={`rounded-lg border p-3 flex flex-wrap items-center justify-between gap-3 text-xs ${
-            isDarkMode ? "border-zinc-800/90 bg-zinc-950/80 text-zinc-200" : "border-zinc-200 bg-white text-zinc-800 shadow-xs"
-          }`}>
-            <div className="flex items-center gap-2 font-mono">
-              <span className={isDarkMode ? "text-zinc-500" : "text-zinc-400"}>feat:</span>
-              <span className={`font-semibold ${isDarkMode ? "text-zinc-100" : "text-zinc-900"}`}>
-                live Oracle ERP &amp; TiDB dual-sync hub
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className={`inline-flex items-center gap-1.5 font-mono text-[11px] ${
-                isDarkMode ? "text-zinc-300" : "text-zinc-700"
-              }`}>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-semibold">Ready</span>
-                <span className={isDarkMode ? "text-zinc-500" : "text-zinc-400"}>0ms latency</span>
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white font-bold text-[10px] tracking-wide">
-                Production
-              </span>
-              <span className={`font-mono text-[11px] flex items-center gap-1 ${
-                isDarkMode ? "text-zinc-400" : "text-zinc-500"
-              }`}>
-                <span>-o-</span>
-                <span className={isDarkMode ? "text-zinc-300" : "text-zinc-700"}>live</span>
-              </span>
-              <span className={`font-mono text-[11px] ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`}>main</span>
-            </div>
-          </div>
-        </div>
-
         {/* 9 Metric KPI - Executive High-Performance Bar */}
         <div className={`rounded-xl overflow-hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 divide-y sm:divide-y-0 sm:divide-x border shadow-xs transition-colors ${
           isDarkMode
