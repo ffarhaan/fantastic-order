@@ -203,9 +203,9 @@ export default function ExportExcelModal({
 
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Faktur Tracker");
+    XLSX.utils.book_append_sheet(wb, ws, "Fantastic Order");
 
-    let filename = dateBasis === "order" ? "Faktur_Tracker_TglOrder_SO" : "Faktur_Tracker_TglFaktur_Tx";
+    let filename = dateBasis === "order" ? "Fantastic_Order_TglOrder_SO" : "Fantastic_Order_TglFaktur_Tx";
     if (startDate && endDate) {
       filename += `_${startDate}_sd_${endDate}`;
     } else if (startDate) {

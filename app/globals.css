@@ -14,36 +14,52 @@
   }
 }
 
-/* ─── Ultra-Fast High-Performance Modern Surfaces (0ms GPU Latency) ─── */
+/* ─── Vercel & TiDB Cloud Console Surfaces ─── */
 .mesh-bg-light {
-  background-color: #f1f5f9;
+  background-color: #fafafa;
 }
 
 .mesh-bg-dark {
-  background-color: #0b1120;
+  background-color: #000000;
+}
+
+.fo-card {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.dark .fo-card {
+  background: #09090b;
+  border: 1px solid #27272a;
+}
+
+.fo-panel {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+}
+
+.dark .fo-panel {
+  background: #000000;
+  border: 1px solid #27272a;
 }
 
 .glass-panel {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e4e4e7;
 }
 
 .dark .glass-panel {
-  background: #0f172a;
-  border: 1px solid #1e293b;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  background: #09090b;
+  border: 1px solid #27272a;
 }
 
 .glass-capsule {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  border: 1px solid #e4e4e7;
 }
 
 .dark .glass-capsule {
-  background: #0f172a;
-  border: 1px solid #1e293b;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.25);
+  background: #18181b;
+  border: 1px solid #27272a;
 }
-

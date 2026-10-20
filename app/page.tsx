@@ -36,6 +36,38 @@ import ChangePasswordModal from "@/components/ChangePasswordModal";
 import ExportExcelModal from "@/components/ExportExcelModal";
 import ReturnsView from "@/components/ReturnsView";
 import CustomersView from "@/components/CustomersView";
+import {
+  LayoutDashboard,
+  Boxes,
+  RotateCcw,
+  Building2,
+  FileSpreadsheet,
+  Download,
+  Plus,
+  Pill,
+  Database,
+  Search,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  ChevronRight,
+  ChevronsUpDown,
+  Sun,
+  Moon,
+  Key,
+  Shield,
+  UploadCloud,
+  RefreshCw,
+  Menu,
+  X,
+  Filter,
+  Layers,
+  Sparkles,
+  ArrowRight,
+  User,
+  Activity,
+  Terminal,
+} from "lucide-react";
 
 type Filter = "belum" | "sudah" | "all" | "double" | "retur";
 type KatFilter = "all" | "1P" | "2P" | "3P";
@@ -256,7 +288,8 @@ export default function Home() {
   const [showChangelogModal, setShowChangelogModal] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const deviceIdRef = useRef<string>(Math.random().toString(36).substring(2, 9));
   const [uploadNotification, setUploadNotification] = useState<UploadNotification | null>(null);
 
@@ -2271,351 +2304,395 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   };
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans relative overflow-hidden ${
-      isDarkMode
-        ? "dark mesh-bg-dark text-slate-100 selection:bg-blue-500/30"
-        : "mesh-bg-light text-slate-800 selection:bg-blue-500/20"
+    <div className={`min-h-screen flex font-sans ${
+      isDarkMode ? "dark bg-black text-zinc-100 selection:bg-blue-600/30" : "bg-zinc-50 text-zinc-900 selection:bg-blue-600/20"
     }`}>
       {/* Toast Notification */}
       {toastMsg && (
         <div className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border animate-in fade-in slide-in-from-top-2 duration-200 ${
-          isDarkMode ? "bg-[#16223d] text-white border-slate-700 shadow-black/50" : "bg-slate-900 text-white border-slate-700"
+          isDarkMode ? "bg-zinc-900 text-white border-zinc-700 shadow-black/50" : "bg-white text-zinc-900 border-zinc-200"
         }`}>
           <span className="text-emerald-400 font-bold">✓</span>
           <span className="text-sm font-medium">{toastMsg}</span>
         </div>
       )}
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto p-2 sm:p-3 space-y-2 relative z-10">
-        {/* Top Header Card - Floating Frosted Glass Bar */}
-        <div className="glass-panel rounded-xl px-3 py-1.5 sm:py-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            {/* Left: Brand & Live Online Users Widget */}
-            <div className="flex items-center gap-2 sm:gap-2.5">
-              <div className="flex items-center gap-1 bg-slate-200/70 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-300 dark:border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setMainView("workspace")}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                    mainView === "workspace"
-                      ? (isDarkMode ? "bg-white text-black shadow-sm" : "bg-black text-white shadow-sm")
-                      : (isDarkMode ? "text-slate-300 hover:text-white" : "text-slate-700 hover:text-black")
-                  }`}
-                >
-                  <span>📋</span>
-                  <span>Faktur</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMainView("dashboard")}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                    mainView === "dashboard"
-                      ? (isDarkMode ? "bg-white text-black shadow-sm" : "bg-black text-white shadow-sm")
-                      : (isDarkMode ? "text-slate-300 hover:text-white" : "text-slate-700 hover:text-black")
-                  }`}
-                >
-                  <span>📊</span>
-                  <span>Dashboard</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMainView("returns")}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                    mainView === "returns"
-                      ? (isDarkMode ? "bg-amber-500 text-black shadow-sm" : "bg-amber-600 text-white shadow-sm")
-                      : (isDarkMode ? "text-slate-300 hover:text-white" : "text-slate-700 hover:text-black")
-                  }`}
-                >
-                  <span>⚠️</span>
-                  <span>Retur & Komplain</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMainView("customers")}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                    mainView === "customers"
-                      ? (isDarkMode ? "bg-indigo-500 text-white shadow-sm" : "bg-indigo-600 text-white shadow-sm")
-                      : (isDarkMode ? "text-slate-300 hover:text-white" : "text-slate-700 hover:text-black")
-                  }`}
-                >
-                  <span>🏥</span>
-                  <span>Master Customer</span>
-                </button>
+      {/* Mobile Sidebar Backdrop */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-xs md:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* ─── LEFT SIDEBAR (TiDB Cloud / Vercel Console Style) ─── */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-black border-r border-zinc-800/80 transition-transform duration-200 md:static md:translate-x-0 shrink-0 ${
+        mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+      }`}>
+        {/* Top Workspace Header (Exact replica of user's uploaded image) */}
+        <div className="p-3 border-b border-zinc-800/80">
+          <button
+            type="button"
+            onClick={() => setShowLoginModal(true)}
+            className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-zinc-900 transition text-left cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-sm">
+                {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "S"}
               </div>
-
-              {/* Settings Drawer Toggle Button */}
-              <button
-                type="button"
-                onClick={() => setShowSettingsPanel(true)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-2xs ${
-                  isDarkMode
-                    ? "bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700"
-                    : "bg-white hover:bg-slate-100 text-slate-800 border-slate-300"
-                }`}
-                title="Buka Pengaturan"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                </svg>
-                <span className="hidden sm:inline">Menu</span>
-              </button>
-
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-950 p-0.5 flex items-center justify-center shadow-md border border-slate-800/80 shrink-0">
-                  <img
-                    src="/logo-3d.png"
-                    alt="FT 3D Glass Logo"
-                    className="w-full h-full object-contain drop-shadow-md select-none"
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5 leading-tight">
-                    <span className={`font-black text-xs sm:text-sm tracking-wider ${
-                      isDarkMode ? "text-white" : "text-slate-900"
-                    }`}>
-                      FAKTUR TRACKER
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowChangelogModal(true)}
-                      className={`text-[9px] px-1.5 py-0.2 rounded-full font-semibold border transition-all cursor-pointer inline-flex items-center gap-1 ${
-                        isDarkMode
-                          ? "bg-blue-950/60 hover:bg-blue-900/80 text-blue-300 border-blue-500/30 shadow-xs"
-                          : "bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200 shadow-xs"
-                      }`}
-                      title="Klik untuk melihat catatan pembaruan & perbaikan v2.3"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                      v2.3
-                    </button>
-                  </div>
-                  <span className={`text-[9px] hidden md:inline leading-none font-medium ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                    Oracle ERP Live Tracker
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-zinc-200 truncate max-w-[110px]">
+                    {currentUser?.name ? currentUser.name.toLowerCase() : "satriapranajara"}
+                  </span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded font-medium bg-zinc-800 text-zinc-400 border border-zinc-700/60">
+                    {currentUser?.role === "readonly" ? "Viewer" : "Hobby"}
                   </span>
                 </div>
               </div>
-
-              {/* Live Online Users Presence Button & Dropdown */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowOnlinePopover((prev) => !prev)}
-                  className={`px-2 py-0.5 rounded-full text-[11px] font-semibold flex items-center gap-1.5 border transition-all shadow-xs ${
-                    isDarkMode
-                      ? "bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-300"
-                      : "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700"
-                  }`}
-                  title="Klik untuk melihat siapa saja yang sedang ON & melihat sistem ini"
-                >
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-slate-500 dark:bg-slate-300"></span>
-                  </span>
-                  <span>Online ({onlineUsers.filter(u => u && u.name).length}):</span>
-                  <span className="font-bold max-w-[100px] sm:max-w-[160px] truncate text-left">
-                    {onlineUsers.filter(u => u && u.name).length > 0
-                      ? onlineUsers
-                          .filter(u => u && u.name)
-                          .map((u) => (u.name === currentUser?.name ? `${u.name} (Anda)` : u.name))
-                          .join(", ")
-                      : currentUser?.name || "Menghubungkan..."}
-                  </span>
-                  <span className="text-[8px] opacity-70">▼</span>
-                </button>
-
-                {/* Popover Card */}
-                {showOnlinePopover && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setShowOnlinePopover(false)}
-                    />
-                    <div className={`absolute left-0 mt-1.5 w-72 sm:w-80 rounded-2xl shadow-2xl border p-3.5 z-50 ${
-                      isDarkMode ? "bg-[#10192E] border-slate-700 text-slate-100 shadow-black/60" : "bg-white border-slate-200 text-slate-800 shadow-slate-300/50"
-                    }`}>
-                      <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200 dark:border-slate-700/60">
-                        <div className="flex items-center gap-1.5 font-bold text-xs">
-                          <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                          </span>
-                          <span>Pengguna Sedang ON ({onlineUsers.filter(u => u && u.name).length})</span>
-                        </div>
-                        <button
-                          onClick={() => setShowOnlinePopover(false)}
-                          className="text-xs px-1.5 py-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                        >
-                          ✕
-                        </button>
-                      </div>
-
-                      <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-                        {onlineUsers.filter(u => u && u.name).length === 0 ? (
-                          <div className="text-xs text-slate-500 py-2 text-center">
-                            Memeriksa pengguna online...
-                          </div>
-                        ) : (
-                          onlineUsers
-                            .filter(u => u && u.name)
-                            .map((u) => {
-                              const isMe = u.name === currentUser?.name;
-                            return (
-                              <div
-                                key={u.deviceId || u.name}
-                                className={`flex items-center justify-between p-2 rounded-xl text-xs ${
-                                  isMe
-                                    ? isDarkMode
-                                      ? "bg-blue-950/50 border border-blue-800/60"
-                                      : "bg-blue-50 border border-blue-200"
-                                    : isDarkMode
-                                    ? "bg-slate-800/40 hover:bg-slate-800/70"
-                                    : "bg-slate-50 hover:bg-slate-100"
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50"></span>
-                                  <div>
-                                    <div className="font-bold flex items-center gap-1">
-                                      <span>{u.name}</span>
-                                      {isMe && (
-                                        <span className="text-[10px] text-blue-500 font-semibold">(Anda)</span>
-                                      )}
-                                    </div>
-                                    <span className="text-[10px] opacity-70">
-                                      {u.role === "readonly" ? "Hanya Lihat (Stranger)" : "Pencetak Aktif"}
-                                    </span>
-                                  </div>
-                                </div>
-                                <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-500/20">
-                                  Online
-                                </span>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-
-                      <div className="mt-2.5 pt-2 border-t border-slate-200 dark:border-slate-700/60 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                        <span>Realtime terdeteksi otomatis</span>
-                        <button
-                          onClick={() => {
-                            if (currentUser) updateUserPresence(currentUser, deviceIdRef.current);
-                            showToast("✓ Status kehadiran diperbarui");
-                          }}
-                          className="text-blue-500 hover:underline font-semibold"
-                        >
-                          Ping Status
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
             </div>
+            <ChevronsUpDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+          </button>
 
-            {/* Right: Compact Actions Toolbar */}
-            <div className="flex items-center gap-1.5 ml-auto">
-
-              {/* Upload Button */}
-              <label
-                onDragOver={(e) => {
-                  if (currentUser?.role === "readonly") return;
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOver(false);
-                  if (currentUser?.role === "readonly") {
-                    showToast("⚠️ Akses Stranger: Anda hanya dapat melihat data (Read Only).");
-                    return;
-                  }
-                  const files = Array.from(e.dataTransfer.files || []);
-                  if (files.length > 0) handleUpload(files);
-                }}
-                onClick={(e) => {
-                  if (currentUser?.role === "readonly") {
-                    e.preventDefault();
-                    showToast("⚠️ Akses Stranger: Anda hanya dapat melihat data (Read Only).");
-                  }
-                }}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs ${
-                  currentUser?.role === "readonly"
-                    ? "opacity-50 cursor-not-allowed bg-slate-300 text-slate-500"
-                    : dragOver
-                    ? "cursor-pointer bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white border-2 border-dashed border-slate-500"
-                    : "cursor-pointer bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-xs"
-                }`}
-                title="Upload file export Oracle (.xls / .xlsx)"
-              >
-                <span>+</span>
-                <span>Upload Data</span>
-                <input
-                  type="file"
-                  multiple
-                  disabled={currentUser?.role === "readonly"}
-                  accept=".xls,.xlsx"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (currentUser?.role === "readonly") return;
-                    const files = e.target.files ? Array.from(e.target.files) : [];
-                    if (files.length > 0) handleUpload(files);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-
-              {/* Direct Ekspor Excel Button (Sesuai Mockup) */}
-              <button
-                type="button"
-                onClick={handleExportExcel}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 border shadow-2xs cursor-pointer ${
-                  isDarkMode
-                    ? "bg-[#141E34]/80 hover:bg-[#1C2A48] border-white/[0.08] text-slate-200"
-                    : "bg-white/80 hover:bg-white border-white/90 text-slate-700 shadow-slate-100"
-                }`}
-                title="Ekspor Data ke Excel (.xlsx)"
-              >
-                <span>📥</span>
-                <span className="hidden sm:inline">Ekspor Excel</span>
-              </button>
-
-              {/* Refresh */}
-              <button
-                onClick={handleManualRefresh}
-                disabled={loading}
-                className={`p-1 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 border ${
-                  isDarkMode
-                    ? "bg-[#141E34]/80 hover:bg-[#1C2A48] border-white/[0.08] text-slate-200"
-                    : "bg-white/80 hover:bg-white border-white/90 text-slate-700"
-                }`}
-                title="Refresh Data dari Server"
-              >
-                <span className={loading ? "animate-spin" : ""}>🔄</span>
-              </button>
-
-
-
-              {/* User Pill */}
-              <button
-                onClick={() => setShowLoginModal(true)}
-                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 border shadow-2xs cursor-pointer ${
-                  !currentUser
-                    ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 animate-pulse"
-                    : isDarkMode
-                    ? "bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700"
-                    : "bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200"
-                }`}
-                title="Ganti Pengguna yang Sedang ON"
-              >
-                <span>👤</span>
-                <span className="font-bold">{currentUser ? currentUser.name : "Pilih User"}</span>
-              </button>
-
-            </div>
+          {/* Search Box with Shortcut F */}
+          <div className="mt-2.5 relative">
+            <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Find"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-md pl-8 pr-7 py-1 text-xs text-zinc-300 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-700 transition"
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-mono text-zinc-500 border border-zinc-800 bg-zinc-900 px-1 py-0.2 rounded">
+              F
+            </span>
           </div>
         </div>
+
+        {/* Scrollable Navigation Menu */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 text-xs font-medium no-scrollbar">
+          {/* Main Navigation Links */}
+          <button
+            type="button"
+            onClick={() => { setMainView("dashboard"); setMobileSidebarOpen(false); }}
+            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+              mainView === "dashboard"
+                ? "bg-zinc-800 text-white font-semibold shadow-xs"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4 text-zinc-400" />
+            <span>Overview</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setMainView("workspace"); setMobileSidebarOpen(false); }}
+            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+              mainView === "workspace"
+                ? "bg-zinc-800 text-white font-semibold shadow-xs"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
+            }`}
+          >
+            <Boxes className="w-4 h-4 text-zinc-400" />
+            <span className="flex-1">Deployments</span>
+            {workspaceStats.belumCount > 0 && (
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-blue-950 text-blue-400 border border-blue-800/60 font-bold">
+                {workspaceStats.belumCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setMainView("returns"); setMobileSidebarOpen(false); }}
+            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+              mainView === "returns"
+                ? "bg-zinc-800 text-white font-semibold shadow-xs"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
+            }`}
+          >
+            <RotateCcw className="w-4 h-4 text-zinc-400" />
+            <span>Logs / Retur</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setMainView("customers"); setMobileSidebarOpen(false); }}
+            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+              mainView === "customers"
+                ? "bg-zinc-800 text-white font-semibold shadow-xs"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
+            }`}
+          >
+            <Building2 className="w-4 h-4 text-zinc-400" />
+            <span>Master Customer</span>
+          </button>
+
+          {/* Section: Master Data & Management */}
+          <div className="pt-3 pb-1">
+            <div className="h-px bg-zinc-800/80 mb-2" />
+            <span className="px-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
+              Data &amp; Tools
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => { setShowApotekModal(true); setMobileSidebarOpen(false); }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition text-left cursor-pointer"
+          >
+            <Building2 className="w-4 h-4 text-zinc-500" />
+            <span>Master Apotek (1P/2P/3P)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setShowProductModal(true); setMobileSidebarOpen(false); }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition text-left cursor-pointer"
+          >
+            <Pill className="w-4 h-4 text-zinc-500" />
+            <span>Master Produk (Farma/Alkes)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { handleExportExcel(); setMobileSidebarOpen(false); }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition text-left cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+            <span>Ekspor Excel (.xlsx)</span>
+          </button>
+
+          {/* Section: System & Database */}
+          <div className="pt-3 pb-1">
+            <div className="h-px bg-zinc-800/80 mb-2" />
+            <span className="px-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
+              System &amp; TiDB Cloud
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between px-2.5 py-2 rounded-lg text-zinc-400 text-xs">
+            <div className="flex items-center gap-2.5">
+              <Database className="w-4 h-4 text-emerald-400" />
+              <span>TiDB Serverless</span>
+            </div>
+            <span className="flex items-center gap-1.5 font-mono text-[10px] text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Live
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsDarkMode(prev => !prev)}
+            className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition text-left cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5">
+              {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-400" />}
+              <span>{isDarkMode ? "Mode Terang" : "Mode Gelap"}</span>
+            </div>
+            <span className="text-[10px] text-zinc-500 font-mono">{isDarkMode ? "Dark" : "Light"}</span>
+          </button>
+
+          {currentUser && currentUser.role !== "readonly" && (
+            <button
+              type="button"
+              onClick={() => { setShowChangePasswordModal(true); setMobileSidebarOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition text-left cursor-pointer"
+            >
+              <Key className="w-4 h-4 text-zinc-500" />
+              <span>Ganti Password</span>
+            </button>
+          )}
+
+          {currentUser && currentUser.role !== "readonly" && (
+            <button
+              type="button"
+              onClick={() => { handleClearAll(); setMobileSidebarOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-rose-400/80 hover:text-rose-300 hover:bg-rose-950/20 transition text-left cursor-pointer"
+            >
+              <X className="w-4 h-4 text-rose-500" />
+              <span>Reset Data</span>
+            </button>
+          )}
+        </div>
+
+        {/* Sidebar Footer with Online Presence & User Status */}
+        <div className="p-3 border-t border-zinc-800/80 space-y-2">
+          {/* Online Presence Dropdown Trigger */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowOnlinePopover(prev => !prev)}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-300 transition cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="text-[11px] font-bold">Online ({onlineUsers.filter(u => u && u.name).length}):</span>
+              </div>
+              <span className="text-[10px] text-zinc-400 truncate max-w-[80px]">
+                {currentUser?.name || "User"}
+              </span>
+            </button>
+
+            {/* Popover Card */}
+            {showOnlinePopover && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowOnlinePopover(false)}
+                />
+                <div className={`absolute bottom-full mb-2 left-0 w-72 rounded-xl shadow-2xl border p-3 z-50 bg-[#09090b] border-zinc-800 text-zinc-100 shadow-black/80`}>
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-800">
+                    <span className="text-xs font-bold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      Pengguna Sedang ON ({onlineUsers.filter(u => u && u.name).length})
+                    </span>
+                    <button
+                      onClick={() => setShowOnlinePopover(false)}
+                      className="text-xs text-zinc-400 hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto text-xs">
+                    {onlineUsers.filter(u => u && u.name).map((u) => {
+                      const isMe = u.name === currentUser?.name;
+                      return (
+                        <div
+                          key={u.deviceId || u.name}
+                          className={`flex items-center justify-between p-2 rounded-lg ${
+                            isMe ? "bg-zinc-800 border border-zinc-700" : "bg-zinc-900/60"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                            <span className="font-semibold">{u.name} {isMe && "(Anda)"}</span>
+                          </div>
+                          <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-800/40">
+                            Online
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </aside>
+
+      {/* ─── RIGHT MAIN CONTENT AREA ─── */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen bg-black">
+        {/* Top Navbar Header (Vercel Style Breadcrumb & Action Bar) */}
+        <header className="h-12 border-b border-zinc-800/80 px-4 flex items-center justify-between bg-black shrink-0 z-30 sticky top-0">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Mobile Hamburger Menu */}
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(prev => !prev)}
+              className="md:hidden p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 cursor-pointer"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+
+            {/* Breadcrumb Navigation (Exact copy of user's image) */}
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-[10px] text-white font-black shadow-sm shrink-0">
+                ✦
+              </div>
+              <span className="text-xs font-semibold text-zinc-200 truncate">fantastic-order</span>
+              <ChevronsUpDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              <span className="text-zinc-600">/</span>
+              <span className="text-xs font-semibold text-zinc-400 capitalize truncate">
+                {mainView === "workspace" ? "Deployments" : mainView === "dashboard" ? "Overview" : mainView === "returns" ? "Logs / Retur" : "Master Customer"}
+              </span>
+            </div>
+          </div>
+
+          {/* Right Action Buttons */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Refresh */}
+            <button
+              type="button"
+              onClick={handleManualRefresh}
+              disabled={loading}
+              className="p-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-900 text-zinc-400 hover:text-white transition cursor-pointer"
+              title="Refresh Data dari Server"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-blue-400" : ""}`} />
+            </button>
+
+            {/* Ekspor Excel */}
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="px-2.5 py-1 rounded-lg border border-zinc-800 hover:bg-zinc-900 text-xs text-zinc-300 font-semibold transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Ekspor Excel</span>
+            </button>
+
+            {/* Upload Oracle Primary Button */}
+            <label
+              onDragOver={(e) => {
+                if (currentUser?.role === "readonly") return;
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                if (currentUser?.role === "readonly") {
+                  showToast("⚠️ Akses Stranger: Anda hanya dapat melihat data (Read Only).");
+                  return;
+                }
+                const files = Array.from(e.dataTransfer.files || []);
+                if (files.length > 0) handleUpload(files);
+              }}
+              onClick={(e) => {
+                if (currentUser?.role === "readonly") {
+                  e.preventDefault();
+                  showToast("⚠️ Akses Stranger: Anda hanya dapat melihat data (Read Only).");
+                }
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                currentUser?.role === "readonly"
+                  ? "opacity-50 cursor-not-allowed bg-zinc-800 text-zinc-500"
+                  : dragOver
+                  ? "bg-zinc-800 text-white border-2 border-dashed border-zinc-400"
+                  : "bg-white hover:bg-zinc-200 text-black font-semibold active:scale-95"
+              }`}
+              title="Upload file export Oracle (.xls / .xlsx)"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Upload Oracle</span>
+              <input
+                type="file"
+                multiple
+                disabled={currentUser?.role === "readonly"}
+                accept=".xls,.xlsx"
+                className="hidden"
+                onChange={(e) => {
+                  if (currentUser?.role === "readonly") return;
+                  const files = e.target.files ? Array.from(e.target.files) : [];
+                  if (files.length > 0) handleUpload(files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+        </header>
+
+        {/* Main Body View Content */}
+        <main className="flex-1 p-3 sm:p-5 overflow-y-auto space-y-4">
 
         {/* ─── Dashboard & Settings Left Floating Drawer ─── */}
         {showSettingsPanel && (
@@ -3098,10 +3175,138 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           </div>
         ) : (
           <>
-        {/* 9 Metric KPI - SINGLE COMPACT MONOCHROME CAPSULE */}
-        <div className={`rounded-xl overflow-hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 divide-y sm:divide-y-0 sm:divide-x border ${
+        {/* Page Title & Status Header (Matching TiDB Cloud / Vercel style) */}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+              Deployments
+            </h1>
+          </div>
+
+          {/* Quick Filter Pills Row (Exact replica of user's uploaded image) */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => { setFilter("all"); setKatFilter("all"); setJenisFilter("all"); setKlasFilter("all"); setPage(0); }}
+              className="px-2.5 py-1 rounded-full border border-dashed border-zinc-700 hover:border-zinc-500 text-zinc-300 flex items-center gap-1.5 transition font-medium cursor-pointer"
+            >
+              <Filter className="w-3 h-3 text-zinc-400" />
+              <span>Reset Filter</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setFilter(filter === "belum" ? "all" : "belum"); setPage(0); }}
+              className={`px-3 py-1 rounded-full border text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
+                filter === "belum"
+                  ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs"
+                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+              }`}
+            >
+              <span>Belum Terprint ({workspaceStats.belumCount})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setFilter("all"); setPage(0); }}
+              className={`px-3 py-1 rounded-full border text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
+                filter === "all"
+                  ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs"
+                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+              }`}
+            >
+              <span>Semua Faktur ({workspaceStats.totalCount})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setKatFilter(katFilter === "1P" ? "all" : "1P"); setPage(0); }}
+              className={`px-2.5 py-1 rounded-full border text-xs font-medium transition cursor-pointer ${
+                katFilter === "1P"
+                  ? "bg-purple-950/80 text-purple-300 border-purple-500 font-bold"
+                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+              }`}
+            >
+              <span>1P ({dashboardStats.katCounts["1P"] || 0})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setKatFilter(katFilter === "2P" ? "all" : "2P"); setPage(0); }}
+              className={`px-2.5 py-1 rounded-full border text-xs font-medium transition cursor-pointer ${
+                katFilter === "2P"
+                  ? "bg-cyan-950/80 text-cyan-300 border-cyan-500 font-bold"
+                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+              }`}
+            >
+              <span>2P ({dashboardStats.katCounts["2P"] || 0})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setKatFilter(katFilter === "3P" ? "all" : "3P"); setPage(0); }}
+              className={`px-2.5 py-1 rounded-full border text-xs font-medium transition cursor-pointer ${
+                katFilter === "3P"
+                  ? "bg-amber-950/80 text-amber-300 border-amber-500 font-bold"
+                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+              }`}
+            >
+              <span>3P ({dashboardStats.katCounts["3P"] || 0})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setFilter(filter === "double" ? "all" : "double"); setPage(0); }}
+              className={`px-3 py-1 rounded-full border text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
+                filter === "double"
+                  ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs"
+                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+              }`}
+            >
+              <span>Double SO ({workspaceStats.doubleCount})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setFilter(filter === "retur" ? "all" : "retur"); setPage(0); }}
+              className={`px-3 py-1 rounded-full border text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
+                filter === "retur"
+                  ? "bg-zinc-800 text-white border-zinc-500 font-bold shadow-xs"
+                  : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+              }`}
+            >
+              <span>Retur ({workspaceStats.returCount})</span>
+            </button>
+          </div>
+
+          {/* Deployment Status Pill Bar (Matching exact user uploaded image) */}
+          <div className="rounded-lg border border-zinc-800/90 bg-zinc-950/80 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-zinc-200 font-mono">
+              <span className="text-zinc-500 font-normal">feat:</span>
+              <span className="font-semibold text-zinc-100">live Oracle ERP &amp; TiDB dual-sync hub</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 text-zinc-300 font-mono text-[11px]">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-semibold">Ready</span>
+                <span className="text-zinc-500 font-normal">0ms latency</span>
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white font-bold text-[10px] tracking-wide">
+                Production
+              </span>
+              <span className="font-mono text-zinc-400 text-[11px] flex items-center gap-1">
+                <span>-o-</span>
+                <span className="text-zinc-300">live</span>
+              </span>
+              <span className="font-mono text-zinc-500 text-[11px]">main</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 9 Metric KPI - Executive High-Performance Bar */}
+        <div className={`rounded-2xl overflow-hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 divide-y sm:divide-y-0 sm:divide-x border shadow-md ${
           isDarkMode
-            ? "border-slate-800 divide-slate-800 bg-[#0c1220]"
+            ? "border-slate-800 divide-slate-800 bg-slate-900/90 dark:bg-[#0a0f1c]"
             : "border-slate-300 divide-slate-200 bg-white"
         }`}>
           {/* Cell 1: Belum Terprint (Clickable Filter) */}
@@ -3280,20 +3485,20 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           </button>
         </div>
 
-        {/* Search Bar & Quick Action Section - Compact Capsule */}
+        {/* Search Bar & Quick Action Section - Modern Toolbar */}
         <div className="flex items-center gap-2 w-full">
           {/* Expanded Full-Width Search Input Capsule */}
-          <div className={`relative flex items-center rounded-lg flex-1 min-w-0 border ${
-            isDarkMode ? "bg-[#0c1220] border-slate-700" : "bg-white border-slate-300"
+          <div className={`relative flex items-center rounded-xl flex-1 min-w-0 border shadow-xs ${
+            isDarkMode ? "bg-slate-900/90 dark:bg-[#0a0f1c] border-slate-700/80" : "bg-white border-slate-300"
           }`}>
-            <span className="pl-3 text-sm text-slate-400">🔍</span>
+            <span className="pl-3.5 text-sm text-slate-400">🔍</span>
             <input
               ref={searchInputRef}
               type="text"
               placeholder="Cari no faktur, no SO, nama pelanggan, produk obat... (Ctrl+K)"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-              className={`w-full pl-2 pr-12 py-1.5 rounded-lg text-xs font-bold focus:outline-none transition-colors bg-transparent ${
+              className={`w-full pl-2.5 pr-12 py-2 rounded-xl text-xs font-bold focus:outline-none transition-colors bg-transparent ${
                 isDarkMode ? "text-white placeholder:text-slate-500" : "text-slate-900 placeholder:text-slate-400"
               }`}
             />
@@ -3309,7 +3514,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 ✕
               </button>
             )}
-            <span className={`absolute right-2 text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border pointer-events-none ${
+            <span className={`absolute right-2 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md border pointer-events-none ${
               isDarkMode ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-700 border-slate-300 shadow-2xs"
             }`}>
               ⌘K
@@ -3320,17 +3525,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           {unprintedCountInFiltered > 0 && currentUser?.role !== "readonly" && (
             <button
               onClick={handleMarkAllPrinted}
-              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0 active:scale-95"
+              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer shrink-0 active:scale-95"
             >
               <span>✓</span>
-              <span>Tandai Semua Selesai ({unprintedCountInFiltered})</span>
+              <span>Tandai Selesai ({unprintedCountInFiltered})</span>
             </button>
           )}
         </div>
 
         {/* Filter Dropdowns - Single Compact Row */}
-        <div className={`p-1 rounded-lg border grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5 ${
-          isDarkMode ? "bg-[#0c1220] border-slate-700" : "bg-white border-slate-300"
+        <div className={`p-1.5 rounded-xl border grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5 shadow-xs ${
+          isDarkMode ? "bg-slate-900/90 dark:bg-[#0a0f1c] border-slate-800" : "bg-white border-slate-300"
         }`}>
           {/* Kategori Filter */}
           <select
@@ -3949,6 +4154,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         </>
         )}
       </main>
+      </div>
 
       {/* Master Modals */}
       <MasterApotekModal
@@ -4017,10 +4223,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-base font-extrabold tracking-tight text-white">
-                      Catatan Pembaruan Sistem
+                      Catatan Pembaruan Fantastic Order
                     </h2>
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 shadow-xs">
-                      v2.3
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-cyan-400 text-slate-950 shadow-xs">
+                      v3.0 Ultra
                     </span>
                   </div>
                   <p className="text-xs text-blue-100 font-medium mt-0.5">

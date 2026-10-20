@@ -20,6 +20,11 @@ import {
   Package,
   Calendar,
   Building2,
+  RotateCcw,
+  Sparkles,
+  Layers,
+  ArrowRight,
+  ShieldAlert,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -184,183 +189,240 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
     const ws = XLSX.utils.json_to_sheet(returns);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Shipment_Returns");
-    XLSX.writeFile(wb, `Shipment_Returns_Export_${new Date().toISOString().split("T")[0]}.xlsx`);
+    XLSX.writeFile(wb, `Retur_Komplain_FantasticOrder_${new Date().toISOString().split("T")[0]}.xlsx`);
   };
 
   const totalPages = Math.ceil(total / limit);
 
   return (
-    <div className="space-y-6">
-      {/* Top Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase font-medium tracking-wider text-slate-400">Total Komplain / Retur</p>
-            <h3 className="text-2xl font-bold text-white mt-1">{stats.totalAll.toLocaleString("id-ID")}</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Database TiDB Serverless</p>
-          </div>
-          <div className="w-12 h-12 bg-blue-500/10 text-blue-400 rounded-lg flex items-center justify-center">
-            <Package className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase font-medium tracking-wider text-emerald-400">Selesai (Resolved)</p>
-            <h3 className="text-2xl font-bold text-emerald-400 mt-1">{stats.totalResolved.toLocaleString("id-ID")}</h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {stats.totalAll > 0 ? ((stats.totalResolved / stats.totalAll) * 100).toFixed(1) : 0}% Tingkat Solusi
-            </p>
-          </div>
-          <div className="w-12 h-12 bg-emerald-500/10 text-emerald-400 rounded-lg flex items-center justify-center">
-            <CheckCircle2 className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase font-medium tracking-wider text-amber-400">Menunggu (Pending / On Progress)</p>
-            <h3 className="text-2xl font-bold text-amber-400 mt-1">{stats.totalPending.toLocaleString("id-ID")}</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Perlu tindak lanjut fisik / CN</p>
-          </div>
-          <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-lg flex items-center justify-center">
-            <Clock className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase font-medium tracking-wider text-indigo-400">Aksi Cepat</p>
-            <div className="flex gap-2 mt-2">
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow"
-              >
-                <Plus className="w-3.5 h-3.5" /> Input Baru
-              </button>
-              <button
-                onClick={handleExportExcel}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" /> Export
-              </button>
+    <div className="space-y-4 animate-in fade-in duration-200">
+      {/* ─── Executive KPI Cards ─── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Card 1: Total Retur */}
+        <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-slate-900/90 to-slate-950/90 dark:from-[#0d1322] dark:to-[#070b14] border border-blue-500/20 shadow-lg group hover:border-blue-500/40 transition-all">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-blue-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+          <div className="flex items-center justify-between relative z-10">
+            <div>
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-300">
+                <Package className="w-3.5 h-3.5 text-blue-400" />
+                <span>Total Komplain & Retur</span>
+              </div>
+              <h3 className="text-2xl font-black text-white mt-1.5 tracking-tight">
+                {stats.totalAll.toLocaleString("id-ID")}
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Tercatat di TiDB Serverless
+              </p>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-blue-600/20 to-blue-400/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shadow-inner group-hover:scale-105 transition-transform">
+              <RotateCcw className="w-5 h-5" />
             </div>
           </div>
-          <div className="w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-lg flex items-center justify-center">
-            <AlertCircle className="w-6 h-6" />
+        </div>
+
+        {/* Card 2: Selesai */}
+        <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-slate-900/90 to-slate-950/90 dark:from-[#0d1322] dark:to-[#070b14] border border-emerald-500/20 shadow-lg group hover:border-emerald-500/40 transition-all">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+          <div className="flex items-center justify-between relative z-10">
+            <div>
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-300">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Terselesaikan (Resolved)</span>
+              </div>
+              <h3 className="text-2xl font-black text-emerald-400 mt-1.5 tracking-tight">
+                {stats.totalResolved.toLocaleString("id-ID")}
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1">
+                {stats.totalAll > 0 ? ((stats.totalResolved / stats.totalAll) * 100).toFixed(1) : 0}% Tingkat Solusi
+              </p>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-emerald-600/20 to-emerald-400/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-inner group-hover:scale-105 transition-transform">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Pending */}
+        <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-slate-900/90 to-slate-950/90 dark:from-[#0d1322] dark:to-[#070b14] border border-amber-500/20 shadow-lg group hover:border-amber-500/40 transition-all">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-amber-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+          <div className="flex items-center justify-between relative z-10">
+            <div>
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-300">
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                <span>Menunggu Tindak Lanjut</span>
+              </div>
+              <h3 className="text-2xl font-black text-amber-400 mt-1.5 tracking-tight">
+                {stats.totalPending.toLocaleString("id-ID")}
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Perlu tukar fisik / CN Retur
+              </p>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-amber-600/20 to-amber-400/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-inner group-hover:scale-105 transition-transform">
+              <Clock className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4: Action Hub */}
+        <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-slate-900/90 to-slate-950/90 dark:from-[#0d1322] dark:to-[#070b14] border border-indigo-500/20 shadow-lg group hover:border-indigo-500/40 transition-all flex flex-col justify-between">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+          <div className="flex items-center justify-between relative z-10">
+            <div>
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-indigo-300">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Aksi Cepat</span>
+              </div>
+              <h4 className="text-sm font-semibold text-white mt-1">Input & Ekspor Data</h4>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600/20 to-indigo-400/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-inner">
+              <ShieldAlert className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="flex-1 py-1.5 px-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Input Baru</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs"
+              title="Unduh Excel"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Excel</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-wrap gap-3 items-center justify-between">
+      {/* ─── Search and Filters Command Bar ─── */}
+      <div className="rounded-2xl p-2.5 sm:p-3 bg-slate-900/80 dark:bg-[#0c121f]/90 border border-slate-800/80 shadow-md flex flex-wrap gap-2.5 items-center justify-between">
         <div className="flex items-center gap-2 flex-1 min-w-[280px]">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cari No Faktur, SO, Apotek, Produk, atau Alasan..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              className="w-full bg-slate-950/80 dark:bg-[#070b13] border border-slate-700/60 rounded-xl pl-10 pr-9 py-2 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="px-2 py-2 text-xs text-slate-400 hover:text-white"
-            >
-              Reset
-            </button>
-          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(0);
-            }}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 focus:outline-none focus:border-indigo-500"
-          >
-            <option value="ALL">Semua Status</option>
-            <option value="Resolved">Resolved (Selesai)</option>
-            <option value="Pending">Pending</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Approve">Approve</option>
-          </select>
+          <div className="flex items-center gap-1.5 bg-slate-950/80 dark:bg-[#070b13] border border-slate-700/60 rounded-xl px-2.5 py-1">
+            <span className="text-[10px] text-slate-400 font-medium">Status:</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(0);
+              }}
+              className="bg-transparent border-none text-xs font-bold text-slate-200 focus:outline-none cursor-pointer pr-1"
+            >
+              <option value="ALL" className="bg-slate-900 text-white">Semua Status</option>
+              <option value="Resolved" className="bg-slate-900 text-emerald-400">Resolved (Selesai)</option>
+              <option value="Pending" className="bg-slate-900 text-amber-400">Pending</option>
+              <option value="In Progress" className="bg-slate-900 text-blue-400">In Progress</option>
+              <option value="Approve" className="bg-slate-900 text-indigo-400">Approve</option>
+            </select>
+          </div>
 
           {/* PBF Filter */}
-          <select
-            value={pbfFilter}
-            onChange={(e) => {
-              setPbfFilter(e.target.value);
-              setPage(0);
-            }}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 focus:outline-none focus:border-indigo-500"
-          >
-            <option value="ALL">Semua PBF</option>
-            <option value="MAI">PBF MAI</option>
-            <option value="MBI">PBF MBI</option>
-          </select>
+          <div className="flex items-center gap-1.5 bg-slate-950/80 dark:bg-[#070b13] border border-slate-700/60 rounded-xl px-2.5 py-1">
+            <span className="text-[10px] text-slate-400 font-medium">PBF:</span>
+            <select
+              value={pbfFilter}
+              onChange={(e) => {
+                setPbfFilter(e.target.value);
+                setPage(0);
+              }}
+              className="bg-transparent border-none text-xs font-bold text-slate-200 focus:outline-none cursor-pointer pr-1"
+            >
+              <option value="ALL" className="bg-slate-900 text-white">Semua PBF</option>
+              <option value="MAI" className="bg-slate-900 text-purple-300">PBF MAI</option>
+              <option value="MBI" className="bg-slate-900 text-blue-300">PBF MBI</option>
+            </select>
+          </div>
 
-          {/* Category Filter */}
-          <select
-            value={categoryFilter}
-            onChange={(e) => {
-              setCategoryFilter(e.target.value);
-              setPage(0);
-            }}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-medium text-slate-300 focus:outline-none focus:border-indigo-500"
-          >
-            <option value="ALL">Semua Kategori</option>
-            <option value="1P">1P</option>
-            <option value="2P">2P</option>
-            <option value="3P">3P</option>
-          </select>
+          {/* Kategori Filter */}
+          <div className="flex items-center gap-1.5 bg-slate-950/80 dark:bg-[#070b13] border border-slate-700/60 rounded-xl px-2.5 py-1">
+            <span className="text-[10px] text-slate-400 font-medium">Kategori:</span>
+            <select
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setPage(0);
+              }}
+              className="bg-transparent border-none text-xs font-bold text-slate-200 focus:outline-none cursor-pointer pr-1"
+            >
+              <option value="ALL" className="bg-slate-900 text-white">Semua Kategori</option>
+              <option value="1P" className="bg-slate-900 text-purple-400">1P</option>
+              <option value="2P" className="bg-slate-900 text-cyan-400">2P</option>
+              <option value="3P" className="bg-slate-900 text-amber-400">3P</option>
+            </select>
+          </div>
 
           <button
+            type="button"
             onClick={fetchReturns}
             disabled={loading}
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition"
+            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition-all active:scale-95 shadow-sm"
             title="Refresh Data"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-indigo-400" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-400" : ""}`} />
           </button>
         </div>
       </div>
 
-      {/* Main Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+      {/* ─── Enterprise Returns Table ─── */}
+      <div className="rounded-2xl border border-slate-800/90 bg-slate-900/60 dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold tracking-wider uppercase">
-              <tr>
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-950/90 dark:bg-[#070b14] border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 <th className="py-3 px-3 w-16">PBF</th>
                 <th className="py-3 px-4">Nama Apotek</th>
                 <th className="py-3 px-3">No. Faktur</th>
                 <th className="py-3 px-3">No. SO</th>
                 <th className="py-3 px-4">Nama Produk & Qty</th>
                 <th className="py-3 px-4">Alasan (Reason)</th>
-                <th className="py-3 px-3">Status</th>
-                <th className="py-3 px-3">Tindakan (Action)</th>
+                <th className="py-3 px-3 text-center">Status</th>
+                <th className="py-3 px-3">Tindakan</th>
                 <th className="py-3 px-3 text-center">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-normal">
+            <tbody className="divide-y divide-slate-800/50">
               {loading && returns.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-500">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-400 mb-2" />
-                    Memuat data komplain & retur...
+                  <td colSpan={9} className="py-16 text-center text-slate-400">
+                    <RefreshCw className="w-7 h-7 animate-spin mx-auto text-indigo-400 mb-2" />
+                    <span className="font-semibold text-sm">Memuat data tiket komplain & retur...</span>
                   </td>
                 </tr>
               ) : returns.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-500">
-                    Tidak ada data retur/komplain yang cocok dengan filter.
+                  <td colSpan={9} className="py-16 text-center text-slate-500">
+                    <RotateCcw className="w-8 h-8 mx-auto text-slate-600 mb-2 opacity-50" />
+                    <p className="font-semibold text-sm text-slate-400">Tidak ada tiket komplain/retur yang cocok</p>
+                    <p className="text-xs text-slate-500 mt-1">Gunakan kata kunci lain atau ubah status filter.</p>
                   </td>
                 </tr>
               ) : (
@@ -372,65 +434,74 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                     <tr
                       key={r.id}
                       onClick={() => setSelectedReturn(r)}
-                      className="hover:bg-slate-800/50 cursor-pointer transition"
+                      className="group hover:bg-slate-800/40 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
                     >
-                      <td className="py-3 px-3">
+                      <td className="py-2.5 px-3">
                         <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
                             r.pbf === "MAI"
-                              ? "bg-purple-900/40 text-purple-300 border border-purple-800/50"
-                              : "bg-blue-900/40 text-blue-300 border border-blue-800/50"
+                              ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                              : "bg-blue-500/20 text-blue-300 border border-blue-500/40"
                           }`}
                         >
                           {r.pbf || "MBI"}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-semibold text-slate-100 flex items-center gap-1.5">
-                        <span className="truncate max-w-[220px]" title={r.customer_name}>
-                          {r.customer_name || "-"}
-                        </span>
-                        {r.category && (
-                          <span
-                            className={`text-[9px] px-1 py-0.2 rounded font-bold ${
-                              r.category === "1P"
-                                ? "bg-amber-900/50 text-amber-300"
-                                : r.category === "2P"
-                                ? "bg-blue-900/50 text-blue-300"
-                                : "bg-slate-800 text-slate-400"
-                            }`}
-                          >
-                            {r.category}
+
+                      <td className="py-2.5 px-4 font-bold text-slate-100">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="truncate max-w-[200px] group-hover:text-indigo-200 transition-colors" title={r.customer_name}>
+                            {r.customer_name || "-"}
                           </span>
-                        )}
+                          {r.category && (
+                            <span
+                              className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                                r.category === "1P"
+                                  ? "bg-purple-900/50 text-purple-300"
+                                  : r.category === "2P"
+                                  ? "bg-cyan-900/50 text-cyan-300"
+                                  : "bg-amber-900/50 text-amber-300"
+                              }`}
+                            >
+                              {r.category}
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td className="py-3 px-3 font-mono text-indigo-300">
+
+                      <td className="py-2.5 px-3 font-mono text-[11px]">
                         {r.invoice_no ? (
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               if (onSelectInvoice) onSelectInvoice(r.invoice_no);
                             }}
-                            className="hover:underline flex items-center gap-1"
-                            title="Buka di Faktur Tracker"
+                            className="font-bold text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1"
+                            title="Buka Faktur Terkait"
                           >
-                            {r.invoice_no}
+                            <span>{r.invoice_no}</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
                           </button>
                         ) : (
                           <span className="text-slate-600">-</span>
                         )}
                       </td>
-                      <td className="py-3 px-3 font-mono text-slate-400">{r.so_no || "-"}</td>
-                      <td className="py-3 px-4 max-w-[240px]">
-                        <p className="truncate font-medium text-slate-200" title={r.product_name}>
+
+                      <td className="py-2.5 px-3 font-mono text-slate-400 text-[11px]">{r.so_no || "-"}</td>
+
+                      <td className="py-2.5 px-4 max-w-[220px]">
+                        <p className="truncate font-semibold text-slate-200" title={r.product_name}>
                           {r.product_name}
                         </p>
-                        <p className="text-[10px] text-slate-500">
-                          Qty: <span className="font-bold text-slate-300">{r.qty}</span>
+                        <p className="text-[10px] text-slate-400">
+                          Qty: <strong className="text-slate-200">{r.qty}</strong>
                           {r.batch_no && ` • Batch: ${r.batch_no}`}
                         </p>
                       </td>
-                      <td className="py-3 px-4 max-w-[200px]">
-                        <span className="truncate block text-slate-300" title={r.reason}>
+
+                      <td className="py-2.5 px-4 max-w-[190px]">
+                        <span className="truncate block text-slate-300 font-medium" title={r.reason}>
                           {r.reason || "-"}
                         </span>
                         {r.root_cause && (
@@ -439,14 +510,15 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-3">
+
+                      <td className="py-2.5 px-3 text-center">
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                             isResolved
-                              ? "bg-emerald-900/40 text-emerald-300 border border-emerald-800/50"
+                              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
                               : isPending
-                              ? "bg-amber-900/40 text-amber-300 border border-amber-800/50"
-                              : "bg-blue-900/40 text-blue-300 border border-blue-800/50"
+                              ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                              : "bg-blue-500/15 text-blue-400 border border-blue-500/30"
                           }`}
                         >
                           {isResolved ? (
@@ -454,17 +526,20 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                           ) : (
                             <Clock className="w-2.5 h-2.5" />
                           )}
-                          {r.status || "Pending"}
+                          <span>{r.status || "Pending"}</span>
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-slate-300">{r.action || "-"}</td>
-                      <td className="py-3 px-3 text-center">
+
+                      <td className="py-2.5 px-3 text-slate-300 max-w-[130px] truncate">{r.action || "-"}</td>
+
+                      <td className="py-2.5 px-3 text-center">
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedReturn(r);
                           }}
-                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[11px] border border-slate-700"
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white text-[11px] font-semibold border border-slate-700 transition-all shadow-xs"
                         >
                           Detail
                         </button>
@@ -477,70 +552,75 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
           </table>
         </div>
 
-        {/* Pagination Footer */}
-        <div className="bg-slate-950 border-t border-slate-800 px-4 py-3 flex items-center justify-between text-xs text-slate-400">
+        {/* ─── Pagination Footer ─── */}
+        <div className="bg-slate-950/90 dark:bg-[#070b14] border-t border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
           <div>
             Menampilkan{" "}
-            <span className="font-semibold text-white">
+            <strong className="text-white">
               {total === 0 ? 0 : page * limit + 1} - {Math.min((page + 1) * limit, total)}
-            </span>{" "}
-            dari <span className="font-semibold text-white">{total.toLocaleString("id-ID")}</span> komplain
+            </strong>{" "}
+            dari <strong className="text-indigo-300">{total.toLocaleString("id-ID")}</strong> komplain
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
+              type="button"
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0 || loading}
-              className="p-1.5 rounded bg-slate-900 hover:bg-slate-800 disabled:opacity-30 border border-slate-800"
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-30 border border-slate-700 flex items-center gap-1 transition-all"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Sebelumnya</span>
             </button>
-            <span>
-              Hal <strong className="text-white">{page + 1}</strong> dari {totalPages || 1}
+            <span className="px-3 py-1 font-bold text-slate-200">
+              Hal {page + 1} / {totalPages || 1}
             </span>
             <button
+              type="button"
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1 || loading}
-              className="p-1.5 rounded bg-slate-900 hover:bg-slate-800 disabled:opacity-30 border border-slate-800"
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-30 border border-slate-700 flex items-center gap-1 transition-all"
             >
-              <ChevronRight className="w-4 h-4" />
+              <span>Berikutnya</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
       </div>
 
-      {/* DETAIL MODAL */}
+      {/* ─── DETAIL MODAL ─── */}
       {selectedReturn && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 space-y-5 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-2xl relative overflow-hidden">
             <button
+              type="button"
               onClick={() => setSelectedReturn(null)}
-              className="absolute right-4 top-4 text-slate-400 hover:text-white p-1 rounded-lg"
+              className="absolute right-4 top-4 text-slate-400 hover:text-white p-1 rounded-xl bg-slate-800/80"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
 
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600/20 to-indigo-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center">
                 <AlertCircle className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">Rincian Komplain / Retur</h3>
-                <p className="text-xs text-slate-400">ID Tiket #{selectedReturn.id} • PBF {selectedReturn.pbf}</p>
+                <h3 className="text-base font-bold text-white">Rincian Tiket Komplain / Retur</h3>
+                <p className="text-xs text-slate-400">ID #{selectedReturn.id} • PBF {selectedReturn.pbf}</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-xs bg-slate-950 p-4 rounded-xl border border-slate-800/80">
+            <div className="grid grid-cols-2 gap-3 text-xs bg-slate-950/80 p-4 rounded-xl border border-slate-800">
               <div>
                 <p className="text-slate-500 font-medium">Nama Apotek / Merchant</p>
-                <p className="text-slate-200 font-semibold text-sm mt-0.5">{selectedReturn.customer_name}</p>
+                <p className="text-slate-100 font-bold text-sm mt-0.5">{selectedReturn.customer_name}</p>
               </div>
               <div>
-                <p className="text-slate-500 font-medium">Kategori Apotek</p>
-                <p className="text-slate-200 font-semibold mt-0.5">{selectedReturn.category || "3P"}</p>
+                <p className="text-slate-500 font-medium">Kategori</p>
+                <p className="text-amber-400 font-bold mt-0.5">{selectedReturn.category || "3P"}</p>
               </div>
               <div>
                 <p className="text-slate-500 font-medium">No. Faktur</p>
-                <p className="text-indigo-400 font-mono font-semibold text-sm mt-0.5">
+                <p className="text-indigo-400 font-mono font-bold text-sm mt-0.5">
                   {selectedReturn.invoice_no || "-"}
                 </p>
               </div>
@@ -548,61 +628,45 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                 <p className="text-slate-500 font-medium">No. Sales Order</p>
                 <p className="text-slate-300 font-mono mt-0.5">{selectedReturn.so_no || "-"}</p>
               </div>
-              <div className="col-span-2 border-t border-slate-800 pt-3">
+              <div className="col-span-2 border-t border-slate-800 pt-2.5">
                 <p className="text-slate-500 font-medium">Nama Produk yang Dikomplain</p>
-                <p className="text-slate-100 font-medium text-sm mt-0.5">{selectedReturn.product_name}</p>
+                <p className="text-white font-semibold text-sm mt-0.5">{selectedReturn.product_name}</p>
                 <p className="text-slate-400 mt-1">
-                  Qty Retur: <strong className="text-white">{selectedReturn.qty}</strong>
-                  {selectedReturn.batch_no && ` | Batch: ${selectedReturn.batch_no}`}
-                  {selectedReturn.expiry_date && ` | ED: ${selectedReturn.expiry_date}`}
+                  Qty: <strong className="text-white">{selectedReturn.qty}</strong>
+                  {selectedReturn.batch_no && ` • Batch: ${selectedReturn.batch_no}`}
+                  {selectedReturn.expiry_date && ` • ED: ${selectedReturn.expiry_date}`}
                 </p>
               </div>
-              <div className="col-span-2 border-t border-slate-800 pt-3">
-                <p className="text-slate-500 font-medium">Alasan / Kendala (Reason)</p>
+              <div className="col-span-2 border-t border-slate-800 pt-2.5">
+                <p className="text-slate-500 font-medium">Alasan / Kendala</p>
                 <p className="text-amber-300 font-medium mt-0.5">{selectedReturn.reason || "-"}</p>
               </div>
               {selectedReturn.root_cause && (
                 <div className="col-span-2">
-                  <p className="text-slate-500 font-medium">Root Cause (Penyebab)</p>
+                  <p className="text-slate-500 font-medium">Root Cause (Penyebab Masalah)</p>
                   <p className="text-slate-300 mt-0.5">{selectedReturn.root_cause}</p>
-                </div>
-              )}
-              {selectedReturn.person && (
-                <div>
-                  <p className="text-slate-500 font-medium">Penanggung Jawab / PIC</p>
-                  <p className="text-slate-300 mt-0.5">{selectedReturn.person}</p>
-                </div>
-              )}
-              {selectedReturn.nota_retur_no && (
-                <div>
-                  <p className="text-slate-500 font-medium">No. Nota Retur</p>
-                  <p className="text-slate-300 font-mono mt-0.5">{selectedReturn.nota_retur_no}</p>
                 </div>
               )}
             </div>
 
             {/* Quick Status Updater */}
-            <div className="flex items-center justify-between border-t border-slate-800 pt-4">
+            <div className="flex flex-wrap items-center justify-between border-t border-slate-800 pt-3.5 gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Ubah Status:</span>
+                <span className="text-xs text-slate-400">Update:</span>
                 <button
+                  type="button"
                   onClick={() => handleUpdateStatus(selectedReturn.id, "Resolved")}
                   disabled={isUpdating}
-                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1"
+                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm"
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Tandai Selesai (Resolved)
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Selesai (Resolved)</span>
                 </button>
                 <button
-                  onClick={() => handleUpdateStatus(selectedReturn.id, "In Progress")}
-                  disabled={isUpdating}
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold"
-                >
-                  In Progress
-                </button>
-                <button
+                  type="button"
                   onClick={() => handleUpdateStatus(selectedReturn.id, "Pending")}
                   disabled={isUpdating}
-                  className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold"
+                  className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold shadow-sm"
                 >
                   Pending
                 </button>
@@ -610,14 +674,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
 
               {onSelectCustomer && (
                 <button
+                  type="button"
                   onClick={() => {
                     const c = selectedReturn.customer_name;
                     setSelectedReturn(null);
                     onSelectCustomer(c);
                   }}
-                  className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                  className="text-xs text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1"
                 >
-                  <Building2 className="w-3.5 h-3.5" /> Lihat Master Apotek
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>Lihat di Master Customer</span>
                 </button>
               )}
             </div>
@@ -625,19 +691,21 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
         </div>
       )}
 
-      {/* ADD NEW RETURN MODAL */}
+      {/* ─── ADD NEW RETURN MODAL ─── */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-xl w-full p-5 sm:p-6 space-y-4 shadow-2xl relative overflow-hidden">
             <button
+              type="button"
               onClick={() => setShowAddModal(false)}
-              className="absolute right-4 top-4 text-slate-400 hover:text-white p-1"
+              className="absolute right-4 top-4 text-slate-400 hover:text-white p-1 rounded-xl bg-slate-800/80"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
 
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Plus className="w-5 h-5 text-indigo-400" /> Input Komplain / Retur Baru
+              <Plus className="w-5 h-5 text-indigo-400" />
+              <span>Input Tiket Komplain & Retur Baru</span>
             </h3>
 
             <form onSubmit={handleCreateReturn} className="space-y-3 text-xs">
@@ -647,7 +715,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                   <select
                     value={newForm.pbf}
                     onChange={(e) => setNewForm({ ...newForm, pbf: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200 font-semibold"
                   >
                     <option value="MBI">MBI</option>
                     <option value="MAI">MAI</option>
@@ -658,7 +726,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                   <select
                     value={newForm.category}
                     onChange={(e) => setNewForm({ ...newForm, category: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200 font-semibold"
                   >
                     <option value="1P">1P</option>
                     <option value="2P">2P</option>
@@ -675,7 +743,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                   value={newForm.customer_name}
                   onChange={(e) => setNewForm({ ...newForm, customer_name: e.target.value })}
                   placeholder="Contoh: Apotek Halomedika Tebet"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200"
                 />
               </div>
 
@@ -687,7 +755,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                     value={newForm.invoice_no}
                     onChange={(e) => setNewForm({ ...newForm, invoice_no: e.target.value })}
                     placeholder="Contoh: 14040 atau INV/..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200 font-mono"
                   />
                 </div>
                 <div>
@@ -697,7 +765,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                     value={newForm.so_no}
                     onChange={(e) => setNewForm({ ...newForm, so_no: e.target.value })}
                     placeholder="Contoh: 696000"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200 font-mono"
                   />
                 </div>
               </div>
@@ -710,7 +778,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                   value={newForm.product_name}
                   onChange={(e) => setNewForm({ ...newForm, product_name: e.target.value })}
                   placeholder="Contoh: Paracetamol 500mg Strip"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200"
                 />
               </div>
 
@@ -722,7 +790,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                     min="1"
                     value={newForm.qty}
                     onChange={(e) => setNewForm({ ...newForm, qty: Number(e.target.value) })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200 font-bold"
                   />
                 </div>
                 <div>
@@ -732,7 +800,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                     value={newForm.batch_no}
                     onChange={(e) => setNewForm({ ...newForm, batch_no: e.target.value })}
                     placeholder="Opsional"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200 font-mono"
                   />
                 </div>
                 <div>
@@ -742,7 +810,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                     value={newForm.expiry_date}
                     onChange={(e) => setNewForm({ ...newForm, expiry_date: e.target.value })}
                     placeholder="DD/MM/YYYY"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200 font-mono"
                   />
                 </div>
               </div>
@@ -752,7 +820,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                 <select
                   value={newForm.reason}
                   onChange={(e) => setNewForm({ ...newForm, reason: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200 font-medium"
                 >
                   <option value="Fisik yang dikirim salah">Fisik yang dikirim salah</option>
                   <option value="Fisik yang dikirim kurang">Fisik yang dikirim kurang</option>
@@ -764,41 +832,18 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-400 block mb-1">Tindakan (Action)</label>
-                  <input
-                    type="text"
-                    value={newForm.action}
-                    onChange={(e) => setNewForm({ ...newForm, action: e.target.value })}
-                    placeholder="Tukar fisik / CN Retur"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
-                  />
-                </div>
-                <div>
-                  <label className="text-slate-400 block mb-1">Penyebab (Root Cause)</label>
-                  <input
-                    type="text"
-                    value={newForm.root_cause}
-                    onChange={(e) => setNewForm({ ...newForm, root_cause: e.target.value })}
-                    placeholder="Human error / Salah packing"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
-                  />
-                </div>
-              </div>
-
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg"
+                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={isUpdating}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg"
+                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold rounded-xl text-xs shadow-md"
                 >
                   {isUpdating ? "Menyimpan..." : "Simpan Komplain"}
                 </button>
