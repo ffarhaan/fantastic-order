@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
 import { ShipmentReturnRecord } from "@/lib/types";
 import {
   AlertCircle,
@@ -560,126 +560,324 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                 returns.map((r) => {
                   const isResolved = (r.status || "").toLowerCase().includes("resolved");
                   const isPending = (r.status || "").toLowerCase().includes("pending");
+                  const isExpanded = selectedReturn?.id === r.id;
 
                   return (
-                    <tr
-                      key={r.id}
-                      onClick={() => setSelectedReturn(r)}
-                      className="group hover:bg-zinc-100 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
-                    >
-                      <td className="py-2.5 px-3">
-                        <span
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
-                            r.pbf === "MAI"
-                              ? "bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30"
-                              : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
-                          }`}
-                        >
-                          {r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"}
-                        </span>
-                      </td>
-
-                      <td className="py-2.5 px-4 font-bold text-black dark:text-slate-100">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="truncate max-w-[200px]" title={r.customer_name}>
-                            {r.customer_name && r.customer_name !== "#N/A" ? r.customer_name : "-"}
+                    <Fragment key={r.id}>
+                      <tr
+                        onClick={() => setSelectedReturn((prev) => (prev?.id === r.id ? null : r))}
+                        className={`group hover:bg-zinc-100 dark:hover:bg-slate-800/30 transition-colors cursor-pointer ${
+                          isExpanded
+                            ? "bg-indigo-50/70 dark:bg-slate-800/60 font-semibold border-l-4 border-l-indigo-600 dark:border-l-indigo-500"
+                            : ""
+                        }`}
+                      >
+                        <td className="py-2.5 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                              r.pbf === "MAI"
+                                ? "bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30"
+                                : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
+                            }`}
+                          >
+                            {r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"}
                           </span>
-                          {r.category && r.category !== "#N/A" && (
-                            <span
-                              className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
-                                r.category === "1P"
-                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300"
-                                  : r.category === "2P"
-                                  ? "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/50 dark:text-cyan-300"
-                                  : "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300"
-                              }`}
+                        </td>
+
+                        <td className="py-2.5 px-4 font-bold text-black dark:text-slate-100">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="truncate max-w-[200px]" title={r.customer_name}>
+                              {r.customer_name && r.customer_name !== "#N/A" ? r.customer_name : "-"}
+                            </span>
+                            {r.category && r.category !== "#N/A" && (
+                              <span
+                                className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                                  r.category === "1P"
+                                    ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300"
+                                    : r.category === "2P"
+                                    ? "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/50 dark:text-cyan-300"
+                                    : "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300"
+                                }`}
+                              >
+                                {r.category}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-2.5 px-3 font-mono text-[11px]">
+                          {r.invoice_no && r.invoice_no !== "#N/A" ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onSelectInvoice) onSelectInvoice(r.invoice_no);
+                              }}
+                              className="font-bold text-blue-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                              title="Buka Faktur Terkait"
                             >
-                              {r.category}
+                              <span>{r.invoice_no}</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </button>
+                          ) : (
+                            <span className="text-zinc-400 dark:text-slate-600">-</span>
+                          )}
+                        </td>
+
+                        <td className="py-2.5 px-3 font-mono text-zinc-600 dark:text-slate-400 text-[11px]">
+                          {r.so_no && r.so_no !== "#N/A" ? r.so_no : "-"}
+                        </td>
+
+                        <td className="py-2.5 px-4 max-w-[220px]">
+                          <p className="truncate font-bold text-black dark:text-slate-200" title={r.product_name}>
+                            {r.product_name && r.product_name !== "#N/A" ? r.product_name : "-"}
+                          </p>
+                          <p className="text-[10px] text-zinc-600 dark:text-slate-400">
+                            Qty: <strong className="text-black dark:text-slate-200">{r.qty || 1}</strong>
+                            {r.batch_no && r.batch_no !== "#N/A" && ` • Batch: ${r.batch_no}`}
+                          </p>
+                        </td>
+
+                        <td className="py-2.5 px-4 max-w-[190px]">
+                          <span className="truncate block text-zinc-800 dark:text-slate-300 font-semibold" title={r.reason}>
+                            {r.reason && r.reason !== "#N/A" ? r.reason : "-"}
+                          </span>
+                          {r.root_cause && r.root_cause !== "#N/A" && (
+                            <span className="text-[10px] text-zinc-500 dark:text-slate-500 truncate block">
+                              Penyebab: {r.root_cause}
                             </span>
                           )}
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="py-2.5 px-3 font-mono text-[11px]">
-                        {r.invoice_no && r.invoice_no !== "#N/A" ? (
+                        <td className="py-2.5 px-3 text-center">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              isResolved
+                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30"
+                                : isPending
+                                ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
+                                : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/30"
+                            }`}
+                          >
+                            {isResolved ? (
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                            ) : (
+                              <Clock className="w-2.5 h-2.5" />
+                            )}
+                            <span>{r.status || "Pending"}</span>
+                          </span>
+                        </td>
+
+                        <td className="py-2.5 px-3 text-zinc-800 dark:text-slate-300 max-w-[130px] truncate font-medium">
+                          {r.action && r.action !== "#N/A" ? r.action : "-"}
+                        </td>
+
+                        <td className="py-2.5 px-3 text-center">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (onSelectInvoice) onSelectInvoice(r.invoice_no);
+                              setSelectedReturn((prev) => (prev?.id === r.id ? null : r));
                             }}
-                            className="font-bold text-blue-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-                            title="Buka Faktur Terkait"
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all shadow-xs ${
+                              isExpanded
+                                ? "bg-black text-white dark:bg-indigo-600 border-black dark:border-indigo-500"
+                                : "bg-zinc-100 hover:bg-zinc-200 text-black border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
+                            }`}
                           >
-                            <span>{r.invoice_no}</span>
-                            <ExternalLink className="w-2.5 h-2.5" />
+                            {isExpanded ? "▲ Tutup" : "Edit / Tindakan"}
                           </button>
-                        ) : (
-                          <span className="text-zinc-400 dark:text-slate-600">-</span>
-                        )}
-                      </td>
+                        </td>
+                      </tr>
 
-                      <td className="py-2.5 px-3 font-mono text-zinc-600 dark:text-slate-400 text-[11px]">
-                        {r.so_no && r.so_no !== "#N/A" ? r.so_no : "-"}
-                      </td>
+                      {/* ─── OPSI 4: EXPANDABLE ROW (AKORDEON) ─── */}
+                      {isExpanded && (
+                        <tr className="bg-zinc-100/90 dark:bg-[#070b16] border-y-2 border-indigo-500/50 animate-in fade-in duration-150">
+                          <td colSpan={9} className="p-3.5 sm:p-5">
+                            <div className="bg-white dark:bg-[#0d1424] border border-zinc-300 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+                              
+                              {/* Header Bar */}
+                              <div className="flex flex-wrap items-center justify-between border-b border-zinc-200 dark:border-slate-800 pb-3 gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 dark:bg-indigo-400"></span>
+                                  <h4 className="font-black text-sm text-black dark:text-white">
+                                    Tindak Lanjut Tiket #{r.id} • Faktur {r.invoice_no || "-"}
+                                  </h4>
+                                  <span className="text-xs text-zinc-500 dark:text-slate-400 font-bold">({r.customer_name})</span>
+                                </div>
+                                
+                                <div className="flex items-center gap-2 text-xs">
+                                  <span className="bg-zinc-100 dark:bg-slate-800 text-zinc-700 dark:text-slate-300 px-2.5 py-0.5 rounded-md font-bold border border-zinc-300 dark:border-slate-700">
+                                    Batch: {r.batch_no || "-"}
+                                  </span>
+                                  <span className="bg-zinc-100 dark:bg-slate-800 text-zinc-700 dark:text-slate-300 px-2.5 py-0.5 rounded-md font-bold border border-zinc-300 dark:border-slate-700">
+                                    ED: {r.expiry_date || "-"}
+                                  </span>
+                                  <span className="bg-zinc-100 dark:bg-slate-800 text-zinc-700 dark:text-slate-300 px-2.5 py-0.5 rounded-md font-bold border border-zinc-300 dark:border-slate-700">
+                                    Qty: {r.qty || 1}
+                                  </span>
+                                </div>
+                              </div>
 
-                      <td className="py-2.5 px-4 max-w-[220px]">
-                        <p className="truncate font-bold text-black dark:text-slate-200" title={r.product_name}>
-                          {r.product_name && r.product_name !== "#N/A" ? r.product_name : "-"}
-                        </p>
-                        <p className="text-[10px] text-zinc-600 dark:text-slate-400">
-                          Qty: <strong className="text-black dark:text-slate-200">{r.qty || 1}</strong>
-                          {r.batch_no && r.batch_no !== "#N/A" && ` • Batch: ${r.batch_no}`}
-                        </p>
-                      </td>
+                              {/* Issue Summary */}
+                              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <div>
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-400 block">
+                                    Kendala / Alasan Dilaporkan (Reason)
+                                  </span>
+                                  <p className="font-bold text-amber-900 dark:text-amber-200 text-sm mt-0.5">
+                                    {r.reason || "Tidak ada rincian alasan"}
+                                  </p>
+                                </div>
+                                <p className="text-xs text-zinc-600 dark:text-slate-400 font-medium">
+                                  Produk: <strong className="text-black dark:text-white font-bold">{r.product_name}</strong>
+                                </p>
+                              </div>
 
-                      <td className="py-2.5 px-4 max-w-[190px]">
-                        <span className="truncate block text-zinc-800 dark:text-slate-300 font-semibold" title={r.reason}>
-                          {r.reason && r.reason !== "#N/A" ? r.reason : "-"}
-                        </span>
-                        {r.root_cause && r.root_cause !== "#N/A" && (
-                          <span className="text-[10px] text-zinc-500 dark:text-slate-500 truncate block">
-                            Penyebab: {r.root_cause}
-                          </span>
-                        )}
-                      </td>
+                              {/* Form Grid (No scrolling needed!) */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                                {/* 1. Status */}
+                                <div>
+                                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">Status Tiket</label>
+                                  <select
+                                    value={editForm.status}
+                                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-white font-bold focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                                  >
+                                    <option value="Pending">Pending (Menunggu)</option>
+                                    <option value="In Progress">In Progress (Diproses)</option>
+                                    <option value="Resolved">Resolved (Selesai)</option>
+                                    <option value="Approve">Approve</option>
+                                  </select>
+                                </div>
 
-                      <td className="py-2.5 px-3 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            isResolved
-                              ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30"
-                              : isPending
-                              ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
-                              : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/30"
-                          }`}
-                        >
-                          {isResolved ? (
-                            <CheckCircle2 className="w-2.5 h-2.5" />
-                          ) : (
-                            <Clock className="w-2.5 h-2.5" />
-                          )}
-                          <span>{r.status || "Pending"}</span>
-                        </span>
-                      </td>
+                                {/* 2. Tindakan / Action */}
+                                <div>
+                                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">Tindakan (Action)</label>
+                                  <input
+                                    type="text"
+                                    value={editForm.action}
+                                    onChange={(e) => setEditForm({ ...editForm, action: e.target.value })}
+                                    placeholder="Tukar fisik / Retur nota / Kirim susulan"
+                                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-white font-bold focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                                  />
+                                </div>
 
-                      <td className="py-2.5 px-3 text-zinc-800 dark:text-slate-300 max-w-[130px] truncate font-medium">
-                        {r.action && r.action !== "#N/A" ? r.action : "-"}
-                      </td>
+                                {/* 3. Penyebab Masalah / Root Cause */}
+                                <div>
+                                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">Penyebab (Root Cause)</label>
+                                  <input
+                                    type="text"
+                                    value={editForm.root_cause}
+                                    onChange={(e) => setEditForm({ ...editForm, root_cause: e.target.value })}
+                                    placeholder="Human error / Picker salah ambil / dll"
+                                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-white font-medium focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                                  />
+                                </div>
 
-                      <td className="py-2.5 px-3 text-center">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedReturn(r);
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-black text-[11px] font-bold border border-zinc-300 dark:bg-slate-800 dark:hover:bg-indigo-600 dark:text-slate-200 dark:hover:text-white dark:border-slate-700 transition-all shadow-xs"
-                        >
-                          Detail
-                        </button>
-                      </td>
-                    </tr>
+                                {/* 4. Konfirmasi / Confirm */}
+                                <div>
+                                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">Status Konfirmasi</label>
+                                  <select
+                                    value={editForm.confirm}
+                                    onChange={(e) => setEditForm({ ...editForm, confirm: e.target.value })}
+                                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-white font-bold focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                                  >
+                                    <option value="Approve">Approve (Disetujui)</option>
+                                    <option value="Reject">Reject (Ditolak)</option>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Review">Review</option>
+                                  </select>
+                                </div>
+
+                                {/* 5. No Nota Retur */}
+                                <div>
+                                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">No. Nota Retur</label>
+                                  <input
+                                    type="text"
+                                    value={editForm.nota_retur_no}
+                                    onChange={(e) => setEditForm({ ...editForm, nota_retur_no: e.target.value })}
+                                    placeholder="Contoh: NR-2024-001 (opsional)"
+                                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-white font-mono focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                                  />
+                                </div>
+
+                                {/* 6. Person / PIC */}
+                                <div>
+                                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">PIC / Petugas</label>
+                                  <input
+                                    type="text"
+                                    value={editForm.person}
+                                    onChange={(e) => setEditForm({ ...editForm, person: e.target.value })}
+                                    placeholder="Nama PIC penanggung jawab"
+                                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-white font-medium focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                                  />
+                                </div>
+
+                                {/* 7. Catatan Tambahan (Note) */}
+                                <div className="sm:col-span-2">
+                                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">Catatan Tambahan (Note)</label>
+                                  <input
+                                    type="text"
+                                    value={editForm.note}
+                                    onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
+                                    placeholder="Tulis catatan tindak lanjut..."
+                                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-white font-medium focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Footer Bar: Actions & Links */}
+                              <div className="flex flex-wrap items-center justify-between border-t border-zinc-200 dark:border-slate-800 pt-3 gap-2">
+                                <span className="text-[11px] text-zinc-500 dark:text-slate-400 font-medium">
+                                  ⚡ Otomatis tersinkron ke TiDB Serverless & Google Sheet (SHIPMENT ERROR)
+                                </span>
+
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedReturn(null)}
+                                    className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-black dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold border border-zinc-300 dark:border-slate-700 transition-all"
+                                  >
+                                    Tutup
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={handleSaveEdit}
+                                    disabled={isUpdating}
+                                    className="px-4 py-1.5 bg-black hover:bg-zinc-800 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50"
+                                  >
+                                    {isUpdating ? (
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>{isUpdating ? "Menyimpan & Sync..." : "Simpan & Sync Sheet"}</span>
+                                  </button>
+
+                                  {onSelectCustomer && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const c = r.customer_name;
+                                        setSelectedReturn(null);
+                                        onSelectCustomer(c);
+                                      }}
+                                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-1 ml-2"
+                                    >
+                                      <Building2 className="w-3.5 h-3.5" />
+                                      <span>Lihat Master Customer</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })
               )}
@@ -721,278 +919,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
           </div>
         </div>
       </div>
-
-      {/* ─── DETAIL & EDIT MODAL ─── */}
-      {selectedReturn && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700/80 rounded-2xl max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-2xl relative my-auto">
-            <button
-              type="button"
-              onClick={() => setSelectedReturn(null)}
-              className="absolute right-4 top-4 text-zinc-500 hover:text-black dark:text-slate-400 dark:hover:text-white p-1 rounded-xl bg-zinc-100 dark:bg-slate-800"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-black text-black dark:text-white">Edit & Rincian Komplain / Retur</h3>
-                <p className="text-xs text-zinc-500 dark:text-slate-400">ID #{selectedReturn.id} • PBF {selectedReturn.pbf}</p>
-              </div>
-            </div>
-
-            {/* ─── GROUP 1: DATA FAKTUR & APOTEK ─── */}
-            <div className="bg-zinc-50 dark:bg-slate-950/80 p-3.5 rounded-xl border border-zinc-200 dark:border-slate-800 space-y-2.5">
-              <h4 className="text-[11px] font-black uppercase tracking-wider text-zinc-900 dark:text-slate-300 flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span>1. Data Faktur & Apotek</span>
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                <div className="sm:col-span-2">
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">Nama Apotek / Merchant</label>
-                  <input
-                    type="text"
-                    value={editForm.customer_name}
-                    onChange={(e) => setEditForm({ ...editForm, customer_name: e.target.value })}
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">PBF</label>
-                  <select
-                    value={editForm.pbf}
-                    onChange={(e) => setEditForm({ ...editForm, pbf: e.target.value })}
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-bold"
-                  >
-                    <option value="MBI">MBI</option>
-                    <option value="MAI">MAI</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">No. Faktur (Invoice)</label>
-                  <input
-                    type="text"
-                    value={editForm.invoice_no}
-                    onChange={(e) => setEditForm({ ...editForm, invoice_no: e.target.value })}
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-indigo-700 dark:text-indigo-400 font-mono font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">No. Sales Order (SO)</label>
-                  <input
-                    type="text"
-                    value={editForm.so_no}
-                    onChange={(e) => setEditForm({ ...editForm, so_no: e.target.value })}
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">Kategori</label>
-                  <select
-                    value={editForm.category}
-                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-bold"
-                  >
-                    <option value="1P">1P</option>
-                    <option value="2P">2P</option>
-                    <option value="3P">3P</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* ─── GROUP 2: PRODUK & KENDALA ─── */}
-            <div className="bg-zinc-50 dark:bg-slate-950/80 p-3.5 rounded-xl border border-zinc-200 dark:border-slate-800 space-y-2.5">
-              <h4 className="text-[11px] font-black uppercase tracking-wider text-zinc-900 dark:text-slate-300 flex items-center gap-1.5">
-                <Package className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                <span>2. Detail Produk & Kendala (Reason)</span>
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-xs">
-                <div className="sm:col-span-3">
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">Nama Produk yang Dikomplain</label>
-                  <input
-                    type="text"
-                    value={editForm.product_name}
-                    onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">Kuantitas (Qty Retur)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={editForm.qty}
-                    onChange={(e) => setEditForm({ ...editForm, qty: Number(e.target.value) || 1 })}
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">Batch Number</label>
-                  <input
-                    type="text"
-                    value={editForm.batch_no}
-                    onChange={(e) => setEditForm({ ...editForm, batch_no: e.target.value })}
-                    placeholder="Nomor batch"
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">Expiry Date (ED)</label>
-                  <input
-                    type="text"
-                    value={editForm.expiry_date}
-                    onChange={(e) => setEditForm({ ...editForm, expiry_date: e.target.value })}
-                    placeholder="YYYY-MM-DD"
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">Alasan / Kendala (Reason)</label>
-                  <input
-                    type="text"
-                    value={editForm.reason}
-                    onChange={(e) => setEditForm({ ...editForm, reason: e.target.value })}
-                    placeholder="Alasan komplain..."
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-amber-700 dark:text-amber-300 font-bold"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* ─── GROUP 3: TINDAKAN & RESOLUSI ─── */}
-            <div className="bg-zinc-50 dark:bg-slate-950/80 p-3.5 rounded-xl border border-zinc-200 dark:border-slate-800 space-y-2.5">
-              <h4 className="text-[11px] font-black uppercase tracking-wider text-zinc-900 dark:text-slate-300 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>3. Tindakan (Action) & Status Resolusi</span>
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">Status Tiket</label>
-                  <select
-                    value={editForm.status}
-                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-bold"
-                  >
-                    <option value="Pending">Pending (Menunggu)</option>
-                    <option value="In Progress">In Progress (Diproses)</option>
-                    <option value="Resolved">Resolved (Selesai)</option>
-                    <option value="Approve">Approve</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">Konfirmasi (Confirm)</label>
-                  <select
-                    value={editForm.confirm}
-                    onChange={(e) => setEditForm({ ...editForm, confirm: e.target.value })}
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-bold"
-                  >
-                    <option value="Approve">Approve</option>
-                    <option value="Reject">Reject</option>
-                    <option value="Pending">Pending</option>
-                    <option value="Review">Review</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">Tindakan (Action)</label>
-                  <input
-                    type="text"
-                    value={editForm.action}
-                    onChange={(e) => setEditForm({ ...editForm, action: e.target.value })}
-                    placeholder="Tukar fisik / Retur nota / Kirim susulan"
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">Penyebab Masalah (Root Cause)</label>
-                  <input
-                    type="text"
-                    value={editForm.root_cause}
-                    onChange={(e) => setEditForm({ ...editForm, root_cause: e.target.value })}
-                    placeholder="Human error / Picker salah / dll"
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-medium"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">No. Nota Retur</label>
-                  <input
-                    type="text"
-                    value={editForm.nota_retur_no}
-                    onChange={(e) => setEditForm({ ...editForm, nota_retur_no: e.target.value })}
-                    placeholder="No. Nota Retur"
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">PIC / Petugas (Person)</label>
-                  <input
-                    type="text"
-                    value={editForm.person}
-                    onChange={(e) => setEditForm({ ...editForm, person: e.target.value })}
-                    placeholder="Nama PIC penanggung jawab"
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-medium"
-                  />
-                </div>
-                <div className="sm:col-span-3">
-                  <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-1">Catatan Tambahan (Note)</label>
-                  <textarea
-                    rows={2}
-                    value={editForm.note}
-                    onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
-                    placeholder="Tulis catatan penanganan / keterangan retur..."
-                    className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-2 text-black dark:text-white font-medium resize-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Actions & Submit */}
-            <div className="flex flex-wrap items-center justify-between border-t border-zinc-200 dark:border-slate-800 pt-3.5 gap-2">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveEdit}
-                  disabled={isUpdating}
-                  className="px-4 py-2 bg-black hover:bg-zinc-800 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50"
-                >
-                  {isUpdating ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                  )}
-                  <span>{isUpdating ? "Menyimpan..." : "Simpan Perubahan & Sync"}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedReturn(null)}
-                  className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-black dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold border border-zinc-300 dark:border-slate-700 transition-all"
-                >
-                  Batal
-                </button>
-              </div>
-
-              {onSelectCustomer && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const c = selectedReturn.customer_name;
-                    setSelectedReturn(null);
-                    onSelectCustomer(c);
-                  }}
-                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-1"
-                >
-                  <Building2 className="w-3.5 h-3.5" />
-                  <span>Lihat di Master Customer</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ─── ADD NEW RETURN MODAL ─── */}
       {showAddModal && (
