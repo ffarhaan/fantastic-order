@@ -481,84 +481,19 @@ export async function POST(req: Request) {
         ]
       );
 
-      // Fetch updated record for webhook sync
-      try {
-        const rows = (await conn.execute("SELECT * FROM shipment_returns WHERE id = ? LIMIT 1", [id])) as any[];
-        const updatedRow = rows?.[0];
-
-        const webhookUrl = process.env.APPS_SCRIPT_SHIPMENT_WEBHOOK_URL;
-        if (webhookUrl && updatedRow) {
-          fetch(webhookUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              pbf: updatedRow.pbf,
-              namaApotek: updatedRow.customer_name,
-              invoiceNo: updatedRow.invoice_no,
-              soNo: updatedRow.so_no,
-              productName: updatedRow.product_name,
-              qty: updatedRow.qty,
-              batchNo: updatedRow.batch_no,
-              expiryDate: updatedRow.expiry_date,
-              reason: updatedRow.reason,
-              invoiceDate: updatedRow.invoice_date,
-              category: updatedRow.category,
-              confirm: updatedRow.confirm,
-              action: updatedRow.action,
-              notaReturNo: updatedRow.nota_retur_no,
-              resolvedDate: updatedRow.resolved_date,
-              status: updatedRow.status,
-              note: updatedRow.note,
-              person: updatedRow.person,
-              rootCause: updatedRow.root_cause,
-            }),
-          }).catch((err) => {
-            console.error("Async webhook forward error:", err);
-          });
-        }
-      } catch (syncErr) {
-        console.error("Failed to forward update to Google Sheets webhook:", syncErr);
-      }
-
       return Response.json({ success: true });
     }
 
-    // 2.5. Delete shipment return (with GSheet webhook sync)
+    // 2.5. Delete shipment return
     if (action === "delete_return") {
       const id = searchParams.get("id") || body?.id;
       if (!id) {
         return Response.json({ success: false, error: "Missing return id" }, { status: 400 });
       }
 
-      // Fetch row before delete so we know invoice_no for GSheet deletion
-      let targetInvoice = "";
-      try {
-        const rows = (await conn.execute("SELECT invoice_no FROM shipment_returns WHERE id = ? LIMIT 1", [id])) as any[];
-        targetInvoice = rows?.[0]?.invoice_no || "";
-      } catch (e) {}
-
       await conn.execute("DELETE FROM shipment_returns WHERE id = ?", [id]);
 
-      // Forward delete action to Google Apps Script webhook
-      try {
-        const webhookUrl = process.env.APPS_SCRIPT_SHIPMENT_WEBHOOK_URL;
-        if (webhookUrl && targetInvoice) {
-          fetch(webhookUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              actionType: "delete",
-              invoiceNo: targetInvoice,
-            }),
-          }).catch((err) => {
-            console.error("Async webhook delete error:", err);
-          });
-        }
-      } catch (syncErr) {
-        console.error("Failed to forward delete to GSheet:", syncErr);
-      }
-
-      return Response.json({ success: true, deletedInvoice: targetInvoice });
+      return Response.json({ success: true });
     }
 
     // 3. Batch sync fakturs

@@ -226,34 +226,18 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
   }, [fetchReturns]);
 
   const handleDeleteReturn = async (id: number, invoiceNo: string) => {
-    if (!confirm(`Hapus tiket komplain untuk faktur "${invoiceNo || id}"?\n\nData akan langsung dihapus dari aplikasi dan Google Sheet SHIPMENT ERROR.`)) {
+    if (!confirm(`Hapus tiket komplain untuk faktur "${invoiceNo || id}"?\n\nData akan dihapus permanen dari sistem Fantastic Order.`)) {
       return;
     }
     setIsUpdating(true);
     try {
-      // 1. Delete di TiDB Cloud
+      // Delete di TiDB Cloud
       const res = await fetch(`/api/tidb?action=delete_return&id=${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
       const data = await res.json().catch(() => ({ success: false, error: "Gagal membaca respon server" }));
-
-      // 2. Direct browser sync fallback ke GSheet Webhook
-      const webhookUrl = process.env.NEXT_PUBLIC_APPS_SCRIPT_SHIPMENT_WEBHOOK_URL;
-      if (webhookUrl && invoiceNo) {
-        try {
-          fetch(webhookUrl, {
-            method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              actionType: "delete",
-              invoiceNo: invoiceNo,
-            }),
-          }).catch(() => {});
-        } catch (e) {}
-      }
 
       if (data.success) {
         setReturns((prev) => prev.filter((r) => r.id !== id));
@@ -323,41 +307,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
       });
       const data = await res.json();
 
-      // 2. Direct browser sync to Google Apps Script Webhook
-      const webhookUrl = process.env.NEXT_PUBLIC_APPS_SCRIPT_SHIPMENT_WEBHOOK_URL;
-      if (webhookUrl) {
-        try {
-          fetch(webhookUrl, {
-            method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              pbf: editForm.pbf,
-              namaApotek: editForm.customer_name,
-              invoiceNo: editForm.invoice_no,
-              soNo: editForm.so_no,
-              productName: editForm.product_name,
-              qty: editForm.qty,
-              batchNo: editForm.batch_no,
-              expiryDate: editForm.expiry_date,
-              reason: editForm.reason,
-              invoiceDate: editForm.invoice_date,
-              category: editForm.category,
-              confirm: editForm.confirm,
-              action: editForm.action,
-              notaReturNo: editForm.nota_retur_no,
-              resolvedDate: resolvedDate,
-              status: editForm.status,
-              note: editForm.note,
-              person: editForm.person,
-              rootCause: editForm.root_cause,
-            }),
-          }).catch(() => {});
-        } catch (e) {
-          // ignore
-        }
-      }
-
       if (data.success) {
         setReturns((prev) =>
           prev.map((r) =>
@@ -396,41 +345,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
         body: JSON.stringify(newForm),
       });
       const data = await res.json();
-
-      // Direct browser sync to Google Apps Script Webhook
-      const webhookUrl = process.env.NEXT_PUBLIC_APPS_SCRIPT_SHIPMENT_WEBHOOK_URL;
-      if (webhookUrl) {
-        try {
-          fetch(webhookUrl, {
-            method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              actionType: "create",
-              pbf: newForm.pbf,
-              namaApotek: newForm.customer_name,
-              invoiceNo: newForm.invoice_no,
-              soNo: newForm.so_no,
-              productName: newForm.product_name,
-              qty: newForm.qty,
-              batchNo: newForm.batch_no,
-              expiryDate: newForm.expiry_date,
-              reason: newForm.reason,
-              invoiceDate: new Date().toISOString().split("T")[0],
-              reportDate: new Date().toISOString().split("T")[0],
-              category: newForm.category,
-              confirm: newForm.confirm,
-              action: newForm.action,
-              status: newForm.status,
-              note: newForm.note,
-              person: newForm.person,
-              rootCause: newForm.root_cause,
-            }),
-          }).catch(() => {});
-        } catch (e) {
-          // ignore
-        }
-      }
 
       if (data.success) {
         setShowAddModal(false);
@@ -761,19 +675,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
             <Plus className="w-4 h-4" />
             <span>Input Komplain Baru</span>
           </button>
-
-          {/* Action Link: Buka Google Sheet Shipment Error */}
-          <a
-            href="https://docs.google.com/spreadsheets/d/1ZU07XQR0PWqa2gqZc2Cf6a1pFITgkSE06R9rPScamg0/edit?gid=1888106176#gid=1888106176"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="py-2 px-3 bg-white hover:bg-zinc-100 text-black dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold border border-zinc-300 dark:border-slate-700 flex items-center gap-1.5 transition-all shadow-xs"
-            title="Buka Spreadsheet Shipment Error"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>Buka Google Sheet</span>
-            <ExternalLink className="w-3 h-3 text-zinc-400" />
-          </a>
 
           {/* Status Filter */}
           <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-slate-700/60 rounded-xl px-2.5 py-1">
@@ -1213,7 +1114,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                   </div>
                                 </div>
                               ) : (
-                                /* MODE 2: Edit Lengkap Semua Kolom GSheet */
+                                /* MODE 2: Edit Lengkap Semua Kolom */
                                 <div className="space-y-4">
                                   {/* Block 1: Identitas & Faktur */}
                                   <div className="bg-zinc-50 dark:bg-slate-950/80 p-3 rounded-xl border border-zinc-200 dark:border-slate-800 space-y-2">
@@ -1420,7 +1321,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                               {/* Footer Bar: Actions & Links */}
                               <div className="flex flex-wrap items-center justify-between border-t border-zinc-200 dark:border-slate-800 pt-3 gap-2">
                                 <span className="text-[11px] text-zinc-500 dark:text-slate-400 font-medium">
-                                  âš¡ Otomatis tersinkron ke TiDB Serverless & Google Sheet (SHIPMENT ERROR)
+                                  ⚡ Tersimpan aman di Master Database TiDB Cloud Serverless
                                 </span>
 
                                 <div className="flex items-center gap-2">
@@ -1430,7 +1331,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                     onClick={() => handleDeleteReturn(r.id, r.invoice_no)}
                                     disabled={isUpdating}
                                     className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 rounded-xl text-xs font-bold border border-red-300 dark:border-red-800 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                                    title="Hapus komplain ini dari database & Google Sheet"
+                                    title="Hapus komplain ini dari database"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                     <span>Hapus</span>
@@ -1455,7 +1356,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                     ) : (
                                       <CheckCircle2 className="w-3.5 h-3.5" />
                                     )}
-                                    <span>{isUpdating ? "Menyimpan & Sync..." : "Simpan & Sync Sheet"}</span>
+                                    <span>{isUpdating ? "Menyimpan..." : "Simpan Perubahan"}</span>
                                   </button>
 
                                   {onSelectCustomer && (
