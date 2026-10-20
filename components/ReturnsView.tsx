@@ -28,6 +28,7 @@ import {
   Copy,
   Check,
   Share2,
+  Trash2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -143,8 +144,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
 
   const limit = 50;
 
-  const fetchReturns = useCallback(async () => {
-    setLoading(true);
+  const fetchReturns = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({
         action: "returns",
@@ -166,13 +167,62 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
     } catch (err) {
       console.error("Failed to fetch returns:", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [debouncedSearch, statusFilter, pbfFilter, categoryFilter, page]);
 
+  // Real-time polling: fetch every 3 seconds so new complaints or status changes appear in < 3 seconds
   useEffect(() => {
     fetchReturns();
+    const interval = setInterval(() => {
+      fetchReturns(true);
+    }, 3000);
+    return () => clearInterval(interval);
   }, [fetchReturns]);
+
+  const handleDeleteReturn = async (id: number, invoiceNo: string) => {
+    if (!confirm(`Hapus tiket komplain untuk faktur "${invoiceNo || id}"?\n\nData akan langsung dihapus dari aplikasi dan Google Sheet SHIPMENT ERROR.`)) {
+      return;
+    }
+    setIsUpdating(true);
+    try {
+      // 1. Delete di TiDB Cloud
+      const res = await fetch(`/api/tidb?action=delete_return&id=${id}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      // 2. Direct browser sync fallback ke GSheet Webhook
+      const webhookUrl = process.env.NEXT_PUBLIC_APPS_SCRIPT_SHIPMENT_WEBHOOK_URL;
+      if (webhookUrl && invoiceNo) {
+        try {
+          fetch(webhookUrl, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              actionType: "delete",
+              invoiceNo: invoiceNo,
+            }),
+          }).catch(() => {});
+        } catch (e) {}
+      }
+
+      if (data.success) {
+        setReturns((prev) => prev.filter((r) => r.id !== id));
+        if (selectedReturn?.id === id) {
+          setSelectedReturn(null);
+        }
+        fetchReturns(true);
+      } else {
+        alert("Gagal menghapus data: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      alert("Error saat menghapus: " + err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const handleUpdateStatus = async (id: number, newStatus: string) => {
     setIsUpdating(true);
@@ -624,7 +674,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
 
           <button
             type="button"
-            onClick={fetchReturns}
+            onClick={() => fetchReturns()}
             disabled={loading}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition-all active:scale-95 shadow-sm"
             title="Refresh Data"
@@ -1175,6 +1225,18 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                 </span>
 
                                 <div className="flex items-center gap-2">
+                                  {/* Delete Return Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteReturn(r.id, r.invoice_no)}
+                                    disabled={isUpdating}
+                                    className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 rounded-xl text-xs font-bold border border-red-300 dark:border-red-800 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                    title="Hapus komplain ini dari database & Google Sheet"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Hapus</span>
+                                  </button>
+
                                   <button
                                     type="button"
                                     onClick={() => setSelectedReturn(null)}
