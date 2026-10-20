@@ -25,6 +25,9 @@ import {
   Layers,
   ArrowRight,
   ShieldAlert,
+  Copy,
+  Check,
+  Share2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -48,6 +51,17 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
   const [showAddModal, setShowAddModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [editMode, setEditMode] = useState<"action" | "all">("action");
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const handleCopyComplaintLink = () => {
+    if (typeof window !== "undefined") {
+      const url = `${window.location.origin}/komplain`;
+      navigator.clipboard.writeText(url).then(() => {
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 2500);
+      });
+    }
+  };
 
   // Editable return fields state (all columns)
   const [editForm, setEditForm] = useState({
@@ -285,6 +299,42 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
         body: JSON.stringify(newForm),
       });
       const data = await res.json();
+
+      // Direct browser sync to Google Apps Script Webhook
+      const webhookUrl = process.env.NEXT_PUBLIC_APPS_SCRIPT_SHIPMENT_WEBHOOK_URL;
+      if (webhookUrl) {
+        try {
+          fetch(webhookUrl, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              actionType: "create",
+              pbf: newForm.pbf,
+              namaApotek: newForm.customer_name,
+              invoiceNo: newForm.invoice_no,
+              soNo: newForm.so_no,
+              productName: newForm.product_name,
+              qty: newForm.qty,
+              batchNo: newForm.batch_no,
+              expiryDate: newForm.expiry_date,
+              reason: newForm.reason,
+              invoiceDate: new Date().toISOString().split("T")[0],
+              reportDate: new Date().toISOString().split("T")[0],
+              category: newForm.category,
+              confirm: newForm.confirm,
+              action: newForm.action,
+              status: newForm.status,
+              note: newForm.note,
+              person: newForm.person,
+              rootCause: newForm.root_cause,
+            }),
+          }).catch(() => {});
+        } catch (e) {
+          // ignore
+        }
+      }
+
       if (data.success) {
         setShowAddModal(false);
         setNewForm({
@@ -458,6 +508,43 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Action Link: Salin Link Form Komplain Publik */}
+          <button
+            type="button"
+            onClick={handleCopyComplaintLink}
+            className={`py-2 px-3 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+              linkCopied
+                ? "bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-600 dark:border-emerald-500"
+                : "bg-white hover:bg-zinc-100 text-zinc-800 border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
+            }`}
+            title="Salin link form komplain publik untuk dibagikan ke apotek atau tim sales"
+          >
+            {linkCopied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-white" />
+                <span>Link Tersalin!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Salin Link Form</span>
+              </>
+            )}
+          </button>
+
+          {/* Action Link: Buka Form Komplain Publik */}
+          <a
+            href="/komplain"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="py-2 px-3 bg-white hover:bg-zinc-100 text-black dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold border border-zinc-300 dark:border-slate-700 flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+            title="Buka form input komplain di tab baru"
+          >
+            <Share2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            <span>Buka Form</span>
+            <ExternalLink className="w-3 h-3 text-zinc-400" />
+          </a>
+
           {/* Action Link: Input Komplain Baru */}
           <button
             type="button"
@@ -1210,6 +1297,32 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
               <Plus className="w-5 h-5 text-indigo-400" />
               <span>Input Tiket Komplain & Retur Baru</span>
             </h3>
+
+            {/* Standalone Shareable Form Tip */}
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2 text-xs text-slate-300">
+              <span className="text-[11px] text-slate-400">
+                Bagikan form mandiri ke sales / apotek:
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCopyComplaintLink}
+                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 border border-slate-700 flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  {linkCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-indigo-400" />}
+                  <span>{linkCopied ? "Tersalin!" : "Salin Link"}</span>
+                </button>
+                <a
+                  href="/komplain"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-[11px] font-bold text-white flex items-center gap-1 transition-colors"
+                >
+                  <span>Buka Form</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
 
             <form onSubmit={handleCreateReturn} className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-3">

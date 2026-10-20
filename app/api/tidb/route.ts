@@ -309,6 +309,42 @@ export async function POST(req: Request) {
         ]
       )) as any;
 
+      // Sync new return to Google Apps Script Webhook (Append row to Google Sheets)
+      try {
+        const webhookUrl = process.env.APPS_SCRIPT_SHIPMENT_WEBHOOK_URL;
+        if (webhookUrl) {
+          fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              actionType: "create",
+              pbf: pbf || "MBI",
+              namaApotek: customer_name || "",
+              invoiceNo: invoice_no || "",
+              soNo: so_no || "",
+              productName: product_name || "",
+              qty: Number(qty) || 1,
+              batchNo: batch_no || "",
+              expiryDate: expiry_date || "",
+              reason: reason || "",
+              invoiceDate: invoice_date || new Date().toISOString().split("T")[0],
+              reportDate: new Date().toISOString().split("T")[0],
+              category: category || "3P",
+              confirm: confirm || "Approve",
+              action: returnAction || "Tukar fisik",
+              status: status || "Pending",
+              note: note || "",
+              person: person || "",
+              rootCause: root_cause || "",
+            }),
+          }).catch((err) => {
+            console.error("Async webhook create forward error:", err);
+          });
+        }
+      } catch (syncErr) {
+        console.error("Failed to forward new return to Google Sheets webhook:", syncErr);
+      }
+
       return Response.json({ success: true, insertId: res?.insertId });
     }
 
