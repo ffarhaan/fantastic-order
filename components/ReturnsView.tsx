@@ -671,6 +671,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                               Penyebab: {r.root_cause}
                             </span>
                           )}
+                          {r.person && r.person !== "#N/A" && (
+                            <span className="text-[10px] text-rose-700 dark:text-rose-400 font-bold truncate block">
+                              Pelaku: {r.person}
+                            </span>
+                          )}
                         </td>
 
                         <td className="py-2.5 px-3 text-center">
@@ -843,15 +848,18 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                       />
                                     </div>
 
-                                    {/* 6. Person / PIC */}
+                                    {/* 6. Person (Pelaku Kesalahan) */}
                                     <div>
-                                      <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">PIC / Petugas</label>
+                                      <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">
+                                        Person (Pelaku / Picker & Checker)
+                                      </label>
                                       <input
                                         type="text"
+                                        list="warehouse-persons"
                                         value={editForm.person}
                                         onChange={(e) => setEditForm({ ...editForm, person: e.target.value })}
-                                        placeholder="Nama PIC penanggung jawab"
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-white font-medium focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                                        placeholder="Contoh: ZAMI / RIZKY HERDIANSYAH"
+                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-white font-bold focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
                                       />
                                     </div>
 
@@ -1047,12 +1055,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                                         />
                                       </div>
                                       <div>
-                                        <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">PIC / Petugas</label>
+                                        <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
+                                          Person (Pelaku Kesalahan / Picker & Checker)
+                                        </label>
                                         <input
                                           type="text"
+                                          list="warehouse-persons"
                                           value={editForm.person}
                                           onChange={(e) => setEditForm({ ...editForm, person: e.target.value })}
-                                          className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-medium"
+                                          placeholder="Contoh: ZAMI / RIZKY HERDIANSYAH"
+                                          className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
                                         />
                                       </div>
                                       <div className="sm:col-span-3">
@@ -1126,6 +1138,26 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
             </tbody>
           </table>
         </div>
+
+        {/* Datalist Auto-suggestions for Person (Pelaku Kesalahan) */}
+        <datalist id="warehouse-persons">
+          <option value="ZAMI / RIZKY HERDIANSYAH" />
+          <option value="FATUR / PRAYOGA" />
+          <option value="WAHYU / NURHAN" />
+          <option value="DEPRI / IBNU" />
+          <option value="SENDI / CHAIRUL" />
+          <option value="DEPRI / LUTHFIE" />
+          <option value="RIPAL / ZAID" />
+          <option value="TRY / RENDY LUKMAN" />
+          <option value="HIMAWAN / LUTHFIE" />
+          <option value="SENDI / NUR FADILLAH" />
+          <option value="IDAL / HASBIYALLAH" />
+          <option value="ILMI / LUTHFIE" />
+          <option value="AGUS / IBNU" />
+          <option value="RANGGA / SINGGIH" />
+          <option value="FAHRI / ANTO" />
+          <option value="SAHRUL / ZAID" />
+        </datalist>
 
         {/* ─── Pagination Footer ─── */}
         <div className="bg-white dark:bg-[#070b14] border-t border-zinc-300 dark:border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-700 dark:text-slate-400">
