@@ -314,7 +314,7 @@ export async function POST(req: Request) {
 
     // 2. Update existing shipment return
     if (action === "update_return") {
-      const { id, status, confirm, action: returnAction, note, resolved_date, root_cause } = body;
+      const { id, status, confirm, action: returnAction, note, resolved_date, root_cause, person, nota_retur_no } = body;
       if (!id) {
         return Response.json({ success: false, error: "Missing return id" }, { status: 400 });
       }
@@ -326,10 +326,41 @@ export async function POST(req: Request) {
           action = COALESCE(?, action),
           note = COALESCE(?, note),
           resolved_date = COALESCE(?, resolved_date),
-          root_cause = COALESCE(?, root_cause)
+          root_cause = COALESCE(?, root_cause),
+          person = COALESCE(?, person),
+          nota_retur_no = COALESCE(?, nota_retur_no)
         WHERE id = ?`,
-        [status, confirm, returnAction, note, resolved_date, root_cause, id]
+        [status, confirm, returnAction, note, resolved_date, root_cause, person, nota_retur_no, id]
       );
+
+      // Fetch updated record for webhook sync
+      try {
+        const rows = (await conn.execute("SELECT * FROM shipment_returns WHERE id = ? LIMIT 1", [id])) as any[];
+        const updatedRow = rows?.[0];
+
+        const webhookUrl = process.env.APPS_SCRIPT_SHIPMENT_WEBHOOK_URL;
+        if (webhookUrl && updatedRow) {
+          fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              invoiceNo: updatedRow.invoice_no,
+              status: updatedRow.status,
+              confirm: updatedRow.confirm,
+              action: updatedRow.action,
+              note: updatedRow.note,
+              rootCause: updatedRow.root_cause,
+              resolvedDate: updatedRow.resolved_date,
+              notaReturNo: updatedRow.nota_retur_no,
+              person: updatedRow.person,
+            }),
+          }).catch((err) => {
+            console.error("Async webhook forward error:", err);
+          });
+        }
+      } catch (syncErr) {
+        console.error("Failed to forward update to Google Sheets webhook:", syncErr);
+      }
 
       return Response.json({ success: true });
     }

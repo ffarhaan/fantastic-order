@@ -48,6 +48,31 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
   const [showAddModal, setShowAddModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Editable return fields state
+  const [editForm, setEditForm] = useState({
+    status: "Pending",
+    confirm: "Approve",
+    action: "Tukar fisik",
+    root_cause: "Human error",
+    nota_retur_no: "",
+    person: "",
+    note: "",
+  });
+
+  useEffect(() => {
+    if (selectedReturn) {
+      setEditForm({
+        status: selectedReturn.status || "Pending",
+        confirm: selectedReturn.confirm || "Approve",
+        action: selectedReturn.action || "Tukar fisik",
+        root_cause: selectedReturn.root_cause || "Human error",
+        nota_retur_no: selectedReturn.nota_retur_no || "",
+        person: selectedReturn.person || "",
+        note: selectedReturn.note || "",
+      });
+    }
+  }, [selectedReturn]);
+
   // New return form state
   const [newForm, setNewForm] = useState({
     pbf: "MBI",
@@ -134,6 +159,49 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
       }
     } catch (err) {
       alert("Gagal memperbarui status komplain.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedReturn) return;
+    setIsUpdating(true);
+    try {
+      const isResolved = editForm.status === "Resolved";
+      const res = await fetch("/api/tidb?action=update_return", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selectedReturn.id,
+          ...editForm,
+          resolved_date: isResolved
+            ? selectedReturn.resolved_date || new Date().toISOString().split("T")[0]
+            : null,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReturns((prev) =>
+          prev.map((r) =>
+            r.id === selectedReturn.id
+              ? {
+                  ...r,
+                  ...editForm,
+                  resolved_date: isResolved
+                    ? selectedReturn.resolved_date || new Date().toISOString().split("T")[0]
+                    : r.resolved_date,
+                }
+              : r
+          )
+        );
+        setSelectedReturn(null);
+        fetchReturns();
+      } else {
+        alert("Gagal update data: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      alert("Error update: " + err);
     } finally {
       setIsUpdating(false);
     }
@@ -591,88 +659,190 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
         </div>
       </div>
 
-      {/* ─── DETAIL MODAL ─── */}
+      {/* ─── DETAIL & EDIT MODAL ─── */}
       {selectedReturn && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-2xl relative overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700/80 rounded-2xl max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-2xl relative my-auto">
             <button
               type="button"
               onClick={() => setSelectedReturn(null)}
-              className="absolute right-4 top-4 text-slate-400 hover:text-white p-1 rounded-xl bg-slate-800/80"
+              className="absolute right-4 top-4 text-zinc-500 hover:text-black dark:text-slate-400 dark:hover:text-white p-1 rounded-xl bg-zinc-100 dark:bg-slate-800"
             >
               <X className="w-4 h-4" />
             </button>
 
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600/20 to-indigo-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 flex items-center justify-center">
                 <AlertCircle className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">Rincian Tiket Komplain / Retur</h3>
-                <p className="text-xs text-slate-400">ID #{selectedReturn.id} • PBF {selectedReturn.pbf}</p>
+                <h3 className="text-base font-black text-black dark:text-white">Edit & Rincian Komplain / Retur</h3>
+                <p className="text-xs text-zinc-500 dark:text-slate-400">ID #{selectedReturn.id} • PBF {selectedReturn.pbf}</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs bg-slate-950/80 p-4 rounded-xl border border-slate-800">
+            {/* Readonly Core Info */}
+            <div className="grid grid-cols-2 gap-3 text-xs bg-zinc-50 dark:bg-slate-950/80 p-3.5 rounded-xl border border-zinc-200 dark:border-slate-800">
               <div>
-                <p className="text-slate-500 font-medium">Nama Apotek / Merchant</p>
-                <p className="text-slate-100 font-bold text-sm mt-0.5">{selectedReturn.customer_name}</p>
+                <p className="text-zinc-500 dark:text-slate-500 font-semibold">Nama Apotek / Merchant</p>
+                <p className="text-black dark:text-slate-100 font-black text-sm mt-0.5">{selectedReturn.customer_name}</p>
               </div>
               <div>
-                <p className="text-slate-500 font-medium">Kategori</p>
-                <p className="text-amber-400 font-bold mt-0.5">{selectedReturn.category || "3P"}</p>
+                <p className="text-zinc-500 dark:text-slate-500 font-semibold">Kategori</p>
+                <p className="text-amber-700 dark:text-amber-400 font-bold mt-0.5">{selectedReturn.category || "3P"}</p>
               </div>
               <div>
-                <p className="text-slate-500 font-medium">No. Faktur</p>
-                <p className="text-indigo-400 font-mono font-bold text-sm mt-0.5">
+                <p className="text-zinc-500 dark:text-slate-500 font-semibold">No. Faktur</p>
+                <p className="text-indigo-600 dark:text-indigo-400 font-mono font-black text-sm mt-0.5">
                   {selectedReturn.invoice_no || "-"}
                 </p>
               </div>
               <div>
-                <p className="text-slate-500 font-medium">No. Sales Order</p>
-                <p className="text-slate-300 font-mono mt-0.5">{selectedReturn.so_no || "-"}</p>
+                <p className="text-zinc-500 dark:text-slate-500 font-semibold">No. Sales Order</p>
+                <p className="text-zinc-800 dark:text-slate-300 font-mono font-bold mt-0.5">{selectedReturn.so_no || "-"}</p>
               </div>
-              <div className="col-span-2 border-t border-slate-800 pt-2.5">
-                <p className="text-slate-500 font-medium">Nama Produk yang Dikomplain</p>
-                <p className="text-white font-semibold text-sm mt-0.5">{selectedReturn.product_name}</p>
-                <p className="text-slate-400 mt-1">
-                  Qty: <strong className="text-white">{selectedReturn.qty}</strong>
+              <div className="col-span-2 border-t border-zinc-200 dark:border-slate-800 pt-2">
+                <p className="text-zinc-500 dark:text-slate-500 font-semibold">Produk yang Dikomplain</p>
+                <p className="text-black dark:text-white font-bold text-sm mt-0.5">{selectedReturn.product_name}</p>
+                <p className="text-zinc-600 dark:text-slate-400 mt-0.5 font-medium">
+                  Qty: <strong className="text-black dark:text-white font-bold">{selectedReturn.qty}</strong>
                   {selectedReturn.batch_no && ` • Batch: ${selectedReturn.batch_no}`}
                   {selectedReturn.expiry_date && ` • ED: ${selectedReturn.expiry_date}`}
                 </p>
               </div>
-              <div className="col-span-2 border-t border-slate-800 pt-2.5">
-                <p className="text-slate-500 font-medium">Alasan / Kendala</p>
-                <p className="text-amber-300 font-medium mt-0.5">{selectedReturn.reason || "-"}</p>
+              <div className="col-span-2 border-t border-zinc-200 dark:border-slate-800 pt-2">
+                <p className="text-zinc-500 dark:text-slate-500 font-semibold">Alasan / Kendala Dilaporkan</p>
+                <p className="text-amber-700 dark:text-amber-300 font-bold mt-0.5">{selectedReturn.reason || "-"}</p>
               </div>
-              {selectedReturn.root_cause && (
-                <div className="col-span-2">
-                  <p className="text-slate-500 font-medium">Root Cause (Penyebab Masalah)</p>
-                  <p className="text-slate-300 mt-0.5">{selectedReturn.root_cause}</p>
-                </div>
-              )}
             </div>
 
-            {/* Quick Status Updater */}
-            <div className="flex flex-wrap items-center justify-between border-t border-slate-800 pt-3.5 gap-2">
+            {/* Editable Form Controls */}
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-slate-200">
+                  Ubah Data Komplain & Retur
+                </h4>
+                <span className="text-[10px] text-zinc-500 dark:text-slate-400">
+                  ⚡ Otomatis sinkron ke Spreadsheet & TiDB
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                {/* Status */}
+                <div>
+                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">Status Tiket</label>
+                  <select
+                    value={editForm.status}
+                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                    className="w-full bg-white dark:bg-slate-950 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-slate-200 font-bold focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                  >
+                    <option value="Pending">Pending (Menunggu)</option>
+                    <option value="In Progress">In Progress (Sedang Diproses)</option>
+                    <option value="Resolved">Resolved (Selesai)</option>
+                    <option value="Approve">Approve</option>
+                  </select>
+                </div>
+
+                {/* Confirm */}
+                <div>
+                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">Status Konfirmasi (Confirm)</label>
+                  <select
+                    value={editForm.confirm}
+                    onChange={(e) => setEditForm({ ...editForm, confirm: e.target.value })}
+                    className="w-full bg-white dark:bg-slate-950 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-slate-200 font-bold focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                  >
+                    <option value="Approve">Approve (Disetujui)</option>
+                    <option value="Reject">Reject (Ditolak)</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Review">Perlu Review</option>
+                  </select>
+                </div>
+
+                {/* Action / Tindakan */}
+                <div>
+                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">Tindakan (Action)</label>
+                  <input
+                    type="text"
+                    value={editForm.action}
+                    onChange={(e) => setEditForm({ ...editForm, action: e.target.value })}
+                    placeholder="Contoh: Tukar fisik / Retur nota / Kirim susulan"
+                    className="w-full bg-white dark:bg-slate-950 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-slate-200 font-medium focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+
+                {/* Root Cause */}
+                <div>
+                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">Penyebab Masalah (Root Cause)</label>
+                  <input
+                    type="text"
+                    value={editForm.root_cause}
+                    onChange={(e) => setEditForm({ ...editForm, root_cause: e.target.value })}
+                    placeholder="Contoh: Human error / Picker salah ambil / Driver salah kirim"
+                    className="w-full bg-white dark:bg-slate-950 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-slate-200 font-medium focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+
+                {/* No Nota Retur */}
+                <div>
+                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">No. Nota Retur</label>
+                  <input
+                    type="text"
+                    value={editForm.nota_retur_no}
+                    onChange={(e) => setEditForm({ ...editForm, nota_retur_no: e.target.value })}
+                    placeholder="Contoh: NR-2024-001 (opsional)"
+                    className="w-full bg-white dark:bg-slate-950 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-slate-200 font-medium focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+
+                {/* Person / PIC */}
+                <div>
+                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">PIC / Petugas</label>
+                  <input
+                    type="text"
+                    value={editForm.person}
+                    onChange={(e) => setEditForm({ ...editForm, person: e.target.value })}
+                    placeholder="Nama PIC penanggung jawab"
+                    className="w-full bg-white dark:bg-slate-950 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-slate-200 font-medium focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+
+                {/* Catatan / Note */}
+                <div className="sm:col-span-2">
+                  <label className="text-zinc-700 dark:text-slate-300 font-bold block mb-1">Catatan Tambahan (Note)</label>
+                  <textarea
+                    rows={2}
+                    value={editForm.note}
+                    onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
+                    placeholder="Tulis catatan tindak lanjut atau keterangan tambahan..."
+                    className="w-full bg-white dark:bg-slate-950 border border-zinc-300 dark:border-slate-700 rounded-xl p-2 text-black dark:text-slate-200 font-medium focus:ring-2 focus:ring-black dark:focus:ring-indigo-500 outline-none resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Actions & Submit */}
+            <div className="flex flex-wrap items-center justify-between border-t border-zinc-200 dark:border-slate-800 pt-3.5 gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Update:</span>
                 <button
                   type="button"
-                  onClick={() => handleUpdateStatus(selectedReturn.id, "Resolved")}
+                  onClick={handleSaveEdit}
                   disabled={isUpdating}
-                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm"
+                  className="px-4 py-2 bg-black hover:bg-zinc-800 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50"
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Selesai (Resolved)</span>
+                  {isUpdating ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isUpdating ? "Menyimpan..." : "Simpan Perubahan & Sync"}</span>
                 </button>
+
                 <button
                   type="button"
-                  onClick={() => handleUpdateStatus(selectedReturn.id, "Pending")}
-                  disabled={isUpdating}
-                  className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold shadow-sm"
+                  onClick={() => setSelectedReturn(null)}
+                  className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-black dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold border border-zinc-300 dark:border-slate-700 transition-all"
                 >
-                  Pending
+                  Batal
                 </button>
               </div>
 
@@ -684,7 +854,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice }: Retur
                     setSelectedReturn(null);
                     onSelectCustomer(c);
                   }}
-                  className="text-xs text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1"
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-1"
                 >
                   <Building2 className="w-3.5 h-3.5" />
                   <span>Lihat di Master Customer</span>
