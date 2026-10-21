@@ -525,9 +525,6 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                 </tr>
               ) : (
                 customers.map((c) => {
-                  const isNameInactive = (c.name || "").toLowerCase().includes("[inactive]") || (c.name || "").toLowerCase().includes("(inactive)");
-                  const isInactive = c.status_merchant === "INACTIVE" || isNameInactive;
-                  const cleanName = (c.name || "").replace(/^\[inactive\]\s*/i, "").replace(/^\(inactive\)\s*/i, "").trim();
                   const isSelected = selectedCust?.id === c.id || (showEditModal && editForm?.id === c.id);
 
                   return (
@@ -554,40 +551,29 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
 
                       {/* Nama Apotek */}
                       <td className="py-2.5 px-4 font-bold max-w-[280px]">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {isNameInactive && (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800 shrink-0">
-                              Nonaktif
-                            </span>
-                          )}
-                          <span
-                            className={`truncate block transition-colors ${
-                              isInactive
-                                ? "text-zinc-500 dark:text-zinc-400 font-medium"
-                                : "text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200"
-                            }`}
-                            title={c.name}
-                          >
-                            {cleanName || c.name}
-                          </span>
-                        </div>
+                        <span
+                          className="truncate block text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors"
+                          title={c.name}
+                        >
+                          {c.name || "-"}
+                        </span>
                       </td>
 
                       {/* Status */}
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            !isInactive
+                            c.status_merchant === "ACTIVE"
                               ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
                               : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
                           }`}
                         >
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
-                              !isInactive ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
+                              c.status_merchant === "ACTIVE" ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
                             }`}
                           />
-                          {!isInactive ? "ACTIVE" : "INACTIVE"}
+                          {c.status_merchant || "-"}
                         </span>
                       </td>
 
