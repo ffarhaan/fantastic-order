@@ -161,7 +161,25 @@ export async function GET(req: Request) {
       const countSql = `SELECT COUNT(*) as total FROM shipment_returns ${whereClause}`;
       const [countResult] = (await conn.execute(countSql, params)) as Array<{ total: number }>;
 
-      const dataSql = `SELECT * FROM shipment_returns ${whereClause} ORDER BY id DESC LIMIT ? OFFSET ?`;
+      const dataSql = `
+        SELECT 
+          sr.*,
+          COALESCE(
+            NULLIF(fa.order_date, ''),
+            NULLIF(fa.transaction_date, ''),
+            NULLIF(sr.invoice_date, '')
+          ) AS matched_invoice_date
+        FROM shipment_returns sr
+        LEFT JOIN (
+          SELECT no_faktur, MAX(order_date) as order_date, MAX(transaction_date) as transaction_date 
+          FROM fakturs_archive 
+          WHERE no_faktur != '' AND no_faktur IS NOT NULL
+          GROUP BY no_faktur
+        ) fa ON sr.invoice_no = fa.no_faktur
+        ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|status|pbf|category)\b/g, 'sr.$1')}
+        ORDER BY sr.id DESC 
+        LIMIT ? OFFSET ?
+      `;
       const rows = await conn.execute(dataSql, [...params, limit, offset]);
 
       // Quick statistics
@@ -371,6 +389,22 @@ export async function POST(req: Request) {
       const insertedIds: number[] = [];
 
       for (const item of items) {
+        const itemInv = invoice_no || item.invoice_no || "";
+        let invDate = invoice_date || item.invoice_date || "";
+
+        // Auto-lookup invoice date from fakturs_archive if not specified
+        if (!invDate && itemInv) {
+          try {
+            const [matched] = (await conn.execute(
+              "SELECT order_date, transaction_date FROM fakturs_archive WHERE no_faktur = ? ORDER BY order_date DESC LIMIT 1",
+              [itemInv]
+            )) as any[];
+            if (matched && (matched.order_date || matched.transaction_date)) {
+              invDate = matched.order_date || matched.transaction_date;
+            }
+          } catch {}
+        }
+
         const [res] = (await conn.execute(
           `INSERT INTO shipment_returns (
             pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date, reason, invoice_date,
@@ -379,14 +413,14 @@ export async function POST(req: Request) {
           [
             pbf || item.pbf || "MBI",
             customer_name || item.customer_name || "",
-            invoice_no || item.invoice_no || "",
+            itemInv,
             so_no || item.so_no || "",
             item.product_name || item.name || "",
             Number(item.qty) || 1,
             item.batch_no || "",
             item.expiry_date || "",
             item.reason || "",
-            invoice_date || item.invoice_date || new Date().toISOString().split("T")[0],
+            invDate || new Date().toISOString().split("T")[0],
             category !== undefined && category !== null ? category : (item.category ?? ""),
             confirm !== undefined && confirm !== null ? confirm : (item.confirm ?? ""),
             item.action !== undefined && item.action !== null ? item.action : (returnAction ?? ""),

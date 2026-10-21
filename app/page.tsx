@@ -2758,20 +2758,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 </span>
               </button>
 
-              {currentUser && currentUser.role !== "readonly" && (
-                <button
-                  type="button"
-                  onClick={() => { setShowChangePasswordModal(true); setMobileSidebarOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
-                    isDarkMode
-                      ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
-                      : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
-                  }`}
-                >
-                  <Key className={`w-4 h-4 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} />
-                  <span>Ganti Password</span>
-                </button>
-              )}
+
 
               {currentUser && currentUser.role !== "readonly" && (
                 <button
@@ -3147,22 +3134,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     </button>
                   </div>
 
-                  {/* Change Password */}
-                  {currentUser && currentUser.role !== "readonly" && (
-                    <button
-                      type="button"
-                      onClick={() => { setShowChangePasswordModal(true); setShowSettingsPanel(false); }}
-                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left border ${
-                        isDarkMode ? "border-slate-800 hover:bg-slate-800/70 text-slate-200" : "border-slate-200 hover:bg-slate-100 text-slate-800"
-                      }`}
-                    >
-                      <span className="text-base">🔑</span>
-                      <div>
-                        <div className="font-bold text-xs">Ganti Password</div>
-                        <div className={`text-[10px] ${isDarkMode ? "text-slate-500" : "text-slate-400"}`}>Akun {currentUser.name}</div>
-                      </div>
-                    </button>
-                  )}
+
 
                   {/* Clear / Reset Data */}
                   {currentUser && currentUser.role !== "readonly" && (
@@ -3240,7 +3212,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
         {/* VIEW CONDITIONAL: FULL DASHBOARD ANALYTICS OR WORKSPACE */}
         {mainView === "returns" ? (
-          <ReturnsView onSelectInvoice={(inv) => { setSearch(inv); setMainView("workspace"); }} onSelectCustomer={(c) => { setSearch(c); setMainView("workspace"); }} />
+          <ReturnsView 
+            onSelectInvoice={(inv) => { setSearch(inv); setMainView("workspace"); }} 
+            onSelectCustomer={(c) => { setSearch(c); setMainView("workspace"); }} 
+            records={records}
+          />
         ) : mainView === "customers" ? (
           <CustomersView onSelectCustomerForFilter={(c) => { setSearch(c); setMainView("workspace"); }} />
         ) : mainView === "dashboard" ? (
