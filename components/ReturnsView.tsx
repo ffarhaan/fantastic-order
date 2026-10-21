@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { ShipmentReturnRecord, FakturRecord } from "@/lib/types";
 import {
   AlertCircle,
@@ -114,6 +114,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [isUpdating, setIsUpdating] = useState(false);
   const [editMode, setEditMode] = useState<"action" | "all">("action");
   const [linkCopied, setLinkCopied] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   // Tab & Analytics State
   const [activeTab, setActiveTab] = useState<"list" | "leaderboard" | "analytics">("list");
@@ -127,6 +129,144 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [personnelFilterPbf, setPersonnelFilterPbf] = useState<string>("ALL");
   const [personnelSearchQuery, setPersonnelSearchQuery] = useState<string>("");
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
+
+      if (rawData.length < 2) {
+        alert("File Excel kosong atau tidak memiliki baris data.");
+        setIsImporting(false);
+        e.target.value = "";
+        return;
+      }
+
+      // Find header row
+      const headerIdx = rawData.findIndex((row) =>
+        row && Array.isArray(row) && row.some((c) => {
+          const s = String(c || "").toLowerCase().trim();
+          return (
+            s.includes("invoice") ||
+            s.includes("faktur") ||
+            s.includes("customer") ||
+            s.includes("pelanggan") ||
+            s.includes("produk") ||
+            s.includes("alasan") ||
+            s.includes("kendala") ||
+            s.includes("reason")
+          );
+        })
+      );
+
+      const hIdx = headerIdx !== -1 ? headerIdx : 0;
+      const header = (rawData[hIdx] as string[]).map((h) => String(h || "").toLowerCase().trim());
+
+      const getColIdx = (...aliases: string[]) => {
+        for (const a of aliases) {
+          const idx = header.findIndex(
+            (h) => h === a || h.replace(/[^a-z0-9]/g, "") === a.replace(/[^a-z0-9]/g, "") || h.includes(a)
+          );
+          if (idx !== -1) return idx;
+        }
+        return -1;
+      };
+
+      const pbfCol = getColIdx("pbf", "distributor");
+      const custCol = getColIdx("nama pelanggan", "customer name", "nama apotek", "pelanggan", "customer", "apotek");
+      const invCol = getColIdx("no invoice", "no faktur", "invoice no", "faktur", "invoice");
+      const soCol = getColIdx("no so", "no order", "so no", "so number", "order number", "so");
+      const prodCol = getColIdx("nama produk", "nama barang", "product name", "item description", "produk", "barang", "item");
+      const qtyCol = getColIdx("qty", "jumlah", "quantity");
+      const batchCol = getColIdx("batch", "lot", "no batch", "no lot", "batch no", "lot number");
+      const edCol = getColIdx("expiry date", "expired date", "ed", "exp date", "kadaluarsa");
+      const reasonCol = getColIdx("alasan", "reason", "kendala", "masalah", "keterangan");
+      const invDateCol = getColIdx("tanggal faktur", "tgl faktur", "invoice date", "inv date", "tgl inv");
+      const catCol = getColIdx("kategori", "category");
+      const confirmCol = getColIdx("confirm", "konfirmasi");
+      const actionCol = getColIdx("action", "tindakan", "penyelesaian");
+      const statusCol = getColIdx("status", "status retur");
+      const notaCol = getColIdx("no nota retur", "nota retur", "nota retur no");
+      const resDateCol = getColIdx("tanggal penyelesaian", "tgl penyelesaian", "resolved date", "tgl selesai");
+      const noteCol = getColIdx("catatan", "note", "keterangan tambahan");
+      const personCol = getColIdx("personil", "person", "petugas", "pic", "nama personil");
+      const rootCol = getColIdx("root cause", "akar masalah", "penyebab");
+
+      const items: any[] = [];
+      for (let i = hIdx + 1; i < rawData.length; i++) {
+        const row = rawData[i] as any[];
+        if (!row || row.length === 0) continue;
+
+        const val = (idx: number) =>
+          idx !== -1 && row[idx] !== undefined && row[idx] !== null ? String(row[idx]).trim() : "";
+
+        const customer_name = val(custCol);
+        const invoice_no = val(invCol);
+        const product_name = val(prodCol);
+
+        if (!customer_name && !invoice_no && !product_name) continue;
+
+        items.push({
+          pbf: val(pbfCol) || "MBI",
+          customer_name: customer_name || "-",
+          invoice_no: invoice_no || "-",
+          so_no: val(soCol) || "-",
+          product_name: product_name || "-",
+          qty: Number(val(qtyCol)) || 1,
+          batch_no: val(batchCol) || "-",
+          expiry_date: val(edCol) || "-",
+          reason: val(reasonCol) || "-",
+          invoice_date: val(invDateCol) || "",
+          category: val(catCol) || "DOO",
+          confirm: val(confirmCol) || "Pending",
+          action: val(actionCol) || "-",
+          status: val(statusCol) || "Pending",
+          nota_retur_no: val(notaCol) || "-",
+          resolved_date: val(resDateCol) || null,
+          note: val(noteCol) || "-",
+          person: val(personCol) || "-",
+          root_cause: val(rootCol) || "-",
+        });
+      }
+
+      if (items.length === 0) {
+        alert("Tidak ada baris data valid yang berhasil diekstrak.");
+        setIsImporting(false);
+        e.target.value = "";
+        return;
+      }
+
+      const res = await fetch("/api/tidb", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "batch_import_returns",
+          items,
+        }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        alert(`✓ Berhasil mengimpor ${json.count || items.length} data Shipment Error dari ${file.name}`);
+        fetchReturns();
+        fetchPersonnelStats();
+      } else {
+        alert(`Gagal mengimpor: ${json.error || "Terjadi kesalahan"}`);
+      }
+    } catch (err: any) {
+      console.error("Import error:", err);
+      alert(`Terjadi kesalahan saat membaca file: ${err.message || String(err)}`);
+    } finally {
+      setIsImporting(false);
+      e.target.value = "";
+    }
+  };
 
   const fetchPersonnelStats = useCallback(async () => {
     setLoadingStats(true);
@@ -513,7 +653,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             }`}
           >
             <Package className="w-4 h-4" />
-            <span>Daftar Retur</span>
+            <span>Daftar Shipment Error</span>
             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-200 dark:bg-slate-700 text-zinc-800 dark:text-zinc-200 font-mono font-bold">
               {total.toLocaleString("id-ID")}
             </span>
@@ -651,7 +791,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 <Sparkles className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
                 <span>Aksi Cepat</span>
               </div>
-              <h4 className="text-sm font-semibold text-zinc-900 dark:text-white mt-1">Input & Ekspor Data</h4>
+              <h4 className="text-sm font-semibold text-zinc-900 dark:text-white mt-1">Impor, Ekspor & Input</h4>
             </div>
             <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-600/20 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-xs">
               <ShieldAlert className="w-4 h-4" />
@@ -661,19 +801,36 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <button
               type="button"
               onClick={() => setShowAddModal(true)}
-              className="flex-1 py-1.5 px-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+              className="flex-1 py-1.5 px-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Input Baru</span>
+              <span>Input</span>
             </button>
             <button
               type="button"
+              onClick={() => importFileRef.current?.click()}
+              disabled={isImporting}
+              className="py-1.5 px-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 rounded-xl text-xs font-bold flex items-center gap-1 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+              title="Impor Data Excel / CSV"
+            >
+              <Download className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 rotate-180 ${isImporting ? "animate-bounce" : ""}`} />
+              <span>{isImporting ? "Impor..." : "Impor"}</span>
+            </button>
+            <input
+              ref={importFileRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={handleImportExcel}
+            />
+            <button
+              type="button"
               onClick={handleExportExcel}
-              className="py-1.5 px-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-700 dark:text-slate-200 border border-zinc-200 dark:border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+              className="py-1.5 px-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-700 dark:text-slate-200 border border-zinc-200 dark:border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all shadow-xs cursor-pointer"
               title="Unduh Excel"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Excel</span>
+              <span>Ekspor</span>
             </button>
           </div>
         </div>

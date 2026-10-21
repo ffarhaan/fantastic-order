@@ -50,13 +50,13 @@ export async function GET(req: Request) {
       const limit = Math.min(Number(searchParams.get("limit")) || 50, 200);
       const offset = Number(searchParams.get("offset")) || 0;
 
-      let whereClause = "WHERE customer_name != '#N/A' AND customer_name != '' AND customer_name IS NOT NULL";
+      let whereClause = "WHERE (name != '#N/A' AND name != '' AND name IS NOT NULL)";
       const params: (string | number)[] = [];
 
       if (search) {
-        whereClause += " AND (name LIKE ? OR customer_id_oracle LIKE ? OR id LIKE ? OR address LIKE ? OR apj_name LIKE ?)";
+        whereClause += " AND (name LIKE ? OR customer_id_oracle LIKE ? OR id LIKE ? OR address LIKE ? OR apj_name LIKE ? OR phone LIKE ?)";
         const s = `%${search}%`;
-        params.push(s, s, s, s, s);
+        params.push(s, s, s, s, s, s);
       }
       if (category && category !== "ALL") {
         whereClause += " AND category = ?";
@@ -526,6 +526,136 @@ export async function POST(req: Request) {
       }
 
       await conn.execute("DELETE FROM shipment_returns WHERE id = ?", [id]);
+
+      return Response.json({ success: true });
+    }
+
+    // 2.6. Batch Import shipment returns from Excel
+    if (action === "batch_import_returns") {
+      const items = Array.isArray(body) ? body : body.items || [];
+      if (items.length === 0) {
+        return Response.json({ success: true, count: 0 });
+      }
+
+      let insertedCount = 0;
+      for (const item of items) {
+        if (!item.customer_name && !item.invoice_no && !item.product_name) continue;
+        await conn.execute(
+          `INSERT INTO shipment_returns (
+            pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date, reason, invoice_date,
+            category, confirm, action, status, nota_retur_no, resolved_date, note, person, root_cause
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            item.pbf || "MBI",
+            item.customer_name || "-",
+            item.invoice_no || "-",
+            item.so_no || "-",
+            item.product_name || "-",
+            Number(item.qty) || 1,
+            item.batch_no || "-",
+            item.expiry_date || "-",
+            item.reason || "-",
+            item.invoice_date || "",
+            item.category || "DOO",
+            item.confirm || "Pending",
+            item.action || "-",
+            item.status || "Pending",
+            item.nota_retur_no || "-",
+            item.resolved_date || null,
+            item.note || "-",
+            item.person || "-",
+            item.root_cause || "-",
+          ]
+        );
+        insertedCount++;
+      }
+
+      return Response.json({ success: true, count: insertedCount });
+    }
+
+    // 2.7. Update Customer
+    if (action === "update_customer") {
+      const {
+        id,
+        name,
+        customer_id_oracle,
+        status_merchant,
+        phone,
+        email,
+        address,
+        vat_id,
+        nik,
+        owner_name,
+        owner_address,
+        sia_number,
+        sia_expired,
+        sipa_number,
+        sipa_expired,
+        apj_name,
+        sipnap_code,
+        site_bill_to,
+        site_ship_to,
+        branch,
+        zone,
+        category,
+        is_active_2p,
+      } = body;
+
+      if (!id) {
+        return Response.json({ success: false, error: "Missing customer id" }, { status: 400 });
+      }
+
+      await conn.execute(
+        `UPDATE customers SET
+          name = COALESCE(?, name),
+          customer_id_oracle = COALESCE(?, customer_id_oracle),
+          status_merchant = COALESCE(?, status_merchant),
+          phone = COALESCE(?, phone),
+          email = COALESCE(?, email),
+          address = COALESCE(?, address),
+          vat_id = COALESCE(?, vat_id),
+          nik = COALESCE(?, nik),
+          owner_name = COALESCE(?, owner_name),
+          owner_address = COALESCE(?, owner_address),
+          sia_number = COALESCE(?, sia_number),
+          sia_expired = COALESCE(?, sia_expired),
+          sipa_number = COALESCE(?, sipa_number),
+          sipa_expired = COALESCE(?, sipa_expired),
+          apj_name = COALESCE(?, apj_name),
+          sipnap_code = COALESCE(?, sipnap_code),
+          site_bill_to = COALESCE(?, site_bill_to),
+          site_ship_to = COALESCE(?, site_ship_to),
+          branch = COALESCE(?, branch),
+          zone = COALESCE(?, zone),
+          category = COALESCE(?, category),
+          is_active_2p = COALESCE(?, is_active_2p)
+        WHERE id = ?`,
+        [
+          name !== undefined ? name : null,
+          customer_id_oracle !== undefined ? customer_id_oracle : null,
+          status_merchant !== undefined ? status_merchant : null,
+          phone !== undefined ? phone : null,
+          email !== undefined ? email : null,
+          address !== undefined ? address : null,
+          vat_id !== undefined ? vat_id : null,
+          nik !== undefined ? nik : null,
+          owner_name !== undefined ? owner_name : null,
+          owner_address !== undefined ? owner_address : null,
+          sia_number !== undefined ? sia_number : null,
+          sia_expired !== undefined ? sia_expired : null,
+          sipa_number !== undefined ? sipa_number : null,
+          sipa_expired !== undefined ? sipa_expired : null,
+          apj_name !== undefined ? apj_name : null,
+          sipnap_code !== undefined ? sipnap_code : null,
+          site_bill_to !== undefined ? site_bill_to : null,
+          site_ship_to !== undefined ? site_ship_to : null,
+          branch !== undefined ? branch : null,
+          zone !== undefined ? zone : null,
+          category !== undefined ? category : null,
+          is_active_2p !== undefined ? is_active_2p : null,
+          id,
+        ]
+      );
 
       return Response.json({ success: true });
     }

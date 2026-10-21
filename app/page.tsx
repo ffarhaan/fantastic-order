@@ -2575,7 +2575,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     ? (isDarkMode ? "bg-zinc-800 text-white shadow-xs" : "bg-zinc-900 text-white shadow-xs")
                     : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
                 }`}
-                title="Logs / Retur"
+                title="Shipment Error"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -2666,7 +2666,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 }`}
               >
                 <RotateCcw className={`w-4 h-4 ${mainView === "returns" ? "text-white" : isDarkMode ? "text-zinc-400" : "text-zinc-500"}`} />
-                <span>Logs / Retur</span>
+                <span>Shipment Error</span>
               </button>
 
               <button
@@ -2940,7 +2940,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <ChevronsUpDown className={`w-3.5 h-3.5 shrink-0 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} />
               <span className={isDarkMode ? "text-zinc-700" : "text-zinc-300"}>/</span>
               <span className={`text-xs font-bold capitalize truncate ${isDarkMode ? "text-zinc-300" : "text-black"}`}>
-                {mainView === "workspace" ? "Daftar Faktur" : mainView === "dashboard" ? "Overview" : mainView === "returns" ? "Logs / Retur" : "Master Customer"}
+                {mainView === "workspace" ? "Daftar Faktur" : mainView === "dashboard" ? "Overview" : mainView === "returns" ? "Shipment Error" : "Master Customer"}
               </span>
             </div>
           </div>
@@ -2962,71 +2962,76 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-blue-500" : ""}`} />
             </button>
 
-            {/* Ekspor Excel */}
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer ${
-                isDarkMode
-                  ? "border-zinc-800 hover:bg-zinc-900 text-zinc-300"
-                  : "border-zinc-200 hover:bg-zinc-100 text-zinc-700"
-              }`}
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Ekspor Excel</span>
-            </button>
+            {/* Khusus Meja Kerja Daftar Faktur: Ekspor & Upload Faktur */}
+            {mainView === "workspace" && (
+              <>
+                {/* Ekspor Excel */}
+                <button
+                  type="button"
+                  onClick={handleExportExcel}
+                  className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer ${
+                    isDarkMode
+                      ? "border-zinc-800 hover:bg-zinc-900 text-zinc-300"
+                      : "border-zinc-200 hover:bg-zinc-100 text-zinc-700"
+                  }`}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Ekspor Excel</span>
+                </button>
 
-            {/* Upload Oracle Primary Button */}
-            <label
-              onDragOver={(e) => {
-                if (currentUser?.role === "readonly") return;
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                if (currentUser?.role === "readonly") {
-                  showToast("⚠️ Akses Stranger: Anda hanya dapat melihat data (Read Only).");
-                  return;
-                }
-                const files = Array.from(e.dataTransfer.files || []);
-                if (files.length > 0) handleUpload(files);
-              }}
-              onClick={(e) => {
-                if (currentUser?.role === "readonly") {
-                  e.preventDefault();
-                  showToast("⚠️ Akses Stranger: Anda hanya dapat melihat data (Read Only).");
-                }
-              }}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
-                currentUser?.role === "readonly"
-                  ? "opacity-50 cursor-not-allowed bg-zinc-800 text-zinc-500"
-                  : dragOver
-                  ? "bg-blue-600 text-white border-2 border-dashed border-blue-400"
-                  : isDarkMode
-                  ? "bg-white hover:bg-zinc-200 text-black font-semibold active:scale-95"
-                  : "bg-blue-600 hover:bg-blue-700 text-white font-semibold active:scale-95"
-              }`}
-              title="Upload file export Oracle (.xls / .xlsx)"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Upload Oracle</span>
-              <input
-                type="file"
-                multiple
-                disabled={currentUser?.role === "readonly"}
-                accept=".xls,.xlsx"
-                className="hidden"
-                onChange={(e) => {
-                  if (currentUser?.role === "readonly") return;
-                  const files = e.target.files ? Array.from(e.target.files) : [];
-                  if (files.length > 0) handleUpload(files);
-                  e.target.value = "";
-                }}
-              />
-            </label>
+                {/* Upload Oracle Primary Button */}
+                <label
+                  onDragOver={(e) => {
+                    if (currentUser?.role === "readonly") return;
+                    e.preventDefault();
+                    setDragOver(true);
+                  }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOver(false);
+                    if (currentUser?.role === "readonly") {
+                      showToast("⚠️ Akses Stranger: Anda hanya dapat melihat data (Read Only).");
+                      return;
+                    }
+                    const files = Array.from(e.dataTransfer.files || []);
+                    if (files.length > 0) handleUpload(files);
+                  }}
+                  onClick={(e) => {
+                    if (currentUser?.role === "readonly") {
+                      e.preventDefault();
+                      showToast("⚠️ Akses Stranger: Anda hanya dapat melihat data (Read Only).");
+                    }
+                  }}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                    currentUser?.role === "readonly"
+                      ? "opacity-50 cursor-not-allowed bg-zinc-800 text-zinc-500"
+                      : dragOver
+                      ? "bg-blue-600 text-white border-2 border-dashed border-blue-400"
+                      : isDarkMode
+                      ? "bg-white hover:bg-zinc-200 text-black font-semibold active:scale-95"
+                      : "bg-blue-600 hover:bg-blue-700 text-white font-semibold active:scale-95"
+                  }`}
+                  title="Upload file export Oracle (.xls / .xlsx)"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Upload Oracle</span>
+                  <input
+                    type="file"
+                    multiple
+                    disabled={currentUser?.role === "readonly"}
+                    accept=".xls,.xlsx"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (currentUser?.role === "readonly") return;
+                      const files = e.target.files ? Array.from(e.target.files) : [];
+                      if (files.length > 0) handleUpload(files);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </>
+            )}
           </div>
         </header>
 
