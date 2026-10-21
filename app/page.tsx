@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useCallback, useRef, useDeferredValue, Fr
 import * as XLSX from "xlsx";
 import {
   parseExcelFile,
+  parseNumeric,
   categorize,
   isOraCustomer,
   getProductCategory,
@@ -201,12 +202,12 @@ function dbRowsToFakturRecords(
           qty: (it.qty as number | string) || 0,
           uom: String(it.uom || "-"),
           lotNumber: String(it.lot_number || "-"),
-          totalHarga: typeof it.total_harga === "number" ? it.total_harga : parseFloat(String(it.total_harga || 0)) || 0,
+          totalHarga: parseNumeric(it.total_harga),
           kategori,
           kategoriProduk: katProd,
           klasifikasiObat: klasObat,
           isDoubleInv: false,
-          isRetur: (typeof it.total_harga === "number" ? it.total_harga : parseFloat(String(it.total_harga || 0)) || 0) < 0 || itemDesc.toUpperCase().includes("RETUR") || cleanInv.toUpperCase().includes("RETUR") || String(extra.jenis_transaksi || "").toUpperCase().includes("RETUR"),
+          isRetur: parseNumeric(it.total_harga) < 0 || itemDesc.toUpperCase().includes("RETUR") || cleanInv.toUpperCase().includes("RETUR") || String(extra.jenis_transaksi || "").toUpperCase().includes("RETUR"),
           status_cetak: isPrinted,
           printed_at: isPrinted ? pAt : null,
           printed_by: isPrinted ? pBy : null,
@@ -215,7 +216,7 @@ function dbRowsToFakturRecords(
       }
     } else {
       const docSO = String(r.no_sales_order || "-").trim();
-      const docAmount = typeof extra.total_harga === "number" ? extra.total_harga : parseFloat(String(extra.total_harga || 0)) || 0;
+      const docAmount = parseNumeric(extra.total_harga);
 
       records.push({
         orderDate: date,
@@ -1313,6 +1314,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     let sudahCount = 0;
     let doubleCount = 0;
     let returCount = 0;
+    let totalItems = 0;
     const soSet = new Set<string>();
 
     for (let i = 0; i < grouped.length; i++) {
@@ -1322,6 +1324,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       if (g.isDoubleInv) doubleCount++;
       if (g.isRetur) returCount++;
       if (g.so && g.so !== "-") soSet.add(g.so);
+      totalItems += (g.items?.length || g.totalItems || 1);
     }
 
     return {
@@ -1331,6 +1334,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       totalCount: grouped.length,
       doubleCount,
       returCount,
+      totalItems,
     };
   }, [grouped]);
 
@@ -1965,6 +1969,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         });
 
         // 3. Merge incoming records
+        const touchedInvoiceInThisUpload = new Set<string>();
+
         for (const r of parsed) {
           const isOra = r.jenisTransaksi === "ORA" || isOraCustomer(r.customerName);
           const cleanInv = String(r.invoiceNumber || "").trim().replace(/-1P$/i, "");
@@ -2050,13 +2056,24 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 accounting_date: r.orderDate,
                 jenis_transaksi: isOra ? "ORA" : "DOO",
                 kategori,
-                total_harga: r.totalHarga || 0,
+                total_harga: 0,
                 items: [],
               },
             });
           }
 
           const entry = invMap.get(targetKey)!;
+          if (!entry.extra) entry.extra = {};
+
+          // First time seeing this invoice in THIS upload: reset its items and total_harga for clean update
+          if (!touchedInvoiceInThisUpload.has(targetKey)) {
+            touchedInvoiceInThisUpload.add(targetKey);
+            entry.extra.items = [];
+            entry.extra.total_harga = 0;
+          }
+
+          entry.extra.total_harga = (entry.extra.total_harga || 0) + (r.totalHarga || 0);
+
           entry.status_cetak = entry.status_cetak || isPrinted;
           entry.printed_at = entry.printed_at || printedAt;
 
@@ -2089,35 +2106,29 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             incomingCust && !upperIncoming.includes("HELIOS") && incomingCust !== "1001"
           ) {
             entry.customer_name = incomingCust;
-            if (!entry.extra) entry.extra = {};
             entry.extra.nama_pelanggan = incomingCust;
           } else if (
             (!entry.customer_name || entry.customer_name === "-" || entry.customer_name === "1001") &&
             incomingCust
           ) {
             entry.customer_name = incomingCust;
-            if (!entry.extra) entry.extra = {};
             entry.extra.nama_pelanggan = incomingCust;
           }
 
-          if (r.itemCode && r.itemCode !== "-") {
+          const hasItemInfo = (r.itemCode && r.itemCode !== "-") || (r.itemDescription && r.itemDescription !== "-");
+          if (hasItemInfo) {
             if (!Array.isArray(entry.extra.items)) entry.extra.items = [];
             const katProd = getProductCategory(r.itemCode, r.itemDescription, productOverridesRef.current) || r.kategoriProduk || "FARMA";
-            const isDup = entry.extra.items.some(
-              (it) => it.item_code === r.itemCode && it.lot_number === r.lotNumber && it.qty === r.qty
-            );
-            if (!isDup) {
-              entry.extra.items.push({
-                item_code: r.itemCode,
-                item_description: r.itemDescription,
-                kategori_produk: katProd,
-                qty: r.qty,
-                uom: r.uom,
-                lot_number: r.lotNumber,
-                total_harga: r.totalHarga,
-                order_number: r.orderNumber,
-              });
-            }
+            entry.extra.items.push({
+              item_code: r.itemCode || "-",
+              item_description: r.itemDescription || "-",
+              kategori_produk: katProd,
+              qty: r.qty,
+              uom: r.uom || "-",
+              lot_number: r.lotNumber || "-",
+              total_harga: r.totalHarga || 0,
+              order_number: r.orderNumber || "-",
+            });
           }
         }
 
@@ -2302,9 +2313,19 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           prevDoo,
           maxDoo: maxDooStr,
           rangeDoo,
+          prev1PDoo,
+          max1PDoo: max1PDooStr,
+          range1PDoo,
+          prev2P,
+          max2P: max2PStr,
+          range2P,
+          prev3P,
+          max3P: max3PStr,
+          range3P,
           totalItems: parsed.length,
-          totalInvoices: invMap.size,
-          newUnprinted: brandNewUnprintedKeysSet.size,
+          totalInvoices: touchedInvoiceInThisUpload.size,
+          newUnprinted: newUnprintedKeys.length,
+          brandNewCount: brandNewUnprintedKeysSet.size,
           time: new Date().toLocaleTimeString("id-ID"),
           uploaderId: deviceIdRef.current,
           uploadedAtMs: Date.now(),
@@ -2315,16 +2336,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         setUploadNotification(notifPayload);
         setPage(0);
         setLoading(false);
+        showToast(`✓ Berhasil memuat ${touchedInvoiceInThisUpload.size} faktur (${parsed.length} baris data) dari ${fileNames.join(", ")}`);
 
         // 6. Save directly to TiDB as authoritative primary database!
         // ONLY sync the uploaded/modified invoices (1 fast request < 50ms) instead of all 15,412 rows (308 requests, 90 seconds)!
-        const uploadedKeys = new Set(
-          parsed.map((r) => {
-            const isOra = r.jenisTransaksi === "ORA" || isOraCustomer(r.customerName);
-            const cleanInv = String(r.invoiceNumber || "").trim().replace(/-1P$/i, "");
-            return isOra ? `${cleanInv}-1P` : cleanInv;
-          }).filter((k) => k && k !== "-" && k !== "0")
-        );
+        const uploadedKeys = touchedInvoiceInThisUpload;
         const uploadedDocs = Array.from(uploadedKeys)
           .map((k) => invMap.get(k))
           .filter(Boolean) as FirestoreFakturDoc[];
@@ -3177,13 +3193,24 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 <span className={`text-[9px] px-1 py-0.2 rounded font-semibold ${
                   isDarkMode ? "bg-blue-900/80 text-blue-200" : "bg-blue-200/80 text-blue-800"
                 }`}>{uploadNotification.time}</span>
+                <span>• File: <strong>{uploadNotification.totalInvoices ?? 0} Faktur</strong> ({uploadNotification.totalItems ?? 0} Baris Item)</span>
                 {uploadNotification.rangeOra && (
                   <span>• <strong>ORA</strong>: {uploadNotification.rangeOra}</span>
                 )}
                 {uploadNotification.rangeDoo && (
                   <span>• <strong>DOO</strong>: {uploadNotification.rangeDoo}</span>
                 )}
-                <span>• Baru Masuk: <strong>{uploadNotification.newUnprinted} faktur</strong></span>
+                <span>• Antrean Belum Cetak: <strong>{uploadNotification.newUnprinted} faktur</strong></span>
+                {uploadNotification.brandNewCount !== undefined && uploadNotification.brandNewCount > 0 && (
+                  <span>({uploadNotification.brandNewCount} baru)</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setFilter("all"); setPage(0); }}
+                  className={`underline font-bold ml-1 cursor-pointer ${isDarkMode ? "text-blue-300 hover:text-white" : "text-blue-700 hover:text-blue-900"}`}
+                >
+                  Lihat Semua Faktur ➔
+                </button>
               </div>
             </div>
             <button
@@ -3547,7 +3574,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             <span className={`text-[9px] font-bold leading-none ${
               filter === "all" ? (isDarkMode ? "text-white" : "text-slate-900") : (isDarkMode ? "text-slate-400" : "text-slate-500")
             }`}>
-              {filter === "all" ? "● Semua Aktif" : "Semua Data"}
+              {workspaceStats.totalItems > 0 ? `${workspaceStats.totalItems} Baris Item` : (filter === "all" ? "● Semua Aktif" : "Semua Data")}
             </span>
           </button>
 

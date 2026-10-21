@@ -297,6 +297,40 @@ function detectDoubleInvoices(records: FakturRecord[]): void {
   }
 }
 
+export function parseNumeric(val: unknown): number {
+  if (typeof val === "number") return isNaN(val) ? 0 : val;
+  if (!val) return 0;
+  let s = String(val).trim();
+  if (!s || s === "-" || s === "0") return 0;
+  const isNegative = /^\(.*\)$/.test(s) || s.startsWith("-");
+  s = s.replace(/[()]/g, "");
+  s = s.replace(/^(rp|idr|\$)\s*/i, "").trim();
+
+  if (s.includes(".") && s.includes(",")) {
+    if (s.indexOf(".") < s.lastIndexOf(",")) {
+      // Indonesian/EU: 1.234.567,89
+      s = s.replace(/\./g, "").replace(",", ".");
+    } else {
+      // US: 1,234,567.89
+      s = s.replace(/,/g, "");
+    }
+  } else if (s.includes(",")) {
+    if (/,\d{3}$/.test(s) && !/,\d{1,2}$/.test(s)) {
+      s = s.replace(/,/g, "");
+    } else {
+      s = s.replace(",", ".");
+    }
+  } else if (s.includes(".")) {
+    if (/\.\d{3}(\.\d{3})*$/.test(s) || /^\d{1,3}\.\d{3}$/.test(s)) {
+      s = s.replace(/\./g, "");
+    }
+  }
+
+  const n = parseFloat(s.replace(/[^0-9.-]/g, ""));
+  if (isNaN(n)) return 0;
+  return isNegative ? -Math.abs(n) : n;
+}
+
 export function normalizeDateStr(v: unknown): string {
   if (!v) return "-";
   if (typeof v === "number") {
@@ -318,12 +352,27 @@ export function normalizeDateStr(v: unknown): string {
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${pad(Number(mSlash[1]))}/${pad(Number(mSlash[2]))}/${mSlash[3]}`;
   }
+  const mDash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
+  if (mDash) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(Number(mDash[1]))}/${pad(Number(mDash[2]))}/${mDash[3]}`;
+  }
   const mMon = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/);
   if (mMon) {
-    const months: Record<string, string> = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
+    const months: Record<string, string> = {
+      jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+      jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+      mei: "05", ags: "08", agu: "08", okt: "10", des: "12"
+    };
     const pad = (n: number) => String(n).padStart(2, "0");
     const mon = months[mMon[2].toLowerCase()] || "01";
     return `${pad(Number(mMon[1]))}/${mon}/${mMon[3]}`;
+  }
+  const m2Digit = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2})$/);
+  if (m2Digit) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const yr = Number(m2Digit[3]) < 70 ? `20${m2Digit[3]}` : `19${m2Digit[3]}`;
+    return `${pad(Number(m2Digit[1]))}/${pad(Number(m2Digit[2]))}/${yr}`;
   }
   return s;
 }
@@ -337,7 +386,7 @@ function parseXXCUST(
   const colMap: Record<string, number> = {};
   header.forEach((h: string, i: number) => {
     if (h) {
-      const key = h.trim().toLowerCase();
+      const key = String(h).trim().toLowerCase();
       if (!colMap[key]) colMap[key] = i;
       const cleanKey = key.replace(/[^a-z0-9]/g, "");
       if (!colMap[cleanKey]) colMap[cleanKey] = i;
@@ -351,29 +400,49 @@ function parseXXCUST(
       if (colMap[lk] !== undefined) return colMap[lk];
       if (colMap[ck] !== undefined) return colMap[ck];
     }
+    // Partial substring match if exact key not found
+    for (const k of keys) {
+      const lk = k.toLowerCase().trim();
+      for (const [colName, idx] of Object.entries(colMap)) {
+        if (colName.includes(lk) || lk.includes(colName)) return idx;
+      }
+    }
     return undefined;
   };
 
   const idx = {
-    jenisTransaksi: getCol("jenis transaksi", "jenis", "transaction type"),
-    customerName: getCol("nama pelanggan", "customer name", "pelanggan", "customer"),
-    customerCode: getCol("kode pelanggan", "customer code", "kode cust", "cust code"),
-    invoiceNumber: getCol("no invoice ar", "ar number", "ar no", "no ar", "invoice number", "no invoice"),
-    transactionDate: getCol("transaction date", "tanggal transaksi", "tgl transaksi"),
-    orderDate: getCol("order date", "tanggal order", "date", "accounting date"),
-    accountingDate: getCol("accounting date", "tanggal akuntansi"),
-    orderNumber: getCol("order number", "order no", "no order", "no so", "so number"),
-    itemCode: getCol("item code", "kode barang", "kode produk", "item"),
-    itemDescription: getCol("item description", "nama barang", "deskripsi barang", "description"),
-    qty: getCol("qty", "quantity", "jumlah"),
-    uom: getCol("uom", "satuan", "unit"),
-    lotNumber: getCol("lot number", "batch number", "lot", "batch"),
-    totalHarga: getCol("total harga", "total amount", "amount", "total"),
+    jenisTransaksi: getCol("jenis transaksi", "jenis", "transaction type", "trx type", "tipe transaksi", "source"),
+    customerName: getCol("nama pelanggan", "customer name", "pelanggan", "customer", "customer / supplier name", "cust name", "nama customer", "nama apotek", "apotek", "ship-to customer", "bill-to customer", "nama pembeli"),
+    customerCode: getCol("kode pelanggan", "customer code", "kode cust", "cust code", "customer / supplier number", "cust number", "kode apotek", "kode outlet", "customer no", "cust no"),
+    invoiceNumber: getCol(
+      "no invoice ar", "ar number", "ar no", "no ar", "invoice number", "no invoice",
+      "no faktur", "nomor faktur", "no. faktur", "faktur", "invoice", "inv number",
+      "inv no", "no inv", "no. inv", "nomor inv", "trx number", "transaction number",
+      "no transaksi", "nomor transaksi", "doc number", "document number", "no dokumen",
+      "nomor dokumen", "ar invoice", "no. invoice", "inv"
+    ),
+    transactionDate: getCol("transaction date", "tanggal transaksi", "tgl transaksi", "tanggal faktur", "tgl faktur", "invoice date", "inv date", "tanggal inv", "tgl inv", "trx date", "tx date"),
+    orderDate: getCol("order date", "tanggal order", "date", "accounting date", "tgl order", "tgl so", "tanggal so", "so date", "tanggal pesanan", "tgl pesanan", "tanggal", "tgl"),
+    accountingDate: getCol("accounting date", "tanggal akuntansi", "tgl akuntansi"),
+    orderNumber: getCol("order number", "order no", "no order", "no so", "so number", "nomor order", "nomor pesanan", "no pesanan", "so no", "order", "sales order", "sales order no", "sales order number", "no sales order", "nomor sales order", "reference", "no ref", "ref no"),
+    itemCode: getCol("item code", "kode barang", "kode produk", "kode item", "item", "item number", "item no", "product code", "part number", "kode obat", "sku", "kode"),
+    itemDescription: getCol("item description", "nama barang", "deskripsi barang", "description", "item desc", "nama produk", "deskripsi produk", "item name", "nama item", "nama obat", "deskripsi", "product name"),
+    qty: getCol("qty", "quantity", "jumlah", "kuantiti", "qty ordered", "ordered quantity", "shipped quantity", "qty shipped", "banyak", "vol", "volume"),
+    uom: getCol("uom", "satuan", "unit", "unit of measure", "kemasan"),
+    lotNumber: getCol("lot number", "batch number", "lot", "batch", "no lot", "no batch", "nomor lot", "nomor batch", "no. lot", "no. batch"),
+    totalHarga: getCol("total harga", "total amount", "amount", "total", "nilai faktur", "harga total", "net amount", "line amount", "entered amount", "extended amount", "subtotal", "nilai", "grand total", "dpp", "total net"),
     segmentation: getCol("segmentation", "segmen", "segmentasi"),
-    kategoriPPIC: getCol("nama kategori product", "kategori product", "kategori produk"),
+    kategoriPPIC: getCol("nama kategori product", "kategori product", "kategori produk", "product category", "category"),
   };
 
   const records: FakturRecord[] = [];
+  let lastOrderNumber = "";
+  let lastInvoiceNumber = "";
+  let lastCustomerName = "";
+  let lastCustomerCode = "";
+  let lastOrderDate = "";
+  let lastTxDate = "";
+
   for (let i = headerIdx + 1; i < data.length; i++) {
     const row = data[i];
     if (!row || row.length === 0) continue;
@@ -381,20 +450,63 @@ function parseXXCUST(
     const val = (cIdx: number | undefined) => (cIdx !== undefined && cIdx >= 0 ? String(row[cIdx] ?? "").trim() : "");
     const rawVal = (cIdx: number | undefined) => (cIdx !== undefined && cIdx >= 0 ? row[cIdx] : undefined);
 
-    const orderNumber = val(idx.orderNumber);
-    const invoiceNumber = val(idx.invoiceNumber);
-    if (!orderNumber && !invoiceNumber) continue;
+    let orderNumber = val(idx.orderNumber);
+    let invoiceNumber = val(idx.invoiceNumber);
 
-    const customerName = val(idx.customerName);
-    const customerCode = val(idx.customerCode);
+    const itemCode = val(idx.itemCode);
+    const itemDescription = val(idx.itemDescription);
+    const rawQty = rawVal(idx.qty) ?? val(idx.qty);
+    const rawTotal = rawVal(idx.totalHarga) ?? val(idx.totalHarga);
+    const hasItemData = Boolean(itemCode || itemDescription || rawQty || rawTotal);
+
+    // Support merged cells / continuation rows where invoiceNumber is not repeated on each sub-item row
+    if (!orderNumber && !invoiceNumber) {
+      if (hasItemData && (lastInvoiceNumber || lastOrderNumber)) {
+        orderNumber = lastOrderNumber;
+        invoiceNumber = lastInvoiceNumber;
+      } else {
+        continue;
+      }
+    }
+
+    // Fallback: if invoiceNumber is empty but orderNumber exists, use orderNumber
+    if (!invoiceNumber && orderNumber) {
+      invoiceNumber = orderNumber;
+    }
+    if (!orderNumber && invoiceNumber) {
+      orderNumber = "-";
+    }
+
+    let customerName = val(idx.customerName);
+    let customerCode = val(idx.customerCode);
+    if (!customerName && lastCustomerName && invoiceNumber === lastInvoiceNumber) {
+      customerName = lastCustomerName;
+      customerCode = lastCustomerCode;
+    }
+
     const isOra = isOraCustomer(customerName) || isOraCustomer(customerCode) || customerCode === "CA-900001";
     const jenisTransaksi: "ORA" | "DOO" = isOra ? "ORA" : "DOO";
     const kategori = categorize(jenisTransaksi, customerName, jenisTransaksi);
     const cleanInv = invoiceNumber.replace(/-1P$/i, "");
     const invoiceKey = isOra ? `${cleanInv}-1P` : cleanInv;
 
-    const itemCode = val(idx.itemCode);
-    const itemDescription = val(idx.itemDescription);
+    let orderDate = normalizeDateStr(rawVal(idx.orderDate) ?? val(idx.orderDate));
+    let txDate = idx.transactionDate !== undefined ? normalizeDateStr(rawVal(idx.transactionDate) ?? val(idx.transactionDate)) : undefined;
+    if ((!orderDate || orderDate === "-") && lastOrderDate && invoiceNumber === lastInvoiceNumber) {
+      orderDate = lastOrderDate;
+    }
+    if ((!txDate || txDate === "-") && lastTxDate && invoiceNumber === lastInvoiceNumber) {
+      txDate = lastTxDate;
+    }
+
+    // Cache last valid headers for subsequent line items
+    lastOrderNumber = orderNumber;
+    lastInvoiceNumber = invoiceNumber;
+    lastCustomerName = customerName;
+    lastCustomerCode = customerCode;
+    lastOrderDate = orderDate;
+    lastTxDate = txDate || orderDate;
+
     const rawSeg = val(idx.segmentation).toUpperCase();
     const rawPPIC = val(idx.kategoriPPIC).toUpperCase();
     let kategoriProduk = getProductCategory(itemCode, itemDescription, productOverrides) || undefined;
@@ -423,9 +535,12 @@ function parseXXCUST(
         ? "OOT"
         : getPrekursorOOTClassification(itemDescription, itemCode) || undefined;
 
+    const parsedQty = parseNumeric(rawVal(idx.qty) ?? val(idx.qty));
+    const parsedTotal = parseNumeric(rawVal(idx.totalHarga) ?? val(idx.totalHarga));
+
     records.push({
-      orderDate: normalizeDateStr(rawVal(idx.orderDate) ?? val(idx.orderDate)),
-      transactionDate: idx.transactionDate !== undefined ? normalizeDateStr(rawVal(idx.transactionDate) ?? val(idx.transactionDate)) : undefined,
+      orderDate: orderDate || "-",
+      transactionDate: txDate,
       orderNumber: orderNumber || "-",
       invoiceNumber: invoiceNumber || "-",
       invoiceKey,
@@ -433,10 +548,10 @@ function parseXXCUST(
       customerName: customerName || "-",
       itemCode: itemCode || "-",
       itemDescription: itemDescription || "-",
-      qty: (rawVal(idx.qty) as number | string) ?? 0,
+      qty: parsedQty || (rawVal(idx.qty) as number | string) || 0,
       uom: val(idx.uom) || "-",
       lotNumber: val(idx.lotNumber) || "-",
-      totalHarga: Number(rawVal(idx.totalHarga) ?? 0),
+      totalHarga: parsedTotal,
       kategori,
       kategoriProduk,
       klasifikasiObat,
@@ -481,11 +596,26 @@ function parseHTMLTable(html: string): FakturRecord[] {
   let dataStartIdx = 0;
   for (let i = 0; i < rawRows.length; i++) {
     const texts = rawRows[i];
-    if (texts.some((t) => t.toLowerCase().includes("reference"))) {
+    if (texts.some((t) => {
+      const s = t.toLowerCase();
+      return (
+        s.includes("reference") ||
+        s.includes("transaction number") ||
+        s.includes("order number") ||
+        s.includes("no invoice") ||
+        s.includes("no faktur") ||
+        s.includes("entered amount")
+      );
+    })) {
       headerCells = texts;
       dataStartIdx = i + 1;
       break;
     }
+  }
+
+  if (!headerCells.length && rawRows.length > 0) {
+    headerCells = rawRows[0];
+    dataStartIdx = 1;
   }
 
   if (!headerCells.length) throw new Error("Header tabel tidak ditemukan di file export.");
@@ -493,27 +623,40 @@ function parseHTMLTable(html: string): FakturRecord[] {
   const colMap: Record<string, number> = {};
   headerCells.forEach((h, i) => {
     const s = h.toLowerCase().trim();
-    if (s === "transaction date" || (!colMap["txDate"] && s.includes("transaction date"))) colMap["txDate"] = i;
-    if (s === "accounting date" || (!colMap["date"] && s.includes("date"))) colMap["date"] = i;
-    if (s === "reference") colMap["so"] = i;
-    if (s === "transaction number" || (!colMap["inv"] && s.includes("transaction number"))) colMap["inv"] = i;
-    if (s === "ship-to customer") colMap["customer"] = i;
-    if (s === "bill-to customer") colMap["billTo"] = i;
-    if (s === "ship-to site" || (!colMap["shipSite"] && s.includes("ship-to site"))) colMap["shipSite"] = i;
-    if (s === "bill-to customer site" || (!colMap["billSite"] && s.includes("bill-to customer site"))) colMap["billSite"] = i;
-    if (s === "transaction source" || (!colMap["source"] && s.includes("transaction source"))) colMap["source"] = i;
-    if (s === "transaction type" || (!colMap["jenis"] && s.includes("transaction type"))) colMap["jenis"] = i;
-    if (s === "entered amount" || (!colMap["amount"] && s.includes("entered amount"))) colMap["amount"] = i;
+    if (s.includes("transaction date") || s.includes("tanggal transaksi") || s.includes("tanggal faktur")) {
+      if (colMap["txDate"] === undefined) colMap["txDate"] = i;
+    }
+    if (s.includes("accounting date") || s.includes("order date") || s.includes("tanggal order") || s === "date" || s === "tanggal") {
+      if (colMap["date"] === undefined) colMap["date"] = i;
+    }
+    if (s.includes("reference") || s.includes("order number") || s.includes("no order") || s.includes("no so") || s.includes("so number") || s.includes("sales order")) {
+      if (colMap["so"] === undefined) colMap["so"] = i;
+    }
+    if (s.includes("transaction number") || s.includes("invoice number") || s.includes("no invoice") || s.includes("no faktur") || s.includes("nomor faktur") || s.includes("ar number") || s.includes("no inv") || s === "faktur" || s === "invoice") {
+      if (colMap["inv"] === undefined) colMap["inv"] = i;
+    }
+    if (s.includes("ship-to customer") || s.includes("customer name") || s.includes("nama pelanggan") || s.includes("pelanggan") || s.includes("customer")) {
+      if (colMap["customer"] === undefined) colMap["customer"] = i;
+    }
+    if (s.includes("bill-to customer") || s.includes("bill to")) {
+      if (colMap["billTo"] === undefined) colMap["billTo"] = i;
+    }
+    if (s.includes("ship-to site")) colMap["shipSite"] = i;
+    if (s.includes("bill-to customer site") || s.includes("bill-to site")) colMap["billSite"] = i;
+    if (s.includes("transaction source") || s.includes("source") || s.includes("jenis")) colMap["source"] = i;
+    if (s.includes("entered amount") || s.includes("total amount") || s.includes("amount") || s.includes("total") || s.includes("total harga") || s.includes("nilai faktur")) {
+      if (colMap["amount"] === undefined) colMap["amount"] = i;
+    }
   });
 
   const records: FakturRecord[] = [];
   for (let i = dataStartIdx; i < rawRows.length; i++) {
     const texts = rawRows[i];
-    if (!texts || texts.length < 3) continue;
+    if (!texts || texts.length < 2) continue;
     if (texts[0] === "Context Value") continue;
 
-    const soVal = texts[colMap["so"] ?? 1] || "";
-    const invVal = texts[colMap["inv"] ?? 2] || "";
+    const soVal = (colMap["so"] !== undefined ? texts[colMap["so"]] : texts[1]) || "";
+    const invVal = (colMap["inv"] !== undefined ? texts[colMap["inv"]] : texts[2]) || "";
     if (!soVal && !invVal) continue;
 
     const customerName = (colMap["customer"] !== undefined && texts[colMap["customer"]])
@@ -529,25 +672,28 @@ function parseHTMLTable(html: string): FakturRecord[] {
     const billSite = colMap["billSite"] !== undefined ? texts[colMap["billSite"]] : "";
 
     const kategori = isOra ? "1P" : categorize(jenisTransaksi, customerName, jenisTransaksi, shipSite, billSite);
-    const cleanInv = invVal.replace(/-1P$/i, "");
+    const finalInv = invVal || soVal;
+    const cleanInv = finalInv.replace(/-1P$/i, "");
     const invoiceKey = isOra ? `${cleanInv}-1P` : cleanInv;
     const finalSO = isOra ? "-" : (soVal || "-");
     const txVal = colMap["txDate"] !== undefined ? texts[colMap["txDate"]] : undefined;
+    const rawAmt = colMap["amount"] !== undefined ? texts[colMap["amount"]] : texts[11];
+    const totalHarga = parseNumeric(rawAmt);
 
     records.push({
       orderDate: normalizeDateStr(texts[colMap["date"] ?? 0] || ""),
       transactionDate: txVal ? normalizeDateStr(txVal) : undefined,
       orderNumber: finalSO,
-      invoiceNumber: invVal,
+      invoiceNumber: finalInv,
       invoiceKey,
       jenisTransaksi,
       customerName,
       itemCode: "-",
       itemDescription: "-",
-      qty: "-",
+      qty: 1,
       uom: "-",
       lotNumber: "-",
-      totalHarga: Number(texts[colMap["amount"] ?? 11]?.replace(/[^0-9.-]/g, "") || 0),
+      totalHarga,
       kategori,
       isDoubleInv: false,
       sourceFile: "EXPORT",
@@ -563,28 +709,43 @@ function parseExportArray(data: unknown[][], headerIdx: number): FakturRecord[] 
   const header = data[headerIdx] as string[];
   const colMap: Record<string, number> = {};
   header.forEach((h, i) => {
+    if (!h) return;
     const s = String(h || "").toLowerCase().trim();
-    if (s === "transaction date" || (!colMap["txDate"] && s.includes("transaction date"))) colMap["txDate"] = i;
-    if (s === "accounting date" || (!colMap["date"] && s.includes("date"))) colMap["date"] = i;
-    if (s === "reference") colMap["so"] = i;
-    if (s === "transaction number" || (!colMap["inv"] && s.includes("transaction number"))) colMap["inv"] = i;
-    if (s === "ship-to customer") colMap["customer"] = i;
-    if (s === "bill-to customer") colMap["billTo"] = i;
-    if (s === "ship-to site" || (!colMap["shipSite"] && s.includes("ship-to site"))) colMap["shipSite"] = i;
-    if (s === "bill-to customer site" || (!colMap["billSite"] && s.includes("bill-to customer site"))) colMap["billSite"] = i;
-    if (s === "transaction source" || (!colMap["source"] && s.includes("transaction source"))) colMap["source"] = i;
-    if (s === "entered amount" || (!colMap["amount"] && s.includes("entered amount"))) colMap["amount"] = i;
+    if (s.includes("transaction date") || s.includes("tanggal transaksi") || s.includes("tanggal faktur")) {
+      if (colMap["txDate"] === undefined) colMap["txDate"] = i;
+    }
+    if (s.includes("accounting date") || s.includes("order date") || s.includes("tanggal order") || s === "date" || s === "tanggal") {
+      if (colMap["date"] === undefined) colMap["date"] = i;
+    }
+    if (s.includes("reference") || s.includes("order number") || s.includes("no order") || s.includes("no so") || s.includes("so number") || s.includes("sales order")) {
+      if (colMap["so"] === undefined) colMap["so"] = i;
+    }
+    if (s.includes("transaction number") || s.includes("invoice number") || s.includes("no invoice") || s.includes("no faktur") || s.includes("nomor faktur") || s.includes("ar number") || s.includes("no inv") || s === "faktur" || s === "invoice") {
+      if (colMap["inv"] === undefined) colMap["inv"] = i;
+    }
+    if (s.includes("ship-to customer") || s.includes("customer name") || s.includes("nama pelanggan") || s.includes("pelanggan") || s.includes("customer")) {
+      if (colMap["customer"] === undefined) colMap["customer"] = i;
+    }
+    if (s.includes("bill-to customer") || s.includes("bill to")) {
+      if (colMap["billTo"] === undefined) colMap["billTo"] = i;
+    }
+    if (s.includes("ship-to site")) colMap["shipSite"] = i;
+    if (s.includes("bill-to customer site") || s.includes("bill-to site")) colMap["billSite"] = i;
+    if (s.includes("transaction source") || s.includes("source") || s.includes("jenis")) colMap["source"] = i;
+    if (s.includes("entered amount") || s.includes("total amount") || s.includes("amount") || s.includes("total") || s.includes("total harga") || s.includes("nilai faktur")) {
+      if (colMap["amount"] === undefined) colMap["amount"] = i;
+    }
   });
 
   const records: FakturRecord[] = [];
   for (let i = headerIdx + 1; i < data.length; i++) {
     const row = data[i];
-    if (!row || row.length < 3) continue;
+    if (!row || row.length < 2) continue;
 
-    const soVal = String(row[colMap["so"] ?? 1] ?? "").trim();
-    const invVal = String(row[colMap["inv"] ?? 2] ?? "").trim();
+    const soVal = String((colMap["so"] !== undefined ? row[colMap["so"]] : row[1]) ?? "").trim();
+    const invVal = String((colMap["inv"] !== undefined ? row[colMap["inv"]] : row[2]) ?? "").trim();
     if (!soVal && !invVal) continue;
-    if (soVal.toLowerCase() === "reference" || invVal.toLowerCase().includes("transaction")) continue;
+    if (soVal.toLowerCase() === "reference" || invVal.toLowerCase().includes("transaction number")) continue;
 
     const customerName = String(
       (colMap["customer"] !== undefined && row[colMap["customer"]] ? row[colMap["customer"]] : "") ||
@@ -600,10 +761,11 @@ function parseExportArray(data: unknown[][], headerIdx: number): FakturRecord[] 
     const billSite = String((colMap["billSite"] !== undefined ? row[colMap["billSite"]] : "") || "");
 
     const kategori = isOra ? "1P" : categorize(jenisTransaksi, customerName, jenisTransaksi, shipSite, billSite);
-    const cleanInv = invVal.replace(/-1P$/i, "");
+    const finalInv = invVal || soVal;
+    const cleanInv = finalInv.replace(/-1P$/i, "");
     const invoiceKey = isOra ? `${cleanInv}-1P` : cleanInv;
-    const rawAmount = row[colMap["amount"] ?? 11];
-    const totalHarga = typeof rawAmount === "number" ? rawAmount : Number(String(rawAmount || "").replace(/[^0-9.-]/g, "") || 0);
+    const rawAmount = colMap["amount"] !== undefined ? row[colMap["amount"]] : row[11];
+    const totalHarga = parseNumeric(rawAmount);
     const finalSO = isOra ? "-" : (soVal || "-");
     const txVal = colMap["txDate"] !== undefined ? row[colMap["txDate"]] : undefined;
 
@@ -611,13 +773,13 @@ function parseExportArray(data: unknown[][], headerIdx: number): FakturRecord[] 
       orderDate: normalizeDateStr(row[colMap["date"] ?? 0]),
       transactionDate: txVal ? normalizeDateStr(txVal) : undefined,
       orderNumber: finalSO,
-      invoiceNumber: invVal,
+      invoiceNumber: finalInv,
       invoiceKey,
       jenisTransaksi,
       customerName,
       itemCode: "-",
       itemDescription: "-",
-      qty: "-",
+      qty: 1,
       uom: "-",
       lotNumber: "-",
       totalHarga,
@@ -669,13 +831,27 @@ export async function parseExcelFile(
         )
       : XLSX.utils.sheet_to_json(ws, { header: 1, raw: true })) as unknown[][];
 
-    // Find XXCUST header
+    // Find detailed / XXCUST header
     const headerIdx = data.findIndex(
       (row) =>
         row &&
         row.some((cell) => {
-          const s = String(cell || "").toLowerCase();
-          return s.includes("jenis transaksi") || s.includes("order number");
+          const s = String(cell || "").toLowerCase().trim();
+          return (
+            s.includes("jenis transaksi") ||
+            s.includes("order number") ||
+            s.includes("no order") ||
+            s.includes("no so") ||
+            s.includes("so number") ||
+            s.includes("no faktur") ||
+            s.includes("nomor faktur") ||
+            s.includes("invoice number") ||
+            s.includes("no invoice") ||
+            s.includes("ar number") ||
+            s.includes("nama barang") ||
+            s.includes("item description") ||
+            s.includes("kode barang")
+          );
         })
     );
 
@@ -688,13 +864,30 @@ export async function parseExcelFile(
       (row) =>
         row &&
         row.some((cell) => {
-          const s = String(cell || "").toLowerCase();
-          return s.includes("reference") || s.includes("transaction number");
+          const s = String(cell || "").toLowerCase().trim();
+          return (
+            s.includes("reference") ||
+            s.includes("transaction number") ||
+            s.includes("entered amount") ||
+            s.includes("ship-to customer") ||
+            s.includes("bill-to customer") ||
+            s.includes("total amount") ||
+            s.includes("faktur") ||
+            s.includes("invoice")
+          );
         })
     );
 
     if (exportIdx !== -1) {
       return parseExportArray(data, exportIdx);
+    }
+
+    // Resilient fallback: If no explicit header matched, assume row 0 is header
+    if (data.length > 1 && data[0] && data[0].length >= 2) {
+      try {
+        const fallbackRecs = parseXXCUST(data, 0, productOverrides);
+        if (fallbackRecs.length > 0) return fallbackRecs;
+      } catch {}
     }
   } catch {
     const fullText = new TextDecoder().decode(buffer);
@@ -703,5 +896,5 @@ export async function parseExcelFile(
     }
   }
 
-  throw new Error("Format file tidak dikenali. Pastikan file adalah hasil export resmi dari Oracle.");
+  throw new Error("Format file tidak dikenali. Pastikan file memiliki kolom No Faktur / No Order / Pelanggan.");
 }
