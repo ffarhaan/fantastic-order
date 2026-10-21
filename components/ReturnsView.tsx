@@ -66,6 +66,32 @@ export const formatDate = (dateStr: string | null | undefined): string => {
   return String(dateStr);
 };
 
+export const calculateDaysUntilToday = (reportDateStr?: string | null): number | string => {
+  if (!reportDateStr || reportDateStr === "#N/A" || reportDateStr === "-") return "-";
+  try {
+    const rep = new Date(reportDateStr);
+    if (isNaN(rep.getTime())) return "-";
+    return Math.max(0, Math.floor((Date.now() - rep.getTime()) / (1000 * 60 * 60 * 24)));
+  } catch {
+    return "-";
+  }
+};
+
+export const calculateDaysUntilClose = (reportDateStr?: string | null, resolvedDateStr?: string | null, status?: string | null): number | string => {
+  if (!resolvedDateStr || resolvedDateStr === "#N/A" || resolvedDateStr === "-" || !(status || "").toLowerCase().includes("resolved")) {
+    return "#N/A";
+  }
+  if (!reportDateStr || reportDateStr === "#N/A" || reportDateStr === "-") return "#N/A";
+  try {
+    const rep = new Date(reportDateStr);
+    const res = new Date(resolvedDateStr);
+    if (isNaN(rep.getTime()) || isNaN(res.getTime())) return "#N/A";
+    return Math.max(0, Math.floor((res.getTime() - rep.getTime()) / (1000 * 60 * 60 * 24)));
+  } catch {
+    return "#N/A";
+  }
+};
+
 interface ReturnsViewProps {
   onSelectCustomer?: (customerName: string) => void;
   onSelectInvoice?: (invoiceNo: string) => void;
@@ -662,6 +688,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       "Alasan (Reason)": r.reason || "-",
       Status: r.status || "Pending",
       "Tanggal Penyelesaian": formatDate(r.resolved_date),
+      "Days until Today": calculateDaysUntilToday(r.report_date),
+      "Days until close": calculateDaysUntilClose(r.report_date, r.resolved_date, r.status),
       Tindakan: r.action || "-",
       "Status Konfirmasi": r.confirm || "-",
       "No. Nota Retur": r.nota_retur_no || "-",
@@ -1087,6 +1115,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 <th className="py-2.5 px-4">Alasan (Reason)</th>
                 <th className="py-2.5 px-3 text-center">Status</th>
                 <th className="py-2.5 px-3 text-center">Tgl Selesai</th>
+                <th className="py-2.5 px-2.5 text-center whitespace-nowrap" title="Days until Today (Hari sejak lapor)">Days Today</th>
+                <th className="py-2.5 px-2.5 text-center whitespace-nowrap" title="Days until close (#N/A jika belum selesai)">Days Until Close</th>
                 <th className="py-2.5 px-3">Tindakan</th>
                 <th className="py-2.5 px-3 text-center">Aksi</th>
               </tr>
@@ -1094,14 +1124,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <tbody className="divide-y divide-zinc-200/80 dark:divide-slate-800/50">
               {loading && returns.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="py-16 text-center text-zinc-400">
+                  <td colSpan={14} className="py-16 text-center text-zinc-400">
                     <RefreshCw className="w-7 h-7 animate-spin mx-auto text-indigo-500 mb-2" />
                     <span className="font-semibold text-sm">Memuat data tiket komplain & retur...</span>
                   </td>
                 </tr>
               ) : returns.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="py-16 text-center text-zinc-400">
+                  <td colSpan={14} className="py-16 text-center text-zinc-400">
                     <RotateCcw className="w-8 h-8 mx-auto text-zinc-400 mb-2 opacity-50" />
                     <p className="font-semibold text-sm text-zinc-600 dark:text-slate-400">Tidak ada tiket komplain/retur yang cocok</p>
                     <p className="text-xs text-zinc-400 dark:text-slate-500 mt-1">Gunakan kata kunci lain atau ubah status filter.</p>
@@ -1282,6 +1312,37 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                           )}
                         </td>
 
+                        <td className="py-2.5 px-2.5 text-center font-mono text-[11px] whitespace-nowrap">
+                          {(() => {
+                            const d = calculateDaysUntilToday(r.report_date);
+                            return d === "-" ? (
+                              <span className="text-zinc-400 dark:text-slate-600">-</span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-zinc-100 dark:bg-slate-800 text-zinc-700 dark:text-slate-300 border border-zinc-200 dark:border-slate-700">
+                                {d} hr
+                              </span>
+                            );
+                          })()}
+                        </td>
+
+                        <td className="py-2.5 px-2.5 text-center font-mono text-[11px] whitespace-nowrap">
+                          {(() => {
+                            const d = calculateDaysUntilClose(r.report_date, r.resolved_date, r.status);
+                            if (d === "#N/A") {
+                              return (
+                                <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60" title="Belum Selesai / Close">
+                                  #N/A
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60" title={`Selesai dalam ${d} hari`}>
+                                {d} hr
+                              </span>
+                            );
+                          })()}
+                        </td>
+
                         <td className="py-2.5 px-3 text-zinc-800 dark:text-slate-300 max-w-[130px] truncate font-medium">
                           {r.action && r.action !== "#N/A" ? r.action : "-"}
                         </td>
@@ -1307,7 +1368,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                       {/* â”€â”€â”€ OPSI 4: EXPANDABLE ROW (AKORDEON) â”€â”€â”€ */}
                       {isExpanded && (
                         <tr className="bg-zinc-100/90 dark:bg-[#070b16] border-y-2 border-indigo-500/50 animate-in fade-in duration-150">
-                          <td colSpan={12} className="p-2 sm:p-3">
+                          <td colSpan={14} className="p-2 sm:p-3">
                             <div className="bg-white dark:bg-[#0d1424] border border-zinc-300 dark:border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm space-y-3">
                               
                               {/* Header Bar */}
@@ -1536,6 +1597,18 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                                         onChange={(e) => setEditForm({ ...editForm, resolved_date: e.target.value })}
                                         className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
                                       />
+                                    </div>
+
+                                    <div>
+                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Days Until Close</label>
+                                      <div className={`p-1.5 border rounded-lg font-mono font-bold text-xs flex items-center justify-between ${
+                                        calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status) === "#N/A"
+                                          ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800"
+                                          : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+                                      }`}>
+                                        <span>{calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status) === "#N/A" ? "#N/A (Belum Close)" : `${calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status)} hari`}</span>
+                                        <span className="text-[10px] font-normal text-zinc-500">Today: {calculateDaysUntilToday(editForm.report_date)} hr</span>
+                                      </div>
                                     </div>
 
                                     <div>
