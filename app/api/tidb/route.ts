@@ -41,18 +41,22 @@ export async function GET(req: Request) {
     const conn = getTiDBClient();
 
     // ==========================================
-    // CHECKERS MAPPING (SO -> Checker)
+    // CHECKERS & PACKERS MAPPING (SO -> Checker & Packer)
     // ==========================================
     if (action === "get_checkers") {
-      const rows = (await conn.execute("SELECT so_number, checker_name FROM so_checkers")) as Array<{
+      const rows = (await conn.execute("SELECT so_number, checker_name, packer_name FROM so_checkers")) as Array<{
         so_number: string;
         checker_name: string;
+        packer_name: string;
       }>;
-      const map: Record<string, string> = {};
+      const map: Record<string, { checker: string; packer: string }> = {};
       if (Array.isArray(rows)) {
         for (const r of rows) {
-          if (r.so_number && r.checker_name) {
-            map[r.so_number] = r.checker_name;
+          if (r.so_number) {
+            map[r.so_number] = {
+              checker: r.checker_name || "",
+              packer: r.packer_name || "",
+            };
           }
         }
       }
