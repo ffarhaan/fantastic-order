@@ -326,6 +326,62 @@ export async function GET(req: Request) {
       return compressedJsonResponse(req, { success: true, count: fakturs.length, data: fakturs });
     }
 
+    // ==========================================
+    // 6. RETURN REQUESTS (PENGAJUAN RETUR)
+    // ==========================================
+    if (action === "return_requests") {
+      const search = (searchParams.get("search") || "").trim();
+      const status = searchParams.get("status") || "";
+      const limit = Math.min(Number(searchParams.get("limit")) || 300, 1000);
+      const offset = Number(searchParams.get("offset")) || 0;
+
+      let whereClause = "WHERE 1=1";
+      const params: (string | number)[] = [];
+
+      if (search) {
+        whereClause += " AND (request_id LIKE ? OR customer_name LIKE ? OR invoice_no LIKE ? OR product_name LIKE ? OR requester_name LIKE ?)";
+        const s = `%${search}%`;
+        params.push(s, s, s, s, s);
+      }
+      if (status && status !== "ALL" && status !== "all") {
+        whereClause += " AND LOWER(status) = LOWER(?)";
+        params.push(status);
+      }
+
+      const rows = (await conn.execute(
+        `SELECT * FROM return_requests ${whereClause} ORDER BY id DESC LIMIT ? OFFSET ?`,
+        [...params, limit, offset]
+      )) as any[];
+
+      const counts = (await conn.execute(`
+        SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN LOWER(status) = 'pending' THEN 1 ELSE 0 END) as pending,
+          SUM(CASE WHEN LOWER(status) = 'dikonfirmasi' THEN 1 ELSE 0 END) as dikonfirmasi,
+          SUM(CASE WHEN LOWER(status) = 'dalam perjalanan' THEN 1 ELSE 0 END) as dalam_perjalanan,
+          SUM(CASE WHEN LOWER(status) = 'terkirim' THEN 1 ELSE 0 END) as terkirim,
+          SUM(CASE WHEN LOWER(status) = 'selesai' THEN 1 ELSE 0 END) as selesai,
+          SUM(CASE WHEN LOWER(status) = 'gagal' THEN 1 ELSE 0 END) as gagal
+        FROM return_requests;
+      `)) as any[];
+
+      const summary = counts[0] || {};
+
+      return compressedJsonResponse(req, {
+        success: true,
+        data: rows,
+        summary: {
+          total: Number(summary.total || 0),
+          pending: Number(summary.pending || 0),
+          dikonfirmasi: Number(summary.dikonfirmasi || 0),
+          dalam_perjalanan: Number(summary.dalam_perjalanan || 0),
+          terkirim: Number(summary.terkirim || 0),
+          selesai: Number(summary.selesai || 0),
+          gagal: Number(summary.gagal || 0),
+        },
+      });
+    }
+
     return Response.json({ success: false, error: `Invalid action: ${action}` }, { status: 400 });
   } catch (error) {
     console.error("GET /api/tidb error:", error);
@@ -699,6 +755,133 @@ export async function POST(req: Request) {
       }
 
       return Response.json({ success: true, count: fakturs.length });
+    }
+
+    // ==========================================
+    // 7. PENGAJUAN RETUR (SUBMIT & UPDATE STATUS)
+    // ==========================================
+    if (action === "submit_return_request") {
+      const {
+        pbf,
+        customer_name,
+        invoice_no,
+        product_name,
+        qty,
+        batch_no,
+        expiry_date,
+        reason,
+        note,
+        requester_name,
+        photos,
+      } = body;
+
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const idStr = `RTR-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+      const dateDisp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+      const photoJson = Array.isArray(photos) ? JSON.stringify(photos) : (photos || "");
+
+      const [res] = (await conn.execute(
+        `INSERT INTO return_requests (
+          request_id, request_date, pbf, customer_name, invoice_no, product_name,
+          qty, batch_no, expiry_date, reason, note, requester_name, status, photos
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)`,
+        [
+          idStr,
+          dateDisp,
+          pbf || "MBI",
+          customer_name || "",
+          invoice_no || "",
+          product_name || "",
+          Number(qty) || 1,
+          batch_no || "",
+          expiry_date || "",
+          reason || "",
+          note || "",
+          requester_name || "",
+          photoJson,
+        ]
+      )) as any;
+
+      return Response.json({
+        success: true,
+        request_id: idStr,
+        message: `Pengajuan retur berhasil dibuat dengan ID: ${idStr}`,
+        id: res?.insertId,
+      });
+    }
+
+    if (action === "update_return_request_status") {
+      const { request_id, id, status: newStatus, processed_by } = body;
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const dateDisp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      const todayYMD = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+      let whereCol = "request_id = ?";
+      let whereVal = request_id;
+      if (!request_id && id) {
+        whereCol = "id = ?";
+        whereVal = id;
+      }
+
+      const rows = (await conn.execute(
+        `SELECT * FROM return_requests WHERE ${whereCol} LIMIT 1`,
+        [whereVal]
+      )) as any[];
+      const existing = rows[0];
+
+      if (!existing) {
+        return Response.json({ success: false, error: "Data pengajuan retur tidak ditemukan" }, { status: 404 });
+      }
+
+      await conn.execute(
+        `UPDATE return_requests SET status = ?, processed_date = ?, processed_by = ? WHERE ${whereCol}`,
+        [newStatus, dateDisp, processed_by || "Admin", whereVal]
+      );
+
+      // Auto-insert to shipment_returns if status is "Dikonfirmasi"
+      if (newStatus === "Dikonfirmasi") {
+        let photoFirst = "";
+        try {
+          if (existing.photos) {
+            if (String(existing.photos).startsWith("[")) {
+              const arr = JSON.parse(existing.photos);
+              if (Array.isArray(arr) && arr.length > 0) photoFirst = arr[0];
+            } else {
+              photoFirst = existing.photos;
+            }
+          }
+        } catch {}
+
+        await conn.execute(
+          `INSERT INTO shipment_returns (
+            pbf, customer_name, invoice_no, product_name, qty, batch_no, expiry_date,
+            reason, invoice_date, report_date, category, confirm, action, status,
+            note, root_cause, photo_url
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Retur', 'Approve', 'Proses Retur', 'In Progress', ?, 'Human Error', ?)`,
+          [
+            existing.pbf || "MBI",
+            existing.customer_name || "",
+            existing.invoice_no || "",
+            existing.product_name || "",
+            Number(existing.qty) || 1,
+            existing.batch_no || "",
+            existing.expiry_date || "",
+            existing.reason || "",
+            todayYMD,
+            todayYMD,
+            existing.note || "",
+            photoFirst || null,
+          ]
+        );
+      }
+
+      return Response.json({
+        success: true,
+        message: `Status berhasil diubah ke: ${newStatus}`,
+      });
     }
 
     return Response.json({ success: false, error: "Unknown action" }, { status: 400 });
