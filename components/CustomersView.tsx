@@ -90,6 +90,45 @@ export function formatIndonesianDate(val: any): string {
   return strVal;
 }
 
+/**
+ * Format date values into HTML5 <input type="date"> format: YYYY-MM-DD.
+ * Converts Excel serial numbers (e.g. 47447, 48010) and standard date strings.
+ */
+export function parseToDateInputValue(val: any): string {
+  if (!val || val === "-" || val === "null" || val === "undefined") return "";
+  const strVal = String(val).trim();
+  if (!strVal || strVal === "-") return "";
+
+  // Check if it's an Excel numeric date serial (e.g. 47447 or 48010)
+  const num = Number(strVal);
+  if (!isNaN(num) && num > 20000 && num < 80000) {
+    const d = new Date(Math.round((num - 25569) * 86400 * 1000));
+    if (!isNaN(d.getTime())) {
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  // If already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(strVal)) return strVal;
+
+  // If YYYY/MM/DD
+  const slashMatch = strVal.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (slashMatch) {
+    return `${slashMatch[1]}-${String(slashMatch[2]).padStart(2, "0")}-${String(slashMatch[3]).padStart(2, "0")}`;
+  }
+
+  // If DD-MM-YYYY or DD/MM/YYYY
+  const dmyMatch = strVal.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (dmyMatch) {
+    return `${dmyMatch[3]}-${String(dmyMatch[2]).padStart(2, "0")}-${String(dmyMatch[1]).padStart(2, "0")}`;
+  }
+
+  return "";
+}
+
 interface CustomersViewProps {
   onSelectCustomerForFilter?: (name: string) => void;
 }
@@ -117,7 +156,11 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const handleOpenEdit = (cust: CustomerRecord) => {
-    setEditForm({ ...cust });
+    setEditForm({
+      ...cust,
+      sia_expired: parseToDateInputValue(cust.sia_expired),
+      sipa_expired: parseToDateInputValue(cust.sipa_expired),
+    });
     setShowEditModal(true);
   };
 
@@ -483,28 +526,33 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
               ) : (
                 customers.map((c) => {
                   const isActive = c.status_merchant === "ACTIVE";
+                  const isSelected = selectedCust?.id === c.id || (showEditModal && editForm?.id === c.id);
 
                   return (
                     <tr
                       key={c.id}
                       onClick={() => handleOpenDetail(c)}
-                      className="group hover:bg-slate-800/40 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
+                      className={`group transition-all cursor-pointer ${
+                        isSelected
+                          ? "bg-blue-50/90 dark:bg-slate-800/70 border-l-4 border-blue-600 dark:border-indigo-500"
+                          : "hover:bg-blue-50/50 dark:hover:bg-slate-800/30 border-l-4 border-transparent"
+                      }`}
                     >
                       {/* ID */}
-                      <td className="py-2.5 px-3.5 font-mono text-slate-400 text-[11px] group-hover:text-indigo-400 transition-colors">
+                      <td className="py-2.5 px-3.5 font-mono text-zinc-500 dark:text-slate-400 text-[11px] group-hover:text-blue-600 dark:group-hover:text-indigo-400 transition-colors">
                         {c.id}
                       </td>
 
                       {/* ID Oracle */}
                       <td className="py-2.5 px-3">
-                        <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                        <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-indigo-500/10 text-blue-700 dark:text-indigo-300 border border-blue-200 dark:border-indigo-500/20">
                           {c.customer_id_oracle || "-"}
                         </span>
                       </td>
 
                       {/* Nama Apotek */}
                       <td className="py-2.5 px-4 font-bold text-zinc-900 dark:text-slate-100 max-w-[240px]">
-                        <span className="truncate block group-hover:text-indigo-600 dark:group-hover:text-indigo-200 transition-colors" title={c.name}>
+                        <span className="truncate block group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors" title={c.name}>
                           {c.name}
                         </span>
                       </td>
@@ -529,23 +577,23 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
 
                       {/* Alamat */}
                       <td className="py-2.5 px-4 max-w-[260px] text-zinc-600 dark:text-slate-300">
-                        <span className="truncate block text-zinc-500 dark:text-slate-400 group-hover:text-zinc-800 dark:group-hover:text-slate-200 transition-colors" title={c.address}>
+                        <span className="truncate block text-zinc-600 dark:text-slate-400 group-hover:text-zinc-900 dark:group-hover:text-slate-200 transition-colors" title={c.address}>
                           {c.address || "-"}
                         </span>
                       </td>
 
                       {/* Nama APJ */}
-                      <td className="py-2.5 px-3 text-zinc-700 dark:text-slate-300 truncate max-w-[140px] font-medium" title={c.apj_name}>
+                      <td className="py-2.5 px-3 text-zinc-800 dark:text-slate-300 truncate max-w-[140px] font-medium" title={c.apj_name}>
                         {c.apj_name || "-"}
                       </td>
 
                       {/* SIA Expired */}
-                      <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-700 dark:text-cyan-300 whitespace-nowrap">
+                      <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-800 dark:text-cyan-300 whitespace-nowrap font-medium">
                         {formatIndonesianDate(c.sia_expired)}
                       </td>
 
                       {/* SIPA Expired */}
-                      <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-700 dark:text-indigo-300 whitespace-nowrap">
+                      <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-800 dark:text-indigo-300 whitespace-nowrap font-medium">
                         {formatIndonesianDate(c.sipa_expired)}
                       </td>
 
@@ -554,12 +602,12 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                         <span
                           className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
                             c.category === "1P"
-                              ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                              ? "bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/40"
                               : c.category === "2P"
-                              ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                              ? "bg-cyan-100 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/40"
                               : c.category === "3P"
-                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                              : "bg-slate-800 text-slate-400 border border-slate-700"
+                              ? "bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40"
+                              : "bg-zinc-100 text-zinc-600 border border-zinc-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
                           }`}
                         >
                           {c.category || "REG"}
@@ -575,7 +623,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                               e.stopPropagation();
                               handleOpenDetail(c);
                             }}
-                            className="px-2 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-indigo-600 text-zinc-700 hover:text-black dark:text-slate-200 dark:hover:text-white text-[11px] font-semibold border border-zinc-200 dark:border-slate-700 transition-all flex items-center gap-1 shadow-xs active:scale-95 cursor-pointer"
+                            className="px-2 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-indigo-600 text-zinc-700 hover:text-black dark:text-slate-200 dark:hover:text-white text-[11px] font-semibold border border-zinc-200 dark:border-slate-700 transition-all flex items-center gap-1 shadow-2xs active:scale-95 cursor-pointer"
                             title="Lihat Detail Customer"
                           >
                             <span>Lihat</span>
@@ -587,8 +635,8 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                               e.stopPropagation();
                               handleOpenEdit(c);
                             }}
-                            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-slate-800 dark:hover:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-slate-700 transition-all shadow-xs active:scale-95 cursor-pointer"
-                            title="Edit Data Customer"
+                            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-slate-800 dark:hover:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-slate-700 transition-all shadow-2xs active:scale-95 cursor-pointer"
+                            title="Edit Data Customer (Laci Kanan)"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -602,15 +650,15 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
           </table>
         </div>
 
-        {/* ─── Pagination Footer ─── */}
-        <div className="bg-slate-950/90 dark:bg-[#070b14] border-t border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+        {/* ─── Pagination Footer (High Contrast Light Mode) ─── */}
+        <div className="bg-zinc-50 dark:bg-[#070b14] border-t border-zinc-200 dark:border-zinc-800 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-600 dark:text-slate-400">
           <div className="flex items-center gap-2">
             <span>
               Menampilkan{" "}
-              <strong className="text-white">
+              <strong className="text-zinc-900 dark:text-white font-bold">
                 {total === 0 ? 0 : page * limit + 1} - {Math.min((page + 1) * limit, total)}
               </strong>{" "}
-              dari <strong className="text-indigo-300">{total.toLocaleString("id-ID")}</strong> merchant
+              dari <strong className="text-blue-700 dark:text-indigo-300 font-bold">{total.toLocaleString("id-ID")}</strong> merchant
             </span>
           </div>
 
@@ -619,19 +667,19 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
               type="button"
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0 || loading}
-              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-30 border border-slate-700 flex items-center gap-1 transition-all"
+              className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-zinc-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-700 dark:text-slate-200 disabled:opacity-30 border border-zinc-200 dark:border-slate-700 flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
               <span>Sebelumnya</span>
             </button>
-            <span className="px-3 py-1 font-bold text-slate-200">
+            <span className="px-3 py-1 font-bold text-zinc-800 dark:text-slate-200">
               Hal {page + 1} / {totalPages || 1}
             </span>
             <button
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1 || loading}
-              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-30 border border-slate-700 flex items-center gap-1 transition-all"
+              className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-zinc-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-700 dark:text-slate-200 disabled:opacity-30 border border-zinc-200 dark:border-slate-700 flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
             >
               <span>Berikutnya</span>
               <ChevronRight className="w-3.5 h-3.5" />
@@ -684,9 +732,12 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => handleOpenEdit(selectedCust)}
-                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                  title="Edit Data Customer"
+                  onClick={() => {
+                    handleOpenEdit(selectedCust);
+                    setSelectedCust(null);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                  title="Edit Data Customer (Buka Laci Kanan)"
                 >
                   <Pencil className="w-3.5 h-3.5" />
                   <span>Edit Data</span>
@@ -951,250 +1002,296 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
         </div>
       )}
 
-      {/* EDIT CUSTOMER MODAL */}
+      {/* ─── SLIDE-OVER RIGHT DRAWER: EDIT CUSTOMER ─── */}
       {showEditModal && editForm && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden text-zinc-900 dark:text-zinc-100">
-            {/* Header */}
-            <div className="p-4 sm:p-5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/90 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
-                  <Pencil className="w-4 h-4" />
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 backdrop-blur-xs flex justify-end animate-in fade-in duration-200">
+          {/* Backdrop click to close */}
+          <div
+            className="absolute inset-0 cursor-pointer"
+            onClick={() => setShowEditModal(false)}
+            title="Klik area luar untuk menutup"
+          />
+
+          {/* Drawer Container (Slides from Right) */}
+          <div className="relative w-full max-w-lg md:max-w-xl bg-white dark:bg-[#0c121f] border-l border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col h-full z-10 animate-in slide-in-from-right duration-300 text-zinc-900 dark:text-zinc-100">
+            {/* Drawer Header */}
+            <div className="p-4 sm:p-5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/80 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold shrink-0">
+                  <Pencil className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold text-zinc-900 dark:text-white">Edit Data Customer / Apotek</h3>
-                  <p className="text-[11px] text-zinc-500 font-mono">ID: {editForm.id} • Oracle: {editForm.customer_id_oracle || "-"}</p>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">
+                    Slide-over Panel
+                  </span>
+                  <h3 className="text-sm sm:text-base font-bold text-zinc-900 dark:text-white truncate">
+                    Edit Data Customer
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono truncate">
+                    ID: {editForm.id} • Oracle: {editForm.customer_id_oracle || "-"}
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowEditModal(false)}
-                className="w-7 h-7 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white cursor-pointer"
+                className="w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors cursor-pointer shrink-0"
+                title="Tutup Panel"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Form Body */}
-            <form onSubmit={handleSaveCustomer} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
-              {/* Section 1: Data Pokok */}
-              <div className="space-y-3 bg-zinc-50/70 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <span className="font-bold text-[11px] uppercase tracking-wider text-indigo-600 dark:text-indigo-400 block">
-                  Informasi Utama Apotek
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Nama Apotek / Merchant *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={editForm.name || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold focus:outline-none focus:border-indigo-500"
-                    />
+            {/* Drawer Form Body */}
+            <form onSubmit={handleSaveCustomer} className="flex-1 flex flex-col min-h-0">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
+                {/* Section 1: Informasi Pokok */}
+                <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                  <span className="font-bold text-[11px] uppercase tracking-wider text-blue-600 dark:text-blue-400 block">
+                    1. Informasi Pokok Mitra
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Nama Apotek / Merchant <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editForm.name || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Customer ID Oracle
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.customer_id_oracle || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, customer_id_oracle: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Status Merchant
+                      </label>
+                      <select
+                        value={editForm.status_merchant || "ACTIVE"}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, status_merchant: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold focus:outline-none"
+                      >
+                        <option value="ACTIVE">ACTIVE</option>
+                        <option value="INACTIVE">INACTIVE</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Kategori Prioritas
+                      </label>
+                      <select
+                        value={editForm.category || "REG"}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, category: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold focus:outline-none"
+                      >
+                        <option value="1P">1P (Prioritas 1)</option>
+                        <option value="2P">2P (Prioritas 2)</option>
+                        <option value="3P">3P (Reguler)</option>
+                        <option value="REG">REG</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Cabang / Zone
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.branch || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, branch: e.target.value }))}
+                        placeholder="Contoh: JAKARTA"
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Customer ID Oracle
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.customer_id_oracle || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, customer_id_oracle: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none focus:border-indigo-500"
-                    />
+                </div>
+
+                {/* Section 2: Legalitas & Kalender Izin */}
+                <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-[11px] uppercase tracking-wider text-cyan-700 dark:text-cyan-400 block">
+                      2. Legalitas Izin &amp; Kalender (SIA / SIPA)
+                    </span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 px-2 py-0.5 rounded-md font-bold">
+                      Kalender Picker Asli
+                    </span>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Status Merchant
-                    </label>
-                    <select
-                      value={editForm.status_merchant || "ACTIVE"}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, status_merchant: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold focus:outline-none"
-                    >
-                      <option value="ACTIVE">ACTIVE</option>
-                      <option value="INACTIVE">INACTIVE</option>
-                    </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Nama Apoteker PJ (APJ)
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.apj_name || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, apj_name: e.target.value }))}
+                        placeholder="Nama Apoteker Penanggung Jawab"
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Nomor SIPA
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.sipa_number || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, sipa_number: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Masa Berlaku SIPA (Expired)
+                      </label>
+                      <input
+                        type="date"
+                        value={editForm.sipa_expired || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, sipa_expired: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
+                      />
+                      {editForm.sipa_expired && (
+                        <span className="block mt-1 text-[10px] text-cyan-700 dark:text-cyan-400">
+                          Format: {formatIndonesianDate(editForm.sipa_expired)}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Nomor SIA
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.sia_number || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, sia_number: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Masa Berlaku SIA (Expired)
+                      </label>
+                      <input
+                        type="date"
+                        value={editForm.sia_expired || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, sia_expired: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
+                      />
+                      {editForm.sia_expired && (
+                        <span className="block mt-1 text-[10px] text-cyan-700 dark:text-cyan-400">
+                          Format: {formatIndonesianDate(editForm.sia_expired)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Kode SIPNAP
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.sipnap_code || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, sipnap_code: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Kategori Prioritas
-                    </label>
-                    <select
-                      value={editForm.category || "REG"}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, category: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold focus:outline-none"
-                    >
-                      <option value="1P">1P (Prioritas 1)</option>
-                      <option value="2P">2P (Prioritas 2)</option>
-                      <option value="3P">3P (Reguler)</option>
-                      <option value="REG">REG</option>
-                    </select>
+                </div>
+
+                {/* Section 3: Kontak & Alamat Pengiriman */}
+                <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                  <span className="font-bold text-[11px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block">
+                    3. Kontak, Pemilik &amp; Alamat Pengiriman
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        No. Telepon / WhatsApp
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.phone || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, phone: e.target.value }))}
+                        placeholder="08xxxxxxxxxx"
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Email Resmi
+                      </label>
+                      <input
+                        type="email"
+                        value={editForm.email || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
+                        placeholder="apotek@example.com"
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Nama Pemilik (PSA)
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.owner_name || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, owner_name: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        NPWP (VAT ID)
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.vat_id || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, vat_id: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Alamat Lengkap Pengiriman
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={editForm.address || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, address: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Section 2: Legalitas Izin */}
-              <div className="space-y-3 bg-zinc-50/70 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <span className="font-bold text-[11px] uppercase tracking-wider text-cyan-600 dark:text-cyan-400 block">
-                  Legalitas Izin (SIA & SIPA)
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Nama Apoteker PJ (APJ)
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.apj_name || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, apj_name: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Nomor SIPA
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.sipa_number || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, sipa_number: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Masa Berlaku SIPA (Expired)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Contoh: 2026-12-31"
-                      value={editForm.sipa_expired || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, sipa_expired: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Nomor SIA
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.sia_number || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, sia_number: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Masa Berlaku SIA (Expired)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Contoh: 2026-12-31"
-                      value={editForm.sia_expired || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, sia_expired: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Kode SIPNAP
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.sipnap_code || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, sipnap_code: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 3: Kontak & Alamat */}
-              <div className="space-y-3 bg-zinc-50/70 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <span className="font-bold text-[11px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
-                  Kontak, Pemilik &amp; Alamat
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      No. Telepon / WhatsApp
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.phone || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, phone: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={editForm.email || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Nama Pemilik
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.owner_name || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, owner_name: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      NPWP / VAT ID
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.vat_id || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, vat_id: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                      Alamat Lengkap Apotek
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={editForm.address || ""}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, address: e.target.value }))}
-                      className="w-full px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Modal Footer Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+              {/* Sticky Drawer Footer Actions */}
+              <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/90 flex items-center justify-between gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
                   disabled={isSavingCust}
-                  className="px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 font-semibold cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 font-semibold cursor-pointer transition"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingCust}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold flex items-center gap-1.5 shadow-md cursor-pointer disabled:opacity-50"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center justify-center gap-2 shadow-md cursor-pointer transition disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{isSavingCust ? "Menyimpan..." : "Simpan Perubahan"}</span>
+                  <span>{isSavingCust ? "Menyimpan Data..." : "Simpan Perubahan"}</span>
                 </button>
               </div>
             </form>
