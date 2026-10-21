@@ -478,49 +478,64 @@ export async function POST(req: Request) {
         await conn.execute("DELETE FROM shipment_returns");
       }
 
-      let insertedCount = 0;
+      // Filter valid rows (skip #N/A and blank rows)
+      const validRows: any[] = [];
       for (const item of items) {
         const cust = String(item.customer_name || item.apotek || "").trim();
         const inv = String(item.invoice_no || item.faktur || "").trim();
         const prod = String(item.product_name || item.produk || "").trim();
-        if (!cust && !inv && !prod) continue;
+
+        // Skip #N/A or completely blank entries
+        if ((!cust || cust === "#N/A") && (!inv || inv === "#N/A") && (!prod || prod === "#N/A")) continue;
+        if (cust === "#N/A" && prod === "#N/A") continue;
 
         const photoKey = `${inv.toLowerCase()}_${prod.toLowerCase()}`;
         const photoUrl = item.photo_url || photoMap.get(photoKey) || null;
+
+        validRows.push([
+          item.pbf && item.pbf !== "#N/A" ? item.pbf : "MBI",
+          cust && cust !== "#N/A" ? cust : "-",
+          inv && inv !== "#N/A" ? inv : "-",
+          item.so_no && item.so_no !== "#N/A" ? item.so_no : (item.so && item.so !== "#N/A" ? item.so : "-"),
+          prod && prod !== "#N/A" ? prod : "-",
+          Number(item.qty) || 1,
+          item.batch_no && item.batch_no !== "#N/A" ? item.batch_no : (item.batch || "-"),
+          item.expiry_date && item.expiry_date !== "#N/A" ? item.expiry_date : (item.ed || "-"),
+          item.reason && item.reason !== "#N/A" ? item.reason : (item.jenis || "-"),
+          item.invoice_date && item.invoice_date !== "#N/A" ? item.invoice_date : (item.tanggal || ""),
+          Number(item.week) || null,
+          item.category && item.category !== "#N/A" ? item.category : (item.cat || "DOO"),
+          Number(item.month) || null,
+          item.report_date && item.report_date !== "#N/A" ? item.report_date : (item.tgl_report || item.invoice_date || new Date().toISOString().split("T")[0]),
+          item.confirm && item.confirm !== "#N/A" ? item.confirm : "Pending",
+          item.action && item.action !== "#N/A" ? item.action : "-",
+          item.nota_retur_no && item.nota_retur_no !== "#N/A" ? item.nota_retur_no : "-",
+          item.resolved_date && item.resolved_date !== "#N/A" ? item.resolved_date : null,
+          item.status && item.status !== "#N/A" ? item.status : "Pending",
+          item.note && item.note !== "#N/A" ? item.note : "-",
+          item.person && item.person !== "#N/A" ? item.person : (item.personil || "-"),
+          item.root_cause && item.root_cause !== "#N/A" ? item.root_cause : (item.cause || "-"),
+          photoUrl,
+        ]);
+      }
+
+      // High-speed Batch Insert in chunks of 100 (reduces 1,500 roundtrips to 15, takes < 2 seconds)
+      let insertedCount = 0;
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+        const chunk = validRows.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+        const flatParams = chunk.flat();
 
         await conn.execute(
           `INSERT INTO shipment_returns (
             pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date,
             reason, invoice_date, week, category, month, report_date, confirm, action,
             nota_retur_no, resolved_date, status, note, person, root_cause, photo_url
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            item.pbf || "MBI",
-            cust || "-",
-            inv || "-",
-            item.so_no || item.so || "-",
-            prod || "-",
-            Number(item.qty) || 1,
-            item.batch_no || item.batch || "-",
-            item.expiry_date || item.ed || "-",
-            item.reason || item.jenis || "-",
-            item.invoice_date || item.tanggal || "",
-            Number(item.week) || null,
-            item.category || item.cat || "DOO",
-            Number(item.month) || null,
-            item.report_date || item.tgl_report || item.invoice_date || new Date().toISOString().split("T")[0],
-            item.confirm || "Pending",
-            item.action || "-",
-            item.nota_retur_no || "-",
-            item.resolved_date || null,
-            item.status || "Pending",
-            item.note || "-",
-            item.person || item.personil || "-",
-            item.root_cause || item.cause || "-",
-            photoUrl,
-          ]
+          ) VALUES ${placeholders}`,
+          flatParams
         );
-        insertedCount++;
+        insertedCount += chunk.length;
       }
 
       return Response.json({ success: true, count: insertedCount });
@@ -529,12 +544,51 @@ export async function POST(req: Request) {
     // 0.2. Sync customers from Google Sheets (Data Customer tab)
     if (action === "sync_customers") {
       const items = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
-      let updatedCount = 0;
+      if (items.length === 0) {
+        return Response.json({ success: true, count: 0 });
+      }
 
+      const validCustomers: any[] = [];
       for (const item of items) {
         const id = String(item.id || item.customer_id || "").trim();
         const name = String(item.name || item.nama_apotek || "").trim();
-        if (!id || !name) continue;
+        if (!id || id === "#N/A" || !name || name === "#N/A") continue;
+
+        validCustomers.push([
+          id,
+          item.customer_id_oracle || item.oracle_id || "",
+          name,
+          item.status_merchant || item.status || "ACTIVE",
+          item.phone || item.no_telf_apj || "",
+          item.email || item.alamat_email || "",
+          item.address || item.default_billing_address || "",
+          item.vat_id || "",
+          item.nik || item.nik_number || "",
+          item.owner_name || item.nama_pemilik_npwp || "",
+          item.owner_address || item.alamat_wajib_pajak || "",
+          item.sia_number || item.izin_apotek_number || "",
+          item.sia_expired || item.sia_expired_date || "",
+          item.sipa_number || "",
+          item.sipa_expired || item.sipa_expired_date || "",
+          item.apj_name || item.nama_apj || "",
+          item.sipnap_code || item.kode_sipnap || "",
+          item.site_bill_to || item.site_number_bill_to || "",
+          item.site_ship_to || item.site_number_ship_to || "",
+          item.branch || item.mbi_branch || "",
+          item.zone || "",
+          item.category || item.kategori_customer || "",
+          item.halodoc_pharma || item.branch_name_halodoc || "",
+          item.is_active_2p || "",
+        ]);
+      }
+
+      // Batch Upsert in chunks of 50
+      let updatedCount = 0;
+      const CHUNK_SIZE = 50;
+      for (let i = 0; i < validCustomers.length; i += CHUNK_SIZE) {
+        const chunk = validCustomers.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+        const flatParams = chunk.flat();
 
         await conn.execute(
           `INSERT INTO customers (
@@ -542,7 +596,7 @@ export async function POST(req: Request) {
             vat_id, nik, owner_name, owner_address, sia_number, sia_expired,
             sipa_number, sipa_expired, apj_name, sipnap_code, site_bill_to,
             site_ship_to, branch, zone, category, halodoc_pharma, is_active_2p
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES ${placeholders}
           ON DUPLICATE KEY UPDATE
             customer_id_oracle = COALESCE(VALUES(customer_id_oracle), customer_id_oracle),
             name = VALUES(name),
@@ -567,34 +621,9 @@ export async function POST(req: Request) {
             category = COALESCE(VALUES(category), category),
             halodoc_pharma = COALESCE(VALUES(halodoc_pharma), halodoc_pharma),
             is_active_2p = COALESCE(VALUES(is_active_2p), is_active_2p)`,
-          [
-            id,
-            item.customer_id_oracle || item.oracle_id || "",
-            name,
-            item.status_merchant || item.status || "ACTIVE",
-            item.phone || item.no_telf_apj || "",
-            item.email || item.alamat_email || "",
-            item.address || item.default_billing_address || "",
-            item.vat_id || "",
-            item.nik || item.nik_number || "",
-            item.owner_name || item.nama_pemilik_npwp || "",
-            item.owner_address || item.alamat_wajib_pajak || "",
-            item.sia_number || item.izin_apotek_number || "",
-            item.sia_expired || item.sia_expired_date || "",
-            item.sipa_number || "",
-            item.sipa_expired || item.sipa_expired_date || "",
-            item.apj_name || item.nama_apj || "",
-            item.sipnap_code || item.kode_sipnap || "",
-            item.site_bill_to || item.site_number_bill_to || "",
-            item.site_ship_to || item.site_number_ship_to || "",
-            item.branch || item.mbi_branch || "",
-            item.zone || "",
-            item.category || item.kategori_customer || "",
-            item.halodoc_pharma || item.branch_name_halodoc || "",
-            item.is_active_2p || "",
-          ]
+          flatParams
         );
-        updatedCount++;
+        updatedCount += chunk.length;
       }
 
       return Response.json({ success: true, count: updatedCount });
