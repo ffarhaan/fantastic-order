@@ -37,17 +37,10 @@ import {
   Camera,
   Maximize2,
   Download,
-  LayoutDashboard,
   CalendarRange,
-  XCircle,
-  FileText,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import ReturSubmissionView from "@/components/returns/ReturSubmissionView";
 import WeeklyQc2View from "@/components/returns/WeeklyQc2View";
-import OpenCasesView from "@/components/returns/OpenCasesView";
-import RejectCasesView from "@/components/returns/RejectCasesView";
-import OverviewKpiView from "@/components/returns/OverviewKpiView";
 
 export const formatDate = (dateStr: string | null | undefined): string => {
   if (!dateStr || dateStr === "-" || dateStr === "#N/A") return "-";
@@ -127,11 +120,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [isImporting, setIsImporting] = useState(false);
 
   // Tab & Analytics State
-  const [activeTab, setActiveTab] = useState<
-    "list" | "retur" | "overview" | "weekly_qc2" | "open_cases" | "reject_cases" | "leaderboard" | "analytics"
-  >("list");
+  const [activeTab, setActiveTab] = useState<"list" | "weekly_qc2" | "leaderboard" | "analytics">("list");
   const [allReturns, setAllReturns] = useState<ShipmentReturnRecord[]>([]);
-  const [returPendingCount, setReturPendingCount] = useState<number>(0);
   const [personnelStats, setPersonnelStats] = useState<{
     personnel: any[];
     rootCauses: any[];
@@ -155,33 +145,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       console.error("fetchAllReturns error:", e);
     }
   }, []);
-
-  // Fetch count of pending retur requests
-  const fetchReturPending = useCallback(async () => {
-    try {
-      const res = await fetch("/api/tidb?action=return_requests&limit=1");
-      const json = await res.json();
-      if (json.success && json.summary) {
-        setReturPendingCount(Number(json.summary.pending || 0));
-      }
-    } catch (e) {}
-  }, []);
-
-  const openCasesCount = useMemo(() => {
-    return allReturns.filter((r) => {
-      const st = (r.status || "").toLowerCase();
-      const conf = (r.confirm || "").toLowerCase();
-      return !st.includes("resolved") && !st.includes("selesai") && !conf.includes("reject") && !st.includes("reject");
-    }).length;
-  }, [allReturns]);
-
-  const rejectCasesCount = useMemo(() => {
-    return allReturns.filter((r) => {
-      const st = (r.status || "").toLowerCase();
-      const conf = (r.confirm || "").toLowerCase();
-      return conf.includes("reject") || conf.includes("tolak") || st.includes("reject");
-    }).length;
-  }, [allReturns]);
 
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -466,13 +429,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   useEffect(() => {
     fetchReturns();
     fetchAllReturns();
-    fetchReturPending();
     const interval = setInterval(() => {
       fetchReturns(true);
-      fetchReturPending();
     }, 3000);
     return () => clearInterval(interval);
-  }, [fetchReturns, fetchAllReturns, fetchReturPending]);
+  }, [fetchReturns, fetchAllReturns]);
 
   const handleDeleteReturn = async (id: number, invoiceNo: string) => {
     if (!confirm(`Hapus tiket komplain untuk faktur "${invoiceNo || id}"?\n\nData akan dihapus permanen dari sistem Fantastic Order.`)) {
@@ -696,14 +657,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {/* View Switcher Tabs (All 8 modules matching friend's dashboard suite) */}
+      {/* View Switcher Tabs (Data Kasus, Weekly & QC2, Personil, Analisis) */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 dark:border-slate-800 pb-3">
-        <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-slate-900 rounded-2xl border border-zinc-200 dark:border-slate-800 overflow-x-auto max-w-full scrollbar-none">
+        <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-slate-900 rounded-2xl border border-zinc-200 dark:border-slate-800">
           {/* Tab 1: Data Kasus */}
           <button
             type="button"
             onClick={() => setActiveTab("list")}
-            className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === "list"
                 ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
                 : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
@@ -716,53 +677,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             </span>
           </button>
 
-          {/* Tab 2: Pengajuan Retur */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("retur");
-              fetchReturPending();
-            }}
-            className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === "retur"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <FileText className="w-4 h-4 text-emerald-500" />
-            <span>Pengajuan Retur</span>
-            {returPendingCount > 0 && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500 text-white font-mono font-bold animate-pulse">
-                {returPendingCount}
-              </span>
-            )}
-          </button>
-
-          {/* Tab 3: Overview & KPI */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("overview");
-              fetchAllReturns();
-            }}
-            className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === "overview"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4 text-indigo-500" />
-            <span>Overview & KPI</span>
-          </button>
-
-          {/* Tab 4: Weekly & QC2 */}
+          {/* Tab 2: Weekly & QC2 */}
           <button
             type="button"
             onClick={() => {
               setActiveTab("weekly_qc2");
               fetchAllReturns();
             }}
-            className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === "weekly_qc2"
                 ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
                 : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
@@ -772,82 +694,43 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <span>Weekly & QC2</span>
           </button>
 
-          {/* Tab 5: Open Cases */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("open_cases");
-              fetchAllReturns();
-            }}
-            className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === "open_cases"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <Clock className="w-4 h-4 text-amber-500" />
-            <span>Open Cases</span>
-            {openCasesCount > 0 && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-mono font-bold">
-                {openCasesCount}
-              </span>
-            )}
-          </button>
-
-          {/* Tab 6: Reject Cases */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("reject_cases");
-              fetchAllReturns();
-            }}
-            className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === "reject_cases"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <XCircle className="w-4 h-4 text-rose-500" />
-            <span>Reject Cases</span>
-            {rejectCasesCount > 0 && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-mono font-bold">
-                {rejectCasesCount}
-              </span>
-            )}
-          </button>
-
-          {/* Tab 7: Personil Leaderboard */}
+          {/* Tab 3: Personil Leaderboard */}
           <button
             type="button"
             onClick={() => {
               setActiveTab("leaderboard");
               fetchPersonnelStats();
             }}
-            className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === "leaderboard"
                 ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
                 : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
             }`}
           >
-            <Users className="w-4 h-4 text-purple-500" />
-            <span>Personil</span>
+            <Users className="w-4 h-4 text-amber-500" />
+            <span>Leaderboard Personil</span>
+            {personnelStats?.personnel?.length ? (
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-mono font-bold">
+                {personnelStats.personnel.length}
+              </span>
+            ) : null}
           </button>
 
-          {/* Tab 8: Analisis & Root Cause */}
+          {/* Tab 4: Analisis & Root Cause */}
           <button
             type="button"
             onClick={() => {
               setActiveTab("analytics");
               fetchPersonnelStats();
             }}
-            className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === "analytics"
                 ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
                 : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
             }`}
           >
             <BarChart3 className="w-4 h-4 text-indigo-500" />
-            <span>Analisis</span>
+            <span>Analisis & Root Cause</span>
           </button>
         </div>
 
@@ -857,11 +740,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             onClick={() => {
               fetchReturns();
               fetchAllReturns();
-              fetchReturPending();
               fetchPersonnelStats();
             }}
             className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-zinc-200 dark:border-slate-800 text-zinc-600 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-xs"
-            title="Muat Ulang Seluruh Data"
+            title="Muat Ulang Data"
           >
             <RefreshCw className={`w-4 h-4 ${loading || loadingStats ? "animate-spin text-indigo-500" : ""}`} />
           </button>
@@ -1894,31 +1776,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       </div>
       )}
 
-      {/* ─── TAB: PENGAJUAN RETUR (FORM + DAFTAR + PIPELINE STATUS + BUKTI FOTO) ─── */}
-      {activeTab === "retur" && (
-        <div className="animate-in fade-in duration-150">
-          <ReturSubmissionView
-            records={records}
-            onRefreshParentReturns={() => {
-              fetchReturns();
-              fetchAllReturns();
-              fetchReturPending();
-            }}
-          />
-        </div>
-      )}
-
-      {/* ─── TAB: OVERVIEW & KPI DASHBOARD ─── */}
-      {activeTab === "overview" && (
-        <div className="animate-in fade-in duration-150">
-          <OverviewKpiView
-            returns={allReturns.length > 0 ? allReturns : returns}
-            records={records}
-          />
-        </div>
-      )}
-
-      {/* ─── TAB: WEEKLY & QC2 IMPACT ─── */}
+      {/* ─── TAB 2: WEEKLY & QC2 IMPACT (MILESTONE W9, W10, W14, W19) ─── */}
       {activeTab === "weekly_qc2" && (
         <div className="animate-in fade-in duration-150">
           <WeeklyQc2View
@@ -1928,29 +1786,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         </div>
       )}
 
-      {/* ─── TAB: OPEN CASES (HARI MENGGANTUNG DENGAN INDIKATOR WARNA) ─── */}
-      {activeTab === "open_cases" && (
-        <div className="animate-in fade-in duration-150">
-          <OpenCasesView
-            returns={allReturns.length > 0 ? allReturns : returns}
-            onRefreshParentReturns={() => {
-              fetchReturns();
-              fetchAllReturns();
-            }}
-          />
-        </div>
-      )}
-
-      {/* ─── TAB: REJECT CASES (KESALAHAN SISI OUTLET & RANKING OUTLET) ─── */}
-      {activeTab === "reject_cases" && (
-        <div className="animate-in fade-in duration-150">
-          <RejectCasesView
-            returns={allReturns.length > 0 ? allReturns : returns}
-          />
-        </div>
-      )}
-
-      {/* ─── TAB 2: LEADERBOARD PERSONIL (PELAKU KESALAHAN GUDANG) ─── */}
+      {/* ─── TAB 3: LEADERBOARD PERSONIL (PELAKU KESALAHAN GUDANG) ─── */}
       {activeTab === "leaderboard" && (
         <div className="space-y-4 animate-in fade-in duration-150">
           {/* Top Summary Cards */}
