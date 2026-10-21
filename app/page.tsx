@@ -1796,7 +1796,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         for (const file of files) {
           fileNames.push(file.name);
           const p = await parseExcelFile(file, productOverridesRef.current);
-          parsed.push(...p);
+          for (let j = 0; j < p.length; j++) {
+            parsed.push(p[j]);
+          }
         }
 
         if (parsed.length === 0) {
@@ -1811,11 +1813,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         // 1. Authoritative complete live printed keys from remote Firestore partitions, module caches, and refs
         const serverLive = await fetchAllLivePrintKeys();
         const livePrint = getLivePrintState();
-        const livePrintedKeys = new Set<string>([
-          ...Array.from(serverLive.printedKeys),
-          ...livePrint.printedKeys,
-          ...Array.from(printedInvoicesRef.current),
-        ]);
+        const livePrintedKeys = new Set<string>();
+        serverLive.printedKeys.forEach((k) => livePrintedKeys.add(k));
+        livePrint.printedKeys.forEach((k) => livePrintedKeys.add(k));
+        printedInvoicesRef.current.forEach((k) => livePrintedKeys.add(k));
+
         const livePrintedAtMap: Record<string, string> = {
           ...serverLive.printedAtMap,
           ...livePrint.printedAtMap,
