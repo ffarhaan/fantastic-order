@@ -310,7 +310,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
               <h3 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1.5 tracking-tight flex items-center gap-2">
                 Live Cloud
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-semibold">
-                  0ms Latency
+                  Terhubung Realtime
                 </span>
               </h3>
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
@@ -491,33 +491,33 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
 
       {/* ─── Enterprise Data Grid ─── */}
       <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
             <thead>
               <tr className="bg-zinc-50 dark:bg-[#070b14] border-b border-zinc-200 dark:border-zinc-800 text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                <th className="py-3 px-3.5 w-16">ID</th>
-                <th className="py-3 px-3">ID Oracle</th>
-                <th className="py-3 px-4">Nama Apotek / Merchant</th>
-                <th className="py-3 px-3 text-center">Status</th>
-                <th className="py-3 px-4">Alamat Default</th>
-                <th className="py-3 px-3">Nama APJ</th>
-                <th className="py-3 px-3" title="Masa Berlaku SIA (Surat Izin Apotek)">SIA Expired</th>
-                <th className="py-3 px-3" title="Masa Berlaku SIPA (Surat Izin Praktik Apoteker)">SIPA Expired</th>
-                <th className="py-3 px-3 text-center">Kategori</th>
-                <th className="py-3 px-3 text-center">Aksi</th>
+                <th className="py-3 px-3.5 w-24 min-w-[85px] whitespace-nowrap">ID</th>
+                <th className="py-3 px-3 w-32 min-w-[115px] whitespace-nowrap">ID Oracle</th>
+                <th className="py-3 px-4 min-w-[240px]">Nama Apotek / Merchant</th>
+                <th className="py-3 px-3 w-28 min-w-[100px] text-center whitespace-nowrap">Status</th>
+                <th className="py-3 px-4 min-w-[260px]">Alamat Default</th>
+                <th className="py-3 px-3 min-w-[150px]">Nama APJ</th>
+                <th className="py-3 px-3 w-32 min-w-[120px] whitespace-nowrap" title="Masa Berlaku SIA (Surat Izin Apotek)">SIA Expired</th>
+                <th className="py-3 px-3 w-32 min-w-[120px] whitespace-nowrap" title="Masa Berlaku SIPA (Surat Izin Praktik Apoteker)">SIPA Expired</th>
+                <th className="py-3 px-3 w-24 min-w-[85px] text-center whitespace-nowrap">Kategori</th>
+                <th className="py-3 px-3 w-28 min-w-[105px] text-center whitespace-nowrap">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200/80 dark:divide-zinc-800/50">
               {loading && customers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-400">
+                  <td colSpan={10} className="py-16 text-center text-slate-400">
                     <RefreshCw className="w-7 h-7 animate-spin mx-auto text-indigo-400 mb-2" />
                     <span className="font-semibold text-sm">Menghubungkan ke Direktori TiDB...</span>
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-500">
+                  <td colSpan={10} className="py-16 text-center text-slate-500">
                     <Building2 className="w-8 h-8 mx-auto text-slate-600 mb-2 opacity-50" />
                     <p className="font-semibold text-sm text-slate-400">Tidak ada merchant yang cocok</p>
                     <p className="text-xs text-slate-500 mt-1">Coba gunakan kata kunci lain atau reset filter pencarian.</p>
@@ -525,7 +525,9 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                 </tr>
               ) : (
                 customers.map((c) => {
-                  const isActive = c.status_merchant === "ACTIVE";
+                  const isNameInactive = (c.name || "").toLowerCase().includes("[inactive]") || (c.name || "").toLowerCase().includes("(inactive)");
+                  const isInactive = c.status_merchant === "INACTIVE" || isNameInactive;
+                  const cleanName = (c.name || "").replace(/^\[inactive\]\s*/i, "").replace(/^\(inactive\)\s*/i, "").trim();
                   const isSelected = selectedCust?.id === c.id || (showEditModal && editForm?.id === c.id);
 
                   return (
@@ -539,39 +541,53 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                       }`}
                     >
                       {/* ID */}
-                      <td className="py-2.5 px-3.5 font-mono text-zinc-500 dark:text-slate-400 text-[11px] group-hover:text-blue-600 dark:group-hover:text-indigo-400 transition-colors">
+                      <td className="py-2.5 px-3.5 font-mono text-zinc-600 dark:text-slate-400 text-[11px] font-semibold whitespace-nowrap group-hover:text-blue-600 dark:group-hover:text-indigo-400 transition-colors">
                         {c.id}
                       </td>
 
                       {/* ID Oracle */}
-                      <td className="py-2.5 px-3">
-                        <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-indigo-500/10 text-blue-700 dark:text-indigo-300 border border-blue-200 dark:border-indigo-500/20">
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-indigo-500/10 text-blue-700 dark:text-indigo-300 border border-blue-200 dark:border-indigo-500/20 whitespace-nowrap inline-block">
                           {c.customer_id_oracle || "-"}
                         </span>
                       </td>
 
                       {/* Nama Apotek */}
-                      <td className="py-2.5 px-4 font-bold text-zinc-900 dark:text-slate-100 max-w-[240px]">
-                        <span className="truncate block group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors" title={c.name}>
-                          {c.name}
-                        </span>
+                      <td className="py-2.5 px-4 font-bold max-w-[280px]">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {isNameInactive && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800 shrink-0">
+                              Nonaktif
+                            </span>
+                          )}
+                          <span
+                            className={`truncate block transition-colors ${
+                              isInactive
+                                ? "text-zinc-500 dark:text-zinc-400 font-medium"
+                                : "text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200"
+                            }`}
+                            title={c.name}
+                          >
+                            {cleanName || c.name}
+                          </span>
+                        </div>
                       </td>
 
                       {/* Status */}
-                      <td className="py-2.5 px-3 text-center">
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            isActive
+                            !isInactive
                               ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
                               : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
                           }`}
                         >
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
-                              isActive ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
+                              !isInactive ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
                             }`}
                           />
-                          {c.status_merchant || "N/A"}
+                          {!isInactive ? "ACTIVE" : "INACTIVE"}
                         </span>
                       </td>
 
@@ -598,7 +614,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                       </td>
 
                       {/* Kategori */}
-                      <td className="py-2.5 px-3 text-center">
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
                         <span
                           className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
                             c.category === "1P"
@@ -615,7 +631,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                       </td>
 
                       {/* Action Buttons */}
-                      <td className="py-2.5 px-3 text-center">
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
@@ -636,7 +652,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                               handleOpenEdit(c);
                             }}
                             className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-slate-800 dark:hover:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-slate-700 transition-all shadow-2xs active:scale-95 cursor-pointer"
-                            title="Edit Data Customer (Laci Kanan)"
+                            title="Edit Data Customer"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -1021,11 +1037,8 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                   <Pencil className="w-5 h-5" />
                 </div>
                 <div className="min-w-0">
-                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">
-                    Slide-over Panel
-                  </span>
                   <h3 className="text-sm sm:text-base font-bold text-zinc-900 dark:text-white truncate">
-                    Edit Data Customer
+                    Edit Data Mitra &amp; Legalitas
                   </h3>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono truncate">
                     ID: {editForm.id} • Oracle: {editForm.customer_id_oracle || "-"}
@@ -1117,14 +1130,11 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                   </div>
                 </div>
 
-                {/* Section 2: Legalitas & Kalender Izin */}
+                {/* Section 2: Legalitas & Izin */}
                 <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-[11px] uppercase tracking-wider text-cyan-700 dark:text-cyan-400 block">
-                      2. Legalitas Izin &amp; Kalender (SIA / SIPA)
-                    </span>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 px-2 py-0.5 rounded-md font-bold">
-                      Kalender Picker Asli
+                      2. Legalitas Izin (SIA &amp; SIPA)
                     </span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1161,11 +1171,6 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                         onChange={(e) => setEditForm((prev) => ({ ...prev, sipa_expired: e.target.value }))}
                         className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
                       />
-                      {editForm.sipa_expired && (
-                        <span className="block mt-1 text-[10px] text-cyan-700 dark:text-cyan-400">
-                          Format: {formatIndonesianDate(editForm.sipa_expired)}
-                        </span>
-                      )}
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
@@ -1188,11 +1193,6 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                         onChange={(e) => setEditForm((prev) => ({ ...prev, sia_expired: e.target.value }))}
                         className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
                       />
-                      {editForm.sia_expired && (
-                        <span className="block mt-1 text-[10px] text-cyan-700 dark:text-cyan-400">
-                          Format: {formatIndonesianDate(editForm.sia_expired)}
-                        </span>
-                      )}
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">

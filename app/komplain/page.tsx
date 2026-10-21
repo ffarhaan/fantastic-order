@@ -91,7 +91,7 @@ export default function KomplainPage() {
   const [showApotekSuggestions, setShowApotekSuggestions] = useState(false);
 
   useEffect(() => {
-    fetch("/api/tidb?action=customers&limit=200")
+    fetch("/api/tidb?action=customers&active_only=true&limit=200")
       .then((r) => r.json())
       .then((data) => {
         if (data.success && Array.isArray(data.data)) {
@@ -107,7 +107,7 @@ export default function KomplainPage() {
     if (q.length < 2) return;
 
     const timer = setTimeout(() => {
-      fetch(`/api/tidb?action=customers&search=${encodeURIComponent(q)}&limit=20`)
+      fetch(`/api/tidb?action=customers&active_only=true&search=${encodeURIComponent(q)}&limit=20`)
         .then((r) => r.json())
         .then((res) => {
           if (res.success && Array.isArray(res.data)) {
@@ -128,9 +128,28 @@ export default function KomplainPage() {
   const apotekSuggestions = useMemo(() => {
     if (!headerData.customer_name || headerData.customer_name.trim().length < 2) return [];
     const q = headerData.customer_name.toLowerCase();
-    return masterCustomers
-      .filter((c) => c.name && c.name.toLowerCase().includes(q))
-      .slice(0, 10);
+    const seen = new Set<string>();
+    const res: typeof masterCustomers = [];
+
+    for (const c of masterCustomers) {
+      if (!c.name) continue;
+      const clean = c.name.trim();
+      const lower = clean.toLowerCase();
+      // Never suggest inactive apotek
+      if (lower.includes("[inactive]") || lower.includes("(inactive)")) continue;
+
+      if (lower.includes(q)) {
+        // Deduplicate duplicate names (canonical key)
+        const normKey = lower.replace(/\s+/g, " ");
+        if (!seen.has(normKey)) {
+          seen.add(normKey);
+          res.push({ ...c, name: clean });
+        }
+      }
+      if (res.length >= 10) break;
+    }
+
+    return res;
   }, [headerData.customer_name, masterCustomers]);
 
   // Compress photo via Canvas

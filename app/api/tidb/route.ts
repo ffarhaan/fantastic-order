@@ -47,11 +47,16 @@ export async function GET(req: Request) {
       const search = (searchParams.get("search") || "").trim();
       const category = searchParams.get("category") || "";
       const status = searchParams.get("status") || "";
+      const activeOnly = searchParams.get("active_only") === "true";
       const limit = Math.min(Number(searchParams.get("limit")) || 50, 200);
       const offset = Number(searchParams.get("offset")) || 0;
 
       let whereClause = "WHERE (name != '#N/A' AND name != '' AND name IS NOT NULL)";
       const params: (string | number)[] = [];
+
+      if (activeOnly) {
+        whereClause += " AND (status_merchant = 'ACTIVE' OR status_merchant IS NULL) AND name NOT LIKE '%[INACTIVE]%'";
+      }
 
       if (search) {
         whereClause += " AND (name LIKE ? OR customer_id_oracle LIKE ? OR id LIKE ? OR address LIKE ? OR apj_name LIKE ? OR phone LIKE ?)";

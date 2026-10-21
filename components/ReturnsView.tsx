@@ -124,7 +124,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [showAddCustomerSuggestions, setShowAddCustomerSuggestions] = useState(false);
 
   useEffect(() => {
-    fetch("/api/tidb?action=customers&limit=200")
+    fetch("/api/tidb?action=customers&active_only=true&limit=200")
       .then((r) => r.json())
       .then((d) => {
         if (d.success && Array.isArray(d.data)) {
@@ -135,23 +135,28 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   }, []);
 
   const customerSuggestionsList = useMemo(() => {
-    const set = new Set<string>();
-    for (const name of masterCustNames) {
-      if (name && name.trim()) set.add(name.trim());
-    }
+    const seenLower = new Set<string>();
+    const list: string[] = [];
+
+    const addClean = (rawName?: string) => {
+      if (!rawName) return;
+      const clean = rawName.trim();
+      if (!clean || clean === "-") return;
+      const lower = clean.toLowerCase();
+      if (lower.includes("[inactive]") || lower.includes("(inactive)")) return;
+      if (!seenLower.has(lower)) {
+        seenLower.add(lower);
+        list.push(clean);
+      }
+    };
+
+    for (const name of masterCustNames) addClean(name);
     if (records && records.length > 0) {
-      for (const r of records) {
-        if (r.customerName && r.customerName.trim() && r.customerName !== "-") {
-          set.add(r.customerName.trim());
-        }
-      }
+      for (const r of records) addClean(r.customerName);
     }
-    for (const r of returns) {
-      if (r.customer_name && r.customer_name.trim()) {
-        set.add(r.customer_name.trim());
-      }
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    for (const r of returns) addClean(r.customer_name);
+
+    return list.sort((a, b) => a.localeCompare(b));
   }, [masterCustNames, records, returns]);
 
   // Tab & Analytics State
