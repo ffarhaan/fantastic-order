@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   Send,
   CheckCircle2,
@@ -85,6 +85,53 @@ export default function KomplainPage() {
   const [copiedWaText, setCopiedWaText] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [waNotification, setWaNotification] = useState("");
+
+  // Master Customers suggestions
+  const [masterCustomers, setMasterCustomers] = useState<{ id: string; name: string; category?: string }[]>([]);
+  const [showApotekSuggestions, setShowApotekSuggestions] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/tidb?action=customers&limit=200")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data)) {
+          setMasterCustomers(data.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Real-time server search as user types
+  useEffect(() => {
+    const q = (headerData.customer_name || "").trim();
+    if (q.length < 2) return;
+
+    const timer = setTimeout(() => {
+      fetch(`/api/tidb?action=customers&search=${encodeURIComponent(q)}&limit=20`)
+        .then((r) => r.json())
+        .then((res) => {
+          if (res.success && Array.isArray(res.data)) {
+            setMasterCustomers((prev) => {
+              const map = new Map<string, { id: string; name: string; category?: string }>();
+              for (const c of prev) map.set(c.id || c.name, c);
+              for (const c of res.data) map.set(c.id || c.name, c);
+              return Array.from(map.values());
+            });
+          }
+        })
+        .catch(() => {});
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [headerData.customer_name]);
+
+  const apotekSuggestions = useMemo(() => {
+    if (!headerData.customer_name || headerData.customer_name.trim().length < 2) return [];
+    const q = headerData.customer_name.toLowerCase();
+    return masterCustomers
+      .filter((c) => c.name && c.name.toLowerCase().includes(q))
+      .slice(0, 10);
+  }, [headerData.customer_name, masterCustomers]);
 
   // Compress photo via Canvas
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -203,34 +250,34 @@ export default function KomplainPage() {
     const itemsList = submittedData.products
       ?.map((p: any, idx: number) => {
         const itemReason = p.reason || "-";
-        const itemNote = p.note ? `\n   📝 Catatan: ${p.note}` : "";
+        const itemNote = p.note ? `\n   - Catatan: ${p.note}` : "";
         const itemBatch = p.batch_no ? `Batch: ${p.batch_no}` : "Batch: -";
         const itemED = p.expiry_date ? `ED: ${p.expiry_date}` : "ED: -";
-        return `${idx + 1}. 💊 *${p.product_name}*
-   🔢 Qty: ${p.qty} ${p.unit || "pcs"}
-   🏷️ ${itemBatch} | ${itemED}
-   ⚠️ Alasan: ${itemReason}${itemNote}`;
+        return `${idx + 1}. *${p.product_name}*
+   - Qty: ${p.qty} ${p.unit || "pcs"}
+   - ${itemBatch} | ${itemED}
+   - Alasan: ${itemReason}${itemNote}`;
       })
       .join("\n\n");
 
     const photoStatus = submittedData.hasPhoto
-      ? "📸 Bukti Foto: Terlampir di Sistem & WhatsApp"
-      : "📸 Bukti Foto: Tidak dilampirkan";
+      ? "- Bukti Foto: Terlampir di Sistem & WhatsApp"
+      : "- Bukti Foto: Tidak dilampirkan";
 
-    return `📋 *FORM PENGAJUAN RETUR BARANG*
-────────────────────────
-🏢 *PBF*         : ${pbfName}
-🏪 *Apotek*      : ${submittedData.customer_name}
-🧾 *No. Faktur*  : ${submittedData.invoice_no}
-📦 *No. SO*      : ${submittedData.so_no || "-"}
+    return `*FORM PENGAJUAN RETUR BARANG*
+----------------------------------------
+*PBF*         : ${pbfName}
+*Apotek*      : ${submittedData.customer_name}
+*No. Faktur*  : ${submittedData.invoice_no}
+*No. SO*      : ${submittedData.so_no || "-"}
 
-📦 *DAFTAR ITEM RETUR (${submittedData.products?.length || 1} Produk):*
+*DAFTAR ITEM RETUR (${submittedData.products?.length || 1} Produk):*
 ${itemsList}
 
 ${photoStatus}
-⏰ *Waktu Kirim* : ${submittedTimestamp}
-────────────────────────
-✅ *Status*: Tiket telah dicatat ke sistem logistik.`;
+*Waktu Kirim* : ${submittedTimestamp}
+----------------------------------------
+*Status*: Tiket telah dicatat ke sistem logistik.`;
   };
 
   const handleCopyWaText = () => {
@@ -300,9 +347,9 @@ ${photoStatus}
       // 2. Fallback (Desktop PC or browser without file sharing)
       if (photoBase64) {
         handleDownloadPhoto();
-        setWaNotification("📸 Foto bukti berhasil diunduh & teks disalin! Silakan lampirkan foto saat WhatsApp terbuka.");
+        setWaNotification("Foto bukti berhasil diunduh & teks disalin! Silakan lampirkan foto saat WhatsApp terbuka.");
       } else {
-        setWaNotification("📋 Teks format pengajuan berhasil disalin!");
+        setWaNotification("Teks format pengajuan berhasil disalin!");
       }
 
       if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -615,7 +662,7 @@ ${photoStatus}
 
               {photoBase64 && (
                 <div className="mt-3 pt-3 border-t border-zinc-800 flex items-center justify-between gap-2 text-[11px] text-zinc-400 font-sans">
-                  <span>💡 Foto bukti tersimpan: <strong>{photoSizeKb} KB</strong></span>
+                  <span>Foto bukti tersimpan: <strong>{photoSizeKb} KB</strong></span>
                   <button
                     type="button"
                     onClick={handleDownloadPhoto}
@@ -662,7 +709,7 @@ ${photoStatus}
               {/* PBF */}
               <div>
                 <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                  🏢 PBF (Distributor) <span className="text-red-500">*</span>
+                  PBF (Distributor) <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-2.5">
                   {[
@@ -686,26 +733,61 @@ ${photoStatus}
                 </div>
               </div>
 
-              {/* Apotek */}
-              <div>
+              {/* Apotek with Auto-suggestions */}
+              <div className="relative">
                 <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                  🏪 Nama Apotek <span className="text-red-500">*</span>
+                  Nama Apotek <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={headerData.customer_name}
-                  onChange={(e) => setHeaderData({ ...headerData, customer_name: e.target.value })}
-                  placeholder="Contoh: Apotek Halomedika Bungur Malang"
+                  onChange={(e) => {
+                    setHeaderData({ ...headerData, customer_name: e.target.value });
+                    setShowApotekSuggestions(true);
+                  }}
+                  onFocus={() => setShowApotekSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowApotekSuggestions(false), 250)}
+                  placeholder="Ketik nama apotek atau merchant..."
                   className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black dark:focus:ring-white transition-all"
                 />
+
+                {/* Suggestions Dropdown */}
+                {showApotekSuggestions && apotekSuggestions.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto py-1">
+                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-100 dark:border-zinc-800">
+                      Saran dari Master Customer & Apotek ({apotekSuggestions.length})
+                    </div>
+                    {apotekSuggestions.map((cust) => (
+                      <button
+                        key={cust.id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setHeaderData({ ...headerData, customer_name: cust.name });
+                          setShowApotekSuggestions(false);
+                        }}
+                        className="w-full text-left px-3.5 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between transition-colors cursor-pointer border-b border-zinc-50 dark:border-zinc-800/40 last:border-b-0"
+                      >
+                        <span className="font-semibold text-zinc-800 dark:text-zinc-200 truncate">
+                          {cust.name}
+                        </span>
+                        {cust.category && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-mono shrink-0 ml-2">
+                            {cust.category}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 {/* No. Invoice */}
                 <div>
                   <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                    🧾 No. Invoice (Faktur) <span className="text-red-500">*</span>
+                    No. Invoice (Faktur) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -720,7 +802,7 @@ ${photoStatus}
                 {/* No. SO */}
                 <div>
                   <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                    📦 No. Sales Order (SO)
+                    No. Sales Order (SO)
                   </label>
                   <input
                     type="text"
@@ -850,7 +932,7 @@ ${photoStatus}
                   {/* Nama Produk */}
                   <div>
                     <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                      💊 Nama Produk <span className="text-red-500">*</span>
+                      Nama Produk <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -866,7 +948,7 @@ ${photoStatus}
                   <div className="grid grid-cols-2 gap-3.5">
                     <div>
                       <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                        🔢 Kuantitas <span className="text-red-500">*</span>
+                        Kuantitas <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="number"
@@ -902,7 +984,7 @@ ${photoStatus}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
                       <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                        🏷️ Batch No. (Nomor Bets)
+                        Batch No. (Nomor Bets)
                       </label>
                       <input
                         type="text"
@@ -915,7 +997,7 @@ ${photoStatus}
 
                     <div>
                       <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                        📅 Expiry Date (ED)
+                        Expiry Date (ED)
                       </label>
                       <input
                         type="text"
@@ -930,7 +1012,7 @@ ${photoStatus}
                   {/* Reason */}
                   <div>
                     <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                      ⚠️ Reason (Alasan Retur) <span className="text-red-500">*</span>
+                      Alasan Retur (Reason) <span className="text-red-500">*</span>
                     </label>
                     <select
                       value={item.reason}
@@ -959,7 +1041,7 @@ ${photoStatus}
                   {/* Catatan Tambahan Per Item */}
                   <div>
                     <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                      📝 Catatan Tambahan Produk (Opsional)
+                      Catatan Tambahan Produk (Opsional)
                     </label>
                     <textarea
                       rows={2}

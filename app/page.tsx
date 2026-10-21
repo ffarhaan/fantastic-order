@@ -378,10 +378,14 @@ export default function Home() {
   const deviceIdRef = useRef<string>(Math.random().toString(36).substring(2, 9));
   const [uploadNotification, setUploadNotification] = useState<UploadNotification | null>(null);
 
-  // User Authentication & Role State
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
-  const currentUserRef = useRef<AppUser | null>(null);
-  const [showLoginModal, setShowLoginModal] = useState(true);
+  // User Authentication & Role State (Password login bypassed per user request)
+  const DEFAULT_USER: AppUser = {
+    name: "Admin Logistik",
+    role: "admin",
+  };
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(DEFAULT_USER);
+  const currentUserRef = useRef<AppUser | null>(DEFAULT_USER);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
   // Real-time Online Users Presence
@@ -421,22 +425,9 @@ export default function Home() {
   }, [currentUser]);
 
   useEffect(() => {
-    try {
-      const saved = typeof window !== "undefined" ? sessionStorage.getItem("faktur_tracker_user") : null;
-      if (saved) {
-        const u = JSON.parse(saved);
-        if (u && typeof u === "object" && typeof u.name === "string" && (u.role === "admin" || u.role === "readonly")) {
-          setCurrentUser(u);
-          setShowLoginModal(false);
-          return;
-        } else {
-          sessionStorage.removeItem("faktur_tracker_user");
-        }
-      }
-    } catch {
-      // ignore
-    }
-    setShowLoginModal(true);
+    // Direct auto-login without password
+    setCurrentUser(DEFAULT_USER);
+    setShowLoginModal(false);
   }, []);
 
   const handleLogin = (user: AppUser) => {
