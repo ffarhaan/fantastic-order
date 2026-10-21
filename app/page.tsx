@@ -3926,10 +3926,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             isRowSelected
                               ? (isDarkMode
                                   ? "bg-zinc-800/90 border-l-4 border-l-blue-500 text-white font-semibold"
-                                  : "bg-zinc-100 border-l-4 border-l-black text-black font-bold")
+                                  : "bg-blue-50/90 border-l-4 border-l-blue-600 text-blue-950 font-bold")
                               : g.isDoubleInv
                               ? (isDarkMode ? "bg-rose-950/20 hover:bg-rose-950/30" : "bg-rose-50/40 hover:bg-rose-100/40")
-                              : (isDarkMode ? "bg-[#09090b] hover:bg-zinc-900/60" : "bg-white hover:bg-zinc-100")
+                              : (isDarkMode ? "bg-[#09090b] hover:bg-zinc-900/60" : "bg-white hover:bg-blue-50/40")
                           }`}
                         >
                           {/* Col 0: Expand */}
