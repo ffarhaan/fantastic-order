@@ -483,6 +483,25 @@ export default function Home() {
   const printedInvoicesRef = useRef<Set<string>>(new Set());
   const printedAtMapRef = useRef<Record<string, string>>({});
   const printedByMapRef = useRef<Record<string, string>>({});
+  const [checkerMap, setCheckerMap] = useState<Record<string, string>>({});
+  const checkerMapRef = useRef<Record<string, string>>({});
+
+  const fetchCheckers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tidb?action=get_checkers");
+      const json = await res.json();
+      if (json.success && json.data) {
+        setCheckerMap(json.data);
+        checkerMapRef.current = json.data;
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchCheckers();
+    const interval = setInterval(fetchCheckers, 30000);
+    return () => clearInterval(interval);
+  }, [fetchCheckers]);
   const invoiceProgressionRef = useRef<InvoiceProgression | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isUploadingRef = useRef(false);
@@ -1668,7 +1687,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
       if (e.key === "ArrowRight" || e.key === "l") {
         e.preventDefault();
-        setSelectedColIdx((prev) => Math.min(11, prev + 1));
+        setSelectedColIdx((prev) => Math.min(12, prev + 1));
         return;
       }
       if (e.key === "ArrowLeft" || e.key === "h") {
@@ -1726,7 +1745,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           } else if (colIdx === 8) {
             textToCopy = currentRow.orderDate && currentRow.orderDate !== "-" ? currentRow.orderDate : "-";
             label = "Tgl Order";
-          } else if (colIdx === 11) {
+          } else if (colIdx === 10) {
+            textToCopy = checkerMap[currentRow.so] || "-";
+            label = "Checker";
+          } else if (colIdx === 12) {
             const grandTotal = Math.round(currentRow.totalHarga * 1.11 * 100) / 100;
             textToCopy = String(grandTotal);
             label = "Total (+PPN)";
@@ -3858,6 +3880,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   <th className="px-2.5 py-2.5 text-center" title="Tanggal Faktur / Invoice Date (Transaction Date)">Tgl Faktur</th>
                   <th className="px-2.5 py-2.5 text-center" title="Tanggal Sales Order Masuk (Order Date)">Tgl Order</th>
                   <th className="px-2.5 py-2.5 text-center">Kat</th>
+                  <th className="px-2.5 py-2.5 whitespace-nowrap">Checker</th>
                   <th className="px-2.5 py-2.5">Done Print (Waktu)</th>
                   <th className="px-2.5 py-2.5 text-right" title="Grand Total sudah termasuk PPN 11% (sesuai faktur fisik)">Total (+PPN)</th>
                 </tr>
@@ -3865,7 +3888,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <tbody className={`divide-y ${isDarkMode ? "divide-zinc-800/70" : "divide-zinc-200/70"}`}>
                 {loading && records.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+                    <td colSpan={13} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
                       <div className="flex flex-col items-center gap-2">
                         <span className="text-2xl animate-spin text-blue-500">🔄</span>
                         <span className="text-xs font-semibold">Memuat data faktur...</span>
@@ -3874,7 +3897,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+                    <td colSpan={13} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
                       <div className="flex flex-col items-center gap-2">
                         <span className="text-3xl">{filter === "belum" ? "🎉" : "📄"}</span>
                         <span className="text-xs font-semibold">
@@ -4128,12 +4151,36 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             </select>
                           </td>
 
-                          {/* Col 10: Done Print Waktu */}
+                          {/* Col 10: Checker */}
                           <td
-                            className={`px-2.5 py-1.5 whitespace-nowrap font-mono text-[11px] ${getCellCls(10)}`}
+                            className={`px-2.5 py-1.5 whitespace-nowrap text-xs ${getCellCls(10)}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectCell(10);
+                            }}
+                          >
+                            {checkerMap[g.so] ? (
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
+                                  isDarkMode
+                                    ? "bg-purple-950/60 text-purple-300 border border-purple-800/60"
+                                    : "bg-purple-100 text-purple-800 border border-purple-200"
+                                }`}
+                                title={`Checker: ${checkerMap[g.so]}`}
+                              >
+                                {checkerMap[g.so]}
+                              </span>
+                            ) : (
+                              <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
+                            )}
+                          </td>
+
+                          {/* Col 11: Done Print Waktu */}
+                          <td
+                            className={`px-2.5 py-1.5 whitespace-nowrap font-mono text-[11px] ${getCellCls(11)}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectCell(11);
                             }}
                           >
                             {g.allPrinted && g.printedAt ? (
@@ -4158,16 +4205,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             )}
                           </td>
 
-                          {/* Col 11: Total Harga (Grand Total include PPN 11%) */}
+                          {/* Col 12: Total Harga (Grand Total include PPN 11%) */}
                           <td
                             className={`px-2.5 py-1.5 text-right font-medium whitespace-nowrap ${
                               isDarkMode
                                 ? "text-white"
                                 : "text-black"
-                            } ${getCellCls(11)}`}
+                            } ${getCellCls(12)}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              onSelectCell(11);
+                              onSelectCell(12);
                             }}
                           >
                             <div className="font-mono font-black text-xs">
@@ -4182,7 +4229,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                         {/* Expanded Detail Rows */}
                         {isExpanded && (
                           <tr className={isDarkMode ? "bg-[#080d19] border-b border-slate-800" : "bg-slate-50/80 border-b border-slate-200"}>
-                            <td colSpan={12} className="p-3">
+                            <td colSpan={13} className="p-3">
                               <div className={`border rounded-xl p-3 shadow-xs space-y-3 ${
                                 isDarkMode ? "bg-[#0e1628] border-slate-700/70 text-slate-200 shadow-black/40" : "bg-white border-slate-200 text-slate-800"
                               }`}>

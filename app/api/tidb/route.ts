@@ -41,6 +41,25 @@ export async function GET(req: Request) {
     const conn = getTiDBClient();
 
     // ==========================================
+    // CHECKERS MAPPING (SO -> Checker)
+    // ==========================================
+    if (action === "get_checkers") {
+      const rows = (await conn.execute("SELECT so_number, checker_name FROM so_checkers")) as Array<{
+        so_number: string;
+        checker_name: string;
+      }>;
+      const map: Record<string, string> = {};
+      if (Array.isArray(rows)) {
+        for (const r of rows) {
+          if (r.so_number && r.checker_name) {
+            map[r.so_number] = r.checker_name;
+          }
+        }
+      }
+      return compressedJsonResponse(req, { success: true, data: map });
+    }
+
+    // ==========================================
     // 1. CUSTOMERS DIRECTORY
     // ==========================================
     if (action === "customers") {
@@ -404,6 +423,28 @@ export async function POST(req: Request) {
       body = await req.json();
     } catch (e) {
       body = {};
+    }
+
+    // 0. Sync checkers from Google Sheets
+    if (action === "sync_checkers") {
+      const items = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
+      let updatedCount = 0;
+      for (const item of items) {
+        const so = String(item.so || item.so_number || "").trim();
+        const checker = String(item.checker || item.checker_name || "").trim();
+        const packer = String(item.packer || item.packer_name || "").trim();
+        if (!so || !checker) continue;
+        await conn.execute(
+          `INSERT INTO so_checkers (so_number, checker_name, packer_name)
+           VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE 
+             checker_name = VALUES(checker_name),
+             packer_name = COALESCE(VALUES(packer_name), packer_name)`,
+          [so, checker, packer || null]
+        );
+        updatedCount++;
+      }
+      return Response.json({ success: true, count: updatedCount });
     }
 
     // 1. Create new shipment return (supports multi-product and photo_url)
