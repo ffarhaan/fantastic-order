@@ -419,6 +419,7 @@ export async function POST(req: Request) {
         expiry_date,
         reason,
         invoice_date,
+        report_date,
         category,
         confirm,
         action: returnAction,
@@ -468,9 +469,9 @@ export async function POST(req: Request) {
 
         const [res] = (await conn.execute(
           `INSERT INTO shipment_returns (
-            pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date, reason, invoice_date,
+            pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date, reason, invoice_date, report_date,
             category, confirm, action, status, note, person, root_cause, photo_url
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             pbf || item.pbf || "MBI",
             customer_name || item.customer_name || "",
@@ -482,6 +483,7 @@ export async function POST(req: Request) {
             item.expiry_date || "",
             item.reason || "",
             invDate || new Date().toISOString().split("T")[0],
+            report_date || item.report_date || new Date().toISOString().split("T")[0],
             category !== undefined && category !== null ? category : (item.category ?? ""),
             confirm !== undefined && confirm !== null ? confirm : (item.confirm ?? ""),
             item.action !== undefined && item.action !== null ? item.action : (returnAction ?? ""),
@@ -512,6 +514,7 @@ export async function POST(req: Request) {
         expiry_date,
         reason,
         invoice_date,
+        report_date,
         category,
         confirm,
         action: returnAction,
@@ -540,6 +543,7 @@ export async function POST(req: Request) {
           expiry_date = COALESCE(?, expiry_date),
           reason = COALESCE(?, reason),
           invoice_date = COALESCE(?, invoice_date),
+          report_date = COALESCE(?, report_date),
           category = COALESCE(?, category),
           confirm = COALESCE(?, confirm),
           action = COALESCE(?, action),
@@ -562,6 +566,7 @@ export async function POST(req: Request) {
           expiry_date,
           reason,
           invoice_date,
+          report_date,
           category,
           confirm,
           returnAction,
@@ -603,9 +608,9 @@ export async function POST(req: Request) {
         if (!item.customer_name && !item.invoice_no && !item.product_name) continue;
         await conn.execute(
           `INSERT INTO shipment_returns (
-            pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date, reason, invoice_date,
+            pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date, reason, invoice_date, report_date,
             category, confirm, action, status, nota_retur_no, resolved_date, note, person, root_cause
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             item.pbf || "MBI",
             item.customer_name || "-",
@@ -617,6 +622,7 @@ export async function POST(req: Request) {
             item.expiry_date || "-",
             item.reason || "-",
             item.invoice_date || "",
+            item.report_date || item.invoice_date || new Date().toISOString().split("T")[0],
             item.category || "DOO",
             item.confirm || "Pending",
             item.action || "-",

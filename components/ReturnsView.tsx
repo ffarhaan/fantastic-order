@@ -244,6 +244,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       const edCol = getColIdx("expiry date", "expired date", "ed", "exp date", "kadaluarsa");
       const reasonCol = getColIdx("alasan", "reason", "kendala", "masalah", "keterangan");
       const invDateCol = getColIdx("tanggal faktur", "tgl faktur", "invoice date", "inv date", "tgl inv");
+      const reportDateCol = getColIdx("tanggal lapor", "tgl lapor", "report date", "tanggal report", "tgl report", "tanggal kejadian", "tgl kejadian", "tanggal pengajuan", "tgl pengajuan");
       const catCol = getColIdx("kategori", "category");
       const confirmCol = getColIdx("confirm", "konfirmasi");
       const actionCol = getColIdx("action", "tindakan", "penyelesaian");
@@ -279,6 +280,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           expiry_date: val(edCol) || "-",
           reason: val(reasonCol) || "-",
           invoice_date: val(invDateCol) || "",
+          report_date: val(reportDateCol) || "",
           category: val(catCol) || "DOO",
           confirm: val(confirmCol) || "Pending",
           action: val(actionCol) || "-",
@@ -370,6 +372,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     expiry_date: "",
     reason: "",
     invoice_date: "",
+    report_date: "",
     category: "",
     confirm: "",
     action: "",
@@ -394,6 +397,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         expiry_date: selectedReturn.expiry_date || "",
         reason: selectedReturn.reason || "",
         invoice_date: selectedReturn.invoice_date || "",
+        report_date: selectedReturn.report_date ? selectedReturn.report_date.split("T")[0] : "",
         category: selectedReturn.category || "",
         confirm: selectedReturn.confirm || "",
         action: selectedReturn.action || "",
@@ -418,6 +422,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     batch_no: "",
     expiry_date: "",
     reason: "Fisik yang dikirim salah",
+    report_date: new Date().toISOString().split("T")[0],
     category: "",
     confirm: "",
     action: "",
@@ -620,6 +625,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           batch_no: "",
           expiry_date: "",
           reason: "Fisik yang dikirim salah",
+          report_date: new Date().toISOString().split("T")[0],
           category: "",
           confirm: "",
           action: "",
@@ -647,6 +653,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       "Nama Apotek": r.customer_name || "-",
       "No. Faktur": r.invoice_no || "-",
       "Tanggal Faktur": formatDate(getInvoiceDate(r)),
+      "Tanggal Lapor": r.report_date ? formatDate(r.report_date) : (r.created_at ? formatDate(r.created_at.split(" ")[0]) : "-"),
       "No. SO": r.so_no || "-",
       "Nama Produk": r.product_name || "-",
       Qty: r.qty || 1,
@@ -1074,6 +1081,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 <th className="py-2.5 px-4">Nama Apotek</th>
                 <th className="py-2.5 px-3">No. Faktur</th>
                 <th className="py-2.5 px-3">Tgl Faktur</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">Tgl Lapor</th>
                 <th className="py-2.5 px-3">No. SO</th>
                 <th className="py-2.5 px-4">Nama Produk & Qty</th>
                 <th className="py-2.5 px-4">Alasan (Reason)</th>
@@ -1086,14 +1094,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <tbody className="divide-y divide-zinc-200/80 dark:divide-slate-800/50">
               {loading && returns.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-16 text-center text-zinc-400">
+                  <td colSpan={12} className="py-16 text-center text-zinc-400">
                     <RefreshCw className="w-7 h-7 animate-spin mx-auto text-indigo-500 mb-2" />
                     <span className="font-semibold text-sm">Memuat data tiket komplain & retur...</span>
                   </td>
                 </tr>
               ) : returns.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-16 text-center text-zinc-400">
+                  <td colSpan={12} className="py-16 text-center text-zinc-400">
                     <RotateCcw className="w-8 h-8 mx-auto text-zinc-400 mb-2 opacity-50" />
                     <p className="font-semibold text-sm text-zinc-600 dark:text-slate-400">Tidak ada tiket komplain/retur yang cocok</p>
                     <p className="text-xs text-zinc-400 dark:text-slate-500 mt-1">Gunakan kata kunci lain atau ubah status filter.</p>
@@ -1172,6 +1180,23 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                             <span className="inline-flex items-center gap-1 font-semibold" title="Tanggal Faktur (dari daftar faktur)">
                               <Calendar className="w-3 h-3 text-zinc-400 shrink-0" />
                               <span>{formatDate(getInvoiceDate(r))}</span>
+                            </span>
+                          ) : (
+                            <span className="text-zinc-400 dark:text-slate-600">-</span>
+                          )}
+                        </td>
+
+                        {/* Tgl Lapor / Report Date */}
+                        <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap text-zinc-700 dark:text-slate-300">
+                          {r.report_date && r.report_date !== "#N/A" ? (
+                            <span className="inline-flex items-center gap-1 font-semibold text-rose-700 dark:text-rose-400" title="Tanggal Dilaporkan">
+                              <Calendar className="w-3 h-3 text-rose-500 shrink-0" />
+                              <span>{formatDate(r.report_date)}</span>
+                            </span>
+                          ) : r.created_at ? (
+                            <span className="inline-flex items-center gap-1 font-medium text-zinc-500 dark:text-slate-400" title="Tanggal Dibuat di Sistem">
+                              <Calendar className="w-3 h-3 text-zinc-400 shrink-0" />
+                              <span>{formatDate(r.created_at.split(" ")[0])}</span>
                             </span>
                           ) : (
                             <span className="text-zinc-400 dark:text-slate-600">-</span>
@@ -1282,7 +1307,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                       {/* â”€â”€â”€ OPSI 4: EXPANDABLE ROW (AKORDEON) â”€â”€â”€ */}
                       {isExpanded && (
                         <tr className="bg-zinc-100/90 dark:bg-[#070b16] border-y-2 border-indigo-500/50 animate-in fade-in duration-150">
-                          <td colSpan={11} className="p-2 sm:p-3">
+                          <td colSpan={12} className="p-2 sm:p-3">
                             <div className="bg-white dark:bg-[#0d1424] border border-zinc-300 dark:border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm space-y-3">
                               
                               {/* Header Bar */}
@@ -1385,6 +1410,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                                         value={editForm.invoice_date ? editForm.invoice_date.split("T")[0] : ""}
                                         onChange={(e) => setEditForm({ ...editForm, invoice_date: e.target.value })}
                                         className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tgl Lapor / Kejadian</label>
+                                      <input
+                                        type="date"
+                                        value={editForm.report_date ? editForm.report_date.split("T")[0] : ""}
+                                        onChange={(e) => setEditForm({ ...editForm, report_date: e.target.value })}
+                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-rose-700 dark:text-rose-400 font-mono font-semibold"
                                       />
                                     </div>
 
@@ -2367,7 +2402,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-slate-400 block mb-1">No. Faktur</label>
                   <input
@@ -2385,6 +2420,15 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     value={newForm.so_no}
                     onChange={(e) => setNewForm({ ...newForm, so_no: e.target.value })}
                     placeholder="Contoh: 696000"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-400 block mb-1">Tanggal Lapor</label>
+                  <input
+                    type="date"
+                    value={newForm.report_date}
+                    onChange={(e) => setNewForm({ ...newForm, report_date: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200 font-mono"
                   />
                 </div>
