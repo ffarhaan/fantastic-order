@@ -486,6 +486,14 @@ export default function Home() {
   const [checkerMap, setCheckerMap] = useState<Record<string, { checker: string; packer: string }>>({});
   const checkerMapRef = useRef<Record<string, { checker: string; packer: string }>>({});
 
+  const getCheckerInfo = useCallback((so?: string) => {
+    if (!so) return null;
+    const raw = String(so).trim();
+    const noSpace = raw.replace(/\s+/g, "");
+    const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+    return checkerMap[raw] || checkerMap[noSpace] || checkerMap[alpha] || null;
+  }, [checkerMap]);
+
   const fetchCheckers = useCallback(async () => {
     try {
       const res = await fetch("/api/tidb?action=get_checkers");
@@ -1760,10 +1768,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             textToCopy = currentRow.orderDate && currentRow.orderDate !== "-" ? currentRow.orderDate : "-";
             label = "Tgl Order";
           } else if (colIdx === 10) {
-            textToCopy = checkerMap[currentRow.so]?.checker || "-";
+            textToCopy = getCheckerInfo(currentRow.so)?.checker || "-";
             label = "Checker";
           } else if (colIdx === 11) {
-            textToCopy = checkerMap[currentRow.so]?.packer || "-";
+            textToCopy = getCheckerInfo(currentRow.so)?.packer || "-";
             label = "Packer";
           } else if (colIdx === 13) {
             const grandTotal = Math.round(currentRow.totalHarga * 1.11 * 100) / 100;
@@ -4181,16 +4189,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                               onSelectCell(10);
                             }}
                           >
-                            {checkerMap[g.so]?.checker ? (
+                            {getCheckerInfo(g.so)?.checker ? (
                               <span
                                 className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
                                   isDarkMode
                                     ? "bg-purple-950/60 text-purple-300 border border-purple-800/60"
                                     : "bg-purple-100 text-purple-800 border border-purple-200"
                                 }`}
-                                title={`Checker: ${checkerMap[g.so].checker}`}
+                                title={`Checker: ${getCheckerInfo(g.so)?.checker}`}
                               >
-                                {checkerMap[g.so].checker}
+                                {getCheckerInfo(g.so)?.checker}
                               </span>
                             ) : (
                               <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
@@ -4205,16 +4213,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                               onSelectCell(11);
                             }}
                           >
-                            {checkerMap[g.so]?.packer ? (
+                            {getCheckerInfo(g.so)?.packer ? (
                               <span
                                 className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
                                   isDarkMode
                                     ? "bg-blue-950/60 text-blue-300 border border-blue-800/60"
                                     : "bg-blue-100 text-blue-800 border border-blue-200"
                                 }`}
-                                title={`Packer: ${checkerMap[g.so].packer}`}
+                                title={`Packer: ${getCheckerInfo(g.so)?.packer}`}
                               >
-                                {checkerMap[g.so].packer}
+                                {getCheckerInfo(g.so)?.packer}
                               </span>
                             ) : (
                               <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>

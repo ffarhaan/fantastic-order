@@ -53,10 +53,17 @@ export async function GET(req: Request) {
       if (Array.isArray(rows)) {
         for (const r of rows) {
           if (r.so_number) {
-            map[r.so_number] = {
+            const val = {
               checker: r.checker_name || "",
               packer: r.packer_name || "",
             };
+            const raw = String(r.so_number).trim();
+            const noSpace = raw.replace(/\s+/g, "");
+            const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+
+            map[raw] = val;
+            map[noSpace] = val;
+            map[alpha] = val;
           }
         }
       }
@@ -432,22 +439,39 @@ export async function POST(req: Request) {
     // 0. Sync checkers from Google Sheets
     if (action === "sync_checkers") {
       const items = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
-      let updatedCount = 0;
+      if (items.length === 0) {
+        return Response.json({ success: true, count: 0 });
+      }
+
+      const validRows: [string, string, string | null][] = [];
       for (const item of items) {
         const so = String(item.so || item.so_number || "").trim();
         const checker = String(item.checker || item.checker_name || "").trim();
         const packer = String(item.packer || item.packer_name || "").trim();
-        if (!so || !checker) continue;
+        if (!so || so === "-" || so === "#N/A" || (!checker && !packer)) continue;
+
+        validRows.push([so, checker || "-", packer || null]);
+      }
+
+      // High-speed Batch Upsert in chunks of 100
+      let updatedCount = 0;
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+        const chunk = validRows.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunk.map(() => "(?, ?, ?)").join(", ");
+        const flatParams = chunk.flat();
+
         await conn.execute(
           `INSERT INTO so_checkers (so_number, checker_name, packer_name)
-           VALUES (?, ?, ?)
+           VALUES ${placeholders}
            ON DUPLICATE KEY UPDATE 
              checker_name = VALUES(checker_name),
              packer_name = COALESCE(VALUES(packer_name), packer_name)`,
-          [so, checker, packer || null]
+          flatParams
         );
-        updatedCount++;
+        updatedCount += chunk.length;
       }
+
       return Response.json({ success: true, count: updatedCount });
     }
 
