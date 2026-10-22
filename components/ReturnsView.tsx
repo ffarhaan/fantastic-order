@@ -508,14 +508,19 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   }, [debouncedSearch, statusFilter, pbfFilter, categoryFilter, page]);
 
-  // Real-time polling: fetch every 3 seconds so new complaints or status changes appear in < 3 seconds
+  // Real-time polling: fetch every 3 seconds & immediately on window focus
   useEffect(() => {
     fetchReturns();
     fetchAllReturns();
     const interval = setInterval(() => {
       fetchReturns(true);
     }, 3000);
-    return () => clearInterval(interval);
+    const onFocus = () => fetchReturns(true);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [fetchReturns, fetchAllReturns]);
 
   const handleDeleteReturn = async (id: number, invoiceNo: string) => {

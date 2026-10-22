@@ -507,8 +507,13 @@ export default function Home() {
 
   useEffect(() => {
     fetchCheckers();
-    const interval = setInterval(fetchCheckers, 30000);
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchCheckers, 5000);
+    const onFocus = () => fetchCheckers();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [fetchCheckers]);
   const invoiceProgressionRef = useRef<InvoiceProgression | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
