@@ -11,26 +11,35 @@ function compressedJsonResponse(
 ): Response {
   const jsonStr = JSON.stringify(data);
   const acceptEncoding = req.headers.get("accept-encoding") || "";
+  const url = new URL(req.url);
+  const isNoCache = req.headers.get("cache-control") === "no-cache" || url.searchParams.get("fresh") === "true";
+
+  // Vercel Edge CDN Cache: serves from Edge (Fast Data Transfer 100GB), shielding Fast Origin Transfer (10GB)
+  const defaultCacheControl = isNoCache
+    ? "no-store, no-cache, must-revalidate"
+    : "public, s-maxage=30, stale-while-revalidate=120";
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Cache-Control": customHeaders["Cache-Control"] || defaultCacheControl,
+    ...customHeaders,
+  };
 
   if (acceptEncoding.includes("gzip")) {
     const compressed = zlib.gzipSync(Buffer.from(jsonStr), { level: 6 });
     return new Response(compressed as unknown as BodyInit, {
       status,
       headers: {
-        "Content-Type": "application/json",
+        ...headers,
         "Content-Encoding": "gzip",
         "Vary": "Accept-Encoding",
-        ...customHeaders,
       },
     });
   }
 
   return new Response(jsonStr, {
     status,
-    headers: {
-      "Content-Type": "application/json",
-      ...customHeaders,
-    },
+    headers,
   });
 }
 
@@ -53,21 +62,19 @@ export async function GET(req: Request) {
       if (Array.isArray(rows)) {
         for (const r of rows) {
           if (r.so_number) {
-            const val = {
+            const raw = String(r.so_number).trim();
+            map[raw] = {
               checker: r.checker_name || "",
               packer: r.packer_name || "",
             };
-            const raw = String(r.so_number).trim();
-            const noSpace = raw.replace(/\s+/g, "");
-            const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-
-            map[raw] = val;
-            map[noSpace] = val;
-            map[alpha] = val;
           }
         }
       }
-      return compressedJsonResponse(req, { success: true, data: map });
+      return compressedJsonResponse(
+        req, 
+        { success: true, data: map },
+        { "Cache-Control": "public, s-maxage=45, stale-while-revalidate=180" }
+      );
     }
 
     // ==========================================
@@ -108,13 +115,17 @@ export async function GET(req: Request) {
       const dataSql = `SELECT * FROM customers ${whereClause} ORDER BY name ASC LIMIT ? OFFSET ?`;
       const rows = await conn.execute(dataSql, [...params, limit, offset]);
 
-      return compressedJsonResponse(req, {
-        success: true,
-        total: Number(countResult?.total || 0),
-        data: rows,
-        limit,
-        offset,
-      });
+      return compressedJsonResponse(
+        req, 
+        {
+          success: true,
+          total: Number(countResult?.total || 0),
+          data: rows,
+          limit,
+          offset,
+        },
+        { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" }
+      );
     }
 
     // ==========================================
@@ -226,18 +237,22 @@ export async function GET(req: Request) {
         FROM shipment_returns;
       `)) as any[];
 
-      return compressedJsonResponse(req, {
-        success: true,
-        total: Number(countResult?.total || 0),
-        stats: {
-          totalAll: Number(stats?.totalAll || 0),
-          totalResolved: Number(stats?.totalResolved || 0),
-          totalPending: Number(stats?.totalPending || 0),
+      return compressedJsonResponse(
+        req, 
+        {
+          success: true,
+          total: Number(countResult?.total || 0),
+          stats: {
+            totalAll: Number(stats?.totalAll || 0),
+            totalResolved: Number(stats?.totalResolved || 0),
+            totalPending: Number(stats?.totalPending || 0),
+          },
+          data: rows,
+          limit,
+          offset,
         },
-        data: rows,
-        limit,
-        offset,
-      });
+        { "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30" }
+      );
     }
 
     // ==========================================
@@ -259,7 +274,11 @@ export async function GET(req: Request) {
         }
       }
 
-      return Response.json({ success: true, map });
+      return compressedJsonResponse(
+        req,
+        { success: true, map },
+        { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120" }
+      );
     }
 
     // ==========================================
