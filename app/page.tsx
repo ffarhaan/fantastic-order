@@ -1439,11 +1439,25 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
     if (deferredSearch.trim()) {
       const s = deferredSearch.toLowerCase().trim();
-      result = result.filter((g) => (g.searchStr ? g.searchStr.includes(s) : (
-        g.so.toLowerCase().includes(s) ||
-        g.invoiceNumber.toLowerCase().includes(s) ||
-        g.customerName.toLowerCase().includes(s)
-      )));
+      // Auto-strip _1P / _2P / _3P suffix so searching '29013_1P' instantly matches '29013' or 'INV/2026/10/29013'
+      const cleanS = s.replace(/_(1p|2p|3p)$/i, "").trim();
+
+      result = result.filter((g) => {
+        if (g.searchStr) {
+          if (g.searchStr.includes(s)) return true;
+          if (cleanS && cleanS.length >= 3 && g.searchStr.includes(cleanS)) return true;
+        }
+        return (
+          g.so.toLowerCase().includes(s) ||
+          g.invoiceNumber.toLowerCase().includes(s) ||
+          g.customerName.toLowerCase().includes(s) ||
+          (cleanS.length >= 3 && (
+            g.so.toLowerCase().includes(cleanS) ||
+            g.invoiceNumber.toLowerCase().includes(cleanS) ||
+            g.customerName.toLowerCase().includes(cleanS)
+          ))
+        );
+      });
     }
 
     if (filter === "belum") {
@@ -3263,7 +3277,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         {/* VIEW CONDITIONAL: FULL DASHBOARD ANALYTICS OR WORKSPACE */}
         {mainView === "returns" ? (
           <ReturnsView 
-            onSelectInvoice={(inv) => { setSearch(inv); setMainView("workspace"); }} 
+            onSelectInvoice={(inv) => { 
+              const cleanInv = inv.replace(/_(1p|2p|3p)$/i, "").trim();
+              setSearch(cleanInv); 
+              setMainView("workspace"); 
+            }} 
             onSelectCustomer={(c) => { setSearch(c); setMainView("workspace"); }} 
             records={records}
           />
