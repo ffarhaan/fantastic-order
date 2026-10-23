@@ -1451,6 +1451,139 @@ export async function changeUserPassword(
   }
 }
 
+const USER_PROFILES_DOC = "user_profiles";
+
+/**
+ * Authenticate user by username OR email, checking password
+ */
+export async function authenticateUser(
+  identifier: string,
+  inputPass: string
+): Promise<{ success: boolean; user?: { name: string; role: "admin" | "readonly" }; message?: string }> {
+  const cleanId = String(identifier || "").trim().toLowerCase();
+  const cleanPass = String(inputPass || "").trim();
+
+  if (!cleanId) {
+    return { success: false, message: "Username atau email wajib diisi." };
+  }
+  if (!cleanPass) {
+    return { success: false, message: "Password wajib diisi." };
+  }
+
+  try {
+    const [credSnap, profSnap] = await Promise.all([
+      getDoc(doc(db, APP_DATA_COLLECTION, USER_CREDENTIALS_DOC)).catch(() => null),
+      getDoc(doc(db, APP_DATA_COLLECTION, USER_PROFILES_DOC)).catch(() => null),
+    ]);
+
+    const creds = (credSnap?.exists() ? credSnap.data() : {}) as Record<string, string>;
+    const profiles = (profSnap?.exists() ? profSnap.data() : {}) as Record<string, any>;
+
+    let matchedUsername = cleanId;
+    let displayName = identifier;
+    let role: "admin" | "readonly" = "admin";
+
+    // Check if identifier matches any username or email in profiles
+    for (const [uKey, prof] of Object.entries(profiles)) {
+      if (
+        uKey.toLowerCase() === cleanId ||
+        String(prof.username || "").toLowerCase() === cleanId ||
+        String(prof.email || "").toLowerCase() === cleanId
+      ) {
+        matchedUsername = uKey;
+        displayName = prof.displayName || prof.username || uKey;
+        role = prof.role === "readonly" ? "readonly" : "admin";
+        break;
+      }
+    }
+
+    // Check password
+    let validPass = "123";
+    for (const [cKey, cVal] of Object.entries(creds)) {
+      if (cKey.toLowerCase() === matchedUsername.toLowerCase()) {
+        validPass = String(cVal);
+        break;
+      }
+    }
+
+    if (cleanPass === validPass) {
+      return {
+        success: true,
+        user: {
+          name: displayName,
+          role,
+        },
+      };
+    } else {
+      return { success: false, message: "Password yang Anda masukkan salah." };
+    }
+  } catch (err) {
+    console.error("Auth error:", err);
+    return { success: false, message: "Gagal menghubungkan ke server autentikasi." };
+  }
+}
+
+/**
+ * Register a new staff member and store their profile & credentials
+ */
+export async function registerStaffAccount(
+  username: string,
+  email: string,
+  password: string,
+  displayName?: string
+): Promise<{ success: boolean; message: string }> {
+  const cleanU = String(username || "").trim().toLowerCase();
+  const cleanE = String(email || "").trim().toLowerCase();
+  const cleanP = String(password || "").trim();
+  const dName = String(displayName || username || "").trim();
+
+  if (!cleanU || cleanU.length < 3) {
+    return { success: false, message: "Username minimal 3 karakter." };
+  }
+  if (!cleanE || !cleanE.includes("@")) {
+    return { success: false, message: "Alamat email tidak valid." };
+  }
+  if (!cleanP || cleanP.length < 4) {
+    return { success: false, message: "Password minimal 4 karakter." };
+  }
+
+  try {
+    await setDoc(
+      doc(db, APP_DATA_COLLECTION, USER_CREDENTIALS_DOC),
+      { [cleanU]: cleanP, [dName]: cleanP },
+      { merge: true }
+    );
+
+    await setDoc(
+      doc(db, APP_DATA_COLLECTION, USER_PROFILES_DOC),
+      {
+        [cleanU]: {
+          username: cleanU,
+          displayName: dName,
+          email: cleanE,
+          role: "admin",
+          verified: true,
+          updatedAt: new Date().toISOString(),
+        },
+        [dName]: {
+          username: cleanU,
+          displayName: dName,
+          email: cleanE,
+          role: "admin",
+          verified: true,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+      { merge: true }
+    );
+
+    return { success: true, message: `Akun ${dName} (${cleanU}) berhasil didaftarkan!` };
+  } catch (err) {
+    console.error("Register error:", err);
+    return { success: false, message: "Gagal menyimpan akun ke server database." };
+  }
+}
+
 
 
 const SO_CHECKERS_DOC = "so_checkers";
