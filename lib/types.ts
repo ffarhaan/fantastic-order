@@ -182,6 +182,10 @@ export interface CustomerRecord {
   category: string;
   halodoc_pharma: string;
   is_active_2p: string;
+  document_url?: string;
+  document_name?: string;
+  npwp_drive_url?: string;
+  npwp_file_url?: string;
   created_at?: string;
 }
 

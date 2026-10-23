@@ -613,8 +613,16 @@ export async function POST(req: Request) {
       return Response.json({ success: true, count: insertedCount });
     }
 
-    // 0.2. Sync customers from Google Sheets (Data Customer tab)
+    // 0.2. Sync customers from Google Sheets (DISABLED - Disconnected per user request)
     if (action === "sync_customers") {
+      return Response.json({
+        success: false,
+        message: "Google Sheets sync for customers has been disconnected. Customer data is now managed independently in the system.",
+      }, { status: 410 });
+    }
+
+    // 0.3. Bulk Import Customers (From user-provided Excel/File)
+    if (action === "bulk_import_customers") {
       const items = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
       if (items.length === 0) {
         return Response.json({ success: true, count: 0 });
@@ -622,44 +630,47 @@ export async function POST(req: Request) {
 
       const validCustomers: any[] = [];
       for (const item of items) {
-        const id = String(item.id || item.customer_id || "").trim();
-        const name = String(item.name || item.nama_apotek || "").trim();
+        const id = String(item.id || item.customer_id || item["CUSTOMER ID"] || "").trim();
+        const name = String(item.name || item.nama_apotek || item["NAMA APOTEK/RS/PBF/KLINIK"] || "").trim();
         if (!id || id === "#N/A" || !name || name === "#N/A") continue;
 
         validCustomers.push([
           id,
-          item.customer_id_oracle || item.oracle_id || "",
+          item.customer_id_oracle || item.oracle_id || item["CUSTOMER ID ORACLE"] || "",
           name,
-          item.status_merchant || item.status || "ACTIVE",
-          item.phone || item.no_telf_apj || "",
-          item.email || item.alamat_email || "",
-          item.address || item.default_billing_address || "",
-          item.vat_id || "",
-          item.nik || item.nik_number || "",
-          item.owner_name || item.nama_pemilik_npwp || "",
-          item.owner_address || item.alamat_wajib_pajak || "",
-          item.sia_number || item.izin_apotek_number || "",
-          item.sia_expired || item.sia_expired_date || "",
-          item.sipa_number || "",
-          item.sipa_expired || item.sipa_expired_date || "",
-          item.apj_name || item.nama_apj || "",
-          item.sipnap_code || item.kode_sipnap || "",
-          item.site_bill_to || item.site_number_bill_to || "",
-          item.site_ship_to || item.site_number_ship_to || "",
-          item.branch || item.mbi_branch || "",
-          item.zone || "",
-          item.category || item.kategori_customer || "",
-          item.halodoc_pharma || item.branch_name_halodoc || "",
-          item.is_active_2p || "",
+          item.status_merchant || item.status || item["STATUS MERCHANT"] || "ACTIVE",
+          item.phone || item.no_telf_apj || item["NO TELF APJ"] || "",
+          item.email || item.alamat_email || item["Alamat email"] || "",
+          item.address || item.default_billing_address || item["Default Billing Address"] || "",
+          item.vat_id || item["VAT ID"] || "",
+          item.nik || item.nik_number || item["NIK NUMBER (npwp 16 digit)"] || "",
+          item.owner_name || item.nama_pemilik_npwp || item["NAMA PEMILIK NPWP"] || "",
+          item.owner_address || item.alamat_wajib_pajak || item["ALAMAT WAJIB PAJAK"] || "",
+          item.sia_number || item.izin_apotek_number || item["IZIN APOTEK/KLINIK/PBF/RS NUMBER"] || "",
+          item.sia_expired || item.sia_expired_date || item["SIA EXPIRED DATE"] || "",
+          item.sipa_number || item["SIPA NUMBER"] || "",
+          item.sipa_expired || item.sipa_expired_date || item["SIPA EXPIRED DATE"] || "",
+          item.apj_name || item.nama_apj || item["NAMA APJ"] || "",
+          item.sipnap_code || item.kode_sipnap || item["KODE SIPNAP"] || "",
+          item.site_bill_to || item.site_number_bill_to || item["SITE NUMBER (BILL TO)"] || "",
+          item.site_ship_to || item.site_number_ship_to || item["SITE NUMBER (SHIP TO)"] || "",
+          item.branch || item.mbi_branch || item["MBI BRANCH"] || "",
+          item.zone || item["Zone"] || "",
+          item.category || item.kategori_customer || item["KATEGORI CUSTOMER"] || "",
+          item.halodoc_pharma || item.branch_name_halodoc || item["BRANCH NAME HALODOC FOR PHARMA"] || "",
+          item.is_active_2p || item["LIST APOTEK 2P AKTIF"] || "",
+          item.document_url || item["DOKUMEN LEGALITAS"] || "",
+          item.document_name || "",
+          item.npwp_drive_url || item["GDRIVE NPWP"] || item["NPWP GDRIVE"] || "",
+          item.npwp_file_url || "",
         ]);
       }
 
-      // Batch Upsert in chunks of 50
-      let updatedCount = 0;
+      let insertedCount = 0;
       const CHUNK_SIZE = 50;
       for (let i = 0; i < validCustomers.length; i += CHUNK_SIZE) {
         const chunk = validCustomers.slice(i, i + CHUNK_SIZE);
-        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
         const flatParams = chunk.flat();
 
         await conn.execute(
@@ -667,38 +678,43 @@ export async function POST(req: Request) {
             id, customer_id_oracle, name, status_merchant, phone, email, address,
             vat_id, nik, owner_name, owner_address, sia_number, sia_expired,
             sipa_number, sipa_expired, apj_name, sipnap_code, site_bill_to,
-            site_ship_to, branch, zone, category, halodoc_pharma, is_active_2p
+            site_ship_to, branch, zone, category, halodoc_pharma, is_active_2p,
+            document_url, document_name, npwp_drive_url, npwp_file_url
           ) VALUES ${placeholders}
           ON DUPLICATE KEY UPDATE
-            customer_id_oracle = COALESCE(VALUES(customer_id_oracle), customer_id_oracle),
+            customer_id_oracle = VALUES(customer_id_oracle),
             name = VALUES(name),
-            status_merchant = COALESCE(VALUES(status_merchant), status_merchant),
-            phone = COALESCE(VALUES(phone), phone),
-            email = COALESCE(VALUES(email), email),
-            address = COALESCE(VALUES(address), address),
-            vat_id = COALESCE(VALUES(vat_id), vat_id),
-            nik = COALESCE(VALUES(nik), nik),
-            owner_name = COALESCE(VALUES(owner_name), owner_name),
-            owner_address = COALESCE(VALUES(owner_address), owner_address),
-            sia_number = COALESCE(VALUES(sia_number), sia_number),
-            sia_expired = COALESCE(VALUES(sia_expired), sia_expired),
-            sipa_number = COALESCE(VALUES(sipa_number), sipa_number),
-            sipa_expired = COALESCE(VALUES(sipa_expired), sipa_expired),
-            apj_name = COALESCE(VALUES(apj_name), apj_name),
-            sipnap_code = COALESCE(VALUES(sipnap_code), sipnap_code),
-            site_bill_to = COALESCE(VALUES(site_bill_to), site_bill_to),
-            site_ship_to = COALESCE(VALUES(site_ship_to), site_ship_to),
-            branch = COALESCE(VALUES(branch), branch),
-            zone = COALESCE(VALUES(zone), zone),
-            category = COALESCE(VALUES(category), category),
-            halodoc_pharma = COALESCE(VALUES(halodoc_pharma), halodoc_pharma),
-            is_active_2p = COALESCE(VALUES(is_active_2p), is_active_2p)`,
+            status_merchant = VALUES(status_merchant),
+            phone = VALUES(phone),
+            email = VALUES(email),
+            address = VALUES(address),
+            vat_id = VALUES(vat_id),
+            nik = VALUES(nik),
+            owner_name = VALUES(owner_name),
+            owner_address = VALUES(owner_address),
+            sia_number = VALUES(sia_number),
+            sia_expired = VALUES(sia_expired),
+            sipa_number = VALUES(sipa_number),
+            sipa_expired = VALUES(sipa_expired),
+            apj_name = VALUES(apj_name),
+            sipnap_code = VALUES(sipnap_code),
+            site_bill_to = VALUES(site_bill_to),
+            site_ship_to = VALUES(site_ship_to),
+            branch = VALUES(branch),
+            zone = VALUES(zone),
+            category = VALUES(category),
+            halodoc_pharma = VALUES(halodoc_pharma),
+            is_active_2p = VALUES(is_active_2p),
+            document_url = COALESCE(VALUES(document_url), document_url),
+            document_name = COALESCE(VALUES(document_name), document_name),
+            npwp_drive_url = COALESCE(VALUES(npwp_drive_url), npwp_drive_url),
+            npwp_file_url = COALESCE(VALUES(npwp_file_url), npwp_file_url)`,
           flatParams
         );
-        updatedCount += chunk.length;
+        insertedCount += chunk.length;
       }
 
-      return Response.json({ success: true, count: updatedCount });
+      return Response.json({ success: true, count: insertedCount });
     }
 
     // 1. Create new shipment return (supports multi-product and photo_url)
@@ -961,6 +977,10 @@ export async function POST(req: Request) {
         zone,
         category,
         is_active_2p,
+        document_url,
+        document_name,
+        npwp_drive_url,
+        npwp_file_url,
       } = body;
 
       if (!id) {
@@ -990,7 +1010,11 @@ export async function POST(req: Request) {
           branch = COALESCE(?, branch),
           zone = COALESCE(?, zone),
           category = COALESCE(?, category),
-          is_active_2p = COALESCE(?, is_active_2p)
+          is_active_2p = COALESCE(?, is_active_2p),
+          document_url = COALESCE(?, document_url),
+          document_name = COALESCE(?, document_name),
+          npwp_drive_url = COALESCE(?, npwp_drive_url),
+          npwp_file_url = COALESCE(?, npwp_file_url)
         WHERE id = ?`,
         [
           name !== undefined ? name : null,
@@ -1015,6 +1039,10 @@ export async function POST(req: Request) {
           zone !== undefined ? zone : null,
           category !== undefined ? category : null,
           is_active_2p !== undefined ? is_active_2p : null,
+          document_url !== undefined ? document_url : null,
+          document_name !== undefined ? document_name : null,
+          npwp_drive_url !== undefined ? npwp_drive_url : null,
+          npwp_file_url !== undefined ? npwp_file_url : null,
           id,
         ]
       );

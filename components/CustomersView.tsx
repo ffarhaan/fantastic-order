@@ -29,6 +29,10 @@ import {
   Pencil,
   Save,
   Check,
+  Upload,
+  FileText,
+  Trash2,
+  FolderOpen,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -153,7 +157,27 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState<Partial<CustomerRecord> | null>(null);
   const [isSavingCust, setIsSavingCust] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: "npwp_file_url" | "document_url") => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) {
+      alert("Ukuran berkas maksimal 15MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      setEditForm((prev) => ({
+        ...prev,
+        [field]: dataUrl,
+        ...(field === "document_url" ? { document_name: file.name } : {}),
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleOpenEdit = (cust: CustomerRecord) => {
     setEditForm({
@@ -201,6 +225,41 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
       alert(`Gagal menyimpan customer: ${err.message || String(err)}`);
     } finally {
       setIsSavingCust(false);
+    }
+  };
+
+  const handleImportCustomerFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsImporting(true);
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: "array" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(sheet);
+      if (!jsonData || jsonData.length === 0) {
+        alert("File kosong atau format sheet tidak terbaca.");
+        return;
+      }
+      const res = await fetch("/api/tidb?action=bulk_import_customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: jsonData }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setToastMsg(`✓ Berhasil mengunggah ${result.count} data customer!`);
+        setTimeout(() => setToastMsg(null), 4000);
+        fetchCustomers();
+      } else {
+        alert(`Gagal import customer: ${result.error || "Terjadi kesalahan"}`);
+      }
+    } catch (err: any) {
+      alert(`Error membaca file: ${err.message || String(err)}`);
+    } finally {
+      setIsImporting(false);
+      if (e.target) e.target.value = "";
     }
   };
 
@@ -285,7 +344,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                 <span>Direktori Mitra</span>
               </div>
               <h3 className="text-2xl font-black text-zinc-900 dark:text-white mt-1.5 tracking-tight">
-                {total > 0 ? total.toLocaleString("id-ID") : "3.599"}
+                {total.toLocaleString("id-ID")}
               </h3>
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
@@ -386,29 +445,45 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
           </div>
         </div>
 
-        {/* Card 4: Ekspor & Tools */}
+        {/* Card 4: Import & Ekspor Tools */}
         <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-blue-500/20 shadow-sm hover:border-blue-500/40 transition-all flex flex-col justify-between group">
           <div className="absolute top-0 right-0 w-28 h-28 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
           <div className="flex items-center justify-between relative z-10">
             <div>
               <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-300">
                 <FileSpreadsheet className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
-                <span>Ekspor Direktori</span>
+                <span>Kelola Data Mitra</span>
               </div>
-              <h4 className="text-sm font-semibold text-zinc-900 dark:text-white mt-1">Unduh Format Excel</h4>
+              <h4 className="text-sm font-semibold text-zinc-900 dark:text-white mt-1">Upload &amp; Ekspor</h4>
             </div>
             <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-600/20 border border-blue-200 dark:border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shadow-xs">
-              <FileSpreadsheet className="w-4 h-4" />
+              <Upload className="w-4 h-4" />
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            className="mt-3 w-full py-1.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all active:scale-[0.98] cursor-pointer"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Unduh Excel ({customers.length} data)</span>
-          </button>
+          
+          <div className="mt-3 flex items-center gap-2">
+            <label className="flex-1 py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-[0.98] cursor-pointer">
+              <Upload className="w-3.5 h-3.5" />
+              <span>{isImporting ? "Mengunggah..." : "Upload File"}</span>
+              <input
+                type="file"
+                accept=".xlsx, .xls, .csv"
+                onChange={handleImportCustomerFile}
+                disabled={isImporting}
+                className="hidden"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={customers.length === 0}
+              className="py-1.5 px-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-zinc-200 dark:border-zinc-700 shadow-xs transition-all active:scale-[0.98] cursor-pointer disabled:opacity-40"
+              title="Unduh Excel"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Unduh</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -486,6 +561,19 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-500" : ""}`} />
           </button>
+
+          {/* Direct Link to Google Drive Master Folder */}
+          <a
+            href="https://drive.google.com/drive/folders/1vcadO7xGZXEdUxRLap7H76wTcQUxii1w"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer whitespace-nowrap"
+            title="Buka Folder Google Drive Foto Dokumen & NPWP Apotek"
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            <span>Folder Drive Dokumen</span>
+            <ExternalLink className="w-3 h-3 opacity-75" />
+          </a>
         </div>
       </div>
 
@@ -518,9 +606,28 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
               ) : customers.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="py-16 text-center text-slate-500">
-                    <Building2 className="w-8 h-8 mx-auto text-slate-600 mb-2 opacity-50" />
-                    <p className="font-semibold text-sm text-slate-400">Tidak ada merchant yang cocok</p>
-                    <p className="text-xs text-slate-500 mt-1">Coba gunakan kata kunci lain atau reset filter pencarian.</p>
+                    <Building2 className="w-10 h-10 mx-auto text-blue-500 mb-3 opacity-60" />
+                    <p className="font-bold text-base text-zinc-800 dark:text-zinc-200">
+                      {total === 0 && !search ? "Data Customer Belum Ada / Masih Kosong" : "Tidak ada merchant yang cocok"}
+                    </p>
+                    <p className="text-xs text-zinc-500 mt-1 max-w-md mx-auto">
+                      {total === 0 && !search
+                        ? "Tabel customer telah dikosongkan. Silakan upload file Excel Data Customer baru untuk mengisi direktori."
+                        : "Coba gunakan kata kunci lain atau reset filter pencarian."}
+                    </p>
+                    {total === 0 && !search && (
+                      <label className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer transition">
+                        <Upload className="w-4 h-4" />
+                        <span>{isImporting ? "Mengunggah Data..." : "Upload File Data Customer (.xlsx)"}</span>
+                        <input
+                          type="file"
+                          accept=".xlsx, .xls, .csv"
+                          onChange={handleImportCustomerFile}
+                          disabled={isImporting}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -909,6 +1016,78 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                       <p className="text-zinc-800 dark:text-zinc-200 text-xs font-medium">{selectedCust.owner_address}</p>
                     </div>
                   )}
+
+                  {/* DOKUMEN & BERKAS NPWP / LEGALITAS */}
+                  <div className="col-span-1 sm:col-span-2 md:col-span-4 bg-white dark:bg-zinc-900/80 p-3 rounded-lg border border-amber-200/80 dark:border-amber-500/20">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-amber-700 dark:text-amber-400 block text-[10px] uppercase font-bold">
+                        Dokumen NPWP &amp; Berkas Legalitas
+                      </span>
+                      <a
+                        href="https://drive.google.com/drive/folders/1vcadO7xGZXEdUxRLap7H76wTcQUxii1w"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400 font-bold flex items-center gap-1 hover:underline"
+                        title="Buka Folder Master Dokumen Apotek MBI"
+                      >
+                        <FolderOpen className="w-3 h-3" />
+                        <span>Folder Master Dokumen</span>
+                        <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                      </a>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {selectedCust.npwp_drive_url && (
+                        <a
+                          href={selectedCust.npwp_drive_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-bold transition shadow-2xs"
+                        >
+                          <FolderOpen className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Buka Drive NPWP / Dokumen</span>
+                          <ExternalLink className="w-3 h-3 opacity-60" />
+                        </a>
+                      )}
+
+                      <a
+                        href={`https://drive.google.com/drive/search?q=${encodeURIComponent(selectedCust.name)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold transition shadow-2xs"
+                        title="Cari Dokumen Apotek Ini di Google Drive"
+                      >
+                        <Search className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Cari di GDrive: {selectedCust.name}</span>
+                        <ExternalLink className="w-3 h-3 opacity-60" />
+                      </a>
+
+                      {selectedCust.document_url && (
+                        <a
+                          href={selectedCust.document_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold transition shadow-2xs"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-purple-600" />
+                          <span>{selectedCust.document_name || "Dokumen Legalitas Khusus"}</span>
+                          <ExternalLink className="w-3 h-3 opacity-60" />
+                        </a>
+                      )}
+
+                      {selectedCust.npwp_file_url && (
+                        <a
+                          href={selectedCust.npwp_file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold transition shadow-2xs"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Lihat Berkas NPWP</span>
+                          <ExternalLink className="w-3 h-3 opacity-60" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1256,6 +1435,85 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                         onChange={(e) => setEditForm((prev) => ({ ...prev, address: e.target.value }))}
                         className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none focus:border-blue-500"
                       />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 4: Data NPWP & Dokumen Legalitas */}
+                <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                  <span className="font-bold text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-400 block">
+                    4. Berkas NPWP, Google Drive &amp; Dokumen Legalitas
+                  </span>
+                  <div className="space-y-3">
+                    {/* Link Google Drive NPWP */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Link Folder / File Google Drive Data NPWP
+                      </label>
+                      <input
+                        type="url"
+                        value={editForm.npwp_drive_url || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, npwp_drive_url: e.target.value }))}
+                        placeholder="https://drive.google.com/drive/folders/..."
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white text-xs font-mono focus:outline-none focus:border-amber-500"
+                      />
+                      <p className="text-[10px] text-zinc-500 mt-1">Tautan Google Drive tempat berkas NPWP apotek ini disimpan.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      {/* Upload File NPWP Apotek */}
+                      <div className="bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                        <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                          Upload File NPWP (PDF / Foto)
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          onChange={(e) => handleFileUpload(e, "npwp_file_url")}
+                          className="w-full text-xs text-zinc-600 dark:text-zinc-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-amber-100 file:text-amber-800 hover:file:bg-amber-200 cursor-pointer"
+                        />
+                        {editForm.npwp_file_url && (
+                          <div className="flex items-center justify-between mt-2 pt-1 border-t border-zinc-100 dark:border-zinc-800 text-[10px]">
+                            <span className="text-emerald-600 font-bold flex items-center gap-1">
+                              <Check className="w-3 h-3" /> Berkas NPWP terlampir
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setEditForm((prev) => ({ ...prev, npwp_file_url: "" }))}
+                              className="text-red-500 hover:text-red-700 font-semibold cursor-pointer"
+                            >
+                              Hapus
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Upload Dokumen Legalitas */}
+                      <div className="bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                        <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                          Upload Dokumen Legalitas / SIA / SIPA
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          onChange={(e) => handleFileUpload(e, "document_url")}
+                          className="w-full text-xs text-zinc-600 dark:text-zinc-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-800 hover:file:bg-purple-200 cursor-pointer"
+                        />
+                        {editForm.document_url && (
+                          <div className="flex items-center justify-between mt-2 pt-1 border-t border-zinc-100 dark:border-zinc-800 text-[10px]">
+                            <span className="text-emerald-600 font-bold flex items-center gap-1">
+                              <Check className="w-3 h-3" /> Dokumen legalitas terlampir
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setEditForm((prev) => ({ ...prev, document_url: "", document_name: "" }))}
+                              className="text-red-500 hover:text-red-700 font-semibold cursor-pointer"
+                            >
+                              Hapus
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

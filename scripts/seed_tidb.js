@@ -128,74 +128,8 @@ async function run() {
   console.log('Reading Excel from:', excelPath);
   const wb = xlsx.readFile(excelPath);
 
-  // Seed Customers
-  const sheetCust = wb.Sheets['Sheet1'];
-  if (sheetCust) {
-    const rawCust = xlsx.utils.sheet_to_json(sheetCust);
-    console.log(`Found ${rawCust.length} customers in Sheet1.`);
-
-    // Check count first
-    const [cntRes] = await conn.execute('SELECT COUNT(*) as c FROM customers');
-    if (cntRes.c === 0 || cntRes.c < 100) {
-      console.log('Seeding customers in batches...');
-      const batchSize = 250;
-      for (let i = 0; i < rawCust.length; i += batchSize) {
-        const batch = rawCust.slice(i, i + batchSize);
-        const values = [];
-        for (const r of batch) {
-          const id = String(r['CUSTOMER ID'] || '').trim();
-          if (!id) continue;
-          const idOracle = String(r['CUSTOMER ID ORACLE'] || '').trim();
-          const name = String(r['NAMA APOTEK/RS/PBF/KLINIK'] || '').trim();
-          const status = String(r['STATUS MERCHANT'] || '').trim();
-          const phone = String(r['NO TELF APJ'] || '').trim();
-          const email = String(r['Alamat email'] || '').trim();
-          const address = String(r['Default Billing Address'] || '').trim();
-          const vatId = String(r['VAT ID'] || '').trim();
-          const nik = String(r['NIK NUMBER (npwp 16 digit)'] || '').trim();
-          const ownerName = String(r['NAMA PEMILIK NPWP'] || '').trim();
-          const ownerAddr = String(r['ALAMAT WAJIB PAJAK'] || '').trim();
-          const siaNum = String(r['IZIN APOTEK/KLINIK/PBF/RS NUMBER'] || '').trim();
-          const siaExp = String(r['SIA EXPIRED DATE'] || '').trim();
-          const sipaNum = String(r['SIPA NUMBER'] || '').trim();
-          const sipaExp = String(r['SIPA EXPIRED DATE'] || '').trim();
-          const apjName = String(r['NAMA APJ'] || '').trim();
-          const sipnap = String(r['KODE SIPNAP'] || '').trim();
-          const billTo = String(r['SITE NUMBER (BILL TO)'] || '').trim();
-          const shipTo = String(r['SITE NUMBER (SHIP TO)'] || '').trim();
-          const branch = String(r['MBI BRANCH'] || '').trim();
-          const zone = String(r['Zone'] || '').trim();
-          const cat = String(r['KATEGORI CUSTOMER'] || '').trim();
-          const halodoc = String(r['BRANCH NAME HALODOC FOR PHARMA'] || '').trim();
-          const is2p = String(r['LIST APOTEK 2P AKTIF'] || '').trim();
-
-          values.push([
-            id, idOracle, name, status, phone, email, address, vatId, nik,
-            ownerName, ownerAddr, siaNum, siaExp, sipaNum, sipaExp, apjName,
-            sipnap, billTo, shipTo, branch, zone, cat, halodoc, is2p
-          ]);
-        }
-
-        if (values.length > 0) {
-          // Prepare multi-row insert with INSERT IGNORE
-          const placeholders = values.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
-          const flatParams = values.flat();
-          await conn.execute(
-            `INSERT IGNORE INTO customers (
-              id, customer_id_oracle, name, status_merchant, phone, email, address, vat_id, nik,
-              owner_name, owner_address, sia_number, sia_expired, sipa_number, sipa_expired, apj_name,
-              sipnap_code, site_bill_to, site_ship_to, branch, zone, category, halodoc_pharma, is_active_2p
-            ) VALUES ${placeholders}`,
-            flatParams
-          );
-        }
-        console.log(`Inserted customers up to ${Math.min(i + batchSize, rawCust.length)}`);
-      }
-      console.log('Customer seeding done!');
-    } else {
-      console.log(`Customers table already has ${cntRes.c} records.`);
-    }
-  }
+  // Seed Customers - DISABLED (Customers table emptied per user instruction, awaiting new customer file)
+  console.log('Customer seeding from old Sheet1 disabled.');
 
   // Seed Shipment Returns
   const sheetRet = wb.Sheets['Sheet2'];
