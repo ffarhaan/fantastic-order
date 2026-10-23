@@ -1410,7 +1410,7 @@ export async function verifyUserPassword(userName: string, inputPass: string): P
   } catch (err) {
     console.warn("Could not fetch remote credentials, fallback to default:", err);
   }
-  return inputPass === "123";
+  return false;
 }
 
 /**
@@ -1498,12 +1498,16 @@ export async function authenticateUser(
     }
 
     // Check password
-    let validPass = "123";
+    let validPass = null;
     for (const [cKey, cVal] of Object.entries(creds)) {
       if (cKey.toLowerCase() === matchedUsername.toLowerCase()) {
         validPass = String(cVal);
         break;
       }
+    }
+
+    if (validPass === null) {
+      return { success: false, message: "Akun tidak ditemukan. Silakan daftar akun baru terlebih dahulu." };
     }
 
     if (cleanPass === validPass) {
