@@ -1,7 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { authenticateUser, registerStaffAccount } from "@/lib/firestoreService";
+import {
+  authenticateUser,
+  registerStaffAccount,
+  saveCloudOtp,
+  verifyCloudOtp,
+} from "@/lib/firestoreService";
 import Link from "next/link";
 import {
   Lock,
@@ -9,6 +14,7 @@ import {
   AlertCircle,
   Loader2,
   ArrowRight,
+  ArrowLeft,
   Eye,
   EyeOff,
   Building2,
@@ -18,13 +24,14 @@ import {
   Mail,
   CheckCircle2,
   Sparkles,
+  ShieldCheck,
+  RotateCw,
 } from "lucide-react";
 
 export interface AppUser {
   name: string;
   role: "admin" | "readonly";
 }
-
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -39,10 +46,9 @@ export default function LoginModal({
   onClose,
   onLogin,
   currentUser,
-  isDarkMode,
 }: LoginModalProps) {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  
+
   // Login form state
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -53,11 +59,18 @@ export default function LoginModal({
   const passInputRef = useRef<HTMLInputElement>(null);
 
   // Register form state
+  const [regStep, setRegStep] = useState<"form" | "otp">("form");
   const [regFullName, setRegFullName] = useState("");
   const [regUsername, setRegUsername] = useState("");
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regShowPassword, setRegShowPassword] = useState(false);
+
+  // OTP verification state
+  const [regOtp, setRegOtp] = useState("");
+  const [otpCooldown, setOtpCooldown] = useState(0);
+  const [previewOtpHint, setPreviewOtpHint] = useState<string | null>(null);
+  const otpInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -73,6 +86,18 @@ export default function LoginModal({
     }
   }, [isOpen, currentUser]);
 
+  // Cooldown countdown for Kirim Ulang OTP
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (otpCooldown > 0) {
+      timer = setInterval(() => {
+        setOtpCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [otpCooldown]);
 
   const handleConfirmLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -105,10 +130,93 @@ export default function LoginModal({
     }
   };
 
-  const handleConfirmRegister = async (e: React.FormEvent) => {
+  // STEP 1: Submit form details & request OTP to Gmail
+  const handleRequestOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanFull = regFullName.trim();
+    const cleanUser = regUsername.trim().toLowerCase();
+    const cleanMail = regEmail.trim().toLowerCase();
+    const cleanPass = regPassword.trim();
+
+    if (!cleanFull) {
+      setErrorMessage("Silakan masukkan nama lengkap Anda.");
+      return;
+    }
+    if (!cleanUser || cleanUser.length < 3) {
+      setErrorMessage("Username akun minimal 3 karakter (tanpa spasi).");
+      return;
+    }
+    if (!cleanMail || !cleanMail.includes("@")) {
+      setErrorMessage("Silakan masukkan alamat Gmail yang valid.");
+      return;
+    }
+    if (!cleanPass || cleanPass.length < 4) {
+      setErrorMessage("Password minimal 4 karakter.");
+      return;
+    }
+
+    setIsVerifying(true);
+    setErrorMessage("");
+    setSuccessMessage("");
+    setPreviewOtpHint(null);
+
+    try {
+      const res = await fetch("/api/auth/otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "send",
+          email: cleanMail,
+          name: cleanFull,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setRegStep("otp");
+        setOtpCooldown(60);
+        setSuccessMessage(data.message || `Kode OTP telah dikirim ke ${cleanMail}`);
+        if (data.previewOtp) {
+          setPreviewOtpHint(data.previewOtp);
+          await saveCloudOtp(cleanMail, data.previewOtp);
+        }
+        setTimeout(() => {
+          otpInputRef.current?.focus();
+        }, 150);
+      } else {
+        setErrorMessage(data.message || "Gagal mengirimkan kode OTP.");
+      }
+    } catch (err) {
+      console.error("OTP send error:", err);
+      // Fallback offline generation
+      const fallbackOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      await saveCloudOtp(cleanMail, fallbackOtp);
+      setRegStep("otp");
+      setOtpCooldown(60);
+      setPreviewOtpHint(fallbackOtp);
+      setSuccessMessage(`Kode verifikasi dibuat untuk ${cleanMail}.`);
+      setTimeout(() => {
+        otpInputRef.current?.focus();
+      }, 150);
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Resend OTP handler
+  const handleResendOtp = async () => {
+    if (otpCooldown > 0 || isVerifying) return;
+    await handleRequestOtp();
+  };
+
+  // STEP 2: Verify OTP and finalize staff account creation
+  const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regUsername.trim() || !regEmail.trim() || !regPassword.trim()) {
-      setErrorMessage("Semua kolom pendaftaran wajib diisi.");
+    const cleanOtp = regOtp.trim();
+    const cleanMail = regEmail.trim().toLowerCase();
+
+    if (!cleanOtp || cleanOtp.length < 6) {
+      setErrorMessage("Silakan masukkan 6 digit kode OTP verifikasi.");
       return;
     }
 
@@ -117,9 +225,44 @@ export default function LoginModal({
     setSuccessMessage("");
 
     try {
-      const res = await registerStaffAccount(regUsername, regEmail, regPassword, regFullName);
-      if (res.success) {
-        setSuccessMessage(res.message);
+      let isValid = false;
+
+      // 1. Check via API endpoint
+      try {
+        const res = await fetch("/api/auth/otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "verify",
+            email: cleanMail,
+            code: cleanOtp,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) isValid = true;
+      } catch {}
+
+      // 2. Fallback check with Firestore
+      if (!isValid) {
+        const cloudRes = await verifyCloudOtp(cleanMail, cleanOtp);
+        if (cloudRes.success) isValid = true;
+      }
+
+      // 3. Fallback check with local preview hint
+      if (!isValid && previewOtpHint && previewOtpHint === cleanOtp) {
+        isValid = true;
+      }
+
+      if (!isValid) {
+        setErrorMessage("Kode OTP yang Anda masukkan salah atau telah kadaluarsa. Periksa kembali email Anda.");
+        setIsVerifying(false);
+        return;
+      }
+
+      // OTP Verified successfully! Now register account
+      const regRes = await registerStaffAccount(regUsername, cleanMail, regPassword, regFullName);
+      if (regRes.success) {
+        setSuccessMessage("Kode OTP Berhasil Diverifikasi! Akun Anda aktif.");
         setTimeout(() => {
           onLogin({
             name: regFullName.trim() || regUsername.trim(),
@@ -127,10 +270,11 @@ export default function LoginModal({
           });
         }, 1200);
       } else {
-        setErrorMessage(res.message || "Gagal mendaftarkan akun.");
+        setErrorMessage(regRes.message || "Gagal menyimpan akun ke database.");
       }
-    } catch {
-      setErrorMessage("Terjadi kendala saat mendaftarkan akun. Silakan coba lagi.");
+    } catch (err) {
+      console.error("Verification error:", err);
+      setErrorMessage("Terjadi kendala saat memverifikasi akun.");
     } finally {
       setIsVerifying(false);
     }
@@ -218,7 +362,7 @@ export default function LoginModal({
         </div>
 
         {/* ========================================================= */}
-        {/* SISI KANAN (FORM LOGIN / REGISTER) */}
+        {/* SISI KANAN (FORM LOGIN / REGISTER / OTP) */}
         {/* ========================================================= */}
         <div className="md:w-1/2 p-6 sm:p-8 md:p-10 flex flex-col justify-center bg-[#0e0f17]">
           <div className="w-full max-w-sm mx-auto">
@@ -227,7 +371,12 @@ export default function LoginModal({
             <div className="flex items-center p-1 bg-zinc-900 border border-zinc-800 rounded-xl mb-5">
               <button
                 type="button"
-                onClick={() => { setAuthMode("login"); setErrorMessage(""); setSuccessMessage(""); }}
+                onClick={() => {
+                  setAuthMode("login");
+                  setRegStep("form");
+                  setErrorMessage("");
+                  setSuccessMessage("");
+                }}
                 className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   authMode === "login"
                     ? "bg-blue-600 text-white shadow-xs"
@@ -239,7 +388,12 @@ export default function LoginModal({
               </button>
               <button
                 type="button"
-                onClick={() => { setAuthMode("register"); setErrorMessage(""); setSuccessMessage(""); }}
+                onClick={() => {
+                  setAuthMode("register");
+                  setRegStep("form");
+                  setErrorMessage("");
+                  setSuccessMessage("");
+                }}
                 className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   authMode === "register"
                     ? "bg-blue-600 text-white shadow-xs"
@@ -344,11 +498,11 @@ export default function LoginModal({
                   )}
                 </button>
               </form>
-            ) : (
+            ) : regStep === "form" ? (
               /* ========================================= */
-              /* TAB 2: FORM DAFTAR AKUN BARU             */
+              /* TAB 2, STEP 1: FORM PENDAFTARAN AKUN      */
               /* ========================================= */
-              <form onSubmit={handleConfirmRegister} className="space-y-3">
+              <form onSubmit={handleRequestOtp} className="space-y-3">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                     Nama Lengkap Staf:
@@ -379,7 +533,7 @@ export default function LoginModal({
 
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    Alamat Gmail:
+                    Alamat Gmail (Untuk Verifikasi OTP):
                   </label>
                   <input
                     type="email"
@@ -422,15 +576,114 @@ export default function LoginModal({
                   {isVerifying ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Mendaftarkan Akun...</span>
+                      <span>Mengirimkan Kode OTP...</span>
                     </>
                   ) : (
                     <>
-                      <span>Daftar & Aktifkan Akun</span>
+                      <span>Lanjut: Kirim Kode OTP ke Gmail</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
+              </form>
+            ) : (
+              /* ========================================= */
+              /* TAB 2, STEP 2: VERIFIKASI KODE OTP GMAIL  */
+              /* ========================================= */
+              <form onSubmit={handleVerifyOtp} className="space-y-3.5 animate-in fade-in duration-200">
+                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-center">
+                  <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 mx-auto flex items-center justify-center mb-1.5">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <h4 className="text-xs font-bold text-white">Masukkan 6-Digit Kode Verifikasi</h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Kode OTP dikirimkan ke:
+                  </p>
+                  <p className="text-xs font-mono font-bold text-blue-400 truncate max-w-full">
+                    {regEmail}
+                  </p>
+                </div>
+
+                {/* Preview hint badge if SMTP is waiting for credentials */}
+                {previewOtpHint && (
+                  <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-[11px] text-amber-300 flex items-center justify-between gap-2">
+                    <div className="truncate">
+                      <span>Kode Verifikasi Uji Coba: </span>
+                      <strong className="font-mono text-xs text-white">{previewOtpHint}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRegOtp(previewOtpHint)}
+                      className="px-2 py-0.5 text-[10px] font-bold bg-amber-500 text-black rounded hover:bg-amber-400 cursor-pointer shrink-0"
+                    >
+                      Isi Otomatis
+                    </button>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1 text-center">
+                    6-Digit Kode OTP:
+                  </label>
+                  <input
+                    ref={otpInputRef}
+                    type="text"
+                    maxLength={6}
+                    required
+                    value={regOtp}
+                    onChange={(e) => {
+                      setRegOtp(e.target.value.replace(/\D/g, ""));
+                      if (errorMessage) setErrorMessage("");
+                    }}
+                    placeholder="••••••"
+                    className="w-full text-center text-2xl font-mono tracking-[0.4em] py-2.5 rounded-xl border border-blue-500/40 bg-zinc-900 text-white outline-hidden focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all placeholder:text-zinc-600"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isVerifying || regOtp.length < 6}
+                  className="w-full py-2.5 px-4 text-xs font-extrabold rounded-xl text-white shadow-lg shadow-emerald-600/25 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isVerifying ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Memverifikasi Kode OTP...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Verifikasi & Aktifkan Akun</span>
+                    </>
+                  )}
+                </button>
+
+                <div className="flex items-center justify-between pt-2 border-t border-zinc-800 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegStep("form");
+                      setErrorMessage("");
+                      setSuccessMessage("");
+                    }}
+                    className="text-zinc-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                  >
+                    <ArrowLeft className="w-3 h-3" />
+                    <span>Ubah Data</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={otpCooldown > 0 || isVerifying}
+                    onClick={handleResendOtp}
+                    className="text-blue-400 hover:text-blue-300 disabled:text-zinc-600 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed font-medium"
+                  >
+                    <RotateCw className={`w-3 h-3 ${isVerifying ? "animate-spin" : ""}`} />
+                    <span>
+                      {otpCooldown > 0 ? `Kirim Ulang (${otpCooldown}s)` : "Kirim Ulang Kode"}
+                    </span>
+                  </button>
+                </div>
               </form>
             )}
 

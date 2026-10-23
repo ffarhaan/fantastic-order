@@ -1590,6 +1590,74 @@ export async function registerStaffAccount(
 
 
 
+const OTP_CODES_DOC = "otp_codes";
+
+/**
+ * Save pending OTP code into Firestore with 10-minute expiry
+ */
+export async function saveCloudOtp(email: string, code: string): Promise<boolean> {
+  const cleanE = email.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
+  try {
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+    await setDoc(
+      doc(db, APP_DATA_COLLECTION, OTP_CODES_DOC),
+      {
+        [cleanE]: {
+          code: String(code).trim(),
+          email: email.trim().toLowerCase(),
+          expiresAt,
+          createdAt: new Date().toISOString(),
+        },
+      },
+      { merge: true }
+    );
+    return true;
+  } catch (e) {
+    console.warn("Failed to persist OTP to Firestore:", e);
+    return false;
+  }
+}
+
+/**
+ * Verify OTP code against Firestore
+ */
+export async function verifyCloudOtp(
+  email: string,
+  inputCode: string
+): Promise<{ success: boolean; message: string }> {
+  const cleanE = email.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
+  const cleanInput = String(inputCode || "").trim();
+
+  if (!cleanInput || cleanInput.length < 6) {
+    return { success: false, message: "Kode OTP harus berupa 6 digit angka." };
+  }
+
+  try {
+    const snap = await getDoc(doc(db, APP_DATA_COLLECTION, OTP_CODES_DOC));
+    if (!snap.exists()) {
+      return { success: false, message: "Kode OTP belum dibuat atau telah kadaluarsa." };
+    }
+    const data = snap.data() as Record<string, { code: string; expiresAt: number; email: string }>;
+    const entry = data[cleanE];
+    if (!entry) {
+      return { success: false, message: "Kode OTP tidak ditemukan untuk email ini. Silakan kirim ulang kode." };
+    }
+
+    if (Date.now() > entry.expiresAt) {
+      return { success: false, message: "Kode OTP telah kadaluarsa. Silakan klik 'Kirim Ulang Kode'." };
+    }
+
+    if (entry.code !== cleanInput) {
+      return { success: false, message: "Kode OTP yang Anda masukkan salah. Periksa kembali email Anda." };
+    }
+
+    return { success: true, message: "Kode OTP valid!" };
+  } catch (e) {
+    console.error("Error verifying OTP from Firestore:", e);
+    return { success: false, message: "Gagal memverifikasi OTP ke cloud." };
+  }
+}
+
 const SO_CHECKERS_DOC = "so_checkers";
 const SO_CHECKERS_RECENT_DOC = "so_checkers_recent";
 
