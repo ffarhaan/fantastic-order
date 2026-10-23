@@ -21,6 +21,9 @@ import {
   ExternalLink,
   MessageCircle,
   Download,
+  Search,
+  Loader2,
+  Clock,
 } from "lucide-react";
 
 const COMMON_REASONS = [
@@ -85,6 +88,35 @@ export default function KomplainPage() {
   const [copiedWaText, setCopiedWaText] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [waNotification, setWaNotification] = useState("");
+
+  // Tab & Public Return Tracking State
+  const [activeTab, setActiveTab] = useState<"form" | "track">("form");
+  const [trackInvoice, setTrackInvoice] = useState("");
+  const [isTracking, setIsTracking] = useState(false);
+  const [trackResults, setTrackResults] = useState<any[] | null>(null);
+  const [trackError, setTrackError] = useState("");
+
+  const handleSearchTrack = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const inv = trackInvoice.trim();
+    if (!inv) return;
+    setIsTracking(true);
+    setTrackError("");
+    setTrackResults(null);
+    try {
+      const res = await fetch(`/api/tidb?action=track_return&invoice_no=${encodeURIComponent(inv)}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        setTrackResults(data.data);
+      } else {
+        setTrackError(data.error || "Gagal memuat status komplain.");
+      }
+    } catch {
+      setTrackError("Terjadi kendala jaringan saat mencari data.");
+    } finally {
+      setIsTracking(false);
+    }
+  };
 
   // Master Customers suggestions
   const [masterCustomers, setMasterCustomers] = useState<{ id: string; name: string; category?: string }[]>([]);
@@ -577,6 +609,36 @@ ${photoStatus}
 
       {/* Main Content */}
       <main className="max-w-2xl mx-auto w-full px-4 py-6 sm:py-8 flex-1">
+        {/* Tab Switcher */}
+        {!isSuccess && (
+          <div className="flex items-center justify-center p-1 bg-zinc-200/80 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl mb-6 max-w-xs sm:max-w-sm mx-auto shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setActiveTab("form")}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === "form"
+                  ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-xs"
+                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+              }`}
+            >
+              <Package className="w-3.5 h-3.5" />
+              <span>Pengajuan Retur</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("track")}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === "track"
+                  ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-xs"
+                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+              }`}
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>Lacak Status Tiket</span>
+            </button>
+          </div>
+        )}
+
         {isSuccess ? (
           /* SUCCESS STATE WITH WHATSAPP COPY & SHARE */
           <div className="bg-white dark:bg-[#0c0c0e] border border-emerald-500/40 rounded-2xl p-6 sm:p-8 shadow-sm text-center animate-in fade-in zoom-in-95 duration-200">
@@ -705,6 +767,153 @@ ${photoStatus}
                 <span>Ajukan Retur Lainnya</span>
               </button>
             </div>
+          </div>
+        ) : activeTab === "track" ? (
+          /* PUBLIC RETURN TRACKER VIEW */
+          <div className="space-y-4 animate-in fade-in duration-200">
+            {/* Search Box Card */}
+            <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 sm:p-6 shadow-sm">
+              <h2 className="text-sm sm:text-base font-extrabold text-zinc-900 dark:text-white flex items-center gap-2 mb-1.5">
+                <Search className="w-4 h-4 text-blue-500" />
+                <span>Lacak Status Tiket Retur / Komplain</span>
+              </h2>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+                Masukkan nomor faktur pesanan Anda untuk memeriksa tindak lanjut dan penyelesaian dari tim logistik.
+              </p>
+
+              <form onSubmit={handleSearchTrack} className="flex gap-2">
+                <input
+                  type="text"
+                  value={trackInvoice}
+                  onChange={(e) => setTrackInvoice(e.target.value)}
+                  placeholder="Ketik No. Faktur (contoh: 31753 atau 29013)..."
+                  className="flex-1 px-3.5 py-2.5 text-xs sm:text-sm font-mono rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-white outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                />
+                <button
+                  type="submit"
+                  disabled={isTracking || !trackInvoice.trim()}
+                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                >
+                  {isTracking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  <span>Cari</span>
+                </button>
+              </form>
+            </div>
+
+            {/* Error Message */}
+            {trackError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{trackError}</span>
+              </div>
+            )}
+
+            {/* Empty State after search */}
+            {trackResults && trackResults.length === 0 && (
+              <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-8 text-center shadow-xs">
+                <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center mx-auto text-zinc-400 mb-3">
+                  <Package className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-white">Tidak Ditemukan Tiket</h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-sm mx-auto">
+                  Belum ada catatan komplain untuk faktur <strong>"{trackInvoice}"</strong>. Pastikan nomor faktur sudah sesuai atau hubungi kami jika baru saja mengajukan.
+                </p>
+              </div>
+            )}
+
+            {/* Results List */}
+            {trackResults && trackResults.length > 0 && (
+              <div className="space-y-3">
+                <div className="text-xs text-zinc-500 px-1 font-semibold flex items-center justify-between">
+                  <span>Ditemukan {trackResults.length} tiket komplain untuk faktur "{trackInvoice}":</span>
+                </div>
+                {trackResults.map((item, idx) => {
+                  const isResolved = String(item.status || "").toLowerCase().includes("resolved");
+                  const waText = encodeURIComponent(
+                    `Halo Admin Logistik MBI/MAI, saya dari ${item.customer_name || "Apotek"}. Mau konfirmasi update komplain Faktur No. ${item.invoice_no} untuk produk ${item.product_name}. Status saat ini: ${item.status || "Pending"}. Terima kasih.`
+                  );
+                  return (
+                    <div
+                      key={item.id || idx}
+                      className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3"
+                    >
+                      {/* Top Header */}
+                      <div className="flex items-start justify-between gap-3 border-b border-zinc-100 dark:border-zinc-800 pb-3">
+                        <div>
+                          <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                            Faktur #{item.invoice_no} {item.so_no ? `• SO: ${item.so_no}` : ""}
+                          </span>
+                          <h4 className="text-sm font-extrabold text-zinc-900 dark:text-white mt-1">
+                            {item.customer_name || "Apotek"}
+                          </h4>
+                          {item.report_date && (
+                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 flex items-center gap-1 mt-0.5">
+                              <Calendar className="w-3 h-3" />
+                              <span>Tanggal Lapor: {item.report_date}</span>
+                            </p>
+                          )}
+                        </div>
+                        <span
+                          className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 shrink-0 ${
+                            isResolved
+                              ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                              : "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+                          }`}
+                        >
+                          {isResolved ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                          <span>{isResolved ? "Selesai (Resolved)" : (item.status || "Sedang Ditinjau")}</span>
+                        </span>
+                      </div>
+
+                      {/* Detail Produk */}
+                      <div className="p-3 bg-zinc-50 dark:bg-zinc-900/60 rounded-xl space-y-1.5 text-xs">
+                        <div className="font-bold text-zinc-900 dark:text-white flex items-center justify-between">
+                          <span>{item.product_name}</span>
+                          <span className="text-zinc-500">Qty: {item.qty}</span>
+                        </div>
+                        <div className="text-[11px] text-zinc-600 dark:text-zinc-400">
+                          <strong>Kendala:</strong> {item.reason || "-"}
+                        </div>
+                        {item.note && (
+                          <div className="text-[11px] text-zinc-500 italic">
+                            "{item.note}"
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Tindakan Logistik */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                        <div className="p-2.5 bg-zinc-50 dark:bg-zinc-900/40 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
+                          <span className="text-zinc-400 block text-[10px] font-bold uppercase">Tindakan Logistik:</span>
+                          <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                            {item.action || "Menunggu verifikasi fisik"}
+                          </span>
+                        </div>
+                        <div className="p-2.5 bg-zinc-50 dark:bg-zinc-900/40 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
+                          <span className="text-zinc-400 block text-[10px] font-bold uppercase">No. Nota Retur / Selesai:</span>
+                          <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                            {item.nota_retur_no || item.resolved_date || "-"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Quick Contact Button */}
+                      <div className="pt-1 flex justify-end">
+                        <a
+                          href={`https://wa.me/?text=${waText}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-2xs cursor-pointer"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>Tanya Admin via WhatsApp</span>
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : (
           /* FORM APOTEK (MULTI-PRODUCT + PHOTO UPLOAD) */

@@ -287,6 +287,30 @@ export async function GET(req: Request) {
     }
 
     // ==========================================
+    // 4.1. PUBLIC RETURN TRACKER (KHUSUS APOTEK)
+    // ==========================================
+    if (action === "track_return") {
+      const invoiceNo = (searchParams.get("invoice_no") || "").trim();
+      if (!invoiceNo) {
+        return Response.json({ success: false, error: "Nomor faktur wajib diisi" }, { status: 400 });
+      }
+
+      const rows = (await conn.execute(
+        `SELECT id, invoice_no, so_no, customer_name, product_name, qty, reason, status, action, nota_retur_no, resolved_date, report_date, photo_url, note
+         FROM shipment_returns 
+         WHERE invoice_no = ? OR invoice_no LIKE ?
+         ORDER BY id DESC LIMIT 20`,
+        [invoiceNo, `%${invoiceNo}%`]
+      )) as any[];
+
+      return compressedJsonResponse(
+        req,
+        { success: true, count: rows.length, data: rows },
+        { "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30" }
+      );
+    }
+
+    // ==========================================
     // 5. FAKTURS ARCHIVE & CHECK (DUAL-SYNC)
     // ==========================================
     if (action === "count") {

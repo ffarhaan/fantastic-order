@@ -379,13 +379,9 @@ export default function Home() {
   const deviceIdRef = useRef<string>(Math.random().toString(36).substring(2, 9));
   const [uploadNotification, setUploadNotification] = useState<UploadNotification | null>(null);
 
-  // User Authentication & Role State (Password login bypassed per user request)
-  const DEFAULT_USER: AppUser = {
-    name: "Admin Logistik",
-    role: "admin",
-  };
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(DEFAULT_USER);
-  const currentUserRef = useRef<AppUser | null>(DEFAULT_USER);
+  // User Authentication & Role State (Secure Password Protection)
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const currentUserRef = useRef<AppUser | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
@@ -426,9 +422,24 @@ export default function Home() {
   }, [currentUser]);
 
   useEffect(() => {
-    // Direct auto-login without password
-    setCurrentUser(DEFAULT_USER);
-    setShowLoginModal(false);
+    // Check existing session in sessionStorage
+    try {
+      if (typeof window !== "undefined") {
+        const stored = sessionStorage.getItem("faktur_tracker_user");
+        if (stored) {
+          const u = JSON.parse(stored) as AppUser;
+          if (u && u.name) {
+            setCurrentUser(u);
+            currentUserRef.current = u;
+            setShowLoginModal(false);
+            return;
+          }
+        }
+      }
+    } catch {}
+    // Require password authentication for internal team
+    setCurrentUser(null);
+    setShowLoginModal(true);
   }, []);
 
   const handleLogin = (user: AppUser) => {
