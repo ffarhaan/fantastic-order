@@ -824,7 +824,15 @@ export async function parseExcelFile(
       cellText: false,
       cellStyles: false,
     });
-    const ws = wb.Sheets[wb.SheetNames[0]];
+    // Prioritize tab "Rekap Lengkap" if present in the workbook (Order Proses GSheet requirement)
+    const sheetNames = wb.SheetNames;
+    const rekapSheetName =
+      sheetNames.find((s) => s.trim().toLowerCase() === "rekap lengkap") ||
+      sheetNames.find((s) => s.toLowerCase().includes("rekap lengkap")) ||
+      sheetNames.find((s) => s.toLowerCase().includes("rekap")) ||
+      sheetNames[0];
+
+    const ws = wb.Sheets[rekapSheetName];
     const data = (ws["!data"]
       ? (ws["!data"] as Array<Array<{ v: unknown } | undefined>>).map((row) =>
           row ? row.map((c) => (c ? c.v : undefined)) : []

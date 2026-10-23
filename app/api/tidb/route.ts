@@ -85,6 +85,13 @@ export async function GET(req: Request) {
     // ==========================================
     // 1. CUSTOMERS DIRECTORY
     // ==========================================
+    if (action === "get_all_customers_for_sheet") {
+      const rows = await conn.execute(
+        "SELECT * FROM customers WHERE (name != '#N/A' AND name != '' AND name IS NOT NULL) ORDER BY id ASC"
+      );
+      return Response.json({ success: true, count: (rows as any[]).length, data: rows });
+    }
+
     if (action === "customers") {
       const search = (searchParams.get("search") || "").trim();
       const category = searchParams.get("category") || "";
@@ -523,94 +530,12 @@ export async function POST(req: Request) {
       return Response.json({ success: true, count: updatedCount });
     }
 
-    // 0.1. Sync shipment errors from Google Sheets (Shipment error tab)
+    // 0.1. Sync shipment errors from Google Sheets (DISABLED - Disconnected per user request, system now uses internal App directly)
     if (action === "sync_shipment_errors") {
-      const items = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
-      const mode = body?.mode || "replace";
-
-      if (items.length === 0) {
-        return Response.json({ success: true, count: 0 });
-      }
-
-      // Preserve existing photo_urls
-      const photoMap = new Map<string, string>();
-      try {
-        const existingPhotos = (await conn.execute(
-          "SELECT invoice_no, product_name, photo_url FROM shipment_returns WHERE photo_url IS NOT NULL AND photo_url != ''"
-        )) as Array<{ invoice_no: string; product_name: string; photo_url: string }>;
-        if (Array.isArray(existingPhotos)) {
-          for (const ep of existingPhotos) {
-            const key = `${(ep.invoice_no || "").trim().toLowerCase()}_${(ep.product_name || "").trim().toLowerCase()}`;
-            photoMap.set(key, ep.photo_url);
-          }
-        }
-      } catch {}
-
-      if (mode === "replace") {
-        await conn.execute("DELETE FROM shipment_returns");
-      }
-
-      // Filter valid rows (skip #N/A and blank rows)
-      const validRows: any[] = [];
-      for (const item of items) {
-        const cust = String(item.customer_name || item.apotek || "").trim();
-        const inv = String(item.invoice_no || item.faktur || "").trim();
-        const prod = String(item.product_name || item.produk || "").trim();
-
-        // Skip #N/A or completely blank entries
-        if ((!cust || cust === "#N/A") && (!inv || inv === "#N/A") && (!prod || prod === "#N/A")) continue;
-        if (cust === "#N/A" && prod === "#N/A") continue;
-
-        const photoKey = `${inv.toLowerCase()}_${prod.toLowerCase()}`;
-        const photoUrl = item.photo_url || photoMap.get(photoKey) || null;
-
-        validRows.push([
-          item.pbf && item.pbf !== "#N/A" ? item.pbf : "MBI",
-          cust && cust !== "#N/A" ? cust : "-",
-          inv && inv !== "#N/A" ? inv : "-",
-          item.so_no && item.so_no !== "#N/A" ? item.so_no : (item.so && item.so !== "#N/A" ? item.so : "-"),
-          prod && prod !== "#N/A" ? prod : "-",
-          Number(item.qty) || 1,
-          item.batch_no && item.batch_no !== "#N/A" ? item.batch_no : (item.batch || "-"),
-          item.expiry_date && item.expiry_date !== "#N/A" ? item.expiry_date : (item.ed || "-"),
-          item.reason && item.reason !== "#N/A" ? item.reason : (item.jenis || "-"),
-          item.invoice_date && item.invoice_date !== "#N/A" ? item.invoice_date : (item.tanggal || ""),
-          Number(item.week) || null,
-          item.category && item.category !== "#N/A" ? item.category : (item.cat || "DOO"),
-          Number(item.month) || null,
-          item.report_date && item.report_date !== "#N/A" ? item.report_date : (item.tgl_report || item.invoice_date || new Date().toISOString().split("T")[0]),
-          item.confirm && item.confirm !== "#N/A" ? item.confirm : "Pending",
-          item.action && item.action !== "#N/A" ? item.action : "-",
-          item.nota_retur_no && item.nota_retur_no !== "#N/A" ? item.nota_retur_no : "-",
-          item.resolved_date && item.resolved_date !== "#N/A" ? item.resolved_date : null,
-          item.status && item.status !== "#N/A" ? item.status : "Pending",
-          item.note && item.note !== "#N/A" ? item.note : "-",
-          item.person && item.person !== "#N/A" ? item.person : (item.personil || "-"),
-          item.root_cause && item.root_cause !== "#N/A" ? item.root_cause : (item.cause || "-"),
-          photoUrl,
-        ]);
-      }
-
-      // High-speed Batch Insert in chunks of 100 (reduces 1,500 roundtrips to 15, takes < 2 seconds)
-      let insertedCount = 0;
-      const CHUNK_SIZE = 100;
-      for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
-        const chunk = validRows.slice(i, i + CHUNK_SIZE);
-        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
-        const flatParams = chunk.flat();
-
-        await conn.execute(
-          `INSERT INTO shipment_returns (
-            pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date,
-            reason, invoice_date, week, category, month, report_date, confirm, action,
-            nota_retur_no, resolved_date, status, note, person, root_cause, photo_url
-          ) VALUES ${placeholders}`,
-          flatParams
-        );
-        insertedCount += chunk.length;
-      }
-
-      return Response.json({ success: true, count: insertedCount });
+      return Response.json({
+        success: false,
+        message: "Google Sheets sync for shipment errors has been disconnected. Return & complaint management is now handled directly within the application.",
+      }, { status: 410 });
     }
 
     // 0.2. Sync customers from Google Sheets (DISABLED - Disconnected per user request)
@@ -715,6 +640,87 @@ export async function POST(req: Request) {
       }
 
       return Response.json({ success: true, count: insertedCount });
+    }
+
+    // 0.4. Bidirectional Sync: Single Customer from Google Sheet "Data Pelanggan MBI"
+    if (action === "sync_customer_from_sheet" || action === "sync_single_customer") {
+      const item = body?.customer || body;
+      const id = String(item.id || item.customer_id || item["CUSTOMER ID"] || "").trim();
+      const name = String(item.name || item.nama_apotek || item["NAMA APOTEK/RS/PBF/KLINIK"] || "").trim();
+
+      if (!id || !name) {
+        return Response.json({ success: false, error: "Missing customer id or name" }, { status: 400 });
+      }
+
+      await conn.execute(
+        `INSERT INTO customers (
+          id, customer_id_oracle, name, status_merchant, phone, email, address,
+          vat_id, nik, owner_name, owner_address, sia_number, sia_expired,
+          sipa_number, sipa_expired, apj_name, sipnap_code, site_bill_to,
+          site_ship_to, branch, zone, category, halodoc_pharma, is_active_2p,
+          document_url, document_name, npwp_drive_url, npwp_file_url
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          customer_id_oracle = COALESCE(VALUES(customer_id_oracle), customer_id_oracle),
+          name = VALUES(name),
+          status_merchant = COALESCE(VALUES(status_merchant), status_merchant),
+          phone = COALESCE(VALUES(phone), phone),
+          email = COALESCE(VALUES(email), email),
+          address = COALESCE(VALUES(address), address),
+          vat_id = COALESCE(VALUES(vat_id), vat_id),
+          nik = COALESCE(VALUES(nik), nik),
+          owner_name = COALESCE(VALUES(owner_name), owner_name),
+          owner_address = COALESCE(VALUES(owner_address), owner_address),
+          sia_number = COALESCE(VALUES(sia_number), sia_number),
+          sia_expired = COALESCE(VALUES(sia_expired), sia_expired),
+          sipa_number = COALESCE(VALUES(sipa_number), sipa_number),
+          sipa_expired = COALESCE(VALUES(sipa_expired), sipa_expired),
+          apj_name = COALESCE(VALUES(apj_name), apj_name),
+          sipnap_code = COALESCE(VALUES(sipnap_code), sipnap_code),
+          site_bill_to = COALESCE(VALUES(site_bill_to), site_bill_to),
+          site_ship_to = COALESCE(VALUES(site_ship_to), site_ship_to),
+          branch = COALESCE(VALUES(branch), branch),
+          zone = COALESCE(VALUES(zone), zone),
+          category = COALESCE(VALUES(category), category),
+          halodoc_pharma = COALESCE(VALUES(halodoc_pharma), halodoc_pharma),
+          is_active_2p = COALESCE(VALUES(is_active_2p), is_active_2p),
+          document_url = COALESCE(VALUES(document_url), document_url),
+          document_name = COALESCE(VALUES(document_name), document_name),
+          npwp_drive_url = COALESCE(VALUES(npwp_drive_url), npwp_drive_url),
+          npwp_file_url = COALESCE(VALUES(npwp_file_url), npwp_file_url)`,
+        [
+          id,
+          item.customer_id_oracle || item.oracle_id || item["CUSTOMER ID ORACLE"] || "",
+          name,
+          item.status_merchant || item.status || item["STATUS MERCHANT"] || "ACTIVE",
+          item.phone || item.no_telf_apj || item["NO TELF APJ"] || "",
+          item.email || item.alamat_email || item["Alamat email"] || "",
+          item.address || item.default_billing_address || item["Default Billing Address"] || "",
+          item.vat_id || item["VAT ID"] || "",
+          item.nik || item.nik_number || item["NIK NUMBER (npwp 16 digit)"] || "",
+          item.owner_name || item.nama_pemilik_npwp || item["NAMA PEMILIK NPWP"] || "",
+          item.owner_address || item.alamat_wajib_pajak || item["ALAMAT WAJIB PAJAK"] || "",
+          item.sia_number || item.izin_apotek_number || item["IZIN APOTEK/KLINIK/PBF/RS NUMBER"] || "",
+          item.sia_expired || item.sia_expired_date || item["SIA EXPIRED DATE"] || "",
+          item.sipa_number || item["SIPA NUMBER"] || "",
+          item.sipa_expired || item.sipa_expired_date || item["SIPA EXPIRED DATE"] || "",
+          item.apj_name || item.nama_apj || item["NAMA APJ"] || "",
+          item.sipnap_code || item.kode_sipnap || item["KODE SIPNAP"] || "",
+          item.site_bill_to || item.site_number_bill_to || item["SITE NUMBER (BILL TO)"] || "",
+          item.site_ship_to || item.site_number_ship_to || item["SITE NUMBER (SHIP TO)"] || "",
+          item.branch || item.mbi_branch || item["MBI BRANCH"] || "",
+          item.zone || item["Zone"] || "",
+          item.category || item.kategori_customer || item["KATEGORI CUSTOMER"] || "REG",
+          item.halodoc_pharma || item.branch_name_halodoc || item["BRANCH NAME HALODOC FOR PHARMA"] || "",
+          item.is_active_2p || item["LIST APOTEK 2P AKTIF"] || "",
+          item.document_url || item["DOKUMEN LEGALITAS"] || null,
+          item.document_name || null,
+          item.npwp_drive_url || item["GDRIVE NPWP"] || null,
+          item.npwp_file_url || null,
+        ]
+      );
+
+      return Response.json({ success: true, id, message: "Customer synced successfully from Google Sheet" });
     }
 
     // 1. Create new shipment return (supports multi-product and photo_url)
@@ -951,6 +957,87 @@ export async function POST(req: Request) {
       return Response.json({ success: true, count: insertedCount });
     }
 
+    // 0.4. Bidirectional Sync: Single Customer from Google Sheet "Data Pelanggan MBI"
+    if (action === "sync_customer_from_sheet" || action === "sync_single_customer") {
+      const item = body?.customer || body;
+      const id = String(item.id || item.customer_id || item["CUSTOMER ID"] || "").trim();
+      const name = String(item.name || item.nama_apotek || item["NAMA APOTEK/RS/PBF/KLINIK"] || "").trim();
+
+      if (!id || !name) {
+        return Response.json({ success: false, error: "Missing customer id or name" }, { status: 400 });
+      }
+
+      await conn.execute(
+        `INSERT INTO customers (
+          id, customer_id_oracle, name, status_merchant, phone, email, address,
+          vat_id, nik, owner_name, owner_address, sia_number, sia_expired,
+          sipa_number, sipa_expired, apj_name, sipnap_code, site_bill_to,
+          site_ship_to, branch, zone, category, halodoc_pharma, is_active_2p,
+          document_url, document_name, npwp_drive_url, npwp_file_url
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          customer_id_oracle = COALESCE(VALUES(customer_id_oracle), customer_id_oracle),
+          name = VALUES(name),
+          status_merchant = COALESCE(VALUES(status_merchant), status_merchant),
+          phone = COALESCE(VALUES(phone), phone),
+          email = COALESCE(VALUES(email), email),
+          address = COALESCE(VALUES(address), address),
+          vat_id = COALESCE(VALUES(vat_id), vat_id),
+          nik = COALESCE(VALUES(nik), nik),
+          owner_name = COALESCE(VALUES(owner_name), owner_name),
+          owner_address = COALESCE(VALUES(owner_address), owner_address),
+          sia_number = COALESCE(VALUES(sia_number), sia_number),
+          sia_expired = COALESCE(VALUES(sia_expired), sia_expired),
+          sipa_number = COALESCE(VALUES(sipa_number), sipa_number),
+          sipa_expired = COALESCE(VALUES(sipa_expired), sipa_expired),
+          apj_name = COALESCE(VALUES(apj_name), apj_name),
+          sipnap_code = COALESCE(VALUES(sipnap_code), sipnap_code),
+          site_bill_to = COALESCE(VALUES(site_bill_to), site_bill_to),
+          site_ship_to = COALESCE(VALUES(site_ship_to), site_ship_to),
+          branch = COALESCE(VALUES(branch), branch),
+          zone = COALESCE(VALUES(zone), zone),
+          category = COALESCE(VALUES(category), category),
+          halodoc_pharma = COALESCE(VALUES(halodoc_pharma), halodoc_pharma),
+          is_active_2p = COALESCE(VALUES(is_active_2p), is_active_2p),
+          document_url = COALESCE(VALUES(document_url), document_url),
+          document_name = COALESCE(VALUES(document_name), document_name),
+          npwp_drive_url = COALESCE(VALUES(npwp_drive_url), npwp_drive_url),
+          npwp_file_url = COALESCE(VALUES(npwp_file_url), npwp_file_url)`,
+        [
+          id,
+          item.customer_id_oracle || item.oracle_id || item["CUSTOMER ID ORACLE"] || "",
+          name,
+          item.status_merchant || item.status || item["STATUS MERCHANT"] || "ACTIVE",
+          item.phone || item.no_telf_apj || item["NO TELF APJ"] || "",
+          item.email || item.alamat_email || item["Alamat email"] || "",
+          item.address || item.default_billing_address || item["Default Billing Address"] || "",
+          item.vat_id || item["VAT ID"] || "",
+          item.nik || item.nik_number || item["NIK NUMBER (npwp 16 digit)"] || "",
+          item.owner_name || item.nama_pemilik_npwp || item["NAMA PEMILIK NPWP"] || "",
+          item.owner_address || item.alamat_wajib_pajak || item["ALAMAT WAJIB PAJAK"] || "",
+          item.sia_number || item.izin_apotek_number || item["IZIN APOTEK/KLINIK/PBF/RS NUMBER"] || "",
+          item.sia_expired || item.sia_expired_date || item["SIA EXPIRED DATE"] || "",
+          item.sipa_number || item["SIPA NUMBER"] || "",
+          item.sipa_expired || item.sipa_expired_date || item["SIPA EXPIRED DATE"] || "",
+          item.apj_name || item.nama_apj || item["NAMA APJ"] || "",
+          item.sipnap_code || item.kode_sipnap || item["KODE SIPNAP"] || "",
+          item.site_bill_to || item.site_number_bill_to || item["SITE NUMBER (BILL TO)"] || "",
+          item.site_ship_to || item.site_number_ship_to || item["SITE NUMBER (SHIP TO)"] || "",
+          item.branch || item.mbi_branch || item["MBI BRANCH"] || "",
+          item.zone || item["Zone"] || "",
+          item.category || item.kategori_customer || item["KATEGORI CUSTOMER"] || "REG",
+          item.halodoc_pharma || item.branch_name_halodoc || item["BRANCH NAME HALODOC FOR PHARMA"] || "",
+          item.is_active_2p || item["LIST APOTEK 2P AKTIF"] || "",
+          item.document_url || item["DOKUMEN LEGALITAS"] || null,
+          item.document_name || null,
+          item.npwp_drive_url || item["GDRIVE NPWP"] || null,
+          item.npwp_file_url || null,
+        ]
+      );
+
+      return Response.json({ success: true, id, message: "Customer synced successfully from Google Sheet" });
+    }
+
     // 2.7. Update Customer
     if (action === "update_customer") {
       const {
@@ -1047,11 +1134,24 @@ export async function POST(req: Request) {
         ]
       );
 
+      // 2-Way Sync: notify Google Sheet "Data Pelanggan MBI" webhook if configured
+      const gsheetWebhookUrl = process.env.GSHEET_CUSTOMER_WEBHOOK_URL;
+      if (gsheetWebhookUrl) {
+        fetch(gsheetWebhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "update_row",
+            customer: body,
+          }),
+        }).catch((err) => console.warn("[GSheet Customer Sync Warning]:", err.message));
+      }
+
       return Response.json({ success: true });
     }
 
-    // 3. Batch sync fakturs
-    if (action === "sync_fakturs" || Array.isArray(body)) {
+    // 3. Batch sync fakturs / upsert_batch (Direct storage from Order Proses upload)
+    if (action === "sync_fakturs" || action === "upsert_batch" || Array.isArray(body)) {
       const fakturs = Array.isArray(body) ? body : body.fakturs || [];
       if (fakturs.length === 0) {
         return Response.json({ success: true, count: 0 });
@@ -1086,6 +1186,28 @@ export async function POST(req: Request) {
             f.totalHarga || f.total_harga || 0,
           ]
         );
+
+        // Directly persist line items if present
+        if (Array.isArray(f.items) && f.items.length > 0) {
+          for (const it of f.items) {
+            await conn.execute(
+              `INSERT INTO faktur_items_archive (
+                invoice_key, item_name, qty, uom, batch_no, exp_date, kategori_item, harga_satuan, subtotal
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                f.invoiceKey || f.invoice_key,
+                it.item_description || it.nama_barang || it.item_name || "-",
+                Number(it.qty) || 1,
+                it.uom || "-",
+                it.lot_number || it.batch_no || "-",
+                it.exp_date || "-",
+                it.kategori_produk || f.kategori_produk || "FARMA",
+                Number(it.harga_satuan) || 0,
+                Number(it.total || it.subtotal) || 0,
+              ]
+            );
+          }
+        }
       }
 
       return Response.json({ success: true, count: fakturs.length });
