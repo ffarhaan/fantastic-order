@@ -588,6 +588,9 @@ export async function POST(req: Request) {
           item.document_name || "",
           item.npwp_drive_url || item["GDRIVE NPWP"] || item["NPWP GDRIVE"] || "",
           item.npwp_file_url || "",
+          item.coa_rec || item["COA - REC"] || "",
+          item.coa_rev || item["COA - REV"] || "",
+          item.order_status || item["SUDAH PERNAH ORDER/BELUM"] || "",
         ]);
       }
 
@@ -595,7 +598,7 @@ export async function POST(req: Request) {
       const CHUNK_SIZE = 50;
       for (let i = 0; i < validCustomers.length; i += CHUNK_SIZE) {
         const chunk = validCustomers.slice(i, i + CHUNK_SIZE);
-        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
         const flatParams = chunk.flat();
 
         await conn.execute(
@@ -604,7 +607,8 @@ export async function POST(req: Request) {
             vat_id, nik, owner_name, owner_address, sia_number, sia_expired,
             sipa_number, sipa_expired, apj_name, sipnap_code, site_bill_to,
             site_ship_to, branch, zone, category, halodoc_pharma, is_active_2p,
-            document_url, document_name, npwp_drive_url, npwp_file_url
+            document_url, document_name, npwp_drive_url, npwp_file_url,
+            coa_rec, coa_rev, order_status
           ) VALUES ${placeholders}
           ON DUPLICATE KEY UPDATE
             customer_id_oracle = VALUES(customer_id_oracle),
@@ -633,7 +637,10 @@ export async function POST(req: Request) {
             document_url = COALESCE(VALUES(document_url), document_url),
             document_name = COALESCE(VALUES(document_name), document_name),
             npwp_drive_url = COALESCE(VALUES(npwp_drive_url), npwp_drive_url),
-            npwp_file_url = COALESCE(VALUES(npwp_file_url), npwp_file_url)`,
+            npwp_file_url = COALESCE(VALUES(npwp_file_url), npwp_file_url),
+            coa_rec = COALESCE(VALUES(coa_rec), coa_rec),
+            coa_rev = COALESCE(VALUES(coa_rev), coa_rev),
+            order_status = COALESCE(VALUES(order_status), order_status)`,
           flatParams
         );
         insertedCount += chunk.length;
@@ -658,8 +665,9 @@ export async function POST(req: Request) {
           vat_id, nik, owner_name, owner_address, sia_number, sia_expired,
           sipa_number, sipa_expired, apj_name, sipnap_code, site_bill_to,
           site_ship_to, branch, zone, category, halodoc_pharma, is_active_2p,
-          document_url, document_name, npwp_drive_url, npwp_file_url
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          document_url, document_name, npwp_drive_url, npwp_file_url,
+          coa_rec, coa_rev, order_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           customer_id_oracle = COALESCE(VALUES(customer_id_oracle), customer_id_oracle),
           name = VALUES(name),
@@ -687,7 +695,10 @@ export async function POST(req: Request) {
           document_url = COALESCE(VALUES(document_url), document_url),
           document_name = COALESCE(VALUES(document_name), document_name),
           npwp_drive_url = COALESCE(VALUES(npwp_drive_url), npwp_drive_url),
-          npwp_file_url = COALESCE(VALUES(npwp_file_url), npwp_file_url)`,
+          npwp_file_url = COALESCE(VALUES(npwp_file_url), npwp_file_url),
+          coa_rec = COALESCE(VALUES(coa_rec), coa_rec),
+          coa_rev = COALESCE(VALUES(coa_rev), coa_rev),
+          order_status = COALESCE(VALUES(order_status), order_status)`,
         [
           id,
           item.customer_id_oracle || item.oracle_id || item["CUSTOMER ID ORACLE"] || "",
@@ -717,6 +728,9 @@ export async function POST(req: Request) {
           item.document_name || null,
           item.npwp_drive_url || item["GDRIVE NPWP"] || null,
           item.npwp_file_url || null,
+          item.coa_rec || item["COA - REC"] || item.coaRec || null,
+          item.coa_rev || item["COA - REV"] || item.coaRev || null,
+          item.order_status || item["SUDAH PERNAH ORDER/BELUM"] || item.orderStatus || null,
         ]
       );
 
@@ -957,87 +971,6 @@ export async function POST(req: Request) {
       return Response.json({ success: true, count: insertedCount });
     }
 
-    // 0.4. Bidirectional Sync: Single Customer from Google Sheet "Data Pelanggan MBI"
-    if (action === "sync_customer_from_sheet" || action === "sync_single_customer") {
-      const item = body?.customer || body;
-      const id = String(item.id || item.customer_id || item["CUSTOMER ID"] || "").trim();
-      const name = String(item.name || item.nama_apotek || item["NAMA APOTEK/RS/PBF/KLINIK"] || "").trim();
-
-      if (!id || !name) {
-        return Response.json({ success: false, error: "Missing customer id or name" }, { status: 400 });
-      }
-
-      await conn.execute(
-        `INSERT INTO customers (
-          id, customer_id_oracle, name, status_merchant, phone, email, address,
-          vat_id, nik, owner_name, owner_address, sia_number, sia_expired,
-          sipa_number, sipa_expired, apj_name, sipnap_code, site_bill_to,
-          site_ship_to, branch, zone, category, halodoc_pharma, is_active_2p,
-          document_url, document_name, npwp_drive_url, npwp_file_url
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          customer_id_oracle = COALESCE(VALUES(customer_id_oracle), customer_id_oracle),
-          name = VALUES(name),
-          status_merchant = COALESCE(VALUES(status_merchant), status_merchant),
-          phone = COALESCE(VALUES(phone), phone),
-          email = COALESCE(VALUES(email), email),
-          address = COALESCE(VALUES(address), address),
-          vat_id = COALESCE(VALUES(vat_id), vat_id),
-          nik = COALESCE(VALUES(nik), nik),
-          owner_name = COALESCE(VALUES(owner_name), owner_name),
-          owner_address = COALESCE(VALUES(owner_address), owner_address),
-          sia_number = COALESCE(VALUES(sia_number), sia_number),
-          sia_expired = COALESCE(VALUES(sia_expired), sia_expired),
-          sipa_number = COALESCE(VALUES(sipa_number), sipa_number),
-          sipa_expired = COALESCE(VALUES(sipa_expired), sipa_expired),
-          apj_name = COALESCE(VALUES(apj_name), apj_name),
-          sipnap_code = COALESCE(VALUES(sipnap_code), sipnap_code),
-          site_bill_to = COALESCE(VALUES(site_bill_to), site_bill_to),
-          site_ship_to = COALESCE(VALUES(site_ship_to), site_ship_to),
-          branch = COALESCE(VALUES(branch), branch),
-          zone = COALESCE(VALUES(zone), zone),
-          category = COALESCE(VALUES(category), category),
-          halodoc_pharma = COALESCE(VALUES(halodoc_pharma), halodoc_pharma),
-          is_active_2p = COALESCE(VALUES(is_active_2p), is_active_2p),
-          document_url = COALESCE(VALUES(document_url), document_url),
-          document_name = COALESCE(VALUES(document_name), document_name),
-          npwp_drive_url = COALESCE(VALUES(npwp_drive_url), npwp_drive_url),
-          npwp_file_url = COALESCE(VALUES(npwp_file_url), npwp_file_url)`,
-        [
-          id,
-          item.customer_id_oracle || item.oracle_id || item["CUSTOMER ID ORACLE"] || "",
-          name,
-          item.status_merchant || item.status || item["STATUS MERCHANT"] || "ACTIVE",
-          item.phone || item.no_telf_apj || item["NO TELF APJ"] || "",
-          item.email || item.alamat_email || item["Alamat email"] || "",
-          item.address || item.default_billing_address || item["Default Billing Address"] || "",
-          item.vat_id || item["VAT ID"] || "",
-          item.nik || item.nik_number || item["NIK NUMBER (npwp 16 digit)"] || "",
-          item.owner_name || item.nama_pemilik_npwp || item["NAMA PEMILIK NPWP"] || "",
-          item.owner_address || item.alamat_wajib_pajak || item["ALAMAT WAJIB PAJAK"] || "",
-          item.sia_number || item.izin_apotek_number || item["IZIN APOTEK/KLINIK/PBF/RS NUMBER"] || "",
-          item.sia_expired || item.sia_expired_date || item["SIA EXPIRED DATE"] || "",
-          item.sipa_number || item["SIPA NUMBER"] || "",
-          item.sipa_expired || item.sipa_expired_date || item["SIPA EXPIRED DATE"] || "",
-          item.apj_name || item.nama_apj || item["NAMA APJ"] || "",
-          item.sipnap_code || item.kode_sipnap || item["KODE SIPNAP"] || "",
-          item.site_bill_to || item.site_number_bill_to || item["SITE NUMBER (BILL TO)"] || "",
-          item.site_ship_to || item.site_number_ship_to || item["SITE NUMBER (SHIP TO)"] || "",
-          item.branch || item.mbi_branch || item["MBI BRANCH"] || "",
-          item.zone || item["Zone"] || "",
-          item.category || item.kategori_customer || item["KATEGORI CUSTOMER"] || "REG",
-          item.halodoc_pharma || item.branch_name_halodoc || item["BRANCH NAME HALODOC FOR PHARMA"] || "",
-          item.is_active_2p || item["LIST APOTEK 2P AKTIF"] || "",
-          item.document_url || item["DOKUMEN LEGALITAS"] || null,
-          item.document_name || null,
-          item.npwp_drive_url || item["GDRIVE NPWP"] || null,
-          item.npwp_file_url || null,
-        ]
-      );
-
-      return Response.json({ success: true, id, message: "Customer synced successfully from Google Sheet" });
-    }
-
     // 2.7. Update Customer
     if (action === "update_customer") {
       const {
@@ -1068,6 +1001,9 @@ export async function POST(req: Request) {
         document_name,
         npwp_drive_url,
         npwp_file_url,
+        coa_rec,
+        coa_rev,
+        order_status,
       } = body;
 
       if (!id) {
@@ -1101,7 +1037,10 @@ export async function POST(req: Request) {
           document_url = COALESCE(?, document_url),
           document_name = COALESCE(?, document_name),
           npwp_drive_url = COALESCE(?, npwp_drive_url),
-          npwp_file_url = COALESCE(?, npwp_file_url)
+          npwp_file_url = COALESCE(?, npwp_file_url),
+          coa_rec = COALESCE(?, coa_rec),
+          coa_rev = COALESCE(?, coa_rev),
+          order_status = COALESCE(?, order_status)
         WHERE id = ?`,
         [
           name !== undefined ? name : null,
@@ -1130,6 +1069,9 @@ export async function POST(req: Request) {
           document_name !== undefined ? document_name : null,
           npwp_drive_url !== undefined ? npwp_drive_url : null,
           npwp_file_url !== undefined ? npwp_file_url : null,
+          coa_rec !== undefined ? coa_rec : null,
+          coa_rev !== undefined ? coa_rev : null,
+          order_status !== undefined ? order_status : null,
           id,
         ]
       );

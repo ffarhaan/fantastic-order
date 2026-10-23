@@ -975,14 +975,14 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                 )}
               </div>
 
-              {/* SECTION 3: DATA PEMILIK (PSA) & PERPAJAKAN */}
+              {/* SECTION 3: DATA PEMILIK (PSA), KEUANGAN & AKUNTANSI */}
               <div className="rounded-xl border border-zinc-200 dark:border-zinc-800/80 bg-zinc-50/80 dark:bg-zinc-950/70 p-4 space-y-3">
                 <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
                   <span className="font-black text-xs uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
                     <Building2 className="w-4 h-4" />
-                    <span>Data Pemilik Sarana Apotek (PSA) &amp; Perpajakan</span>
+                    <span>Data Pemilik (PSA), Keuangan &amp; Akuntansi COA</span>
                   </span>
-                  <span className="text-[10px] text-zinc-500 font-mono">Tax &amp; Identity</span>
+                  <span className="text-[10px] text-zinc-500 font-mono">Tax, Finance &amp; Identity</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
@@ -1004,6 +1004,34 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                   </div>
 
                   <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Status Riwayat Order</span>
+                    <span
+                      className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                        selectedCust.order_status?.includes("SUDAH")
+                          ? "bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800"
+                          : "bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
+                      }`}
+                    >
+                      {selectedCust.order_status || "BELUM PERNAH ORDER"}
+                    </span>
+                  </div>
+
+                  {/* COA REC & COA REV */}
+                  <div className="col-span-1 sm:col-span-2 bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-blue-200/80 dark:border-blue-900/50">
+                    <span className="text-blue-600 dark:text-blue-400 block text-[10px] uppercase font-bold">COA Piutang (COA - REC)</span>
+                    <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs select-all">
+                      {selectedCust.coa_rec || "-"}
+                    </strong>
+                  </div>
+
+                  <div className="col-span-1 sm:col-span-2 bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-emerald-200/80 dark:border-emerald-900/50">
+                    <span className="text-emerald-600 dark:text-emerald-400 block text-[10px] uppercase font-bold">COA Pendapatan (COA - REV)</span>
+                    <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs select-all">
+                      {selectedCust.coa_rev || "-"}
+                    </strong>
+                  </div>
+
+                  <div className="col-span-1 sm:col-span-2 md:col-span-4 bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
                     <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Waktu Terdaftar</span>
                     <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">
                       {selectedCust.created_at ? formatIndonesianDate(selectedCust.created_at) : "-"}
@@ -1439,10 +1467,56 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                   </div>
                 </div>
 
-                {/* Section 4: Data NPWP & Dokumen Legalitas */}
+                {/* Section 4: Akuntansi & Keuangan COA */}
+                <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                  <span className="font-bold text-[11px] uppercase tracking-wider text-blue-700 dark:text-blue-400 block">
+                    4. Akuntansi &amp; Keuangan (COA Oracle)
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        COA - REC (Piutang)
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.coa_rec || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, coa_rec: e.target.value }))}
+                        placeholder="05.1121102.xxx..."
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono text-xs focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        COA - REV (Pendapatan)
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.coa_rev || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, coa_rev: e.target.value }))}
+                        placeholder="05.4111102.xxx..."
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono text-xs focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Status Riwayat Order
+                      </label>
+                      <select
+                        value={editForm.order_status || "BELUM PERNAH ORDER"}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, order_status: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white text-xs font-semibold focus:outline-none"
+                      >
+                        <option value="SUDAH PERNAH ORDER">SUDAH PERNAH ORDER</option>
+                        <option value="BELUM PERNAH ORDER">BELUM PERNAH ORDER</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 5: Data NPWP & Dokumen Legalitas */}
                 <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
                   <span className="font-bold text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-400 block">
-                    4. Berkas NPWP, Google Drive &amp; Dokumen Legalitas
+                    5. Berkas NPWP, Google Drive &amp; Dokumen Legalitas
                   </span>
                   <div className="space-y-3">
                     {/* Link Google Drive NPWP */}

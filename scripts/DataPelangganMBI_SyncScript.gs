@@ -138,7 +138,10 @@ function doPost(e) {
       "SITE NUMBER (SHIP TO)": cust.site_ship_to,
       "MBI BRANCH": cust.branch,
       "Zone": cust.zone,
-      "KATEGORI CUSTOMER": cust.category
+      "KATEGORI CUSTOMER": cust.category,
+      "COA - REC": cust.coa_rec,
+      "COA - REV": cust.coa_rev,
+      "SUDAH PERNAH ORDER/BELUM": cust.order_status
     };
 
     if (foundRow !== -1) {

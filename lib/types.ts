@@ -186,6 +186,9 @@ export interface CustomerRecord {
   document_name?: string;
   npwp_drive_url?: string;
   npwp_file_url?: string;
+  coa_rec?: string;
+  coa_rev?: string;
+  order_status?: string;
   created_at?: string;
 }
 
