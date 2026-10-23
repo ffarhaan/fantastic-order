@@ -25,26 +25,6 @@ export interface AppUser {
   role: "admin" | "readonly";
 }
 
-export interface QuickUser {
-  name: string;
-  icon: string;
-  role: string;
-  username: string;
-  email: string;
-}
-
-export const ALLOWED_USERS: QuickUser[] = [
-  { name: "Farhan", icon: "👨‍💻", role: "Super Admin", username: "farhan", email: "ffuegoleon@gmail.com" },
-  { name: "Rendy", icon: "👨‍💼", role: "Logistik Hub", username: "rendy", email: "" },
-  { name: "Afuan", icon: "👨‍💻", role: "IT & Admin", username: "afuan", email: "" },
-  { name: "Aqsal", icon: "👨‍🔬", role: "QC Lead", username: "aqsal", email: "" },
-  { name: "Wibi", icon: "👨‍🔧", role: "Operasional", username: "wibi", email: "" },
-  { name: "Andre", icon: "👨‍💼", role: "Logistik", username: "andre", email: "" },
-  { name: "Melinda", icon: "👩‍💼", role: "Administrasi", username: "melinda", email: "" },
-  { name: "Mahendra", icon: "👨‍💻", role: "Warehouse", username: "mahendra", email: "" },
-  { name: "Putri", icon: "👩‍💼", role: "Faktur Staff", username: "putri", email: "" },
-  { name: "Azizah", icon: "👩‍💻", role: "Faktur Staff", username: "azizah", email: "" },
-];
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -64,7 +44,7 @@ export default function LoginModal({
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   
   // Login form state
-  const [identifier, setIdentifier] = useState("farhan");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -93,14 +73,6 @@ export default function LoginModal({
     }
   }, [isOpen, currentUser]);
 
-  const handleSelectQuickUser = (user: QuickUser) => {
-    setIdentifier(user.username || user.name.toLowerCase());
-    setErrorMessage("");
-    setPassword("");
-    setTimeout(() => {
-      passInputRef.current?.focus();
-    }, 50);
-  };
 
   const handleConfirmLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -314,39 +286,9 @@ export default function LoginModal({
                         setIdentifier(e.target.value);
                         if (errorMessage) setErrorMessage("");
                       }}
-                      placeholder="Contoh: farhan atau ffuegoleon@gmail.com"
+                      placeholder="Masukkan username atau alamat Gmail..."
                       className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-zinc-700 bg-zinc-900/90 text-white outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 transition-all"
                     />
-                  </div>
-                </div>
-
-                {/* Quick Staff Select Chips */}
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
-                    Atau Klik Profil Staf:
-                  </label>
-                  <div className="grid grid-cols-2 gap-1.5 max-h-32 overflow-y-auto pr-1">
-                    {ALLOWED_USERS.map((usr) => {
-                      const isSelected = identifier.toLowerCase() === usr.username.toLowerCase();
-                      return (
-                        <button
-                          key={usr.name}
-                          type="button"
-                          onClick={() => handleSelectQuickUser(usr)}
-                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-left transition-all cursor-pointer text-xs ${
-                            isSelected
-                              ? "bg-blue-600/20 border-blue-500 text-blue-200 font-bold ring-2 ring-blue-500/30 shadow-xs"
-                              : "bg-zinc-900/70 hover:bg-zinc-800/80 border-zinc-800 text-zinc-300"
-                          }`}
-                        >
-                          <span className="text-sm shrink-0">{usr.icon}</span>
-                          <div className="min-w-0 flex-1 leading-tight">
-                            <div className="truncate font-bold">{usr.name}</div>
-                            <div className="text-[9px] text-zinc-500 truncate">{usr.role}</div>
-                          </div>
-                        </button>
-                      );
-                    })}
                   </div>
                 </div>
 
