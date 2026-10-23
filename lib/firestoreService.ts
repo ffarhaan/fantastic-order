@@ -1451,3 +1451,99 @@ export async function changeUserPassword(
   }
 }
 
+
+
+const SO_CHECKERS_DOC = "so_checkers";
+const SO_CHECKERS_RECENT_DOC = "so_checkers_recent";
+
+/**
+ * Realtime subscription to QC Checkers & Packers from Firebase Firestore
+ * 0 byte consumed on Vercel, real-time WebSocket sync (<100ms)
+ */
+export function subscribeToCheckers(
+  onUpdate: (map: Record<string, { checker: string; packer: string }>) => void
+): () => void {
+  let inMemoryMap: Record<string, { checker: string; packer: string }> = {};
+
+  // 1. Initial quick load from localStorage for 0ms startup
+  if (typeof window !== "undefined") {
+    try {
+      const cached = localStorage.getItem("fantastic_so_checkers_cache");
+      if (cached) {
+        inMemoryMap = JSON.parse(cached);
+        onUpdate(inMemoryMap);
+      }
+    } catch {}
+  }
+
+  const mergeAndEmit = (incoming: Record<string, any>) => {
+    let changed = false;
+    for (const [key, val] of Object.entries(incoming)) {
+      if (!key) continue;
+      const checker = String(val.checker || val.c || "").trim();
+      const packer = String(val.packer || val.p || "").trim();
+      const entry = { checker, packer };
+
+      const raw = key.trim();
+      const noSpace = raw.replace(/\s+/g, "");
+      const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+
+      inMemoryMap[raw] = entry;
+      if (noSpace) inMemoryMap[noSpace] = entry;
+      if (alpha) inMemoryMap[alpha] = entry;
+      changed = true;
+    }
+
+    if (changed) {
+      onUpdate({ ...inMemoryMap });
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("fantastic_so_checkers_cache", JSON.stringify(inMemoryMap));
+        } catch {}
+      }
+    }
+  };
+
+  // 2. Realtime listener to master document (app_data/so_checkers)
+  const unsubMaster = onSnapshot(
+    doc(db, APP_DATA_COLLECTION, SO_CHECKERS_DOC),
+    (snap) => {
+      if (snap.exists()) {
+        const rawData = snap.data()?.data;
+        if (typeof rawData === "string") {
+          try {
+            const parsed = JSON.parse(rawData);
+            mergeAndEmit(parsed);
+          } catch {}
+        } else if (rawData && typeof rawData === "object") {
+          mergeAndEmit(rawData);
+        }
+      }
+    },
+    (err) => console.warn("Firestore so_checkers sync warning:", err)
+  );
+
+  // 3. Realtime listener to recent edits from Google Sheets (app_data/so_checkers_recent)
+  const unsubRecent = onSnapshot(
+    doc(db, APP_DATA_COLLECTION, SO_CHECKERS_RECENT_DOC),
+    (snap) => {
+      if (snap.exists()) {
+        const rawData = snap.data()?.data;
+        if (typeof rawData === "string") {
+          try {
+            const parsed = JSON.parse(rawData);
+            mergeAndEmit(parsed);
+          } catch {}
+        } else if (rawData && typeof rawData === "object") {
+          mergeAndEmit(rawData);
+        }
+      }
+    },
+    (err) => console.warn("Firestore so_checkers_recent sync warning:", err)
+  );
+
+  return () => {
+    unsubMaster();
+    unsubRecent();
+  };
+}

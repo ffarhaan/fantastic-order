@@ -28,6 +28,7 @@ import {
   subscribeToOnlinePresence,
   isStalePrintTimestamp,
   broadcastRecentUpload,
+  subscribeToCheckers,
 } from "@/lib/firestoreService";
 import { syncFaktursToTiDB, syncFaktursToTiDBBackground, syncPrintStatusToTiDBBackground, fetchFaktursFromTiDB, getLocalCachedFakturs, setLocalCachedFakturs, setLocalCachedPrintState, checkTiDBUpdates, fetchTiDBDelta } from "@/lib/tidbService";
 import MasterApotekModal from "@/components/MasterApotekModal";
@@ -494,31 +495,16 @@ export default function Home() {
     return checkerMap[raw] || checkerMap[noSpace] || checkerMap[alpha] || null;
   }, [checkerMap]);
 
-  const fetchCheckers = useCallback(async () => {
-    try {
-      const res = await fetch("/api/tidb?action=get_checkers");
-      const json = await res.json();
-      if (json.success && json.data) {
-        setCheckerMap(json.data);
-        checkerMapRef.current = json.data;
-      }
-    } catch {}
-  }, []);
-
+  // Real-time direct Firebase Firestore subscription (0 byte on Vercel, <100ms sync)
   useEffect(() => {
-    fetchCheckers();
-    // Only poll when browser tab is actively visible (sleeps when minimized/idle/overnight)
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      fetchCheckers();
-    }, 30000);
-    const onFocus = () => fetchCheckers();
-    window.addEventListener("focus", onFocus);
+    const unsub = subscribeToCheckers((map) => {
+      setCheckerMap(map);
+      checkerMapRef.current = map;
+    });
     return () => {
-      clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
+      unsub();
     };
-  }, [fetchCheckers]);
+  }, []);
   const invoiceProgressionRef = useRef<InvoiceProgression | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isUploadingRef = useRef(false);
