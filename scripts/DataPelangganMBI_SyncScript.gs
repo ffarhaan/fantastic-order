@@ -27,14 +27,33 @@ function onOpen() {
   ui.createMenu("🚀 Sinkronisasi Web App")
     .addItem("🔄 Kirim Seluruh Data Sheet ke Web App", "pushAllToWebApp")
     .addItem("📥 Tarik Data Terbaru dari Web App ke Sheet", "pullAllFromWebApp")
+    .addSeparator()
+    .addItem("⚙️ Aktifkan Sync Otomatis (sekali saja)", "installSyncTrigger")
     .addToUi();
 }
 
 /**
- * 2. TRIGGER REALTIME ON EDIT:
+ * 1b. PASANG INSTALLABLE TRIGGER:
+ * Simple trigger "onEdit" TIDAK diizinkan memanggil UrlFetchApp,
+ * jadi sync otomatis wajib memakai installable trigger. Jalankan sekali saja.
+ */
+function installSyncTrigger() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === "syncOnEdit") {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+  ScriptApp.newTrigger("syncOnEdit").forSpreadsheet(ss).onEdit().create();
+  SpreadsheetApp.getUi().alert("✅ Sync otomatis aktif! Setiap edit di sheet akan langsung terkirim ke Web App.");
+}
+
+/**
+ * 2. TRIGGER REALTIME ON EDIT (installable):
  * Ketika ada sel yang diedit di Google Sheet, otomatis kirim perubahan ke Web App!
  */
-function onEdit(e) {
+function syncOnEdit(e) {
   try {
     var range = e.range;
     var sheet = range.getSheet();
