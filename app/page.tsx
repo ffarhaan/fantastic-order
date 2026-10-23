@@ -507,7 +507,11 @@ export default function Home() {
 
   useEffect(() => {
     fetchCheckers();
-    const interval = setInterval(fetchCheckers, 5000);
+    // Only poll when browser tab is actively visible (sleeps when minimized/idle/overnight)
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      fetchCheckers();
+    }, 30000);
     const onFocus = () => fetchCheckers();
     window.addEventListener("focus", onFocus);
     return () => {

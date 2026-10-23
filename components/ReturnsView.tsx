@@ -508,13 +508,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   }, [debouncedSearch, statusFilter, pbfFilter, categoryFilter, page]);
 
-  // Real-time polling: fetch every 3 seconds & immediately on window focus
+  // Real-time polling: only when tab is actively visible (sleeps when backgrounded/overnight)
   useEffect(() => {
     fetchReturns();
     fetchAllReturns();
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       fetchReturns(true);
-    }, 3000);
+    }, 30000);
     const onFocus = () => fetchReturns(true);
     window.addEventListener("focus", onFocus);
     return () => {
