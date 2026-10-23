@@ -189,6 +189,7 @@ export interface CustomerRecord {
   coa_rec?: string;
   coa_rev?: string;
   order_status?: string;
+  doc_count?: number;
   created_at?: string;
 }
 

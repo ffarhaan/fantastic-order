@@ -97,6 +97,7 @@ export async function GET(req: Request) {
       const category = searchParams.get("category") || "";
       const status = searchParams.get("status") || "";
       const activeOnly = searchParams.get("active_only") === "true";
+      const hasDocs = searchParams.get("has_docs") === "true";
       const limit = Math.min(Number(searchParams.get("limit")) || 50, 200);
       const offset = Number(searchParams.get("offset")) || 0;
 
@@ -105,6 +106,9 @@ export async function GET(req: Request) {
 
       if (activeOnly) {
         whereClause += " AND (status_merchant = 'ACTIVE' OR status_merchant IS NULL) AND name NOT LIKE '%[INACTIVE]%'";
+      }
+      if (hasDocs) {
+        whereClause += " AND id IN (SELECT DISTINCT customer_id FROM customer_documents)";
       }
 
       if (search) {
@@ -124,11 +128,22 @@ export async function GET(req: Request) {
       const countSql = `SELECT COUNT(*) as total FROM customers ${whereClause}`;
       const [countResult] = (await conn.execute(countSql, params)) as Array<{ total: number }>;
 
-      const dataSql = `SELECT * FROM customers ${whereClause} ORDER BY name ASC LIMIT ? OFFSET ?`;
+      const dataSql = `
+        SELECT c.*, COALESCE(cd.doc_count, 0) AS doc_count
+        FROM customers c
+        LEFT JOIN (
+          SELECT customer_id, COUNT(*) AS doc_count
+          FROM customer_documents
+          GROUP BY customer_id
+        ) cd ON c.id = cd.customer_id
+        ${whereClause.replace(/\b(name|customer_id_oracle|id|address|apj_name|phone|category|status_merchant)\b/g, "c.$1")}
+        ORDER BY c.name ASC
+        LIMIT ? OFFSET ?
+      `;
       const rows = await conn.execute(dataSql, [...params, limit, offset]);
 
       return compressedJsonResponse(
-        req, 
+        req,
         {
           success: true,
           total: Number(countResult?.total || 0),
@@ -136,8 +151,49 @@ export async function GET(req: Request) {
           limit,
           offset,
         },
-        { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" }
+        { "Cache-Control": "no-store" }
       );
+    }
+
+    // ==========================================
+    // 1b. VIEW CUSTOMER DOCUMENT (PDF / IMAGE STREAM)
+    // ==========================================
+    if (action === "view_document") {
+      const fileId = (searchParams.get("file_id") || "").trim();
+      if (!fileId) {
+        return Response.json({ success: false, error: "Missing file_id" }, { status: 400 });
+      }
+
+      const metaRows = (await conn.execute(
+        "SELECT file_name, mime_type FROM customer_documents WHERE file_id = ? LIMIT 1",
+        [fileId]
+      )) as any[];
+      const meta = metaRows[0];
+
+      const chunkRows = (await conn.execute(
+        "SELECT chunk_data FROM customer_document_chunks WHERE file_id = ? ORDER BY chunk_index ASC",
+        [fileId]
+      )) as any[];
+
+      if (!chunkRows || chunkRows.length === 0) {
+        // Fallback to Google Drive preview if stored on Drive
+        return Response.redirect(`https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview`, 302);
+      }
+
+      const fullBase64 = chunkRows.map((r) => r.chunk_data).join("");
+      const buf = Buffer.from(fullBase64, "base64");
+      const mimeType = meta?.mime_type || "application/pdf";
+      const safeName = (meta?.file_name || "document").replace(/["\r\n]/g, "_");
+
+      return new Response(buf, {
+        status: 200,
+        headers: {
+          "Content-Type": mimeType,
+          "Content-Length": String(buf.length),
+          "Content-Disposition": `inline; filename="${safeName}"`,
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
     }
 
     // ==========================================
@@ -613,6 +669,71 @@ export async function POST(req: Request) {
       }
 
       return Response.json({ success: true, count: rows.length, removed });
+    }
+
+    // 0.3b. Upload Customer Document Chunk (from ZIP bulk upload or single file upload in Web App)
+    if (action === "upload_customer_document") {
+      const fileId = String(body?.file_id || "").trim();
+      const customerId = String(body?.customer_id || "").trim().toUpperCase();
+      const fileName = String(body?.file_name || "document").trim().slice(0, 512);
+      const mimeType = String(body?.mime_type || "application/pdf").trim();
+      const sizeBytes = Number(body?.size_bytes) || 0;
+      const folderName = String(body?.folder_name || customerId).trim().slice(0, 512);
+      const chunkIndex = Number(body?.chunk_index) || 0;
+      const totalChunks = Number(body?.total_chunks) || 1;
+      const chunkData = String(body?.chunk_data || "");
+
+      if (!fileId || !customerId || !chunkData) {
+        return Response.json({ success: false, error: "Missing required upload fields" }, { status: 400 });
+      }
+
+      if (chunkIndex === 0) {
+        await conn.execute("DELETE FROM customer_document_chunks WHERE file_id = ?", [fileId]);
+      }
+
+      await conn.execute(
+        "INSERT INTO customer_document_chunks (file_id, chunk_index, chunk_data) VALUES (?, ?, ?)",
+        [fileId, chunkIndex, chunkData]
+      );
+
+      if (chunkIndex >= totalChunks - 1) {
+        await conn.execute(
+          `INSERT INTO customer_documents (file_id, customer_id, file_name, mime_type, size_bytes, folder_id, folder_name, modified_at)
+           VALUES (?, ?, ?, ?, ?, 'local_zip', ?, ?)
+           ON DUPLICATE KEY UPDATE
+             customer_id = VALUES(customer_id),
+             file_name = VALUES(file_name),
+             mime_type = VALUES(mime_type),
+             size_bytes = VALUES(size_bytes),
+             folder_name = VALUES(folder_name),
+             modified_at = VALUES(modified_at),
+             synced_at = CURRENT_TIMESTAMP`,
+          [fileId, customerId, fileName, mimeType, sizeBytes, folderName, new Date().toISOString()]
+        );
+
+        const viewUrl = `/api/tidb?action=view_document&file_id=${encodeURIComponent(fileId)}`;
+        if (/npwp/i.test(fileName)) {
+          await conn.execute("UPDATE customers SET npwp_file_url = ? WHERE id = ?", [viewUrl, customerId]);
+        } else {
+          await conn.execute(
+            "UPDATE customers SET document_url = COALESCE(document_url, ?), document_name = COALESCE(document_name, ?) WHERE id = ?",
+            [viewUrl, fileName, customerId]
+          );
+        }
+      }
+
+      return Response.json({ success: true, file_id: fileId, chunk_index: chunkIndex });
+    }
+
+    // 0.3c. Delete Customer Document
+    if (action === "delete_customer_document") {
+      const fileId = String(body?.file_id || "").trim();
+      if (!fileId) {
+        return Response.json({ success: false, error: "Missing file_id" }, { status: 400 });
+      }
+      await conn.execute("DELETE FROM customer_document_chunks WHERE file_id = ?", [fileId]);
+      await conn.execute("DELETE FROM customer_documents WHERE file_id = ?", [fileId]);
+      return Response.json({ success: true });
     }
 
     // 0.3. Bulk Import Customers (From user-provided Excel/File)

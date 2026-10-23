@@ -11,6 +11,7 @@
   "dependencies": {
     "@tidbcloud/serverless": "^0.3.0",
     "firebase": "^12.19.0",
+    "jszip": "^3.10.2",
     "lucide-react": "^0.453.0",
     "next": "14.2.15",
     "nodemailer": "^10.2.1",

@@ -161,6 +161,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [hasDocsFilter, setHasDocsFilter] = useState(false);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
 
@@ -177,25 +178,190 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
   const [editForm, setEditForm] = useState<Partial<CustomerRecord> | null>(null);
   const [isSavingCust, setIsSavingCust] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [zipProgress, setZipProgress] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: "npwp_file_url" | "document_url") => {
+  const loadCustomerDocs = async (custId: string, custName: string) => {
+    setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/tidb?action=customer_detail&id=${encodeURIComponent(custId)}&name=${encodeURIComponent(custName)}`);
+      const data = await res.json();
+      if (data.success) {
+        setCustomerReturns(data.returns || []);
+        setCustomerFakturs(data.fakturs || []);
+        setCustomerDocs(data.documents || []);
+      }
+    } catch (err) {
+      console.error("Failed to load customer detail:", err);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const uploadSingleDocToTiDB = async (customerId: string, fileName: string, mimeType: string, sizeBytes: number, base64Data: string, folderName?: string) => {
+    const cleanBase64 = base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
+    const safeSlug = fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 48);
+    const fileId = `local_${customerId}_${safeSlug}_${sizeBytes}`;
+    const CHUNK_LEN = 700 * 1024;
+    const totalChunks = Math.max(1, Math.ceil(cleanBase64.length / CHUNK_LEN));
+
+    for (let idx = 0; idx < totalChunks; idx++) {
+      const chunkData = cleanBase64.slice(idx * CHUNK_LEN, (idx + 1) * CHUNK_LEN);
+      const res = await fetch("/api/tidb?action=upload_customer_document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_id: fileId,
+          customer_id: customerId,
+          file_name: fileName,
+          mime_type: mimeType || "application/pdf",
+          size_bytes: sizeBytes,
+          folder_name: folderName || customerId,
+          chunk_index: idx,
+          total_chunks: totalChunks,
+          chunk_data: chunkData,
+        }),
+      });
+      if (!res.ok) throw new Error(`Gagal upload bagian ${idx + 1}/${totalChunks}`);
+    }
+    return fileId;
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: "npwp_file_url" | "document_url") => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 15 * 1024 * 1024) {
-      alert("Ukuran berkas maksimal 15MB.");
+    if (file.size > 20 * 1024 * 1024) {
+      alert("Ukuran berkas maksimal 20MB.");
       return;
     }
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const dataUrl = ev.target?.result as string;
-      setEditForm((prev) => ({
-        ...prev,
-        [field]: dataUrl,
-        ...(field === "document_url" ? { document_name: file.name } : {}),
-      }));
+      if (editForm?.id) {
+        try {
+          setZipProgress(`Mengunggah ${file.name}...`);
+          const fileId = await uploadSingleDocToTiDB(editForm.id, file.name, file.type || "application/pdf", file.size, dataUrl, editForm.name || editForm.id);
+          const viewUrl = `/api/tidb?action=view_document&file_id=${encodeURIComponent(fileId)}`;
+          setEditForm((prev) => ({
+            ...prev,
+            [field]: viewUrl,
+            ...(field === "document_url" ? { document_name: file.name } : {}),
+          }));
+          await loadCustomerDocs(editForm.id, editForm.name || "");
+          setToastMsg(`✓ Berkas "${file.name}" berhasil disimpan!`);
+          setTimeout(() => setToastMsg(null), 3500);
+        } catch (err: any) {
+          alert(`Gagal upload berkas: ${err.message || String(err)}`);
+        } finally {
+          setZipProgress(null);
+        }
+      } else {
+        setEditForm((prev) => ({
+          ...prev,
+          [field]: dataUrl,
+          ...(field === "document_url" ? { document_name: file.name } : {}),
+        }));
+      }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleImportZipDocs = async (e: React.ChangeEvent<HTMLInputElement>, fallbackCustomerId?: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setZipProgress("Membaca file ZIP...");
+    try {
+      const JSZip = (await import("jszip")).default;
+      const entriesToUpload: Array<{ customerId: string; folderName: string; fileName: string; mimeType: string; sizeBytes: number; base64: string }> = [];
+
+      const guessMime = (name: string) => {
+        const lower = name.toLowerCase();
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".webp")) return "image/webp";
+        return "application/octet-stream";
+      };
+
+      const unpackZip = async (buf: ArrayBuffer | Uint8Array, inheritedId?: string, inheritedFolder?: string) => {
+        const zip = await JSZip.loadAsync(buf);
+        for (const entry of Object.values(zip.files)) {
+          if (entry.dir) continue;
+          const parts = entry.name.split("/").filter(Boolean);
+          const baseName = parts[parts.length - 1];
+          if (!baseName || baseName.startsWith("._") || baseName === ".DS_Store") continue;
+
+          const match = entry.name.match(/C\.\d+/i);
+          const custId = match ? match[0].toUpperCase() : inheritedId || fallbackCustomerId;
+          if (!custId) continue;
+          const folderName = parts.find((p) => /C\.\d+/i.test(p)) || inheritedFolder || custId;
+
+          if (baseName.toLowerCase().endsWith(".zip")) {
+            const nestedBuf = await entry.async("uint8array");
+            await unpackZip(nestedBuf, custId, folderName);
+            continue;
+          }
+
+          const uint8 = await entry.async("uint8array");
+          const base64 = await entry.async("base64");
+          entriesToUpload.push({
+            customerId: custId,
+            folderName,
+            fileName: baseName,
+            mimeType: guessMime(baseName),
+            sizeBytes: uint8.byteLength,
+            base64,
+          });
+        }
+      };
+
+      const arrayBuf = await file.arrayBuffer();
+      await unpackZip(arrayBuf, fallbackCustomerId);
+
+      if (entriesToUpload.length === 0) {
+        alert("Tidak ditemukan berkas dengan format folder (C.xxxx) di dalam ZIP ini.");
+        return;
+      }
+
+      for (let i = 0; i < entriesToUpload.length; i++) {
+        const it = entriesToUpload[i];
+        setZipProgress(`Mengupload ${i + 1} / ${entriesToUpload.length}: (${it.customerId}) ${it.fileName}`);
+        await uploadSingleDocToTiDB(it.customerId, it.fileName, it.mimeType, it.sizeBytes, it.base64, it.folderName);
+      }
+
+      setToastMsg(`✓ Berhasil mengupload ${entriesToUpload.length} dokumen dari file ZIP!`);
+      setTimeout(() => setToastMsg(null), 5000);
+      fetchCustomers();
+      if (editForm?.id) {
+        await loadCustomerDocs(editForm.id, editForm.name || "");
+      } else if (selectedCust?.id) {
+        await loadCustomerDocs(selectedCust.id, selectedCust.name || "");
+      }
+    } catch (err: any) {
+      console.error("ZIP upload error:", err);
+      alert(`Gagal memproses ZIP: ${err.message || String(err)}`);
+    } finally {
+      setZipProgress(null);
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const handleDeleteCustomerDoc = async (doc: CustomerDocument) => {
+    if (!confirm(`Hapus dokumen "${doc.file_name}"?`)) return;
+    try {
+      const res = await fetch("/api/tidb?action=delete_customer_document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_id: doc.file_id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCustomerDocs((prev) => prev.filter((d) => d.file_id !== doc.file_id));
+        fetchCustomers();
+      }
+    } catch (err) {
+      console.error("Failed to delete document:", err);
+    }
   };
 
   const handleOpenEdit = (cust: CustomerRecord) => {
@@ -204,7 +370,9 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
       sia_expired: parseToDateInputValue(cust.sia_expired),
       sipa_expired: parseToDateInputValue(cust.sipa_expired),
     });
+    setCustomerDocs([]);
     setShowEditModal(true);
+    loadCustomerDocs(cust.id, cust.name);
   };
 
   const handleSaveCustomer = async (e: React.FormEvent) => {
@@ -303,6 +471,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (categoryFilter !== "ALL") params.set("category", categoryFilter);
       if (statusFilter !== "ALL") params.set("status", statusFilter);
+      if (hasDocsFilter) params.set("has_docs", "true");
 
       const res = await fetch(`/api/tidb?${params.toString()}`);
       const data = await res.json();
@@ -315,7 +484,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, categoryFilter, statusFilter, page]);
+  }, [debouncedSearch, categoryFilter, statusFilter, hasDocsFilter, page]);
 
   useEffect(() => {
     fetchCustomers();
@@ -482,10 +651,21 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
             </div>
           </div>
           
-          <div className="mt-3 flex items-center gap-2">
-            <label className="flex-1 py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-[0.98] cursor-pointer">
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <label className="flex-1 py-1.5 px-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-xs transition-all active:scale-[0.98] cursor-pointer whitespace-nowrap" title="Upload File ZIP Dokumen Pelanggan (Otomatis Cocokkan Kode C.xxxx)">
+              <Package className="w-3.5 h-3.5" />
+              <span>{zipProgress ? "Proses ZIP..." : "Upload ZIP Dokumen"}</span>
+              <input
+                type="file"
+                accept=".zip"
+                onChange={(e) => handleImportZipDocs(e)}
+                disabled={!!zipProgress}
+                className="hidden"
+              />
+            </label>
+            <label className="py-1.5 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-xs transition-all active:scale-[0.98] cursor-pointer whitespace-nowrap" title="Upload Excel Master Customer">
               <Upload className="w-3.5 h-3.5" />
-              <span>{isImporting ? "Mengunggah..." : "Upload File"}</span>
+              <span>{isImporting ? "..." : "Excel"}</span>
               <input
                 type="file"
                 accept=".xlsx, .xls, .csv"
@@ -498,13 +678,18 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
               type="button"
               onClick={handleExportExcel}
               disabled={customers.length === 0}
-              className="py-1.5 px-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-zinc-200 dark:border-zinc-700 shadow-xs transition-all active:scale-[0.98] cursor-pointer disabled:opacity-40"
+              className="py-1.5 px-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 border border-zinc-200 dark:border-zinc-700 shadow-xs transition-all active:scale-[0.98] cursor-pointer disabled:opacity-40"
               title="Unduh Excel"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
               <span>Unduh</span>
             </button>
           </div>
+          {zipProgress && (
+            <p className="text-[10px] text-amber-600 dark:text-amber-400 font-bold mt-1.5 truncate animate-pulse">
+              {zipProgress}
+            </p>
+          )}
         </div>
       </div>
 
@@ -571,6 +756,24 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
               <option value="REG">REG</option>
             </select>
           </div>
+
+          {/* Filter Sudah Ada Dokumen */}
+          <button
+            type="button"
+            onClick={() => {
+              setHasDocsFilter((v) => !v);
+              setPage(0);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+              hasDocsFilter
+                ? "bg-amber-600 text-white border-amber-500 shadow-xs"
+                : "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/60 hover:bg-amber-100"
+            }`}
+            title="Tampilkan apotek yang sudah memiliki dokumen terupload"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>{hasDocsFilter ? "✓ Sudah Ada Dokumen" : "Filter Ada Dokumen"}</span>
+          </button>
 
           {/* Refresh Button */}
           <button
@@ -679,12 +882,23 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
 
                       {/* Nama Apotek */}
                       <td className="py-2.5 px-4 font-bold max-w-[280px]">
-                        <span
-                          className="truncate block text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors"
-                          title={c.name}
-                        >
-                          {c.name || "-"}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="truncate block text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors"
+                            title={c.name}
+                          >
+                            {c.name || "-"}
+                          </span>
+                          {Number(c.doc_count) > 0 && (
+                            <span
+                              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 text-[10px] font-bold"
+                              title={`${c.doc_count} dokumen tersimpan di aplikasi`}
+                            >
+                              <FileText className="w-2.5 h-2.5" />
+                              {c.doc_count}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Status */}
@@ -1579,9 +1793,108 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
 
                 {/* Section 5: Data NPWP & Dokumen Legalitas */}
                 <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                  <span className="font-bold text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-400 block">
-                    5. Berkas NPWP, Google Drive &amp; Dokumen Legalitas
-                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-400 block">
+                      5. Berkas NPWP, Google Drive &amp; Dokumen Legalitas
+                    </span>
+                    <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold shadow-2xs cursor-pointer transition">
+                      <Package className="w-3.5 h-3.5" />
+                      <span>{zipProgress ? "Memproses ZIP..." : "Upload File .ZIP Dokumen"}</span>
+                      <input
+                        type="file"
+                        accept=".zip"
+                        onChange={(e) => handleImportZipDocs(e, editForm.id)}
+                        disabled={!!zipProgress}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  {zipProgress && (
+                    <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-bold animate-pulse">
+                      {zipProgress}
+                    </div>
+                  )}
+
+                  {/* DAFTAR DOKUMEN TERSIMPAN APOTEK INI (DI MODAL EDIT) */}
+                  <div className="bg-white dark:bg-zinc-900 p-3 rounded-lg border border-amber-200 dark:border-amber-500/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                        📂 Dokumen Tersimpan di Aplikasi ({customerDocs.length} Berkas)
+                      </span>
+                      {editForm.name && (
+                        <a
+                          href={`https://drive.google.com/drive/search?q=${encodeURIComponent(editForm.name)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-blue-600 hover:underline font-bold flex items-center gap-1"
+                        >
+                          <Search className="w-3 h-3" />
+                          <span>Cari di GDrive</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      )}
+                    </div>
+
+                    {detailLoading ? (
+                      <p className="text-xs text-zinc-500">Memuat berkas tersimpan...</p>
+                    ) : customerDocs.length === 0 ? (
+                      <p className="text-[11px] text-zinc-500">
+                        Belum ada dokumen terupload untuk apotek ini ({editForm.id}). Anda bisa upload file satuan di bawah atau klik <strong>Upload File .ZIP Dokumen</strong> di kanan atas untuk mengunggah banyak apotek sekaligus.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {customerDocs.map((doc) => {
+                          const isImage = (doc.mime_type || "").startsWith("image/");
+                          return (
+                            <div
+                              key={doc.file_id}
+                              className="flex items-center justify-between gap-2 p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/70"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => setPreviewDoc(doc)}
+                                className="flex items-center gap-2 flex-1 min-w-0 text-left hover:text-amber-600 cursor-pointer"
+                                title="Klik untuk melihat dokumen di aplikasi"
+                              >
+                                {isImage ? (
+                                  <ImageIcon className="w-4 h-4 text-sky-600 shrink-0" />
+                                ) : (
+                                  <FileText className="w-4 h-4 text-rose-600 shrink-0" />
+                                )}
+                                <span className="min-w-0 flex-1">
+                                  <span className="block text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">
+                                    {doc.file_name}
+                                  </span>
+                                  <span className="block text-[10px] text-zinc-500 truncate">
+                                    {formatFileSize(doc.size_bytes) || "Klik untuk pratinjau"}
+                                  </span>
+                                </span>
+                              </button>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewDoc(doc)}
+                                  className="px-2 py-1 rounded bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 text-[10px] font-bold cursor-pointer"
+                                >
+                                  Lihat
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCustomerDoc(doc)}
+                                  className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                                  title="Hapus dokumen"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="space-y-3">
                     {/* Link Google Drive NPWP */}
                     <div>
@@ -1602,7 +1915,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                       {/* Upload File NPWP Apotek */}
                       <div className="bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
                         <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                          Upload File NPWP (PDF / Foto)
+                          Tambah File NPWP (PDF / Foto)
                         </label>
                         <input
                           type="file"
@@ -1612,9 +1925,14 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                         />
                         {editForm.npwp_file_url && (
                           <div className="flex items-center justify-between mt-2 pt-1 border-t border-zinc-100 dark:border-zinc-800 text-[10px]">
-                            <span className="text-emerald-600 font-bold flex items-center gap-1">
-                              <Check className="w-3 h-3" /> Berkas NPWP terlampir
-                            </span>
+                            <a
+                              href={editForm.npwp_file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-emerald-600 hover:underline font-bold flex items-center gap-1"
+                            >
+                              <Check className="w-3 h-3" /> Lihat Berkas NPWP
+                            </a>
                             <button
                               type="button"
                               onClick={() => setEditForm((prev) => ({ ...prev, npwp_file_url: "" }))}
@@ -1629,7 +1947,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                       {/* Upload Dokumen Legalitas */}
                       <div className="bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
                         <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                          Upload Dokumen Legalitas / SIA / SIPA
+                          Tambah Dokumen Legalitas / SIA / SIPA
                         </label>
                         <input
                           type="file"
@@ -1639,9 +1957,14 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                         />
                         {editForm.document_url && (
                           <div className="flex items-center justify-between mt-2 pt-1 border-t border-zinc-100 dark:border-zinc-800 text-[10px]">
-                            <span className="text-emerald-600 font-bold flex items-center gap-1">
-                              <Check className="w-3 h-3" /> Dokumen legalitas terlampir
-                            </span>
+                            <a
+                              href={editForm.document_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-emerald-600 hover:underline font-bold flex items-center gap-1"
+                            >
+                              <Check className="w-3 h-3" /> Lihat {editForm.document_name || "Dokumen Legalitas"}
+                            </a>
                             <button
                               type="button"
                               onClick={() => setEditForm((prev) => ({ ...prev, document_url: "", document_name: "" }))}
@@ -1681,53 +2004,74 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
         </div>
       )}
 
-      {/* PREVIEW DOKUMEN GOOGLE DRIVE (di dalam aplikasi) */}
-      {previewDoc && (
-        <div
-          className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
-          onClick={() => setPreviewDoc(null)}
-        >
+      {/* PREVIEW DOKUMEN LANGSUNG DI DALAM APLIKASI */}
+      {previewDoc && (() => {
+        const isLocalDoc = previewDoc.file_id.startsWith("local_") || previewDoc.folder_id === "local_zip";
+        const docStreamUrl = isLocalDoc
+          ? `/api/tidb?action=view_document&file_id=${encodeURIComponent(previewDoc.file_id)}`
+          : `https://drive.google.com/file/d/${previewDoc.file_id}/preview`;
+        const docExternalUrl = isLocalDoc
+          ? `/api/tidb?action=view_document&file_id=${encodeURIComponent(previewDoc.file_id)}`
+          : `https://drive.google.com/file/d/${previewDoc.file_id}/view`;
+        const isImage = (previewDoc.mime_type || "").startsWith("image/");
+
+        return (
           <div
-            className="w-full max-w-5xl h-[90vh] bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+            onClick={() => setPreviewDoc(null)}
           >
-            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">{previewDoc.file_name}</p>
-                <p className="text-[11px] text-zinc-500 truncate">
-                  {[selectedCust?.name, previewDoc.folder_name, formatFileSize(previewDoc.size_bytes)].filter(Boolean).join(" · ")}
-                </p>
+            <div
+              className="w-full max-w-5xl h-[90vh] bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">{previewDoc.file_name}</p>
+                  <p className="text-[11px] text-zinc-500 truncate">
+                    {[selectedCust?.name || editForm?.name, previewDoc.folder_name, formatFileSize(previewDoc.size_bytes)].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href={docExternalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 text-xs font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>{isLocalDoc ? "Buka / Download Tab Baru" : "Buka di Drive"}</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewDoc(null)}
+                    className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 cursor-pointer"
+                    title="Tutup"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <a
-                  href={`https://drive.google.com/file/d/${previewDoc.file_id}/view`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 text-xs font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Buka di Drive</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setPreviewDoc(null)}
-                  className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 cursor-pointer"
-                  title="Tutup"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+              {isLocalDoc && isImage ? (
+                <div className="flex-1 w-full bg-zinc-100 dark:bg-zinc-950 flex items-center justify-center overflow-auto p-4">
+                  <img
+                    src={docStreamUrl}
+                    alt={previewDoc.file_name}
+                    className="max-w-full max-h-full object-contain rounded-lg shadow-md"
+                  />
+                </div>
+              ) : (
+                <iframe
+                  key={previewDoc.file_id}
+                  src={docStreamUrl}
+                  className="flex-1 w-full bg-zinc-100 dark:bg-zinc-950"
+                  allow="autoplay"
+                  title={previewDoc.file_name}
+                />
+              )}
             </div>
-            <iframe
-              key={previewDoc.file_id}
-              src={`https://drive.google.com/file/d/${previewDoc.file_id}/preview`}
-              className="flex-1 w-full bg-zinc-100 dark:bg-zinc-950"
-              allow="autoplay"
-              title={previewDoc.file_name}
-            />
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
