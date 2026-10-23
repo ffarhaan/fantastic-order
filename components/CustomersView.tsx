@@ -33,8 +33,25 @@ import {
   FileText,
   Trash2,
   FolderOpen,
+  Image as ImageIcon,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+
+interface CustomerDocument {
+  file_id: string;
+  file_name: string;
+  mime_type?: string | null;
+  size_bytes?: number | null;
+  folder_id?: string | null;
+  folder_name?: string | null;
+  modified_at?: string | null;
+}
+
+const formatFileSize = (bytes?: number | null) => {
+  if (!bytes) return "";
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 /**
  * Format date values (including Excel serial numbers like 48010) into Indonesian format:
@@ -152,6 +169,8 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
   const [detailLoading, setDetailLoading] = useState(false);
   const [customerReturns, setCustomerReturns] = useState<ShipmentReturnRecord[]>([]);
   const [customerFakturs, setCustomerFakturs] = useState<any[]>([]);
+  const [customerDocs, setCustomerDocs] = useState<CustomerDocument[]>([]);
+  const [previewDoc, setPreviewDoc] = useState<CustomerDocument | null>(null);
 
   // Customer Edit Modal state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -305,6 +324,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
   // Fetch full details + returns + fakturs when customer clicked
   const handleOpenDetail = async (cust: CustomerRecord) => {
     setSelectedCust(cust);
+    setCustomerDocs([]);
     setDetailLoading(true);
     try {
       const res = await fetch(`/api/tidb?action=customer_detail&id=${encodeURIComponent(cust.id)}&name=${encodeURIComponent(cust.name)}`);
@@ -312,6 +332,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
       if (data.success) {
         setCustomerReturns(data.returns || []);
         setCustomerFakturs(data.fakturs || []);
+        setCustomerDocs(data.documents || []);
       }
     } catch (err) {
       console.error("Failed to load customer detail:", err);
@@ -1115,6 +1136,49 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                         </a>
                       )}
                     </div>
+
+                    {/* DAFTAR DOKUMEN DARI GOOGLE DRIVE (preview langsung di aplikasi) */}
+                    <div className="mt-3 pt-3 border-t border-amber-100 dark:border-amber-500/10">
+                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold mb-2">
+                        Dokumen Tersimpan ({customerDocs.length})
+                      </span>
+                      {detailLoading ? (
+                        <p className="text-[11px] text-zinc-500">Memuat dokumen...</p>
+                      ) : customerDocs.length === 0 ? (
+                        <p className="text-[11px] text-zinc-500">
+                          Belum ada dokumen di folder Drive customer ini.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {customerDocs.map((doc) => {
+                            const isImage = (doc.mime_type || "").startsWith("image/");
+                            return (
+                              <button
+                                key={doc.file_id}
+                                type="button"
+                                onClick={() => setPreviewDoc(doc)}
+                                className="flex items-center gap-2 p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 hover:bg-amber-50 dark:bg-zinc-950/60 dark:hover:bg-amber-950/30 text-left transition cursor-pointer"
+                                title={doc.file_name}
+                              >
+                                {isImage ? (
+                                  <ImageIcon className="w-4 h-4 text-sky-600 shrink-0" />
+                                ) : (
+                                  <FileText className="w-4 h-4 text-rose-600 shrink-0" />
+                                )}
+                                <span className="flex-1 min-w-0">
+                                  <span className="block text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate">
+                                    {doc.file_name}
+                                  </span>
+                                  <span className="block text-[10px] text-zinc-500 truncate">
+                                    {[doc.folder_name, formatFileSize(doc.size_bytes)].filter(Boolean).join(" · ")}
+                                  </span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1613,6 +1677,54 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* PREVIEW DOKUMEN GOOGLE DRIVE (di dalam aplikasi) */}
+      {previewDoc && (
+        <div
+          className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+          onClick={() => setPreviewDoc(null)}
+        >
+          <div
+            className="w-full max-w-5xl h-[90vh] bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">{previewDoc.file_name}</p>
+                <p className="text-[11px] text-zinc-500 truncate">
+                  {[selectedCust?.name, previewDoc.folder_name, formatFileSize(previewDoc.size_bytes)].filter(Boolean).join(" · ")}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={`https://drive.google.com/file/d/${previewDoc.file_id}/view`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 text-xs font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Buka di Drive</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewDoc(null)}
+                  className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 cursor-pointer"
+                  title="Tutup"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <iframe
+              key={previewDoc.file_id}
+              src={`https://drive.google.com/file/d/${previewDoc.file_id}/preview`}
+              className="flex-1 w-full bg-zinc-100 dark:bg-zinc-950"
+              allow="autoplay"
+              title={previewDoc.file_name}
+            />
           </div>
         </div>
       )}

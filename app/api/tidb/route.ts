@@ -163,6 +163,7 @@ export async function GET(req: Request) {
 
       let returns: any[] = [];
       let fakturs: any[] = [];
+      let documents: any[] = [];
 
       if (customer) {
         returns = (await conn.execute(
@@ -174,6 +175,15 @@ export async function GET(req: Request) {
           "SELECT * FROM fakturs_archive WHERE customer_name LIKE ? ORDER BY created_at DESC LIMIT 50",
           [`%${customer.name}%`]
         )) as any[];
+
+        try {
+          documents = (await conn.execute(
+            "SELECT file_id, file_name, mime_type, size_bytes, folder_id, folder_name, modified_at FROM customer_documents WHERE customer_id = ? ORDER BY file_name ASC",
+            [customer.id]
+          )) as any[];
+        } catch (e) {
+          documents = [];
+        }
       }
 
       return compressedJsonResponse(req, {
@@ -181,6 +191,7 @@ export async function GET(req: Request) {
         customer,
         returns,
         fakturs,
+        documents,
       });
     }
 
@@ -544,6 +555,64 @@ export async function POST(req: Request) {
         success: false,
         message: "Google Sheets sync for customers has been disconnected. Customer data is now managed independently in the system.",
       }, { status: 410 });
+    }
+
+    // 0.3a. Sync indeks dokumen Google Drive per customer (dikirim oleh Apps Script)
+    if (action === "sync_customer_documents") {
+      // Panggilan awal sync penuh: kembalikan waktu server DB sebagai penanda untuk prune
+      if (body?.start) {
+        const [row] = (await conn.execute("SELECT DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') AS now_ts")) as any[];
+        return Response.json({ success: true, server_time: row?.now_ts });
+      }
+      const items = Array.isArray(body?.items) ? body.items : [];
+      const rows: any[][] = [];
+      for (const it of items) {
+        const fileId = String(it.file_id || "").trim();
+        const custId = String(it.customer_id || "").trim();
+        if (!fileId || !custId) continue;
+        rows.push([
+          fileId,
+          custId,
+          String(it.file_name || "").slice(0, 512),
+          it.mime_type || null,
+          Number(it.size_bytes) || null,
+          it.folder_id || null,
+          it.folder_name ? String(it.folder_name).slice(0, 512) : null,
+          it.modified_at || null,
+        ]);
+      }
+
+      const CHUNK = 200;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK);
+        await conn.execute(
+          `INSERT INTO customer_documents
+             (file_id, customer_id, file_name, mime_type, size_bytes, folder_id, folder_name, modified_at)
+           VALUES ${chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(", ")}
+           ON DUPLICATE KEY UPDATE
+             customer_id = VALUES(customer_id),
+             file_name = VALUES(file_name),
+             mime_type = VALUES(mime_type),
+             size_bytes = VALUES(size_bytes),
+             folder_id = VALUES(folder_id),
+             folder_name = VALUES(folder_name),
+             modified_at = VALUES(modified_at),
+             synced_at = CURRENT_TIMESTAMP`,
+          chunk.flat()
+        );
+      }
+
+      // Hapus dokumen yang sudah tidak ada lagi di Drive (hanya dikirim di akhir sync penuh)
+      let removed = 0;
+      if (body?.prune_before) {
+        const res: any = await conn.execute(
+          "DELETE FROM customer_documents WHERE synced_at < ?",
+          [String(body.prune_before)]
+        );
+        removed = Number(res?.rowsAffected ?? res?.affectedRows ?? 0);
+      }
+
+      return Response.json({ success: true, count: rows.length, removed });
     }
 
     // 0.3. Bulk Import Customers (From user-provided Excel/File)

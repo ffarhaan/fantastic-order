@@ -19,6 +19,13 @@
 var WEB_APP_API_URL = "https://fantastic-order.vercel.app/api/tidb";
 var TARGET_SHEET_NAME = "DATA CUSTOMER MBI"; // Ubah jika nama tab Anda "Master"
 
+// Folder master Google Drive berisi subfolder "(C.xxxx) Nama Apotek"
+var DOCS_ROOT_FOLDER_ID = "1vcadO7xGZXEdUxRLap7H76wTcQUxii1w";
+// true = file otomatis dibagikan "Siapa saja yang memiliki link (Viewer)" supaya preview
+// di aplikasi bisa dibuka tanpa login Google. false = hanya akun yang punya akses folder.
+// Catatan: dokumen berisi KTP/NPWP, pertimbangkan baik-baik sebelum mengubah ke true.
+var DOCS_SET_LINK_SHARING = false;
+
 /**
  * 1. Tambahkan menu khusus di Google Sheet saat dibuka
  */
@@ -27,6 +34,9 @@ function onOpen() {
   ui.createMenu("🚀 Sinkronisasi Web App")
     .addItem("🔄 Kirim Seluruh Data Sheet ke Web App", "pushAllToWebApp")
     .addItem("📥 Tarik Data Terbaru dari Web App ke Sheet", "pullAllFromWebApp")
+    .addSeparator()
+    .addItem("📂 Sinkron Dokumen Drive ke Web App", "syncDocumentsToWebApp")
+    .addItem("⏰ Aktifkan Sinkron Dokumen Harian (sekali saja)", "installDailyDocSync")
     .addSeparator()
     .addItem("⚙️ Aktifkan Sync Otomatis (sekali saja)", "installSyncTrigger")
     .addToUi();
@@ -255,4 +265,146 @@ function pullAllFromWebApp() {
   }
 
   ui.alert("Berhasil!", "Database memiliki " + data.data.length + " apotek. Data audit selalu siap digunakan.", ui.ButtonSet.OK);
+}
+
+/**
+ * ====================================================================
+ * 6. SINKRON DOKUMEN GOOGLE DRIVE -> WEB APP
+ * ====================================================================
+ * Membaca semua subfolder "(C.xxxx) Nama Apotek" di folder master Drive,
+ * lalu mengirim daftar file (nama, ID, tipe, ukuran) ke Web App.
+ * File TIDAK dipindah / di-upload ulang: aplikasi hanya menampilkan preview dari Drive.
+ * Proses otomatis dilanjutkan bertahap jika melebihi batas waktu Apps Script (6 menit).
+ */
+var DOC_SYNC_MAX_MS = 4.5 * 60 * 1000;
+var DOC_SYNC_BATCH = 300;
+
+function syncDocumentsToWebApp() {
+  var props = PropertiesService.getScriptProperties();
+  var res = UrlFetchApp.fetch(WEB_APP_API_URL + "?action=sync_customer_documents", {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify({ start: true }),
+    muteHttpExceptions: true
+  });
+  var data = JSON.parse(res.getContentText());
+  if (!data.success) throw new Error("Gagal memulai sinkron dokumen: " + res.getContentText());
+
+  props.setProperty("DOC_SYNC_START", data.server_time);
+  props.deleteProperty("DOC_SYNC_TOKEN");
+  props.setProperty("DOC_SYNC_COUNT", "0");
+  runDocSync_();
+}
+
+function continueDocSync() {
+  runDocSync_();
+}
+
+function runDocSync_() {
+  var startMs = Date.now();
+  var props = PropertiesService.getScriptProperties();
+  var token = props.getProperty("DOC_SYNC_TOKEN");
+  var total = Number(props.getProperty("DOC_SYNC_COUNT") || 0);
+  deleteTriggers_("continueDocSync");
+
+  var iterator = token
+    ? DriveApp.continueFolderIterator(token)
+    : DriveApp.getFolderById(DOCS_ROOT_FOLDER_ID).getFolders();
+
+  var batch = [];
+  while (iterator.hasNext()) {
+    if (Date.now() - startMs > DOC_SYNC_MAX_MS) {
+      sendDocBatch_(batch);
+      total += batch.length;
+      props.setProperty("DOC_SYNC_TOKEN", iterator.getContinuationToken());
+      props.setProperty("DOC_SYNC_COUNT", String(total));
+      ScriptApp.newTrigger("continueDocSync").timeBased().after(60 * 1000).create();
+      Logger.log("Belum selesai, dilanjutkan otomatis 1 menit lagi. Terkirim: " + total);
+      return;
+    }
+
+    var folder = iterator.next();
+    var match = folder.getName().match(/C\.\d+/i);
+    if (!match) continue;
+    var customerId = match[0].toUpperCase();
+
+    collectFiles_(folder, customerId, folder.getName(), batch);
+    if (batch.length >= DOC_SYNC_BATCH) {
+      sendDocBatch_(batch);
+      total += batch.length;
+      batch = [];
+    }
+  }
+
+  sendDocBatch_(batch);
+  total += batch.length;
+
+  // Selesai: hapus data dokumen yang sudah tidak ada lagi di Drive
+  UrlFetchApp.fetch(WEB_APP_API_URL + "?action=sync_customer_documents", {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify({ items: [], prune_before: props.getProperty("DOC_SYNC_START") }),
+    muteHttpExceptions: true
+  });
+
+  props.deleteProperty("DOC_SYNC_TOKEN");
+  props.deleteProperty("DOC_SYNC_START");
+  props.deleteProperty("DOC_SYNC_COUNT");
+  Logger.log("Sinkron dokumen selesai. Total file: " + total);
+  try {
+    SpreadsheetApp.getActiveSpreadsheet().toast("Sinkron dokumen selesai: " + total + " file.", "📂 Dokumen Drive", 10);
+  } catch (e) {}
+}
+
+// Ambil semua file di folder customer (termasuk subfolder di dalamnya)
+function collectFiles_(folder, customerId, folderName, out) {
+  var files = folder.getFiles();
+  while (files.hasNext()) {
+    var f = files.next();
+    if (DOCS_SET_LINK_SHARING) {
+      try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    }
+    out.push({
+      file_id: f.getId(),
+      customer_id: customerId,
+      file_name: f.getName(),
+      mime_type: f.getMimeType(),
+      size_bytes: f.getSize(),
+      folder_id: folder.getId(),
+      folder_name: folderName,
+      modified_at: f.getLastUpdated().toISOString()
+    });
+  }
+  var subs = folder.getFolders();
+  while (subs.hasNext()) {
+    var sub = subs.next();
+    collectFiles_(sub, customerId, folderName + " / " + sub.getName(), out);
+  }
+}
+
+function sendDocBatch_(batch) {
+  if (!batch || batch.length === 0) return;
+  var res = UrlFetchApp.fetch(WEB_APP_API_URL + "?action=sync_customer_documents", {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify({ items: batch }),
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() >= 300) {
+    throw new Error("Gagal kirim batch dokumen: " + res.getContentText());
+  }
+}
+
+function deleteTriggers_(handlerName) {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === handlerName) ScriptApp.deleteTrigger(triggers[i]);
+  }
+}
+
+// Jadwal harian (jam 1 pagi) supaya file baru di Drive otomatis muncul di aplikasi
+function installDailyDocSync() {
+  deleteTriggers_("syncDocumentsToWebApp");
+  ScriptApp.newTrigger("syncDocumentsToWebApp").timeBased().everyDays(1).atHour(1).create();
+  SpreadsheetApp.getUi().alert("✅ Sinkron dokumen harian aktif (setiap jam 01.00).");
 }
