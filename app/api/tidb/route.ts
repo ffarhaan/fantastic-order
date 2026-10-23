@@ -63,10 +63,15 @@ export async function GET(req: Request) {
         for (const r of rows) {
           if (r.so_number) {
             const raw = String(r.so_number).trim();
-            map[raw] = {
+            const val = {
               checker: r.checker_name || "",
               packer: r.packer_name || "",
             };
+            map[raw] = val;
+            const noSpace = raw.replace(/\s+/g, "");
+            const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+            if (noSpace && !map[noSpace]) map[noSpace] = val;
+            if (alpha && !map[alpha]) map[alpha] = val;
           }
         }
       }
