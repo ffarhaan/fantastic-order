@@ -400,6 +400,25 @@ function parseXXCUST(
     if (fileEntity) break;
   }
 
+  // Fallback: If not found in metadata title rows, scan rows around header and first data rows
+  if (!fileEntity) {
+    for (let r = headerIdx; r < Math.min(data.length, headerIdx + 25); r++) {
+      const row = data[r];
+      if (!row) continue;
+      for (const cell of row) {
+        const s = String(cell || "").toUpperCase().trim();
+        if (s.includes("MAI LE") || s.includes("MAI_LE") || s.includes("MAI BUSINESS UNIT")) {
+          fileEntity = "MAI";
+          break;
+        } else if (s.includes("MBI LE") || s.includes("MBI_LE") || s.includes("MBI BUSINESS UNIT")) {
+          fileEntity = "MBI";
+          break;
+        }
+      }
+      if (fileEntity) break;
+    }
+  }
+
   const header = data[headerIdx] as string[];
   const colMap: Record<string, number> = {};
   header.forEach((h: string, i: number) => {
@@ -607,6 +626,14 @@ function parseXXCUST(
 }
 
 function parseHTMLTable(html: string): FakturRecord[] {
+  const htmlUpper = html.toUpperCase();
+  let htmlEntity: "MAI" | "MBI" = "MBI";
+  if (htmlUpper.includes("MAI LE") || htmlUpper.includes("MAI_LE") || htmlUpper.includes("MAI BUSINESS UNIT")) {
+    htmlEntity = "MAI";
+  } else if (htmlUpper.includes("MBI LE") || htmlUpper.includes("MBI_LE") || htmlUpper.includes("MBI BUSINESS UNIT")) {
+    htmlEntity = "MBI";
+  }
+
   const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   const cellRegex = /<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
   const stripHtml = (s: string) =>
@@ -747,6 +774,23 @@ function parseHTMLTable(html: string): FakturRecord[] {
 }
 
 function parseExportArray(data: unknown[][], headerIdx: number): FakturRecord[] {
+  let fileEntity: "MAI" | "MBI" = "MBI";
+  for (let r = 0; r < Math.min(data.length, 30); r++) {
+    const row = data[r];
+    if (!row) continue;
+    for (const cell of row) {
+      const s = String(cell || "").toUpperCase().trim();
+      if (s.includes("MAI LE") || s.includes("MAI_LE") || s.includes("MAI BUSINESS UNIT")) {
+        fileEntity = "MAI";
+        break;
+      } else if (s.includes("MBI LE") || s.includes("MBI_LE") || s.includes("MBI BUSINESS UNIT")) {
+        fileEntity = "MBI";
+        break;
+      }
+    }
+    if (fileEntity === "MAI") break;
+  }
+
   const header = data[headerIdx] as string[];
   const colMap: Record<string, number> = {};
   header.forEach((h, i) => {
@@ -804,7 +848,8 @@ function parseExportArray(data: unknown[][], headerIdx: number): FakturRecord[] 
     const kategori = isOra ? "1P" : categorize(jenisTransaksi, customerName, jenisTransaksi, shipSite, billSite);
     const finalInv = invVal || soVal;
     const cleanInv = finalInv.replace(/-1P$/i, "");
-    const invoiceKey = isOra ? `${cleanInv}-1P` : cleanInv;
+    const baseKey = isOra ? `${cleanInv}-1P` : cleanInv;
+    const invoiceKey = fileEntity === "MAI" ? `MAI-${baseKey}` : baseKey;
     const rawAmount = colMap["amount"] !== undefined ? row[colMap["amount"]] : row[11];
     const totalHarga = parseNumeric(rawAmount);
     const finalSO = isOra ? "-" : (soVal || "-");
@@ -825,6 +870,7 @@ function parseExportArray(data: unknown[][], headerIdx: number): FakturRecord[] 
       lotNumber: "-",
       totalHarga,
       kategori,
+      entity: fileEntity,
       isDoubleInv: false,
       sourceFile: "EXPORT",
       rowIndex: i,
@@ -867,46 +913,99 @@ export async function parseExcelFile(
     });
     // Prioritize tab "Rekap Lengkap" if present in the workbook (Order Proses GSheet requirement)
     const sheetNames = wb.SheetNames;
-    const rekapSheetName =
-      sheetNames.find((s) => s.trim().toLowerCase() === "rekap lengkap") ||
-      sheetNames.find((s) => s.toLowerCase().includes("rekap lengkap")) ||
-      sheetNames.find((s) => s.toLowerCase().includes("rekap")) ||
-      sheetNames[0];
+    // Order sheets to check: prioritized first, then all others
+    const prioritizedSheetNames = [
+      ...sheetNames.filter((s) => {
+        const l = s.toLowerCase();
+        return l.includes("rekap") || l.includes("xxcust") || l.includes("gross") || l.includes("profit") || l.includes("data");
+      }),
+      ...sheetNames.filter((s) => {
+        const l = s.toLowerCase();
+        return !l.includes("rekap") && !l.includes("xxcust") && !l.includes("gross") && !l.includes("profit") && !l.includes("data");
+      }),
+    ];
 
-    const ws = wb.Sheets[rekapSheetName];
-    const data = (ws["!data"]
-      ? (ws["!data"] as Array<Array<{ v: unknown } | undefined>>).map((row) =>
-          row ? row.map((c) => (c ? c.v : undefined)) : []
-        )
-      : XLSX.utils.sheet_to_json(ws, { header: 1, raw: true })) as unknown[][];
+    // Find the sheet and robust header row that contains the actual transactions
+    for (const sheetName of prioritizedSheetNames) {
+      const ws = wb.Sheets[sheetName];
+      if (!ws) continue;
+      const data = (ws["!data"]
+        ? (ws["!data"] as Array<Array<{ v: unknown } | undefined>>).map((row) =>
+            row ? row.map((c) => (c ? c.v : undefined)) : []
+          )
+        : XLSX.utils.sheet_to_json(ws, { header: 1, raw: true })) as unknown[][];
 
-    // Find detailed / XXCUST header
-    const headerIdx = data.findIndex(
-      (row) =>
-        row &&
-        row.some((cell) => {
+      if (!data || data.length < 2) continue;
+
+      // Find robust table header: At least 2 columns indicating a real data table
+      // (prevents mistakenly matching top metadata title rows like "Entity : MBI LE")
+      let headerIdx = data.findIndex((row) => {
+        if (!row || row.length < 2) return false;
+        let score = 0;
+        for (const cell of row) {
           const s = String(cell || "").toLowerCase().trim();
-          return (
-            s.includes("jenis transaksi") ||
-            s.includes("order number") ||
-            s.includes("no order") ||
-            s.includes("no so") ||
-            s.includes("so number") ||
+          if (
+            s.includes("no invoice") ||
+            s.includes("ar number") ||
             s.includes("no faktur") ||
             s.includes("nomor faktur") ||
             s.includes("invoice number") ||
-            s.includes("no invoice") ||
-            s.includes("ar number") ||
+            s.includes("order number") ||
+            s.includes("no so") ||
+            s.includes("no order") ||
+            s.includes("so number")
+          ) {
+            score += 2;
+          } else if (
+            s.includes("nama pelanggan") ||
+            s.includes("customer name") ||
             s.includes("nama barang") ||
             s.includes("item description") ||
             s.includes("kode barang") ||
-            s.includes("entity")
-          );
-        })
-    );
+            s.includes("item code") ||
+            s.includes("total harga") ||
+            s.includes("total amount") ||
+            s.includes("jenis transaksi")
+          ) {
+            score += 1;
+          }
+        }
+        return score >= 2;
+      });
 
-    if (headerIdx !== -1) {
-      return parseXXCUST(data, headerIdx, productOverrides);
+      // Fallback: search for explicit invoice or order header
+      if (headerIdx === -1) {
+        headerIdx = data.findIndex(
+          (row) =>
+            row &&
+            row.some((cell) => {
+              const s = String(cell || "").toLowerCase().trim();
+              return (
+                s.includes("no invoice ar") ||
+                s.includes("no invoice") ||
+                s.includes("ar number") ||
+                s.includes("order number") ||
+                s.includes("no faktur") ||
+                s.includes("nomor faktur") ||
+                s.includes("invoice number")
+              );
+            })
+        );
+      }
+
+      if (headerIdx !== -1) {
+        try {
+          const parsed = parseXXCUST(data, headerIdx, productOverrides);
+          if (parsed && parsed.length > 0) {
+            return parsed;
+          }
+        } catch (parseErr: any) {
+          if (parseErr && parseErr.message && parseErr.message.includes("File Ditolak: Anda sedang membuka Gudang")) {
+            throw parseErr;
+          }
+          // Try next sheet if available
+        }
+      }
     }
 
     throw new Error("⚠️ File Ditolak: Hanya file XXCUST resmi yang memiliki kolom Entity (MBI LE / MAI LE) yang diizinkan untuk diupload.");
