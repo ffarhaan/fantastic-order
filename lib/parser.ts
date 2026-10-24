@@ -382,6 +382,24 @@ function parseXXCUST(
   headerIdx: number,
   productOverrides?: Record<string, string>
 ): FakturRecord[] {
+  // 1. Scan top metadata rows (rows 0 to headerIdx) for Entity (e.g. "Entity : MBI LE" or "Entity : MAI LE")
+  let fileEntity: "MAI" | "MBI" | null = null;
+  for (let r = 0; r < Math.min(headerIdx, 25); r++) {
+    const row = data[r];
+    if (!row) continue;
+    for (const cell of row) {
+      const s = String(cell || "").toUpperCase().trim();
+      if (s.includes("MAI LE") || s.includes("MAI_LE") || s.includes("MAI BUSINESS UNIT")) {
+        fileEntity = "MAI";
+        break;
+      } else if (s.includes("MBI LE") || s.includes("MBI_LE") || s.includes("MBI BUSINESS UNIT")) {
+        fileEntity = "MBI";
+        break;
+      }
+    }
+    if (fileEntity) break;
+  }
+
   const header = data[headerIdx] as string[];
   const colMap: Record<string, number> = {};
   header.forEach((h: string, i: number) => {
@@ -411,6 +429,8 @@ function parseXXCUST(
   };
 
   const idx = {
+    entity: getCol("entity", "legal entity", "legal_entity", "le", "nama entity", "company"),
+    businessUnit: getCol("business unit", "bu", "operating unit", "ou"),
     jenisTransaksi: getCol("jenis transaksi", "jenis", "transaction type", "trx type", "tipe transaksi", "source"),
     customerName: getCol("nama pelanggan", "customer name", "pelanggan", "customer", "customer / supplier name", "cust name", "nama customer", "nama apotek", "apotek", "ship-to customer", "bill-to customer", "nama pembeli"),
     customerCode: getCol("kode pelanggan", "customer code", "kode cust", "cust code", "customer / supplier number", "cust number", "kode apotek", "kode outlet", "customer no", "cust no"),
@@ -487,8 +507,18 @@ function parseXXCUST(
     const isOra = isOraCustomer(customerName) || isOraCustomer(customerCode) || customerCode === "CA-900001";
     const jenisTransaksi: "ORA" | "DOO" = isOra ? "ORA" : "DOO";
     const kategori = categorize(jenisTransaksi, customerName, jenisTransaksi);
+
+    const rawEntity = (val(idx.entity) || val(idx.businessUnit) || fileEntity || "").toUpperCase();
+    let rowEntity: "MAI" | "MBI" = "MBI";
+    if (rawEntity.includes("MAI")) {
+      rowEntity = "MAI";
+    } else if (rawEntity.includes("MBI")) {
+      rowEntity = "MBI";
+    }
+
     const cleanInv = invoiceNumber.replace(/-1P$/i, "");
-    const invoiceKey = isOra ? `${cleanInv}-1P` : cleanInv;
+    const baseKey = isOra ? `${cleanInv}-1P` : cleanInv;
+    const invoiceKey = rowEntity === "MAI" ? `MAI-${baseKey}` : baseKey;
 
     let orderDate = normalizeDateStr(rawVal(idx.orderDate) ?? val(idx.orderDate));
     let txDate = idx.transactionDate !== undefined ? normalizeDateStr(rawVal(idx.transactionDate) ?? val(idx.transactionDate)) : undefined;
@@ -555,10 +585,21 @@ function parseXXCUST(
       kategori,
       kategoriProduk,
       klasifikasiObat,
+      entity: rowEntity,
       isDoubleInv: false,
       sourceFile: "XXCUST",
       rowIndex: i,
     });
+  }
+
+  if (records.length === 0) {
+    throw new Error("⚠️ File Ditolak: File tidak memiliki baris data transaksi yang valid.");
+  }
+
+  // Strict Validation: File MUST contain Entity (MBI LE or MAI LE)
+  const hasRecognizedEntity = fileEntity !== null || (idx.entity !== undefined) || (idx.businessUnit !== undefined);
+  if (!hasRecognizedEntity) {
+    throw new Error("⚠️ File Ditolak: Hanya file XXCUST resmi yang memiliki kolom Entity (MBI LE / MAI LE) yang diizinkan untuk diupload.");
   }
 
   detectDoubleInvoices(records);
@@ -858,7 +899,8 @@ export async function parseExcelFile(
             s.includes("ar number") ||
             s.includes("nama barang") ||
             s.includes("item description") ||
-            s.includes("kode barang")
+            s.includes("kode barang") ||
+            s.includes("entity")
           );
         })
     );
@@ -867,42 +909,11 @@ export async function parseExcelFile(
       return parseXXCUST(data, headerIdx, productOverrides);
     }
 
-    // Find generic Oracle export header
-    const exportIdx = data.findIndex(
-      (row) =>
-        row &&
-        row.some((cell) => {
-          const s = String(cell || "").toLowerCase().trim();
-          return (
-            s.includes("reference") ||
-            s.includes("transaction number") ||
-            s.includes("entered amount") ||
-            s.includes("ship-to customer") ||
-            s.includes("bill-to customer") ||
-            s.includes("total amount") ||
-            s.includes("faktur") ||
-            s.includes("invoice")
-          );
-        })
-    );
-
-    if (exportIdx !== -1) {
-      return parseExportArray(data, exportIdx);
+    throw new Error("⚠️ File Ditolak: Hanya file XXCUST resmi yang memiliki kolom Entity (MBI LE / MAI LE) yang diizinkan untuk diupload.");
+  } catch (err: any) {
+    if (err && err.message && err.message.includes("File Ditolak")) {
+      throw err;
     }
-
-    // Resilient fallback: If no explicit header matched, assume row 0 is header
-    if (data.length > 1 && data[0] && data[0].length >= 2) {
-      try {
-        const fallbackRecs = parseXXCUST(data, 0, productOverrides);
-        if (fallbackRecs.length > 0) return fallbackRecs;
-      } catch {}
-    }
-  } catch {
-    const fullText = new TextDecoder().decode(buffer);
-    if (fullText.includes("<table") || fullText.includes("<tr")) {
-      return parseHTMLTable(fullText);
-    }
+    throw new Error("⚠️ File Ditolak: Hanya file XXCUST resmi yang memiliki kolom Entity (MBI LE / MAI LE) yang diizinkan untuk diupload.");
   }
-
-  throw new Error("Format file tidak dikenali. Pastikan file memiliki kolom No Faktur / No Order / Pelanggan.");
 }

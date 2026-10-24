@@ -159,14 +159,17 @@ function dbRowsToFakturRecords(
   for (const r of rows) {
     const rawInv = String(r.no_faktur || "");
     if (!rawInv || rawInv.startsWith("TEST-")) continue;
-    const cleanInv = rawInv.replace(/-1P$/i, "");
     const extra = (r.extra as Record<string, unknown>) || {};
+    const entity: "MAI" | "MBI" = (r.entity as "MAI" | "MBI") || (extra.entity as "MAI" | "MBI") || (rawInv.startsWith("MAI-") ? "MAI" : "MBI");
+    const rawInvWithoutPrefix = rawInv.replace(/^MAI-/i, "");
+    const cleanInv = rawInvWithoutPrefix.replace(/-1P$/i, "");
     const items = (extra.items as Array<Record<string, unknown>>) || [];
     const cust = String(extra.nama_pelanggan || r.customer_name || "");
     const date = String(extra.order_date || r.order_date || extra.accounting_date || "");
     const txDate = String(r.transaction_date || extra.transaction_date || date);
     const isOra = r.jenis_transaksi === "ORA" || isOraCustomer(cust);
-    const invKey = isOra ? `${cleanInv}-1P` : cleanInv;
+    const baseKey = isOra ? `${cleanInv}-1P` : cleanInv;
+    const invKey = entity === "MAI" ? `MAI-${baseKey}` : baseKey;
     const cleanJenis: "DOO" | "ORA" = isOra ? "ORA" : "DOO";
     const kategori = (r.kategori as "1P" | "2P" | "3P") || categorize(cleanJenis, cust, cleanJenis);
     const pAt = (r.printed_at as string) || null;
@@ -219,6 +222,7 @@ function dbRowsToFakturRecords(
           kategori,
           kategoriProduk: katProd,
           klasifikasiObat: klasObat,
+          entity,
           isDoubleInv: false,
           isRetur: parseNumeric(it.total_harga) < 0 || itemDesc.toUpperCase().includes("RETUR") || cleanInv.toUpperCase().includes("RETUR") || String(extra.jenis_transaksi || "").toUpperCase().includes("RETUR"),
           status_cetak: isPrinted,
@@ -246,6 +250,7 @@ function dbRowsToFakturRecords(
         lotNumber: "-",
         totalHarga: docAmount,
         kategori,
+        entity,
         isDoubleInv: false,
         isRetur: docAmount < 0 || cleanInv.toUpperCase().includes("RETUR") || String(extra.jenis_transaksi || "").toUpperCase().includes("RETUR"),
         status_cetak: isPrinted,
@@ -281,6 +286,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [mainView, setMainView] = useState<"workspace" | "dashboard" | "returns" | "customers">("workspace");
   const [filter, setFilter] = useState<Filter>("belum");
+  const [selectedWarehouse, setSelectedWarehouse] = useState<"MBI" | "MAI">("MBI");
+  const selectedWarehouseRef = useRef<"MBI" | "MAI">("MBI");
   const [katFilter, setKatFilter] = useState<KatFilter>("all");
   const [jenisFilter, setJenisFilter] = useState<JenisFilter>("all");
   const [klasFilter, setKlasFilter] = useState<KlasFilter>("all");
@@ -622,6 +629,29 @@ export default function Home() {
   useEffect(() => {
     selectedRowIndexRef.current = selectedRowIndex;
   }, [selectedRowIndex]);
+
+  useEffect(() => {
+    selectedWarehouseRef.current = selectedWarehouse;
+  }, [selectedWarehouse]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedWh = localStorage.getItem("faktur_selected_warehouse");
+      if (savedWh === "MAI" || savedWh === "MBI") {
+        setSelectedWarehouse(savedWh);
+        selectedWarehouseRef.current = savedWh;
+      }
+    }
+  }, []);
+
+  const handleSelectWarehouse = useCallback((wh: "MBI" | "MAI") => {
+    setSelectedWarehouse(wh);
+    selectedWarehouseRef.current = wh;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("faktur_selected_warehouse", wh);
+    }
+    setPage(0);
+  }, []);
 
   useEffect(() => {
     selectedColIdxRef.current = selectedColIdx;
@@ -1529,6 +1559,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           customerName: r.customerName,
           kategori: r.kategori,
           kategoriProduk: r.kategoriProduk || "FARMA",
+          entity: r.entity || "MBI",
           hasPrekursor: false,
           hasOOT: false,
           hasCCP: false,
@@ -1596,7 +1627,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     return Array.from(map.values()).sort((a, b) => (b.invNum || 0) - (a.invNum || 0));
   }, [records, productOverrides]);
 
-  // 2. Max Invoice KPIs (Depends ONLY on baseGroups - Never recomputes when print status toggles!)
+  // 2. Max Invoice KPIs (Depends ONLY on baseGroups - Mengikuti Gudang MBI / MAI aktif)
   const highestInvoices = useMemo(() => {
     let maxOraStr = "-";
     let maxOraNum = -1;
@@ -1608,6 +1639,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     let max3PNum = -1;
 
     for (const g of baseGroups) {
+      if ((g.entity || "MBI") !== selectedWarehouse) continue;
       const num = g.invNum || 0;
       if (num <= 0) continue;
 
@@ -1631,7 +1663,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     }
 
     return { maxOraStr, max1PDooStr, max2PStr, max3PStr };
-  }, [baseGroups]);
+  }, [baseGroups, selectedWarehouse]);
 
   // 3. Unique Transaction Dates (Tanggal Faktur / Tx)
   const availableTxDates = useMemo(() => {
@@ -1666,17 +1698,20 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     });
   }, [baseGroups, printedInvoices, printedAtMap, printedByMap]);
 
-  // 5A. Workspace Stats (Penuh & Independen - Tidak pernah terpengaruh filter tanggal Dashboard!)
+  // 5A. Workspace Stats (Penuh & Independen - Mengikuti Gudang MBI / MAI yang aktif!)
   const workspaceStats = useMemo(() => {
     let belumCount = 0;
     let sudahCount = 0;
     let doubleCount = 0;
     let returCount = 0;
     let totalItems = 0;
+    let whTotalCount = 0;
     const soSet = new Set<string>();
 
     for (let i = 0; i < grouped.length; i++) {
       const g = grouped[i];
+      if ((g.entity || "MBI") !== selectedWarehouse) continue;
+      whTotalCount++;
       if (g.allPrinted) sudahCount++;
       else belumCount++;
       if (g.isDoubleInv) doubleCount++;
@@ -1689,12 +1724,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       totalSO: soSet.size,
       belumCount,
       sudahCount,
-      totalCount: grouped.length,
+      totalCount: whTotalCount,
       doubleCount,
       returCount,
       totalItems,
     };
-  }, [grouped]);
+  }, [grouped, selectedWarehouse]);
 
   // 5B. Dashboard Stats (HANYA untuk Halaman Dashboard - Mengikuti rentang tanggal Dashboard)
   const dashboardStats = useMemo(() => {
@@ -1783,7 +1818,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
   // 6. Filtered Faktur Groups (Instant single-string matching & 0ms numeric sorting)
   const filtered = useMemo(() => {
-    let result = grouped;
+    let result = grouped.filter((g) => (g.entity || "MBI") === selectedWarehouse);
 
     if (deferredSearch.trim()) {
       const s = deferredSearch.toLowerCase().trim();
@@ -1859,7 +1894,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     }
 
     return result;
-  }, [grouped, filter, katFilter, jenisFilter, klasFilter, txDateFilter, orderDateFilter, deferredSearch]);
+  }, [grouped, selectedWarehouse, filter, katFilter, jenisFilter, klasFilter, txDateFilter, orderDateFilter, deferredSearch]);
 
   const totalPages = Math.ceil(filtered.length / ROWS_PER_PAGE);
   const pageData = filtered.slice(page * ROWS_PER_PAGE, (page + 1) * ROWS_PER_PAGE);
@@ -2186,6 +2221,29 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           return;
         }
 
+        // STRICT WAREHOUSE CONTEXT ENFORCEMENT (LOCKED_RULES.md)
+        // Check if the uploaded records match the active warehouse
+        const currentWh = selectedWarehouseRef.current; // 'MBI' or 'MAI'
+        const fileEntities = new Set(parsed.map((r) => r.entity || "MBI"));
+
+        if (currentWh === "MBI" && fileEntities.has("MAI") && !fileEntities.has("MBI")) {
+          const errMsg = "⚠️ File Ditolak: Anda sedang membuka Gudang MBI, tetapi file yang diunggah adalah Entity MAI LE! File ditolak untuk mencegah data tercampur.";
+          alert(errMsg);
+          setError(errMsg);
+          isUploadingRef.current = false;
+          setLoading(false);
+          return;
+        }
+
+        if (currentWh === "MAI" && fileEntities.has("MBI") && !fileEntities.has("MAI")) {
+          const errMsg = "⚠️ File Ditolak: Anda sedang membuka Gudang MAI, tetapi file yang diunggah adalah Entity MBI LE! File ditolak untuk mencegah data tercampur.";
+          alert(errMsg);
+          setError(errMsg);
+          isUploadingRef.current = false;
+          setLoading(false);
+          return;
+        }
+
         const importedAt = new Date().toISOString();
 
         // 1. Authoritative complete live printed keys from remote Firestore partitions, module caches, and refs
@@ -2358,7 +2416,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const num = parseInvNum(cleanInv);
           if (!cleanInv || cleanInv === "-" || cleanInv === "0") continue;
 
-          const targetKey = isOra ? `${cleanInv}-1P` : cleanInv;
+          const targetKey = r.invoiceKey || (r.entity === "MAI" ? `MAI-${isOra ? `${cleanInv}-1P` : cleanInv}` : (isOra ? `${cleanInv}-1P` : cleanInv));
           const prevInfo = existingStatusMap.get(targetKey);
           const existingEntry = invMap.get(targetKey);
 
@@ -2426,6 +2484,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               transaction_date: r.transactionDate || r.orderDate || "-",
               jenis_transaksi: isOra ? "ORA" : "DOO",
               kategori,
+              entity: r.entity || currentWh,
               status_cetak: isPrinted,
               printed_at: printedAt,
               imported_at: importedAt,
@@ -2437,6 +2496,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 accounting_date: r.orderDate,
                 jenis_transaksi: isOra ? "ORA" : "DOO",
                 kategori,
+                entity: r.entity || currentWh,
                 total_harga: 0,
                 items: [],
               },
@@ -3400,6 +3460,38 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <span className={`text-xs font-bold capitalize truncate ${isDarkMode ? "text-zinc-300" : "text-black"}`}>
                 {mainView === "workspace" ? "Daftar Faktur" : mainView === "dashboard" ? "Overview" : mainView === "returns" ? "Shipment Error" : "Master Customer"}
               </span>
+
+              {/* Warehouse Switcher in Header: ONLY MBI and MAI (LOCKED_RULES.md) */}
+              {mainView === "workspace" && (
+                <div className={`ml-2 sm:ml-4 flex items-center p-0.5 rounded-lg border text-xs font-black shadow-xs ${
+                  isDarkMode ? "bg-zinc-950 border-zinc-800" : "bg-zinc-100 border-zinc-300"
+                }`}>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectWarehouse("MBI")}
+                    className={`px-3 py-1 rounded-md text-xs font-black tracking-wide transition-all cursor-pointer ${
+                      selectedWarehouse === "MBI"
+                        ? (isDarkMode ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-400/50" : "bg-black text-white shadow-sm")
+                        : (isDarkMode ? "text-zinc-400 hover:text-white" : "text-zinc-600 hover:text-black")
+                    }`}
+                    title="Gudang MBI (MBI LE)"
+                  >
+                    MBI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectWarehouse("MAI")}
+                    className={`px-3 py-1 rounded-md text-xs font-black tracking-wide transition-all cursor-pointer ${
+                      selectedWarehouse === "MAI"
+                        ? (isDarkMode ? "bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400/50" : "bg-black text-white shadow-sm")
+                        : (isDarkMode ? "text-zinc-400 hover:text-white" : "text-zinc-600 hover:text-black")
+                    }`}
+                    title="Gudang MAI (MAI LE)"
+                  >
+                    MAI
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -4512,7 +4604,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             </span>
                           </td>
 
-                          {/* Col 5: Jenis */}
+                          {/* Col 5: Jenis & Gudang */}
                           <td
                             className={`px-2 py-1.5 text-center whitespace-nowrap ${getCellCls(5)}`}
                             onClick={(e) => {
@@ -4525,7 +4617,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                 ? (isDarkMode ? "bg-purple-950/50 text-purple-300 border-purple-800/40" : "bg-purple-50 text-purple-700 border-purple-200")
                                 : (isDarkMode ? "bg-zinc-800 text-zinc-300 border-zinc-700" : "bg-zinc-100 text-zinc-700 border-zinc-200")
                             }`}>
-                              {g.jenisTransaksi}
+                              {g.jenisTransaksi} · {g.entity || "MBI"}
                             </span>
                           </td>
 

@@ -164,6 +164,37 @@ Dokumen ini adalah acuan baku dan permanen untuk seluruh pengembangan, pemelihar
    - Pada tab 'Semua', faktur yang **Belum Terprint** selalu berada di posisi paling atas (diurutkan nomor invoice terbaru).
    - Faktur yang **Sudah Terprint** mengalir di bawahnya, diurutkan secara ketat berdasarkan **waktu cetak (Done Print timestamp)** terbaru ke terlama (`timeB - timeA`). Saat faktur selesai dicetak, faktur tersebut langsung turun memimpin daftar riwayat cetak.
 
+#### M. Aturan Baku Multi-Gudang (Gudang MBI vs Gudang MAI) & Validasi Upload XXCUST Terkunci (LOCKED TOTAL)
+1. **Dua Entitas Gudang Mandiri (MBI & MAI)**:
+   - **Gudang MBI**: Ditentukan secara resmi dari data Entity Oracle `MBI LE` / `MBI Business Unit` (PT Medikabina Investama).
+   - **Gudang MAI**: Ditentukan secara resmi dari data Entity Oracle `MAI LE` / `MAI Business Unit` (PT Medikabina Alkesindo Investama).
+2. **Navigasi Header Daftar Faktur (Hanya Pilihan MBI dan MAI - Tanpa Opsi Semua)**:
+   - Di header modul Daftar Faktur, pilihan yang disediakan **HANYA `MBI` dan `MAI`** (DILARANG membuat opsi "Semua Gudang" / gabungan).
+   - Pengguna memilih gudang kerja secara eksplisit: beralih ke `MBI` atau `MAI`.
+   - Preferensi pilihan tersimpan di penyimpanan browser (`localStorage`), sehingga komputer/perangkat di Gudang MBI akan selalu otomatis membuka MBI, dan perangkat di Gudang MAI selalu membuka MAI.
+   - Seluruh metrik KPI (*Total Faktur, Total SO, Belum Terprint, Double SO, Retur, Max Invoice progression*) dan tabel data faktur 100% difilter eksklusif hanya untuk gudang yang sedang aktif.
+3. **Validasi File Upload Ketat (Hanya File XXCUST Resmi)**:
+   - File yang diizinkan untuk diunggah **HANYA file XXCUST resmi** yang memiliki penanda `Entity` (`MBI LE` atau `MAI LE`) pada baris header metadata atau kolom data `Entity` / `Business Unit`.
+   - Segala bentuk file lain (export mentah tanpa Entity, file HTML lama, dll) **WAJIB DITOLAK SECARA OTOMATIS**.
+4. **Proteksi Anti-Tertukar / Mismatch Rejection (WAJIB TOLAK JIKA BEDA GUDANG - LOCKED MUTLAK)**:
+   - **Jika operator sedang membuka tab Gudang `MBI`**, lalu mengunggah file yang memuat Entity `MAI LE`:  
+     **SISTEM WAJIB 100% MENOLAK UPLOAD TERSEBUT** dan memunculkan peringatan:  
+     `"⚠️ File Ditolak: Anda sedang membuka Gudang MBI, tetapi file yang diunggah adalah Entity MAI LE! File ditolak untuk mencegah data tercampur."`
+   - **Jika operator sedang membuka tab Gudang `MAI`**, lalu mengunggah file yang memuat Entity `MBI LE`:  
+     **SISTEM WAJIB 100% MENOLAK UPLOAD TERSEBUT** dan memunculkan peringatan:  
+     `"⚠️ File Ditolak: Anda sedang membuka Gudang MAI, tetapi file yang diunggah adalah Entity MBI LE! File ditolak untuk mencegah data tercampur."`
+   - Tidak ada toleransi pencampuran data: file yang tidak sesuai dengan gudang aktif tidak boleh diproses, disimpan ke memori, ataupun ditulis ke database.
+5. **Isolasi Mutlak Kunci Faktur Lintas Entitas (Strict Multi-Warehouse Key Isolation)**:
+   - Faktur MBI:
+     - DOO: `${cleanInv}` (contoh: `24000`)
+     - ORA: `${cleanInv}-1P` (contoh: `24000-1P`)
+   - Faktur MAI:
+     - DOO: `MAI-${cleanInv}` (contoh: `MAI-24000`)
+     - ORA: `MAI-${cleanInv}-1P` (contoh: `MAI-24000-1P`)
+   - Tampilan nomor invoice ke operator tetap bersih hanya nomor faktur asli (`24000`), sementara kunci unik database terisolasi 100% sehingga tidak akan pernah terjadi tabrakan status cetak antar MAI dan MBI.
+6. **Tampilan Teks Sederhana di Tabel**:
+   - Cukup tampilkan teks nama gudang secara ringkas dan bersih pada baris tabel (contoh: `DOO · MBI` atau `ORA · MAI`) tanpa ornamen berlebihan.
+
 ---
 
 ### 2. ARSITEKTUR DATABASE & ZERO LOCALSTORAGE

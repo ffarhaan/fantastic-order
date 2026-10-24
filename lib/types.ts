@@ -20,6 +20,7 @@ export interface FakturRecord {
   status_cetak?: boolean;
   printed_at?: string | null;
   printed_by?: string | null;
+  entity?: "MAI" | "MBI";
   sourceFile?: string;
   rowIndex?: number;
 }
@@ -33,6 +34,7 @@ export interface FirestoreFakturDoc {
   transaction_date?: string;
   jenis_transaksi: string;
   kategori: string;
+  entity?: "MAI" | "MBI";
   status_cetak?: boolean;
   printed_at?: string | null;
   printed_by?: string | null;
@@ -113,6 +115,7 @@ export interface FakturGroup {
   isRetur?: boolean;
   totalHarga: number;
   totalItems: number;
+  entity?: "MAI" | "MBI";
   allPrinted: boolean;
   printedAt: string | null;
   printedBy?: string | null;
