@@ -355,7 +355,7 @@ export default function Home() {
     try {
       const savedWidth = localStorage.getItem("fo_sidebar_width");
       const savedCollapsed = localStorage.getItem("fo_sidebar_collapsed");
-      if (savedWidth) setSidebarWidth(Number(savedWidth));
+      if (savedWidth && Number(savedWidth) >= 220) { setSidebarWidth(Number(savedWidth)); } else { setSidebarWidth(240); }
       if (savedCollapsed) setIsSidebarCollapsed(savedCollapsed === "true");
     } catch {}
   }, []);
@@ -376,7 +376,7 @@ export default function Home() {
         try { localStorage.setItem("fo_sidebar_collapsed", "true"); } catch {}
       } else {
         setIsSidebarCollapsed(false);
-        setSidebarWidth(newWidth);
+        setSidebarWidth(Math.max(newWidth, 230));
         try {
           localStorage.setItem("fo_sidebar_collapsed", "false");
           localStorage.setItem("fo_sidebar_width", String(newWidth));
@@ -2938,7 +2938,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
       {/* ─── LEFT SIDEBAR (TiDB Cloud / Vercel Console Style) ─── */}
       <aside
-        style={{ width: isSidebarCollapsed ? 64 : `${sidebarWidth}px` }}
+        style={{ width: isSidebarCollapsed ? 64 : `${Math.max(sidebarWidth || 240, 230)}px` }}
         className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-[width] duration-150 md:static md:translate-x-0 shrink-0 relative select-none ${
           mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
         } ${

@@ -776,7 +776,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           >
             <Package className="w-4 h-4 text-blue-500" />
             <span>Data Kasus</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-200 dark:bg-slate-700 text-zinc-800 dark:text-zinc-200 font-mono font-bold">
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-slate-700 leading-none inline-flex items-center justify-center text-zinc-800 dark:text-zinc-200 font-mono font-bold">
               {total.toLocaleString("id-ID")}
             </span>
           </button>
@@ -846,9 +846,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         {/* Card 1: Total Retur (Filter Klik) */}
         <div
           onClick={() => { setStatusFilter("ALL"); setPage(0); }}
-          className={`relative overflow-hidden rounded-xl p-3 sm:p-3.5 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border shadow-xs transition-all cursor-pointer select-none active:scale-95 group ${
+          className={`relative overflow-hidden rounded-xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border shadow-xs transition-all cursor-pointer select-none active:scale-95 group ${
             statusFilter === "ALL"
-              ? "border-blue-500 ring-2 ring-blue-500/30 dark:ring-blue-500/50 shadow-md"
+              ? "border-blue-500/80 shadow-md bg-blue-500/5 dark:bg-blue-500/10"
               : "border-zinc-200 dark:border-blue-500/20 hover:border-blue-500/40 opacity-90 hover:opacity-100"
           }`}
           title="Klik untuk tampilkan Semua Status"
@@ -880,9 +880,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         {/* Card 2: Selesai (Filter Klik Resolved) */}
         <div
           onClick={() => { setStatusFilter("Resolved"); setPage(0); }}
-          className={`relative overflow-hidden rounded-xl p-3 sm:p-3.5 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border shadow-xs transition-all cursor-pointer select-none active:scale-95 group ${
+          className={`relative overflow-hidden rounded-xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border shadow-xs transition-all cursor-pointer select-none active:scale-95 group ${
             statusFilter === "Resolved"
-              ? "border-emerald-500 ring-2 ring-emerald-500/30 dark:ring-emerald-500/50 shadow-md"
+              ? "border-emerald-500/80 shadow-md bg-emerald-500/5 dark:bg-emerald-500/10"
               : "border-zinc-200 dark:border-emerald-500/20 hover:border-emerald-500/40 opacity-90 hover:opacity-100"
           }`}
           title="Klik untuk filter kasus Selesai (Resolved)"
@@ -914,9 +914,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         {/* Card 3: Pending (Filter Klik Pending/Unresolved) */}
         <div
           onClick={() => { setStatusFilter("Pending"); setPage(0); }}
-          className={`relative overflow-hidden rounded-xl p-3 sm:p-3.5 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border shadow-xs transition-all cursor-pointer select-none active:scale-95 group ${
+          className={`relative overflow-hidden rounded-xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border shadow-xs transition-all cursor-pointer select-none active:scale-95 group ${
             statusFilter === "Pending" || statusFilter === "In Progress" || statusFilter === "Open case"
-              ? "border-amber-500 ring-2 ring-amber-500/30 dark:ring-amber-500/50 shadow-md"
+              ? "border-amber-500/80 shadow-md bg-amber-500/5 dark:bg-amber-500/10"
               : "border-zinc-200 dark:border-amber-500/20 hover:border-amber-500/40 opacity-90 hover:opacity-100"
           }`}
           title="Klik untuk filter kasus Menunggu Tindak Lanjut"
@@ -1199,7 +1199,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                                 : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
                             }`}
                           >
-                            r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"
+                            {r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"}
                           </span>
                         </td>
 
