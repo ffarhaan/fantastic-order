@@ -1201,6 +1201,11 @@ export async function POST(req: Request) {
       const inv = String(item.invoice_no || item.faktur || item["No.Faktur"] || item["No. Invoice"] || "").trim();
       const prod = String(item.product_name || item.produk || item["Nama Produk (diisi sesuai penamaan di invoice)"] || "").trim();
 
+      // Handshake ping saat install trigger
+      if (cust === "SYSTEM_PING" || inv === "PING") {
+        return Response.json({ success: true, message: "Webhook ping received and registered successfully" });
+      }
+
       if (!cust && !inv && !prod) {
         return Response.json({ success: false, error: "Empty row data" }, { status: 400 });
       }
