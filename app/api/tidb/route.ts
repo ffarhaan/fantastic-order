@@ -149,6 +149,56 @@ export async function GET(req: Request) {
     const conn = getTiDBClient();
 
     // ==========================================
+    // DATABASE TRANSPARENCY & STATS (TiDB Cloud)
+    // ==========================================
+    if (action === "db_stats") {
+      const [counts] = (await conn.execute(`
+        SELECT 
+          (SELECT COUNT(*) FROM fakturs_archive) AS fakturs,
+          (SELECT COUNT(*) FROM shipment_returns) AS returns_count,
+          (SELECT COUNT(*) FROM customers) AS customers,
+          (SELECT COUNT(*) FROM customer_documents) AS documents,
+          (SELECT COUNT(*) FROM return_requests) AS return_requests
+      `)) as any[];
+
+      let totalDataBytes = 0;
+      let totalIndexBytes = 0;
+      try {
+        const sizeRows = (await conn.execute(`
+          SELECT table_name, data_length, index_length 
+          FROM information_schema.tables 
+          WHERE table_schema = DATABASE()
+        `)) as any[];
+        if (Array.isArray(sizeRows)) {
+          for (const row of sizeRows) {
+            totalDataBytes += Number(row.data_length || 0);
+            totalIndexBytes += Number(row.index_length || 0);
+          }
+        }
+      } catch {}
+
+      const totalSizeBytes = totalDataBytes + totalIndexBytes;
+      const totalSizeMb = (totalSizeBytes / (1024 * 1024)).toFixed(2);
+      const limitMb = 5120; // 5 GB TiDB Serverless Free Tier
+      const percentageUsed = ((Number(totalSizeMb) / limitMb) * 100).toFixed(2);
+
+      return Response.json({
+        success: true,
+        stats: {
+          tables: counts || {},
+          storage: {
+            used_mb: Number(totalSizeMb),
+            limit_mb: limitMb,
+            percentage: Number(percentageUsed),
+            free_mb: (limitMb - Number(totalSizeMb)).toFixed(2),
+          },
+          ru_limit: "50.000.000 Request Units (RU) / bulan",
+          status: "Healthy / Active",
+        }
+      });
+    }
+
+    // ==========================================
     // CHECKERS & PACKERS MAPPING (SO -> Checker & Packer)
     // ==========================================
     if (action === "get_checkers") {
@@ -370,8 +420,12 @@ export async function GET(req: Request) {
         params.push(s, s, s, s, s);
       }
       if (status && status !== "ALL") {
-        whereClause += " AND status = ?";
-        params.push(status);
+        if (status === "Pending" || status === "Unresolved" || status === "In Progress" || status === "Open case") {
+          whereClause += " AND (status != 'Resolved' OR status IS NULL)";
+        } else {
+          whereClause += " AND status = ?";
+          params.push(status);
+        }
       }
       if (pbf && pbf !== "ALL") {
         whereClause += " AND pbf = ?";
@@ -411,7 +465,9 @@ export async function GET(req: Request) {
         SELECT 
           COUNT(*) as totalAll,
           SUM(CASE WHEN status LIKE '%Resolved%' THEN 1 ELSE 0 END) as totalResolved,
-          SUM(CASE WHEN status NOT LIKE '%Resolved%' AND status != '' THEN 1 ELSE 0 END) as totalPending
+          SUM(CASE WHEN status NOT LIKE '%Resolved%' AND status != '' THEN 1 ELSE 0 END) as totalPending,
+          SUM(CASE WHEN pbf = 'MBI' THEN 1 ELSE 0 END) as totalMbi,
+          SUM(CASE WHEN pbf = 'MAI' THEN 1 ELSE 0 END) as totalMai
         FROM shipment_returns;
       `)) as any[];
 
@@ -424,6 +480,8 @@ export async function GET(req: Request) {
             totalAll: Number(stats?.totalAll || 0),
             totalResolved: Number(stats?.totalResolved || 0),
             totalPending: Number(stats?.totalPending || 0),
+            totalMbi: Number(stats?.totalMbi || 0),
+            totalMai: Number(stats?.totalMai || 0),
           },
           data: rows,
           limit,

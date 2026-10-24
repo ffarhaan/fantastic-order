@@ -41,7 +41,6 @@ import {
   CalendarRange,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import WeeklyQc2View from "@/components/returns/WeeklyQc2View";
 
 export const formatDate = (dateStr: string | null | undefined): string => {
   if (!dateStr || dateStr === "-" || dateStr === "#N/A") return "-";
@@ -187,7 +186,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   }, [masterCustNames, records, returns]);
 
   // Tab & Analytics State
-  const [activeTab, setActiveTab] = useState<"list" | "weekly_qc2" | "leaderboard" | "analytics">("list");
+  const [activeTab, setActiveTab] = useState<"list" | "leaderboard" | "analytics">("list");
   const [allReturns, setAllReturns] = useState<ShipmentReturnRecord[]>([]);
   const [personnelStats, setPersonnelStats] = useState<{
     personnel: any[];
@@ -782,22 +781,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             </span>
           </button>
 
-          {/* Tab 2: Weekly & QC2 */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("weekly_qc2");
-              fetchAllReturns();
-            }}
-            className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === "weekly_qc2"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <CalendarRange className="w-4 h-4 text-teal-500" />
-            <span>Weekly & QC2</span>
-          </button>
+          
 
           {/* Tab 3: Personil Leaderboard */}
           <button
@@ -859,68 +843,104 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       {activeTab === "list" && (
         <div className="space-y-4 animate-in fade-in duration-150">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* Card 1: Total Retur */}
-        <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-blue-500/20 shadow-sm hover:border-blue-500/40 transition-all group">
-          <div className="absolute top-0 right-0 w-28 h-28 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+        {/* Card 1: Total Retur (Filter Klik) */}
+        <div
+          onClick={() => { setStatusFilter("ALL"); setPage(0); }}
+          className={`relative overflow-hidden rounded-xl p-3 sm:p-3.5 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border shadow-xs transition-all cursor-pointer select-none active:scale-95 group ${
+            statusFilter === "ALL"
+              ? "border-blue-500 ring-2 ring-blue-500/30 dark:ring-blue-500/50 shadow-md"
+              : "border-zinc-200 dark:border-blue-500/20 hover:border-blue-500/40 opacity-90 hover:opacity-100"
+          }`}
+          title="Klik untuk tampilkan Semua Status"
+        >
+          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-xl pointer-events-none -mr-8 -mt-8" />
           <div className="flex items-center justify-between relative z-10">
             <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-300">
-                <Package className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-300">
+                <Package className="w-3 h-3 text-blue-500 dark:text-blue-400" />
                 <span>Total Komplain & Retur</span>
               </div>
-              <h3 className="text-2xl font-black text-zinc-900 dark:text-white mt-1.5 tracking-tight">
+              <h3 className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-white mt-1 tracking-tight">
                 {stats.totalAll.toLocaleString("id-ID")}
               </h3>
-              <p className="text-[11px] text-zinc-500 dark:text-slate-400 mt-1">
-                Tercatat di TiDB Serverless
+              <p className="text-[10px] text-zinc-500 dark:text-slate-400 mt-0.5">
+                Semua Riwayat Kasus
               </p>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-600/20 border border-blue-200 dark:border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shadow-xs group-hover:scale-105 transition-transform">
-              <RotateCcw className="w-5 h-5" />
+            <div className={`w-9 h-9 rounded-lg border flex items-center justify-center transition-transform ${
+              statusFilter === "ALL"
+                ? "bg-blue-600 text-white border-blue-500 shadow-sm"
+                : "bg-blue-50 dark:bg-blue-600/20 border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-blue-400"
+            }`}>
+              <RotateCcw className="w-4 h-4" />
             </div>
           </div>
         </div>
 
-        {/* Card 2: Selesai */}
-        <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-emerald-500/20 shadow-sm hover:border-emerald-500/40 transition-all group">
-          <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+        {/* Card 2: Selesai (Filter Klik Resolved) */}
+        <div
+          onClick={() => { setStatusFilter("Resolved"); setPage(0); }}
+          className={`relative overflow-hidden rounded-xl p-3 sm:p-3.5 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border shadow-xs transition-all cursor-pointer select-none active:scale-95 group ${
+            statusFilter === "Resolved"
+              ? "border-emerald-500 ring-2 ring-emerald-500/30 dark:ring-emerald-500/50 shadow-md"
+              : "border-zinc-200 dark:border-emerald-500/20 hover:border-emerald-500/40 opacity-90 hover:opacity-100"
+          }`}
+          title="Klik untuk filter kasus Selesai (Resolved)"
+        >
+          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full blur-xl pointer-events-none -mr-8 -mt-8" />
           <div className="flex items-center justify-between relative z-10">
             <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">
+                <CheckCircle2 className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
                 <span>Terselesaikan (Resolved)</span>
               </div>
-              <h3 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1.5 tracking-tight">
+              <h3 className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1 tracking-tight">
                 {stats.totalResolved.toLocaleString("id-ID")}
               </h3>
-              <p className="text-[11px] text-zinc-500 dark:text-slate-400 mt-1">
+              <p className="text-[10px] text-zinc-500 dark:text-slate-400 mt-0.5">
                 {stats.totalAll > 0 ? ((stats.totalResolved / stats.totalAll) * 100).toFixed(1) : 0}% Tingkat Solusi
               </p>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-600/20 border border-emerald-200 dark:border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xs group-hover:scale-105 transition-transform">
-              <CheckCircle2 className="w-5 h-5" />
+            <div className={`w-9 h-9 rounded-lg border flex items-center justify-center transition-transform ${
+              statusFilter === "Resolved"
+                ? "bg-emerald-600 text-white border-emerald-500 shadow-sm"
+                : "bg-emerald-50 dark:bg-emerald-600/20 border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+            }`}>
+              <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
         </div>
 
-        {/* Card 3: Pending */}
-        <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-amber-500/20 shadow-sm hover:border-amber-500/40 transition-all group">
-          <div className="absolute top-0 right-0 w-28 h-28 bg-amber-500/5 dark:bg-amber-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+        {/* Card 3: Pending (Filter Klik Pending/Unresolved) */}
+        <div
+          onClick={() => { setStatusFilter("Pending"); setPage(0); }}
+          className={`relative overflow-hidden rounded-xl p-3 sm:p-3.5 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border shadow-xs transition-all cursor-pointer select-none active:scale-95 group ${
+            statusFilter === "Pending" || statusFilter === "In Progress" || statusFilter === "Open case"
+              ? "border-amber-500 ring-2 ring-amber-500/30 dark:ring-amber-500/50 shadow-md"
+              : "border-zinc-200 dark:border-amber-500/20 hover:border-amber-500/40 opacity-90 hover:opacity-100"
+          }`}
+          title="Klik untuk filter kasus Menunggu Tindak Lanjut"
+        >
+          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 dark:bg-amber-500/10 rounded-full blur-xl pointer-events-none -mr-8 -mt-8" />
           <div className="flex items-center justify-between relative z-10">
             <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-300">
-                <Clock className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-300">
+                <Clock className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                 <span>Menunggu Tindak Lanjut</span>
               </div>
-              <h3 className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1.5 tracking-tight">
+              <h3 className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 mt-1 tracking-tight">
                 {stats.totalPending.toLocaleString("id-ID")}
               </h3>
-              <p className="text-[11px] text-zinc-500 dark:text-slate-400 mt-1">
+              <p className="text-[10px] text-zinc-500 dark:text-slate-400 mt-0.5">
                 Perlu tukar fisik / CN Retur
               </p>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-600/20 border border-amber-200 dark:border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400 shadow-xs group-hover:scale-105 transition-transform">
-              <Clock className="w-5 h-5" />
+            <div className={`w-9 h-9 rounded-lg border flex items-center justify-center transition-transform ${
+              statusFilter === "Pending" || statusFilter === "In Progress" || statusFilter === "Open case"
+                ? "bg-amber-600 text-white border-amber-500 shadow-sm"
+                : "bg-amber-50 dark:bg-amber-600/20 border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-400"
+            }`}>
+              <Clock className="w-4 h-4" />
             </div>
           </div>
         </div>
@@ -1082,8 +1102,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
             >
               <option value="ALL">Semua PBF</option>
-              <option value="MAI">PBF MAI</option>
-              <option value="MBI" className="bg-slate-900 text-blue-300">PBF MBI</option>
+              <option value="MBI">PT MEDIKA BINA INVESTAMA (MBI)</option>
+              <option value="MAI">PT MEDIKA AKSES INVESTAMA (MAI)</option>
             </select>
           </div>
 
@@ -1179,7 +1199,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                                 : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
                             }`}
                           >
-                            {r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"}
+                            r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"
                           </span>
                         </td>
 
@@ -1812,17 +1832,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       </div>
       )}
 
-      {/* ─── TAB 2: WEEKLY & QC2 IMPACT (MILESTONE W9, W10, W14, W19) ─── */}
-      {activeTab === "weekly_qc2" && (
-        <div className="animate-in fade-in duration-150">
-          <WeeklyQc2View
-            returns={allReturns.length > 0 ? allReturns : returns}
-            records={records}
-          />
-        </div>
-      )}
-
-      {/* ─── TAB 3: LEADERBOARD PERSONIL (PELAKU KESALAHAN GUDANG) ─── */}
+      {/* ─── TAB 2: LEADERBOARD PERSONIL (PELAKU KESALAHAN GUDANG) ─── */}
       {activeTab === "leaderboard" && (
         <div className="space-y-4 animate-in fade-in duration-150">
           {/* Top Summary Cards */}

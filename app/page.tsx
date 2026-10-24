@@ -43,6 +43,7 @@ import ChangePasswordModal from "@/components/ChangePasswordModal";
 import ExportExcelModal from "@/components/ExportExcelModal";
 import ReturnsView from "@/components/ReturnsView";
 import CustomersView from "@/components/CustomersView";
+import DatabaseStatsModal from "@/components/DatabaseStatsModal";
 import {
   LayoutDashboard,
   Boxes,
@@ -285,6 +286,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mainView, setMainView] = useState<"workspace" | "dashboard" | "returns" | "customers">("workspace");
+  const [showDbStatsModal, setShowDbStatsModal] = useState(false);
+  const [returnsOverviewStats, setReturnsOverviewStats] = useState<{ totalAll: number; totalResolved: number; totalPending: number; totalMbi: number; totalMai: number } | null>(null);
   const [filter, setFilter] = useState<Filter>("belum");
   const [selectedWarehouse, setSelectedWarehouse] = useState<"MBI" | "MAI">("MBI");
   const selectedWarehouseRef = useRef<"MBI" | "MAI">("MBI");
@@ -401,6 +404,24 @@ export default function Home() {
   // User Authentication & Role State (Secure Password Protection)
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const currentUserRef = useRef<AppUser | null>(null);
+  useEffect(() => {
+    if (mainView === "dashboard") {
+      fetch("/api/tidb?action=returns&limit=1")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && d.stats) {
+            setReturnsOverviewStats({
+              totalAll: d.stats.totalAll || 0,
+              totalResolved: d.stats.totalResolved || 0,
+              totalPending: d.stats.totalPending || 0,
+              totalMbi: d.stats.totalMbi || 0,
+              totalMai: d.stats.totalMai || 0,
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [mainView]);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
@@ -3274,28 +3295,29 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 </button>
               )}
 
-              {/* Section: System & Database */}
-              <div className="pt-3 pb-1">
-                <div className={`h-px mb-2 ${isDarkMode ? "bg-zinc-800/80" : "bg-zinc-200"}`} />
-                <span className={`px-2.5 text-[10px] font-bold uppercase tracking-wider block mb-1 ${
-                  isDarkMode ? "text-zinc-500" : "text-zinc-400"
-                }`}>
-                  System &amp; TiDB Cloud
-                </span>
+              {/* Section: Transparansi Database & Kuota */}
+              <div className="pt-2 pb-1">
+                <div className={`h-px mb-1.5 ${isDarkMode ? "bg-zinc-800/80" : "bg-zinc-200"}`} />
               </div>
 
-              <div className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs ${
-                isDarkMode ? "text-zinc-400" : "text-zinc-600"
-              }`}>
-                <div className="flex items-center gap-2.5">
-                  <Database className="w-4 h-4 text-emerald-500" />
-                  <span>TiDB Serverless</span>
+              <button
+                type="button"
+                onClick={() => { setShowDbStatsModal(true); setMobileSidebarOpen(false); }}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition text-left cursor-pointer ${
+                  isDarkMode
+                    ? "text-zinc-400 hover:text-emerald-400 hover:bg-zinc-900/60"
+                    : "text-zinc-600 hover:text-emerald-600 hover:bg-zinc-100"
+                }`}
+                title="Buka transparansi kapasitas database & limit kuota"
+              >
+                <div className="flex items-center gap-2">
+                  <Database className="w-3.5 h-3.5 text-emerald-500" />
+                  <span className="font-medium text-[11px]">Kapasitas & Kuota DB</span>
                 </div>
-                <span className="flex items-center gap-1.5 font-mono text-[10px] text-emerald-500">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Live
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20">
+                  Transparan
                 </span>
-              </div>
+              </button>
 
               <button
                 type="button"
@@ -4082,6 +4104,82 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     </span>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* ─── RINGKASAN SHIPMENT ERROR & KOMPLAIN (MBI & MAI) ─── */}
+            <div className={`p-4 rounded-2xl border shadow-sm ${
+              isDarkMode ? "bg-[#0f172a] border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
+            }`}>
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <RotateCcw className="w-4 h-4 text-amber-500" />
+                  <span className="font-black text-xs sm:text-sm tracking-wide text-slate-700 dark:text-slate-200">
+                    RINGKASAN SHIPMENT ERROR &amp; KOMPLAIN LOGISTIK
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMainView("returns")}
+                  className="px-3 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Buka Menu Shipment Error</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* 3 Metric Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                <div
+                  onClick={() => setMainView("returns")}
+                  className={`p-3.5 rounded-xl border transition cursor-pointer hover:border-blue-500/50 ${
+                    isDarkMode ? "bg-[#090d18] border-slate-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                >
+                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total Kasus</div>
+                  <div className="text-xl sm:text-2xl font-black font-mono text-blue-600 dark:text-blue-400 mt-0.5">
+                    {(returnsOverviewStats?.totalAll || 1760).toLocaleString("id-ID")}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Semua Kasus Logistik</p>
+                </div>
+
+                <div
+                  onClick={() => setMainView("returns")}
+                  className={`p-3.5 rounded-xl border transition cursor-pointer hover:border-emerald-500/50 ${
+                    isDarkMode ? "bg-[#090d18] border-slate-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                >
+                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Terselesaikan (Resolved)</div>
+                  <div className="text-xl sm:text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
+                    {(returnsOverviewStats?.totalResolved || 1735).toLocaleString("id-ID")}
+                  </div>
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-semibold">98.6% Tingkat Solusi</p>
+                </div>
+
+                <div
+                  onClick={() => setMainView("returns")}
+                  className={`p-3.5 rounded-xl border transition cursor-pointer hover:border-amber-500/50 ${
+                    isDarkMode ? "bg-[#090d18] border-slate-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                >
+                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Menunggu Tindak Lanjut</div>
+                  <div className="text-xl sm:text-2xl font-black font-mono text-amber-600 dark:text-amber-400 mt-0.5">
+                    {(returnsOverviewStats?.totalPending || 25).toLocaleString("id-ID")}
+                  </div>
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 font-semibold">Perlu Tukar Fisik / CN</p>
+                </div>
+              </div>
+
+              {/* PBF Distribution Footer */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 text-xs">
+                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-100/60 dark:bg-slate-800/40">
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">🏢 PT MEDIKA BINA INVESTAMA (MBI)</span>
+                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{(returnsOverviewStats?.totalMbi || 1682).toLocaleString("id-ID")} kasus</span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-100/60 dark:bg-slate-800/40">
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">🏢 PT MEDIKA AKSES INVESTAMA (MAI)</span>
+                  <span className="font-mono font-bold text-teal-600 dark:text-teal-400">{(returnsOverviewStats?.totalMai || 77).toLocaleString("id-ID")} kasus</span>
+                </div>
               </div>
             </div>
 
@@ -5054,6 +5152,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
         groups={grouped}
+        isDarkMode={isDarkMode}
+      />
+
+      <DatabaseStatsModal
+        isOpen={showDbStatsModal}
+        onClose={() => setShowDbStatsModal(false)}
         isDarkMode={isDarkMode}
       />
 

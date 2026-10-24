@@ -542,120 +542,32 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {/* ─── Modern Executive KPI Header ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* ─── Compact KPI Header ─── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Card 1: Total Merchant */}
-        <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-indigo-500/20 shadow-sm hover:border-indigo-500/40 transition-all group">
-          <div className="absolute top-0 right-0 w-28 h-28 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
+        <div className="relative overflow-hidden rounded-xl p-3 sm:p-3.5 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-indigo-500/20 shadow-xs hover:border-indigo-500/40 transition-all group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-full blur-xl pointer-events-none -mr-8 -mt-8" />
           <div className="flex items-center justify-between relative z-10">
             <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">
                 <Store className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
-                <span>Direktori Mitra</span>
+                <span>Direktori Mitra Customer</span>
               </div>
-              <h3 className="text-2xl font-black text-zinc-900 dark:text-white mt-1.5 tracking-tight">
+              <h3 className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-white mt-1 tracking-tight">
                 {total.toLocaleString("id-ID")}
               </h3>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 flex items-center gap-1">
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
                 Apotek, Klinik, RS & PBF Terdaftar
               </p>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-600/20 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-xs group-hover:scale-105 transition-transform">
-              <Building2 className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-lg bg-indigo-50 dark:bg-indigo-600/20 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-xs group-hover:scale-105 transition-transform">
+              <Building2 className="w-4 h-4" />
             </div>
           </div>
         </div>
 
-        {/* Card 2: TiDB Cloud Sync */}
-        <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-emerald-500/20 shadow-sm hover:border-emerald-500/40 transition-all group">
-          <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
-          <div className="flex items-center justify-between relative z-10">
-            <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">
-                <Database className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
-                <span>TiDB Serverless</span>
-              </div>
-              <h3 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1.5 tracking-tight flex items-center gap-2">
-                Live Cloud
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-semibold">
-                  Terhubung Realtime
-                </span>
-              </h3>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                Sinkronisasi Realtime Terhubung
-              </p>
-            </div>
-            <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-600/20 border border-emerald-200 dark:border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-xs group-hover:scale-105 transition-transform">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Distribusi Kategori */}
-        <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-cyan-500/20 shadow-sm hover:border-cyan-500/40 transition-all group">
-          <div className="absolute top-0 right-0 w-28 h-28 bg-cyan-500/5 dark:bg-cyan-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
-          <div className="flex items-center justify-between relative z-10">
-            <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-300">
-                <Layers className="w-3.5 h-3.5 text-cyan-500 dark:text-cyan-400" />
-                <span>Kategori Merchant</span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-2">
-                <button
-                  type="button"
-                  onClick={() => { setCategoryFilter(categoryFilter === "1P" ? "ALL" : "1P"); setPage(0); }}
-                  className={`text-[10px] px-2 py-0.5 rounded-md font-bold border transition ${
-                    categoryFilter === "1P"
-                      ? "bg-purple-600 text-white border-purple-500 shadow-xs"
-                      : "bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-800/40"
-                  }`}
-                >
-                  1P
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setCategoryFilter(categoryFilter === "2P" ? "ALL" : "2P"); setPage(0); }}
-                  className={`text-[10px] px-2 py-0.5 rounded-md font-bold border transition ${
-                    categoryFilter === "2P"
-                      ? "bg-cyan-600 text-white border-cyan-500 shadow-xs"
-                      : "bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100 dark:bg-cyan-950/50 dark:text-cyan-300 dark:border-cyan-800/40"
-                  }`}
-                >
-                  2P
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setCategoryFilter(categoryFilter === "3P" ? "ALL" : "3P"); setPage(0); }}
-                  className={`text-[10px] px-2 py-0.5 rounded-md font-bold border transition ${
-                    categoryFilter === "3P"
-                      ? "bg-amber-500 text-zinc-950 border-amber-400 shadow-xs"
-                      : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/40"
-                  }`}
-                >
-                  3P
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setCategoryFilter("ALL"); setPage(0); }}
-                  className={`text-[10px] px-2 py-0.5 rounded-md font-bold border transition ${
-                    categoryFilter === "ALL"
-                      ? "bg-zinc-800 text-white border-zinc-700 dark:bg-zinc-700 dark:border-zinc-600"
-                      : "bg-zinc-100 text-zinc-600 border-zinc-200 hover:bg-zinc-200 dark:bg-zinc-800/60 dark:text-zinc-400 dark:border-zinc-700"
-                  }`}
-                >
-                  Semua
-                </button>
-              </div>
-              <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1.5">Klik filter cepat jenis apotek</p>
-            </div>
-            <div className="w-11 h-11 rounded-xl bg-cyan-50 dark:bg-cyan-600/20 border border-cyan-200 dark:border-cyan-500/30 flex items-center justify-center text-cyan-600 dark:text-cyan-400 shadow-xs group-hover:scale-105 transition-transform">
-              <Sparkles className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Import & Ekspor Tools */}
+        {/* Card 2: Import & Ekspor Tools */}
         <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-blue-500/20 shadow-sm hover:border-blue-500/40 transition-all flex flex-col justify-between group">
           <div className="absolute top-0 right-0 w-28 h-28 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
           <div className="flex items-center justify-between relative z-10">
