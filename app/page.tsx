@@ -46,7 +46,7 @@ import CustomersView from "@/components/CustomersView";
 import DatabaseStatsModal from "@/components/DatabaseStatsModal";
 import {
   LayoutDashboard,
-  Boxes,
+  FileText,
   RotateCcw,
   Building2,
   FileSpreadsheet,
@@ -285,7 +285,7 @@ export default function Home() {
   const [records, setRecords] = useState<FakturRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mainView, setMainView] = useState<"workspace" | "dashboard" | "returns" | "customers">("workspace");
+  const [mainView, setMainView] = useState<"workspace" | "dashboard" | "returns" | "customers">("dashboard");
   const [showDbStatsModal, setShowDbStatsModal] = useState(false);
   const [returnsOverviewStats, setReturnsOverviewStats] = useState<{ totalAll: number; totalResolved: number; totalPending: number; totalMbi: number; totalMai: number } | null>(null);
   const [filter, setFilter] = useState<Filter>("belum");
@@ -520,6 +520,7 @@ export default function Home() {
             setCurrentUser(u);
             currentUserRef.current = u;
             setShowLoginModal(false);
+            setMainView("dashboard");
             return;
           }
         }
@@ -541,6 +542,7 @@ export default function Home() {
     }
     updateUserPresence(user, deviceIdRef.current);
     setShowLoginModal(false);
+    setMainView("dashboard");
     showToast(`✓ Pengguna aktif (ON): ${user.name}${user.role === "readonly" ? " (Hanya Lihat)" : ""}`);
   };
 
@@ -3085,7 +3087,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 }`}
                 title="Daftar Faktur"
               >
-                <Boxes className="w-4 h-4" />
+                <FileText className="w-4 h-4" />
                 {workspaceStats.belumCount > 0 && (
                   <span className="w-2 h-2 rounded-full bg-blue-500 absolute top-1.5 right-1.5 ring-2 ring-black" />
                 )}
@@ -3183,7 +3185,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
                 }`}
               >
-                <Boxes className={`w-4 h-4 ${mainView === "workspace" ? "text-white" : isDarkMode ? "text-zinc-400" : "text-zinc-500"}`} />
+                <FileText className={`w-4 h-4 ${mainView === "workspace" ? "text-white" : isDarkMode ? "text-zinc-400" : "text-zinc-500"}`} />
                 <span className="flex-1">Daftar Faktur</span>
                 {workspaceStats.belumCount > 0 && (
                   <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold ${
