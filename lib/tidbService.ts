@@ -300,3 +300,37 @@ export async function setLocalCachedPrintState(printState: CachedPrintState): Pr
   }, 300);
 }
 
+export async function clearLocalCachedFakturs(): Promise<void> {
+  try {
+    if (cachedPrintTimer) {
+      clearTimeout(cachedPrintTimer);
+      cachedPrintTimer = null;
+    }
+    pendingCachedPrintState = null;
+    const db = await openCacheDB();
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      store.clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {
+    // Non-blocking fail-safe
+  }
+}
+
+export async function clearAllFaktursInTiDB(): Promise<void> {
+  await clearLocalCachedFakturs();
+  try {
+    await fetch("/api/tidb?action=clear_all_fakturs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "clear_all_fakturs" }),
+    });
+  } catch (err) {
+    console.warn("[TiDB Clear] Failed to clear TiDB fakturs:", err);
+  }
+}
+
+

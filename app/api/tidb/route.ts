@@ -1729,6 +1729,18 @@ export async function POST(req: Request) {
       });
     }
 
+    if (action === "clear_all_fakturs") {
+      try {
+        await conn.execute("TRUNCATE TABLE fakturs_archive;");
+      } catch {
+        await conn.execute("DELETE FROM fakturs_archive;");
+      }
+      return Response.json({
+        success: true,
+        message: "Seluruh data fakturs_archive di TiDB berhasil dihapus.",
+      });
+    }
+
     return Response.json({ success: false, error: "Unknown action" }, { status: 400 });
   } catch (error) {
     console.error("POST /api/tidb error:", error);

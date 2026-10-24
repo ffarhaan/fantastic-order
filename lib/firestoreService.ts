@@ -1273,6 +1273,11 @@ export async function updateProductCategoryOverride(
  * Delete all Faktur chunks and reset database completely
  */
 export async function clearAllFakturs(): Promise<void> {
+  globalChunksMap.clear();
+  globalPartitionMap.clear();
+  globalLegacyPrintState = null;
+  globalMetadata = null;
+
   const [chunksSnap, partitionsSnap] = await Promise.all([
     getDocs(collection(db, CHUNKS_COLLECTION)),
     getDocs(collection(db, PRINT_PARTITIONS_COLLECTION)),
@@ -1287,6 +1292,7 @@ export async function clearAllFakturs(): Promise<void> {
   await Promise.all([
     setDoc(doc(db, APP_DATA_COLLECTION, METADATA_DOC), {
       invoiceProgression: null,
+      lastUploadNotification: null,
       totalInvoices: 0,
       totalChunks: 0,
       chunkIds: [],
@@ -1295,9 +1301,22 @@ export async function clearAllFakturs(): Promise<void> {
     setDoc(doc(db, APP_DATA_COLLECTION, PRINT_STATE_DOC), {
       printedKeys: [],
       printedAtMap: {},
+      printedByMap: {},
       updatedAt: nowIso,
     }),
+    setDoc(doc(db, APP_DATA_COLLECTION, "recent_sync"), {
+      docs: [],
+      progression: null,
+      fileName: "",
+      uploaderId: "",
+      newUnprintedCount: 0,
+      totalItems: 0,
+      totalInvoices: 0,
+      uploadedAt: nowIso,
+    }),
   ]);
+
+  await broadcastRealtimeSignal("reset_all");
 }
 
 /**
@@ -2015,7 +2034,7 @@ export function subscribeToCheckers(
 // UNIVERSAL REALTIME CROSS-BROWSER SIGNAL (FAKTURS, RETURNS, CUSTOMERS)
 // ============================================================================
 const REALTIME_SIGNALS_DOC = "realtime_signals";
-export type RealtimeSignalChannel = "fakturs" | "returns" | "customers";
+export type RealtimeSignalChannel = "fakturs" | "returns" | "customers" | "reset_all";
 
 export async function broadcastRealtimeSignal(channel: RealtimeSignalChannel): Promise<void> {
   try {

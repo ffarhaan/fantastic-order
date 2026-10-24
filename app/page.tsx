@@ -34,7 +34,7 @@ import {
   isSuperAdminUser,
   StaffAccountProfile,
 } from "@/lib/firestoreService";
-import { syncFaktursToTiDB, syncFaktursToTiDBBackground, syncMissingFaktursToTiDB, syncPrintStatusToTiDBBackground, fetchFaktursFromTiDB, getLocalCachedFakturs, setLocalCachedFakturs, setLocalCachedPrintState, checkTiDBUpdates, fetchTiDBDelta } from "@/lib/tidbService";
+import { syncFaktursToTiDB, syncFaktursToTiDBBackground, syncMissingFaktursToTiDB, syncPrintStatusToTiDBBackground, fetchFaktursFromTiDB, getLocalCachedFakturs, setLocalCachedFakturs, setLocalCachedPrintState, clearLocalCachedFakturs, clearAllFaktursInTiDB, checkTiDBUpdates, fetchTiDBDelta } from "@/lib/tidbService";
 import MasterApotekModal from "@/components/MasterApotekModal";
 import MasterProductModal from "@/components/MasterProductModal";
 import LoginModal, { AppUser } from "@/components/LoginModal";
@@ -521,27 +521,39 @@ export default function Home() {
     setShowLoginModal(true);
   };
 
-  // Clear / Reset All Data
+  // Clear / Reset All Data (Strictly Owner Only & Real-Time Total Wipe across TiDB + Firestore + All Browsers)
   const handleClearAll = async () => {
-    if (currentUserRef.current?.role === "readonly") {
-      alert("⚠️ Akses Stranger: Anda hanya memiliki izin melihat data (Read Only).");
+    if (!isSuperAdminUser(currentUserRef.current?.name)) {
+      alert("⚠️ Akses Ditolak: Hanya Owner (Farhan) yang dapat melakukan Reset Data.");
       return;
     }
-    if (!confirm("⚠️ YAKIN INGIN MENGHAPUS SEMUA DATA?\\n\\nSemua data faktur dan riwayat status cetak di database cloud akan direset seperti semula.")) {
+    if (!confirm("⚠️ YAKIN INGIN MENGHAPUS SEMUA DATA FAKTUR?\n\nSeluruh 17.300+ data faktur dan status cetak di TiDB Cloud, Firestore, serta semua browser/komputer akan dihapus total menjadi 0 secara real-time.")) {
       return;
     }
 
     setLoading(true);
     try {
-      await clearAllFakturs();
+      currentFakturDocsRef.current = [];
+      clientUpdatedRef.current = 0;
+      printedInvoicesRef.current = new Set();
+      printedAtMapRef.current = {};
+      printedByMapRef.current = {};
+      invoiceProgressionRef.current = null;
+
+      await Promise.all([
+        clearAllFaktursInTiDB(),
+        clearAllFakturs(),
+      ]);
+
       setRecords([]);
       setPrintedInvoices(new Set());
       setPrintedAtMap({});
+      setPrintedByMap({});
       setInvoiceProgression(null);
       setUploadNotification(null);
       setExpandedInvoices(new Set());
       setPage(0);
-      showToast("✓ Seluruh data berhasil direset.");
+      showToast("✓ Seluruh data faktur berhasil dihapus total (0) di semua perangkat secara real-time.");
     } catch (err) {
       console.error("Clear error:", err);
       alert("Gagal mereset data di database.");
@@ -859,9 +871,28 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       try {
         const check = await checkTiDBUpdates(clientCount, clientUpdated);
 
+        // If TiDB has been wiped to 0 by Owner Reset Data, immediately wipe local cache to 0!
+        if (check && check.totalCount === 0) {
+          await clearLocalCachedFakturs();
+          if (isMounted) {
+            currentFakturDocsRef.current = [];
+            clientUpdatedRef.current = 0;
+            printedInvoicesRef.current = new Set();
+            printedAtMapRef.current = {};
+            printedByMapRef.current = {};
+            setRecords([]);
+            setPrintedInvoices(new Set());
+            setPrintedAtMap({});
+            setPrintedByMap({});
+            setInvoiceProgression(null);
+            setLoading(false);
+          }
+          return;
+        }
+
         // If this browser has MORE complete data in IndexedDB than TiDB (e.g. 17,309 vs 17,304),
         // automatically heal TiDB with ONLY the missing rows (< 50ms) so all other browsers/devices receive 100% parity!
-        if (check && clientCount > check.totalCount && currentFakturDocsRef.current.length > check.totalCount) {
+        if (check && check.totalCount > 1000 && clientCount > check.totalCount && currentFakturDocsRef.current.length > check.totalCount) {
           syncMissingFaktursToTiDB(currentFakturDocsRef.current);
         }
 
@@ -1196,9 +1227,31 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
     });
 
+    // Subscribe to Real-Time Total Reset signal from Owner so ALL browsers/devices wipe to 0 immediately
+    const unsubResetSignal = subscribeToRealtimeSignal("reset_all", async () => {
+      currentFakturDocsRef.current = [];
+      clientUpdatedRef.current = 0;
+      printedInvoicesRef.current = new Set();
+      printedAtMapRef.current = {};
+      printedByMapRef.current = {};
+      invoiceProgressionRef.current = null;
+      await clearLocalCachedFakturs();
+      setRecords([]);
+      setPrintedInvoices(new Set());
+      setPrintedAtMap({});
+      setPrintedByMap({});
+      setInvoiceProgression(null);
+      setUploadNotification(null);
+      setExpandedInvoices(new Set());
+      setPage(0);
+      setLoading(false);
+      showToast("🗑️ Seluruh data faktur telah di-reset (0) secara real-time oleh Owner.");
+    });
+
     return () => {
       unsubscribe();
       unsubTiDBSignal();
+      unsubResetSignal();
     };
   }, []);
 
@@ -1209,6 +1262,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       const currentUpdated = clientUpdatedRef.current || 0;
 
       const check = await checkTiDBUpdates(currentCount, currentUpdated);
+      if (check && check.totalCount === 0) {
+        await clearLocalCachedFakturs();
+        currentFakturDocsRef.current = [];
+        clientUpdatedRef.current = 0;
+        printedInvoicesRef.current = new Set();
+        printedAtMapRef.current = {};
+        printedByMapRef.current = {};
+        setRecords([]);
+        setPrintedInvoices(new Set());
+        setPrintedAtMap({});
+        setPrintedByMap({});
+        setInvoiceProgression(null);
+        showToast("✓ Database kosong (0 faktur).");
+        setLoading(false);
+        return;
+      }
+
       const { progression: prog, printState, categoryOverrides: overrides, productCategoryOverrides: prodOverrides } = await getExistingFakturs();
       if (prog) setInvoiceProgression(prog);
       if (overrides) {
@@ -1220,7 +1290,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         productOverridesRef.current = prodOverrides;
       }
 
-      if (check && currentCount > check.totalCount && currentFakturDocsRef.current.length > check.totalCount) {
+      if (check && check.totalCount > 1000 && currentCount > check.totalCount && currentFakturDocsRef.current.length > check.totalCount) {
         await syncMissingFaktursToTiDB(currentFakturDocsRef.current);
       }
 
@@ -3109,7 +3179,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
 
 
-              {currentUser && currentUser.role !== "readonly" && (
+              {isSuperAdminUser(currentUser?.name) && (
                 <button
                   type="button"
                   onClick={() => { handleClearAll(); setMobileSidebarOpen(false); }}
