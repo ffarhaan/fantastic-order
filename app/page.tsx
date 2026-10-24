@@ -31,11 +31,13 @@ import {
   subscribeToCheckers,
   subscribeToUserProfiles,
   isSuperAdminUser,
+  StaffAccountProfile,
 } from "@/lib/firestoreService";
 import { syncFaktursToTiDB, syncFaktursToTiDBBackground, syncPrintStatusToTiDBBackground, fetchFaktursFromTiDB, getLocalCachedFakturs, setLocalCachedFakturs, setLocalCachedPrintState, checkTiDBUpdates, fetchTiDBDelta } from "@/lib/tidbService";
 import MasterApotekModal from "@/components/MasterApotekModal";
 import MasterProductModal from "@/components/MasterProductModal";
 import LoginModal, { AppUser } from "@/components/LoginModal";
+import AccountApprovalModal from "@/components/AccountApprovalModal";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import ExportExcelModal from "@/components/ExportExcelModal";
 import ReturnsView from "@/components/ReturnsView";
@@ -390,10 +392,13 @@ export default function Home() {
   // Real-time Online Users Presence
   const [onlineUsers, setOnlineUsers] = useState<ActiveUserPresence[]>([]);
   const [showOnlinePopover, setShowOnlinePopover] = useState(false);
+  const [allUserProfiles, setAllUserProfiles] = useState<StaffAccountProfile[]>([]);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
 
   useEffect(() => {
     const unsub = subscribeToUserProfiles((list) => {
+      setAllUserProfiles(list);
       setPendingApprovalCount(list.filter((p) => p.approvalStatus === "pending").length);
     });
     return () => unsub();
@@ -2598,7 +2603,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               {isSuperAdminUser(currentUser?.name) && pendingApprovalCount > 0 && (
                 <button
                   type="button"
-                  onClick={() => setShowLoginModal(true)}
+                  onClick={() => { setShowApprovalModal(true); setMobileSidebarOpen(false); }}
                   className="mt-2 w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 text-[11px] font-bold transition cursor-pointer"
                 >
                   <span className="truncate">Menunggu ACC Akun Baru</span>
@@ -2684,6 +2689,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               >
                 <FileSpreadsheet className="w-4 h-4" />
               </button>
+
+              {isSuperAdminUser(currentUser?.name) && (
+                <button
+                  type="button"
+                  onClick={() => { setShowApprovalModal(true); setMobileSidebarOpen(false); }}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer relative ${
+                    isDarkMode ? "text-amber-400 hover:bg-zinc-800/60" : "text-amber-600 hover:bg-zinc-100"
+                  }`}
+                  title="Kelola & ACC Akun Baru"
+                >
+                  <Shield className="w-4 h-4" />
+                  {pendingApprovalCount > 0 && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 absolute top-1.5 right-1.5 ring-2 ring-black animate-pulse" />
+                  )}
+                </button>
+              )}
 
               <button
                 type="button"
@@ -2809,6 +2830,30 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
                 <span>Ekspor Excel (.xlsx)</span>
               </button>
+
+              {isSuperAdminUser(currentUser?.name) && (
+                <button
+                  type="button"
+                  onClick={() => { setShowApprovalModal(true); setMobileSidebarOpen(false); }}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                    pendingApprovalCount > 0
+                      ? "bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 font-semibold"
+                      : isDarkMode
+                      ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
+                      : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Shield className={`w-4 h-4 ${pendingApprovalCount > 0 ? "text-amber-400" : "text-amber-500"}`} />
+                    <span>Kelola &amp; ACC Akun</span>
+                  </div>
+                  {pendingApprovalCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-black animate-pulse">
+                      {pendingApprovalCount}
+                    </span>
+                  )}
+                </button>
+              )}
 
               {/* Section: System & Database */}
               <div className="pt-3 pb-1">
@@ -4532,6 +4577,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         currentUser={currentUser}
         isDarkMode={isDarkMode}
       />
+      {isSuperAdminUser(currentUser?.name) && (
+        <AccountApprovalModal
+          isOpen={showApprovalModal}
+          onClose={() => setShowApprovalModal(false)}
+          allProfiles={allUserProfiles}
+          isDarkMode={isDarkMode}
+        />
+      )}
       {showChangePasswordModal && currentUser && currentUser.role !== "readonly" && (
         <ChangePasswordModal
           isOpen={showChangePasswordModal}

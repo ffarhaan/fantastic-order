@@ -8,7 +8,6 @@ import {
   verifyCloudOtp,
   markAccountOtpVerified,
   subscribeToUserProfiles,
-  updateStaffApprovalStatus,
   isSuperAdminUser,
   StaffAccountProfile,
 } from "@/lib/firestoreService";
@@ -22,7 +21,6 @@ import {
   ArrowLeft,
   Eye,
   EyeOff,
-  Building2,
   Package,
   ExternalLink,
   User,
@@ -31,9 +29,8 @@ import {
   Sparkles,
   ShieldCheck,
   RotateCw,
-  UserCheck,
-  UserX,
   Clock,
+  Calendar,
 } from "lucide-react";
 
 export interface AppUser {
@@ -60,9 +57,17 @@ export default function LoginModal({
   onLogin,
   currentUser,
 }: LoginModalProps) {
-  const isFarhanAdmin =
-    isSuperAdminUser(currentUser?.name) || isSuperAdminUser(currentUser?.email);
-  const [authMode, setAuthMode] = useState<"login" | "register" | "approvals">("login");
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+
+  // Live Clock state for left panel
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Login form state
   const [identifier, setIdentifier] = useState("");
@@ -88,10 +93,9 @@ export default function LoginModal({
   const [otpCooldown, setOtpCooldown] = useState(0);
   const otpInputRef = useRef<HTMLInputElement>(null);
 
-  // Admin Approval state (real-time profiles from Firestore)
+  // Real-time profiles listener so if user is waiting on "waiting_acc" screen and Farhan clicks ACC,
+  // it transitions immediately to the "otp" input screen
   const [allProfiles, setAllProfiles] = useState<StaffAccountProfile[]>([]);
-  const [processingUser, setProcessingUser] = useState<string | null>(null);
-
   useEffect(() => {
     const unsub = subscribeToUserProfiles((list) => {
       setAllProfiles(list);
@@ -99,11 +103,6 @@ export default function LoginModal({
     return () => unsub();
   }, []);
 
-  const pendingProfiles = allProfiles.filter((p) => p.approvalStatus === "pending");
-  const approvedProfiles = allProfiles.filter((p) => p.approvalStatus === "approved");
-
-  // Real-time transition: if user is on "waiting_acc" screen and Farhan clicks ACC,
-  // automatically switch their screen to "otp" so they can input the OTP sent to their Gmail!
   useEffect(() => {
     if (regStep === "waiting_acc" && regUsername) {
       const cleanU = regUsername.trim().toLowerCase();
@@ -113,14 +112,16 @@ export default function LoginModal({
           setRegStep("otp");
           setErrorMessage("");
           setSuccessMessage(
-            `Akun Anda baru saja di-ACC oleh Farhan! Kode OTP 6 digit telah dikirimkan ke Gmail ${matched.email}.`
+            `Akun Anda telah di-ACC oleh Admin! Kode OTP 6 digit telah dikirimkan ke Gmail ${matched.email}.`
           );
           setTimeout(() => {
             otpInputRef.current?.focus();
           }, 150);
         } else if (matched.approvalStatus === "rejected") {
           setRegStep("form");
-          setErrorMessage("Maaf, pengajuan pendaftaran akun Anda tidak disetujui oleh Administrator.");
+          setErrorMessage(
+            "Maaf, pengajuan pendaftaran akun Anda tidak disetujui oleh Administrator."
+          );
         }
       }
     }
@@ -134,16 +135,12 @@ export default function LoginModal({
       setPassword("");
       setErrorMessage("");
       setSuccessMessage("");
-      if (isFarhanAdmin && pendingProfiles.length > 0) {
-        setAuthMode("approvals");
-      } else {
-        setAuthMode("login");
-        setTimeout(() => {
-          passInputRef.current?.focus();
-        }, 150);
-      }
+      setAuthMode("login");
+      setTimeout(() => {
+        passInputRef.current?.focus();
+      }, 150);
     }
-  }, [isOpen, currentUser, isFarhanAdmin, pendingProfiles.length]);
+  }, [isOpen, currentUser]);
 
   // Cooldown countdown for Kirim Ulang OTP
   useEffect(() => {
@@ -180,7 +177,6 @@ export default function LoginModal({
       if (res.success && res.user) {
         onLogin(res.user);
       } else if (res.requiresOtp && res.pendingProfile) {
-        // Account has been approved by Farhan, now needs to enter the 6-digit OTP sent to their Gmail!
         setRegUsername(res.pendingProfile.username);
         setRegFullName(res.pendingProfile.displayName);
         setRegEmail(res.pendingProfile.email);
@@ -189,7 +185,7 @@ export default function LoginModal({
         setRegStep("otp");
         setSuccessMessage(
           res.message ||
-            `Akun Anda telah di-ACC oleh Farhan! Masukkan 6-digit Kode OTP yang telah dikirim ke Gmail ${res.pendingProfile.email}.`
+            `Akun Anda telah di-ACC oleh Admin! Masukkan 6-digit Kode OTP yang telah dikirim ke Gmail ${res.pendingProfile.email}.`
         );
         setTimeout(() => {
           otpInputRef.current?.focus();
@@ -247,7 +243,6 @@ export default function LoginModal({
         return;
       }
 
-      // If Farhan himself registers/updates, log right in
       if (isSuperAdminUser(cleanUser) || isSuperAdminUser(cleanMail)) {
         setSuccessMessage("Akun Administrator aktif!");
         setTimeout(() => {
@@ -259,7 +254,6 @@ export default function LoginModal({
         return;
       }
 
-      // Notify Farhan's Gmail that a new account is waiting for his ACC
       fetch("/api/auth/otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -273,7 +267,7 @@ export default function LoginModal({
 
       setRegStep("waiting_acc");
       setSuccessMessage(
-        "Pengajuan akun berhasil dikirim! Menunggu di-ACC oleh Farhan sebelum kode OTP dikirimkan ke Gmail Anda."
+        "Pengajuan akun berhasil dikirim! Menunggu di-ACC oleh Admin sebelum kode OTP dikirimkan ke Gmail Anda."
       );
     } catch (err) {
       console.error("Registration submit error:", err);
@@ -283,7 +277,7 @@ export default function LoginModal({
     }
   };
 
-  // Resend OTP handler (only available AFTER account has been approved by Farhan)
+  // Resend OTP handler (only available AFTER account has been approved by Admin)
   const handleResendOtp = async () => {
     if (otpCooldown > 0 || isVerifying || !regEmail) return;
     setIsVerifying(true);
@@ -317,7 +311,7 @@ export default function LoginModal({
     }
   };
 
-  // STEP 3: Verify 6-digit OTP received in Gmail AFTER Farhan's ACC
+  // STEP 3: Verify 6-digit OTP received in Gmail AFTER Admin's ACC
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanOtp = regOtp.trim();
@@ -335,13 +329,11 @@ export default function LoginModal({
     try {
       let isValid = false;
 
-      // 1. Check with Firestore cloud OTP (saved when Farhan clicked ACC & Kirim OTP)
       const cloudRes = await verifyCloudOtp(cleanMail, cleanOtp);
       if (cloudRes.success) {
         isValid = true;
       }
 
-      // 2. Fallback check via API endpoint (if resent in same session)
       if (!isValid) {
         try {
           const res = await fetch("/api/auth/otp", {
@@ -367,7 +359,6 @@ export default function LoginModal({
         return;
       }
 
-      // Mark account as verified in Firestore!
       await markAccountOtpVerified(regUsername, regFullName);
 
       setSuccessMessage("Kode OTP Berhasil Diverifikasi! Akun Anda kini aktif sepenuhnya.");
@@ -385,76 +376,24 @@ export default function LoginModal({
     }
   };
 
-  // Handler for Farhan to Approve (ACC -> automatically sends OTP to user's Gmail!) or Reject
-  const handleDecision = async (
-    prof: StaffAccountProfile,
-    decision: "approved" | "rejected"
-  ) => {
-    setProcessingUser(prof.username);
-    setErrorMessage("");
-    setSuccessMessage("");
-    try {
-      if (decision === "approved") {
-        // 1. Send 6-digit OTP email to the user's Gmail right when Farhan clicks ACC!
-        const otpRes = await fetch("/api/auth/otp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "send",
-            email: prof.email,
-            name: prof.displayName,
-          }),
-        });
-        const otpData = await otpRes.json();
-
-        if (!otpRes.ok || !otpData.success) {
-          setErrorMessage(
-            otpData.message || `Gagal mengirim OTP ke Gmail ${prof.email}.`
-          );
-          return;
-        }
-
-        // 2. Save the generated OTP to Firestore so the user can verify it on their device
-        if (otpData.cloudOtpCode) {
-          await saveCloudOtp(prof.email, otpData.cloudOtpCode);
-        }
-
-        // 3. Update profile status to "approved" (with verified: false until they input the OTP)
-        const res = await updateStaffApprovalStatus(
-          prof.username,
-          prof.displayName,
-          "approved",
-          prof.role
-        );
-
-        if (res.success) {
-          setSuccessMessage(
-            `Akun ${prof.displayName} (@${prof.username}) berhasil di-ACC & kode OTP 6 digit telah dikirim ke Gmail ${prof.email}!`
-          );
-        } else {
-          setErrorMessage(res.message);
-        }
-      } else {
-        const res = await updateStaffApprovalStatus(
-          prof.username,
-          prof.displayName,
-          "rejected",
-          prof.role
-        );
-        if (res.success) {
-          setSuccessMessage(res.message);
-        } else {
-          setErrorMessage(res.message);
-        }
-      }
-    } catch {
-      setErrorMessage("Terjadi kesalahan saat memproses persetujuan akun.");
-    } finally {
-      setProcessingUser(null);
-    }
-  };
-
   if (!isOpen) return null;
+
+  const formattedTime = now
+    ? now.toLocaleTimeString("id-ID", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : "--:--:--";
+
+  const formattedDate = now
+    ? now.toLocaleDateString("id-ID", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : "Memuat tanggal...";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/90 backdrop-blur-xl animate-in fade-in duration-200 overflow-y-auto">
@@ -473,75 +412,58 @@ export default function LoginModal({
         )}
 
         {/* ========================================================= */}
-        {/* SISI KIRI (BRANDING RESMI & LIVE METRICS BADGES) */}
+        {/* SISI KIRI (SAMBUTAN RESMI & LIVE CLOCK)                   */}
         {/* ========================================================= */}
         <div className="md:w-1/2 p-6 sm:p-8 md:p-10 bg-gradient-to-br from-[#0c0e1a] via-[#080913] to-[#04050a] border-b md:border-b-0 md:border-r border-zinc-800/80 flex flex-col justify-between relative overflow-hidden">
           {/* Ambient decorative glowing orbs */}
           <div className="absolute -top-20 -left-20 w-64 h-64 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="relative z-10">
-            {/* Top Brand Tag */}
-            <div className="inline-flex items-center gap-2.5 px-3 py-1 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md mb-6">
-              <div className="w-5 h-5 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-black text-xs shadow-xs">
-                F
-              </div>
-              <span className="text-[11px] font-black tracking-wider text-white">FANTASTIC ORDER</span>
-              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                v2.0 LIVE
-              </span>
-            </div>
+          <div className="relative z-10 my-auto py-2">
+            <span className="inline-block text-xs font-extrabold uppercase tracking-[0.2em] text-blue-400 mb-2">
+              Selamat Datang di
+            </span>
 
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
-              Pusat Logistik Terpadu & Faktur Tracker.
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-snug">
+              PT Medika Bina Investama &amp; PT Medika Akses Investama
             </h1>
-            <p className="text-xs text-zinc-400 mt-2.5 leading-relaxed">
-              Platform operasional logistik terpusat &bull; PT Medika Bina Investama &bull; PT Medika Abadi Investama.
+
+            <p className="text-xs sm:text-sm text-zinc-400 mt-4 leading-relaxed">
+              Selamat bertugas! Gunakan akun staf Anda untuk mengakses meja kerja dan memantau aktivitas harian bersama tim.
             </p>
-
-            {/* Live Metrics Grid */}
-            <div className="grid grid-cols-2 gap-2.5 mt-6 sm:mt-8">
-              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 backdrop-blur-xs">
-                <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-bold uppercase tracking-wider">
-                  <Building2 className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Jaringan Apotek</span>
-                </div>
-                <div className="text-xl font-black text-white mt-1">
-                  3.599 <span className="text-xs font-normal text-zinc-500">Mitra</span>
-                </div>
-                <div className="text-[10px] text-zinc-500 mt-0.5">Jabodetabek & Jabar</div>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 backdrop-blur-xs">
-                <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-bold uppercase tracking-wider">
-                  <Package className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Faktur Diproses</span>
-                </div>
-                <div className="text-xl font-black text-white mt-1">
-                  10.300+ <span className="text-xs font-normal text-zinc-500">Order</span>
-                </div>
-                <div className="text-[10px] text-zinc-500 mt-0.5">Dual-Sync Cloud Aktif</div>
-              </div>
-            </div>
           </div>
 
-          {/* Bottom Security Footer */}
-          <div className="relative z-10 pt-6 mt-6 border-t border-zinc-800/60 flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500">
-            <span>&copy; 2026 PT Medika Bina Investama</span>
-            <span className="inline-flex items-center gap-1.5 text-emerald-400 font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-              <span>Sistem Terenkripsi Cloud</span>
-            </span>
+          {/* Live Clock & Server Status Card */}
+          <div className="relative z-10 pt-6 mt-6 border-t border-zinc-800/60">
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 backdrop-blur-xs flex items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400">
+                  <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                  <span>{formattedDate}</span>
+                </div>
+                <div className="text-2xl font-mono font-black text-white tracking-wider mt-1">
+                  {formattedTime} <span className="text-xs font-sans font-bold text-zinc-500">WIB</span>
+                </div>
+              </div>
+
+              <div className="flex flex-col items-end gap-1">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  <span>Server Online</span>
+                </span>
+                <span className="text-[10px] text-zinc-500">Cloud Sync Aktif</span>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* ========================================================= */}
-        {/* SISI KANAN (FORM LOGIN / REGISTER / OTP / ACC FARHAN) */}
+        {/* SISI KANAN (FORM LOGIN / REGISTER / OTP)                  */}
         {/* ========================================================= */}
         <div className="md:w-1/2 p-6 sm:p-8 md:p-10 flex flex-col justify-center bg-[#0e0f17]">
           <div className="w-full max-w-sm mx-auto">
             
-            {/* Header Tabs (Login vs Register vs ACC Admin) */}
+            {/* Header Tabs (Login vs Register) */}
             <div className="flex items-center p-1 bg-zinc-900 border border-zinc-800 rounded-xl mb-5 gap-1">
               <button
                 type="button"
@@ -551,14 +473,14 @@ export default function LoginModal({
                   setErrorMessage("");
                   setSuccessMessage("");
                 }}
-                className={`flex-1 py-1.5 px-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   authMode === "login"
                     ? "bg-blue-600 text-white shadow-xs"
                     : "text-zinc-400 hover:text-white"
                 }`}
               >
                 <Lock className="w-3 h-3 shrink-0" />
-                <span>Masuk</span>
+                <span>Masuk ke Akun</span>
               </button>
               <button
                 type="button"
@@ -568,38 +490,15 @@ export default function LoginModal({
                   setErrorMessage("");
                   setSuccessMessage("");
                 }}
-                className={`flex-1 py-1.5 px-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   authMode === "register"
                     ? "bg-blue-600 text-white shadow-xs"
                     : "text-zinc-400 hover:text-white"
                 }`}
               >
                 <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
-                <span>Daftar Baru</span>
+                <span>Daftar Akun Baru</span>
               </button>
-              {isFarhanAdmin && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode("approvals");
-                    setErrorMessage("");
-                    setSuccessMessage("");
-                  }}
-                  className={`flex-1 py-1.5 px-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer relative ${
-                    authMode === "approvals"
-                      ? "bg-emerald-600 text-white shadow-xs"
-                      : "text-zinc-400 hover:text-white"
-                  }`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                  <span>ACC Akun</span>
-                  {pendingProfiles.length > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-amber-500 text-black animate-pulse">
-                      {pendingProfiles.length}
-                    </span>
-                  )}
-                </button>
-              )}
             </div>
 
             {/* Error & Success Alerts */}
@@ -617,144 +516,9 @@ export default function LoginModal({
             )}
 
             {/* ========================================= */}
-            {/* TAB 3: PANEL ACC AKUN (KHUSUS AKUN FARHAN) */}
+            {/* TAB 1: FORM LOGIN (USERNAME / GMAIL + PW) */}
             {/* ========================================= */}
-            {authMode === "approvals" && isFarhanAdmin ? (
-              <div className="space-y-4 animate-in fade-in duration-150">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>Menunggu ACC & Kirim OTP ({pendingProfiles.length})</span>
-                    </span>
-                  </div>
-
-                  {pendingProfiles.length === 0 ? (
-                    <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/50 text-center text-xs text-zinc-500">
-                      Tidak ada permintaan pendaftaran akun baru yang menunggu ACC saat ini.
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                      {pendingProfiles.map((p) => (
-                        <div
-                          key={p.username}
-                          className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 flex items-center justify-between gap-2"
-                        >
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-white truncate">
-                              {p.displayName}{" "}
-                              <span className="text-[10px] font-mono text-zinc-400">
-                                (@{p.username})
-                              </span>
-                            </div>
-                            <div className="text-[10px] font-mono text-blue-400 truncate">
-                              {p.email}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              disabled={processingUser === p.username}
-                              onClick={() => handleDecision(p, "approved")}
-                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-extrabold flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                              title="Setujui (ACC) & Kirim Kode OTP ke Gmail Pendaftar"
-                            >
-                              {processingUser === p.username ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <UserCheck className="w-3 h-3" />
-                              )}
-                              <span>ACC & Kirim OTP</span>
-                            </button>
-                            <button
-                              type="button"
-                              disabled={processingUser === p.username}
-                              onClick={() => handleDecision(p, "rejected")}
-                              className="px-2 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 text-[10px] font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                              title="Tolak Akun Ini"
-                            >
-                              <UserX className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Daftar Akun yang Sudah Di-ACC */}
-                <div className="pt-3 border-t border-zinc-800">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 block mb-2">
-                    Daftar Akun Disetujui ({approvedProfiles.length})
-                  </span>
-                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                    {approvedProfiles.map((p) => {
-                      const isSelf = isSuperAdminUser(p.username) || isSuperAdminUser(p.email);
-                      return (
-                        <div
-                          key={p.username}
-                          className="px-3 py-2 rounded-xl border border-zinc-800 bg-zinc-900/60 flex items-center justify-between gap-2"
-                        >
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-zinc-200 truncate flex items-center gap-1.5">
-                              <span>{p.displayName}</span>
-                              <span className="text-[10px] font-mono text-zinc-500">
-                                (@{p.username})
-                              </span>
-                              {!isSelf && (
-                                <span
-                                  className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
-                                    p.verified
-                                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                                      : "bg-blue-500/15 text-blue-400 border border-blue-500/30"
-                                  }`}
-                                >
-                                  {p.verified ? "Aktif" : "Tunggu Input OTP"}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[10px] font-mono text-zinc-400 truncate">
-                              {p.email}
-                            </div>
-                          </div>
-                          {isSelf ? (
-                            <span className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 shrink-0">
-                              Owner
-                            </span>
-                          ) : (
-                            <div className="flex items-center gap-1 shrink-0">
-                              {!p.verified && (
-                                <button
-                                  type="button"
-                                  disabled={processingUser === p.username}
-                                  onClick={() => handleDecision(p, "approved")}
-                                  className="px-2 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-[9px] font-bold transition-colors cursor-pointer"
-                                  title="Kirim Ulang OTP ke Gmail"
-                                >
-                                  Kirim OTP
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                disabled={processingUser === p.username}
-                                onClick={() => handleDecision(p, "rejected")}
-                                className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-rose-600 text-zinc-400 hover:text-white text-[10px] font-bold transition-colors cursor-pointer"
-                                title="Nonaktifkan / Cabut ACC"
-                              >
-                                Cabut
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : authMode === "login" ? (
-              /* ========================================= */
-              /* TAB 1: FORM LOGIN (USERNAME / GMAIL + PW) */
-              /* ========================================= */
+            {authMode === "login" ? (
               <form onSubmit={handleConfirmLogin} className="space-y-3.5">
                 {/* Identifier Input */}
                 <div>
@@ -901,7 +665,7 @@ export default function LoginModal({
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 leading-relaxed">
-                  * Pendaftaran akan diajukan ke <strong>Admin (Farhan)</strong> terlebih dahulu. Setelah di-ACC oleh Admin, <strong>Kode OTP 6 digit akan otomatis dikirimkan ke Gmail Anda</strong>.
+                  * Pendaftaran akan diajukan ke <strong>Admin</strong> terlebih dahulu. Setelah di-ACC oleh Admin, <strong>Kode OTP 6 digit akan otomatis dikirimkan ke Gmail Anda</strong>.
                 </div>
 
                 <button
@@ -924,7 +688,7 @@ export default function LoginModal({
               </form>
             ) : regStep === "waiting_acc" ? (
               /* ======================================================== */
-              /* TAB 2, STEP 2: MENUNGGU ACC FARHAN SEBELUM OTP DIKIRIM   */
+              /* TAB 2, STEP 2: MENUNGGU ACC ADMIN SEBELUM OTP DIKIRIM    */
               /* ======================================================== */
               <div className="space-y-4 animate-in fade-in duration-200">
                 <div className="p-5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-center space-y-2">
@@ -938,7 +702,7 @@ export default function LoginModal({
                     Pengajuan akun <strong>{regFullName}</strong> (<span className="font-mono text-amber-300">@{regUsername}</span>) telah diterima.
                   </p>
                   <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    Begitu akun Anda <strong>di-ACC oleh Farhan</strong>, sistem akan langsung mengirimkan <strong>6-Digit Kode OTP</strong> ke Gmail:
+                    Begitu akun Anda <strong>di-ACC oleh Admin</strong>, sistem akan langsung mengirimkan <strong>6-Digit Kode OTP</strong> ke Gmail:
                   </p>
                   <p className="text-xs font-mono font-bold text-blue-400 truncate">
                     {regEmail}
@@ -976,7 +740,7 @@ export default function LoginModal({
               </div>
             ) : (
               /* ======================================================== */
-              /* TAB 2, STEP 3: INPUT KODE OTP (SETELAH DI-ACC FARHAN)    */
+              /* TAB 2, STEP 3: INPUT KODE OTP (SETELAH DI-ACC ADMIN)     */
               /* ======================================================== */
               <form onSubmit={handleVerifyOtp} className="space-y-3.5 animate-in fade-in duration-200">
                 <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-center">
