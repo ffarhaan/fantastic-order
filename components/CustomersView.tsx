@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { CustomerRecord, ShipmentReturnRecord } from "@/lib/types";
+import { broadcastRealtimeSignal, subscribeToRealtimeSignal } from "@/lib/firestoreService";
 import {
   Building2,
   Search,
@@ -333,6 +334,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
       setToastMsg(`✓ Berhasil mengupload ${entriesToUpload.length} dokumen dari file ZIP!`);
       setTimeout(() => setToastMsg(null), 5000);
       fetchCustomers();
+      broadcastRealtimeSignal("customers");
       if (editForm?.id) {
         await loadCustomerDocs(editForm.id, editForm.name || "");
       } else if (selectedCust?.id) {
@@ -359,6 +361,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
       if (data.success) {
         setCustomerDocs((prev) => prev.filter((d) => d.file_id !== doc.file_id));
         fetchCustomers();
+        broadcastRealtimeSignal("customers");
       }
     } catch (err) {
       console.error("Failed to delete document:", err);
@@ -415,6 +418,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
         setShowEditModal(false);
         setToastMsg(`✓ Data customer "${editForm.name}" berhasil diperbarui.`);
         setTimeout(() => setToastMsg(null), 3500);
+        broadcastRealtimeSignal("customers");
       } else {
         alert(`Gagal menyimpan perubahan: ${data.error || "Terjadi kesalahan pada database"}`);
       }
@@ -450,6 +454,7 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
         setToastMsg(`✓ Berhasil mengunggah ${result.count} data customer!`);
         setTimeout(() => setToastMsg(null), 4000);
         fetchCustomers();
+        broadcastRealtimeSignal("customers");
       } else {
         alert(`Gagal import customer: ${result.error || "Terjadi kesalahan"}`);
       }
@@ -499,6 +504,10 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
 
   useEffect(() => {
     fetchCustomers();
+    const unsubRealtime = subscribeToRealtimeSignal("customers", () => {
+      fetchCustomers();
+    });
+    return () => unsubRealtime();
   }, [fetchCustomers]);
 
   // Fetch full details + returns + fakturs when customer clicked

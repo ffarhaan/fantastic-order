@@ -1979,3 +1979,54 @@ export function subscribeToCheckers(
     unsubRecent();
   };
 }
+
+
+// ============================================================================
+// UNIVERSAL REALTIME CROSS-BROWSER SIGNAL (FAKTURS, RETURNS, CUSTOMERS)
+// ============================================================================
+const REALTIME_SIGNALS_DOC = "realtime_signals";
+export type RealtimeSignalChannel = "fakturs" | "returns" | "customers";
+
+export async function broadcastRealtimeSignal(channel: RealtimeSignalChannel): Promise<void> {
+  try {
+    const ref = doc(db, APP_DATA_COLLECTION, REALTIME_SIGNALS_DOC);
+    await setDoc(
+      ref,
+      {
+        [channel]: Date.now(),
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn(`broadcastRealtimeSignal(${channel}) warning:`, err);
+  }
+}
+
+export function subscribeToRealtimeSignal(
+  channel: RealtimeSignalChannel,
+  onSignal: (timestamp: number) => void
+): Unsubscribe {
+  let lastSeen = 0;
+  let initialized = false;
+  return onSnapshot(
+    doc(db, APP_DATA_COLLECTION, REALTIME_SIGNALS_DOC),
+    (snap) => {
+      if (!snap.exists()) {
+        initialized = true;
+        return;
+      }
+      const val = Number(snap.data()?.[channel] || 0);
+      if (!initialized) {
+        lastSeen = val;
+        initialized = true;
+        return;
+      }
+      if (val > lastSeen) {
+        lastSeen = val;
+        onSignal(val);
+      }
+    },
+    (err) => console.warn(`subscribeToRealtimeSignal(${channel}) warning:`, err)
+  );
+}

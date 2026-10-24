@@ -30,6 +30,7 @@ import {
   broadcastRecentUpload,
   subscribeToCheckers,
   subscribeToUserProfiles,
+  subscribeToRealtimeSignal,
   isSuperAdminUser,
   StaffAccountProfile,
 } from "@/lib/firestoreService";
@@ -1109,7 +1110,58 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
     );
 
-    return () => unsubscribe();
+    // Subscribe to TiDB completion signal so peer browsers pull 100% of newly committed TiDB rows immediately
+    const unsubTiDBSignal = subscribeToRealtimeSignal("fakturs", async () => {
+      if (isUploadingRef.current) return;
+      const curCount = currentFakturDocsRef.current?.length || 0;
+      const curUpdated = clientUpdatedRef.current || 0;
+      const check = await checkTiDBUpdates(curCount, curUpdated);
+      if (check && check.totalCount && (check.totalCount - curCount > 20 || curCount < 1000)) {
+        const fullRes = await fetchFaktursFromTiDB();
+        if (fullRes && fullRes.fakturs && fullRes.fakturs.length > 0) {
+          const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], fullRes.fakturs);
+          currentFakturDocsRef.current = merged;
+          clientUpdatedRef.current = fullRes.maxUpdated || curUpdated;
+          const { records: recs } = dbRowsToFakturRecords(
+            merged as unknown as Array<Record<string, unknown>>,
+            productOverridesRef.current,
+            printedInvoicesRef.current
+          );
+          setRecords(recs);
+          setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
+            printedKeys: Array.from(printedInvoicesRef.current || []),
+            printedAtMap: printedAtMapRef.current || {},
+            printedByMap: printedByMapRef.current || {},
+          });
+        }
+        return;
+      }
+      const deltaDocs = await fetchTiDBDelta(curUpdated);
+      if (deltaDocs && deltaDocs.length > 0) {
+        const deltaMax = (deltaDocs as any).maxUpdated || curUpdated;
+        if (deltaMax > curUpdated) {
+          clientUpdatedRef.current = deltaMax;
+        }
+        const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], deltaDocs);
+        currentFakturDocsRef.current = merged;
+        const { records: recs } = dbRowsToFakturRecords(
+          merged as unknown as Array<Record<string, unknown>>,
+          productOverridesRef.current,
+          printedInvoicesRef.current
+        );
+        setRecords(recs);
+        setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
+          printedKeys: Array.from(printedInvoicesRef.current || []),
+          printedAtMap: printedAtMapRef.current || {},
+          printedByMap: printedByMapRef.current || {},
+        });
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      unsubTiDBSignal();
+    };
   }, []);
 
   const handleManualRefresh = useCallback(async () => {

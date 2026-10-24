@@ -9,6 +9,7 @@
  */
 
 import { FirestoreFakturDoc } from "./types";
+import { broadcastRealtimeSignal } from "./firestoreService";
 
 export async function syncFaktursToTiDB(fakturs: FirestoreFakturDoc[]): Promise<void> {
   if (!fakturs || fakturs.length === 0) return;
@@ -44,6 +45,8 @@ export async function syncFaktursToTiDB(fakturs: FirestoreFakturDoc[]): Promise<
         console.warn("[TiDB Sync] Upsert slice failed:", err);
       });
     }
+    // Notify all connected browsers/devices that TiDB has finished writing all chunks!
+    await broadcastRealtimeSignal("fakturs");
   } catch (err) {
     console.warn("[TiDB Sync] Error syncing to TiDB:", err);
   }

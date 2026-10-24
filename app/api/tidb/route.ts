@@ -14,14 +14,14 @@ function compressedJsonResponse(
   const url = new URL(req.url);
   const isNoCache = req.headers.get("cache-control") === "no-cache" || url.searchParams.get("fresh") === "true";
 
-  // Vercel Edge CDN Cache: serves from Edge (Fast Data Transfer 100GB), shielding Fast Origin Transfer (10GB)
-  const defaultCacheControl = isNoCache
-    ? "no-store, no-cache, must-revalidate"
-    : "public, s-maxage=30, stale-while-revalidate=120";
+  // Always serve live, real-time data with zero CDN staleness
+  const defaultCacheControl = "no-store, no-cache, must-revalidate";
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "Cache-Control": customHeaders["Cache-Control"] || defaultCacheControl,
+    "CDN-Cache-Control": "no-store",
+    "Vercel-CDN-Cache-Control": "no-store",
     ...customHeaders,
   };
 
@@ -78,7 +78,7 @@ export async function GET(req: Request) {
       return compressedJsonResponse(
         req, 
         { success: true, data: map },
-        { "Cache-Control": "public, s-maxage=45, stale-while-revalidate=180" }
+        { "Cache-Control": "no-store, no-cache, must-revalidate" }
       );
     }
 
@@ -330,7 +330,7 @@ export async function GET(req: Request) {
           limit,
           offset,
         },
-        { "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30" }
+        { "Cache-Control": "no-store, no-cache, must-revalidate" }
       );
     }
 
@@ -356,7 +356,7 @@ export async function GET(req: Request) {
       return compressedJsonResponse(
         req,
         { success: true, map },
-        { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120" }
+        { "Cache-Control": "no-store, no-cache, must-revalidate" }
       );
     }
 
@@ -380,7 +380,7 @@ export async function GET(req: Request) {
       return compressedJsonResponse(
         req,
         { success: true, count: rows.length, data: rows },
-        { "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30" }
+        { "Cache-Control": "no-store, no-cache, must-revalidate" }
       );
     }
 

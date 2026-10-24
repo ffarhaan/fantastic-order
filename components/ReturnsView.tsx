@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { ShipmentReturnRecord, FakturRecord } from "@/lib/types";
+import { broadcastRealtimeSignal, subscribeToRealtimeSignal } from "@/lib/firestoreService";
 import {
   AlertCircle,
   CheckCircle2,
@@ -340,6 +341,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         alert(`✓ Berhasil mengimpor ${json.count || items.length} data Shipment Error dari ${file.name}`);
         fetchReturns();
         fetchPersonnelStats();
+        broadcastRealtimeSignal("returns");
       } else {
         alert(`Gagal mengimpor: ${json.error || "Terjadi kesalahan"}`);
       }
@@ -508,10 +510,15 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   }, [debouncedSearch, statusFilter, pbfFilter, categoryFilter, page]);
 
-  // Real-time polling: only when tab is actively visible (sleeps when backgrounded/overnight)
+  // Real-time Firestore cross-browser signal + polling when tab is visible
   useEffect(() => {
     fetchReturns();
     fetchAllReturns();
+    const unsubRealtime = subscribeToRealtimeSignal("returns", () => {
+      fetchReturns(true);
+      fetchAllReturns();
+      fetchPersonnelStats();
+    });
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       fetchReturns(true);
@@ -519,10 +526,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     const onFocus = () => fetchReturns(true);
     window.addEventListener("focus", onFocus);
     return () => {
+      unsubRealtime();
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [fetchReturns, fetchAllReturns]);
+  }, [fetchReturns, fetchAllReturns, fetchPersonnelStats]);
 
   const handleDeleteReturn = async (id: number, invoiceNo: string) => {
     if (!confirm(`Hapus tiket komplain untuk faktur "${invoiceNo || id}"?\n\nData akan dihapus permanen dari sistem Fantastic Order.`)) {
@@ -544,6 +552,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           setSelectedReturn(null);
         }
         fetchReturns(true);
+        broadcastRealtimeSignal("returns");
       } else {
         alert("Gagal menghapus data: " + (data.error || "Unknown error"));
       }
@@ -575,6 +584,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           setSelectedReturn((prev) => (prev ? { ...prev, status: newStatus } : null));
         }
         fetchReturns();
+        broadcastRealtimeSignal("returns");
       }
     } catch (err) {
       alert("Gagal memperbarui status komplain.");
@@ -620,6 +630,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         );
         setSelectedReturn(null);
         fetchReturns();
+        broadcastRealtimeSignal("returns");
       } else {
         alert("Gagal update data: " + (data.error || "Unknown error"));
       }
@@ -667,6 +678,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           note: "",
         });
         fetchReturns();
+        broadcastRealtimeSignal("returns");
       } else {
         alert("Gagal menambahkan komplain: " + data.error);
       }
