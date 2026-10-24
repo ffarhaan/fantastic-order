@@ -41,7 +41,8 @@ function getTargetSheet() {
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
   ui.createMenu("🚀 Sinkronisasi Web App")
-    .addItem("🔄 Kirim Seluruh Data Sheet ke Web App (Sync Massal)", "pushAllShipmentErrorsToWebApp")
+    .addItem("⚡ Kirim Data Terbaru / Bulan Ini (Cepat 3 Detik)", "pushRecentShipmentErrorsToWebApp")
+    .addItem("🔄 Kirim Seluruh Data Sheet (Sync Massal Semua)", "pushAllShipmentErrorsToWebApp")
     .addItem("⚙️ Pasang Sync Otomatis onEdit (1-3 Detik)", "installSyncTrigger")
     .addToUi();
 }
@@ -209,6 +210,98 @@ function syncOnEdit(e) {
   } catch (err) {
     Logger.log("onEdit sync error: " + err);
   }
+}
+
+/**
+ * 4a. PUSH RECENT SHIPMENT ERRORS KE WEB APP (Instan 3 Detik):
+ * Mengirim data 300 baris paling bawah (data terbaru bulan ini termasuk 23 & 24 Okt).
+ * Sangat cepat dan tidak akan pernah timeout!
+ */
+function pushRecentShipmentErrorsToWebApp() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = getTargetSheet();
+  if (!sheet) {
+    SpreadsheetApp.getUi().alert("Sheet target shipment error tidak ditemukan!");
+    return;
+  }
+
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    SpreadsheetApp.getUi().alert("Sheet kosong atau hanya ada header.");
+    return;
+  }
+
+  var headers = data[0];
+  // Ambil maksimal 400 baris terakhir dari sheet
+  var startIdx = Math.max(1, data.length - 400);
+  var rows = data.slice(startIdx);
+
+  var colMap = {};
+  for (var c = 0; c < headers.length; c++) {
+    var headerStr = String(headers[c] || "").trim();
+    if (headerStr) colMap[headerStr] = c;
+  }
+
+  var getVal = function(r, key) {
+    var idx = colMap[key];
+    return idx !== undefined ? r[idx] : "";
+  };
+
+  var items = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var invoiceNo = String(getVal(r, "No.Faktur") || getVal(r, "No. Invoice") || "").trim();
+    var customerName = String(getVal(r, "Nama Apotek") || "").trim();
+    var productName = String(getVal(r, "Nama Produk (diisi sesuai penamaan di invoice)") || getVal(r, "Nama Produk") || "").trim();
+
+    if (!invoiceNo && !customerName && !productName) continue;
+
+    items.push({
+      pbf: String(getVal(r, "PBF") || "MBI").trim(),
+      customer_name: customerName,
+      invoice_no: invoiceNo,
+      so_no: String(getVal(r, "No. Sales order/Transfer order/Shipmet ID HDP") || getVal(r, "SO number") || "").trim(),
+      product_name: productName,
+      qty: Number(getVal(r, "Kuantitas (yg di retur)")) || 1,
+      batch_no: String(getVal(r, "Batch Number") || "").trim(),
+      expiry_date: formatCellDate(getVal(r, "Expiry Date")),
+      reason: String(getVal(r, "Reason") || "").trim(),
+      invoice_date: formatCellDate(getVal(r, "Tanggal Faktur")),
+      week: Number(getVal(r, "Week")) || null,
+      category: String(getVal(r, "Category") || "").trim(),
+      month: Number(getVal(r, "Month")) || null,
+      report_date: formatCellDate(getVal(r, "Tanggal report")),
+      confirm: String(getVal(r, "Confirm") || "Pending").trim(),
+      action: String(getVal(r, "Action") || "").trim(),
+      nota_retur_no: String(getVal(r, "No. Nota Retur") || "").trim(),
+      resolved_date: formatCellDate(getVal(r, "Tanggal penyelesaian")),
+      status: String(getVal(r, "Status") || "Open case").trim(),
+      note: String(getVal(r, "Note") || "").trim(),
+      person: String(getVal(r, "Person") || "").trim(),
+      root_cause: String(getVal(r, "Root cause") || "").trim(),
+    });
+  }
+
+  var serviceUrl = "";
+  try { serviceUrl = ScriptApp.getService().getUrl(); } catch (err) {}
+
+  var payload = {
+    items: items,
+    mode: "upsert",
+    webhook_url: serviceUrl
+  };
+
+  var options = {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  ss.toast("Mengirim " + items.length + " data terbaru ke Web App...", "Sinkronisasi Berjalan", 5);
+  var resp = UrlFetchApp.fetch(WEB_APP_API_URL + "?action=sync_shipment_errors", options);
+
+  SpreadsheetApp.getUi().alert("🎉 Berhasil! Sebanyak " + items.length + " data terbaru (termasuk 23 & 24 Okt) telah tersinkron ke Web App Fantastic Order.");
 }
 
 /**

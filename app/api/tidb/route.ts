@@ -1061,26 +1061,31 @@ export async function POST(req: Request) {
         return Response.json({ success: true, count: 0, inserted: 0, updated: 0 });
       }
 
-      // Preserve existing photo_urls
-      const photoMap = new Map<string, string>();
-      try {
-        const existingPhotos = (await conn.execute(
-          "SELECT invoice_no, product_name, photo_url FROM shipment_returns WHERE photo_url IS NOT NULL AND photo_url != ''"
-        )) as Array<{ invoice_no: string; product_name: string; photo_url: string }>;
-        if (Array.isArray(existingPhotos)) {
-          for (const ep of existingPhotos) {
-            const key = `${(ep.invoice_no || "").trim().toLowerCase()}_${(ep.product_name || "").trim().toLowerCase()}`;
-            photoMap.set(key, ep.photo_url);
-          }
-        }
-      } catch {}
-
       if (mode === "replace") {
         await conn.execute("DELETE FROM shipment_returns");
       }
 
-      let insertedCount = 0;
-      let updatedCount = 0;
+      // Pre-load existing returns into in-memory Map for sub-second batch matching
+      const existingMap = new Map<string, { id: number; photo_url: string | null }>();
+      try {
+        const rows = (await conn.execute(
+          "SELECT id, invoice_no, product_name, photo_url FROM shipment_returns"
+        )) as Array<{ id: number; invoice_no: string; product_name: string; photo_url: string | null }>;
+        if (Array.isArray(rows)) {
+          for (const r of rows) {
+            const invLower = (r.invoice_no || "").trim().toLowerCase();
+            const prodLower = (r.product_name || "").trim().toLowerCase();
+            if (invLower && prodLower) {
+              existingMap.set(`${invLower}:::${prodLower}`, { id: r.id, photo_url: r.photo_url });
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error preloading returns map:", e);
+      }
+
+      const toInsert: any[][] = [];
+      const toUpdate: Array<{ id: number; params: any[] }> = [];
 
       for (const item of items) {
         const cust = String(item.customer_name || item.apotek || item["Nama Apotek"] || "").trim();
@@ -1088,8 +1093,10 @@ export async function POST(req: Request) {
         const prod = String(item.product_name || item.produk || item["Nama Produk (diisi sesuai penamaan di invoice)"] || "").trim();
         if (!cust && !inv && !prod) continue;
 
-        const photoKey = `${inv.toLowerCase()}_${prod.toLowerCase()}`;
-        const photoUrl = item.photo_url || photoMap.get(photoKey) || null;
+        const invLower = inv.toLowerCase();
+        const prodLower = prod.toLowerCase();
+        const matchKey = `${invLower}:::${prodLower}`;
+        const existing = mode !== "replace" ? existingMap.get(matchKey) : null;
 
         const pbf = item.pbf || item["PBF"] || "MBI";
         const soNo = item.so_no || item.so || item["No. Sales order/Transfer order/Shipmet ID HDP"] || item["SO number"] || "";
@@ -1110,62 +1117,64 @@ export async function POST(req: Request) {
         const noteVal = item.note || item["Note"] || "";
         const personVal = item.person || item.personil || item["Person"] || "";
         const rootCause = item.root_cause || item.cause || item["Root cause"] || "";
+        const photoUrl = item.photo_url || existing?.photo_url || null;
 
-        if (mode === "replace") {
-          await conn.execute(
-            `INSERT INTO shipment_returns (
-              pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date,
-              reason, invoice_date, week, category, month, report_date, confirm, action,
-              nota_retur_no, resolved_date, status, note, person, root_cause, photo_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              pbf, cust, inv, soNo, prod, qty, batchNo, expDate, reason, invDate, week, cat, month,
-              repDate, confirmVal, actionVal, notaReturNo, resDate || null, statusVal, noteVal,
-              personVal, rootCause, photoUrl
+        if (existing) {
+          toUpdate.push({
+            id: existing.id,
+            params: [
+              pbf, cust, soNo, qty, batchNo, expDate, reason, invDate, week, cat, month,
+              repDate, confirmVal, actionVal, notaReturNo, resDate || null, statusVal,
+              noteVal, personVal, rootCause, photoUrl, existing.id
             ]
-          );
-          insertedCount++;
+          });
         } else {
-          let existing: any[] = [];
-          if (inv && prod) {
-            existing = (await conn.execute(
-              "SELECT id, photo_url FROM shipment_returns WHERE invoice_no = ? AND product_name = ? LIMIT 1",
-              [inv, prod]
-            )) as any[];
-          }
+          toInsert.push([
+            pbf, cust, inv, soNo, prod, qty, batchNo, expDate, reason, invDate, week, cat, month,
+            repDate, confirmVal, actionVal, notaReturNo, resDate || null, statusVal, noteVal,
+            personVal, rootCause, photoUrl
+          ]);
+        }
+      }
 
-          if (existing && existing.length > 0) {
-            const targetId = existing[0].id;
-            const finalPhoto = photoUrl || existing[0].photo_url || null;
-            await conn.execute(
-              `UPDATE shipment_returns SET
-                pbf = ?, customer_name = ?, so_no = ?, qty = ?, batch_no = ?, expiry_date = ?,
-                reason = ?, invoice_date = ?, week = ?, category = ?, month = ?, report_date = ?,
-                confirm = ?, action = ?, nota_retur_no = ?, resolved_date = ?, status = ?,
-                note = ?, person = ?, root_cause = ?, photo_url = ?
-              WHERE id = ?`,
-              [
-                pbf, cust, soNo, qty, batchNo, expDate, reason, invDate, week, cat, month,
-                repDate, confirmVal, actionVal, notaReturNo, resDate || null, statusVal,
-                noteVal, personVal, rootCause, finalPhoto, targetId
-              ]
-            );
-            updatedCount++;
-          } else {
-            await conn.execute(
-              `INSERT INTO shipment_returns (
-                pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date,
-                reason, invoice_date, week, category, month, report_date, confirm, action,
-                nota_retur_no, resolved_date, status, note, person, root_cause, photo_url
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                pbf, cust, inv, soNo, prod, qty, batchNo, expDate, reason, invDate, week, cat, month,
-                repDate, confirmVal, actionVal, notaReturNo, resDate || null, statusVal, noteVal,
-                personVal, rootCause, photoUrl
-              ]
-            );
-            insertedCount++;
-          }
+      let insertedCount = 0;
+      let updatedCount = 0;
+
+      // Ultra-fast Batch INSERT in chunks of 100
+      const INSERT_CHUNK = 100;
+      for (let i = 0; i < toInsert.length; i += INSERT_CHUNK) {
+        const chunk = toInsert.slice(i, i + INSERT_CHUNK);
+        const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+        await conn.execute(
+          `INSERT INTO shipment_returns (
+            pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date,
+            reason, invoice_date, week, category, month, report_date, confirm, action,
+            nota_retur_no, resolved_date, status, note, person, root_cause, photo_url
+          ) VALUES ${placeholders}`,
+          chunk.flat()
+        );
+        insertedCount += chunk.length;
+      }
+
+      // Concurrent batch UPDATE
+      if (toUpdate.length > 0) {
+        const UPDATE_CHUNK = 20;
+        for (let i = 0; i < toUpdate.length; i += UPDATE_CHUNK) {
+          const chunk = toUpdate.slice(i, i + UPDATE_CHUNK);
+          await Promise.all(
+            chunk.map(u =>
+              conn.execute(
+                `UPDATE shipment_returns SET
+                  pbf = ?, customer_name = ?, so_no = ?, qty = ?, batch_no = ?, expiry_date = ?,
+                  reason = ?, invoice_date = ?, week = ?, category = ?, month = ?, report_date = ?,
+                  confirm = ?, action = ?, nota_retur_no = ?, resolved_date = ?, status = ?,
+                  note = ?, person = ?, root_cause = ?, photo_url = ?
+                WHERE id = ?`,
+                u.params
+              )
+            )
+          );
+          updatedCount += chunk.length;
         }
       }
 
