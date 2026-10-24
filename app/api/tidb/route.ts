@@ -696,19 +696,30 @@ export async function GET(req: Request) {
     // 5.5. CURSOR-PAGINATED FAKTURS (Safely bypasses 4.5MB Vercel serverless limit)
     // ==========================================
     if (action === "paged") {
-      const limit = Math.min(Number(searchParams.get("limit")) || 3000, 5000);
+      const limit = Math.min(Number(searchParams.get("limit")) || 3500, 5000);
       const cursor = (searchParams.get("cursor") || "").trim();
+      const hasOffset = searchParams.has("offset");
+      const offset = Number(searchParams.get("offset") || 0);
 
       const rows = (await conn.execute(
-        `SELECT 
-          invoice_key, no_faktur, no_sales_order, customer_name,
-          order_date, transaction_date, jenis_transaksi, kategori,
-          kategori_produk, status_cetak, printed_at, printed_by,
-          total_harga, items_json
-        FROM fakturs_archive 
-        WHERE invoice_key > ? AND invoice_key NOT LIKE 'TEST-%'
-        ORDER BY invoice_key ASC LIMIT ?;`,
-        [cursor, limit]
+        hasOffset
+          ? `SELECT 
+              invoice_key, no_faktur, no_sales_order, customer_name,
+              order_date, transaction_date, jenis_transaksi, kategori,
+              kategori_produk, status_cetak, printed_at, printed_by,
+              total_harga, items_json
+            FROM fakturs_archive 
+            WHERE invoice_key NOT LIKE 'TEST-%'
+            ORDER BY invoice_key ASC LIMIT ? OFFSET ?;`
+          : `SELECT 
+              invoice_key, no_faktur, no_sales_order, customer_name,
+              order_date, transaction_date, jenis_transaksi, kategori,
+              kategori_produk, status_cetak, printed_at, printed_by,
+              total_harga, items_json
+            FROM fakturs_archive 
+            WHERE invoice_key > ? AND invoice_key NOT LIKE 'TEST-%'
+            ORDER BY invoice_key ASC LIMIT ?;`,
+        hasOffset ? [limit, offset] : [cursor, limit]
       )) as Array<{
         invoice_key: string;
         no_faktur: string;
@@ -727,8 +738,9 @@ export async function GET(req: Request) {
       }>;
 
       const resultMeta = (await conn.execute(
-        "SELECT UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
-      )) as Array<{ max_updated: number | null }>;
+        "SELECT COUNT(*) as total_count, UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
+      )) as Array<{ total_count: number | string; max_updated: number | null }>;
+      const totalCount = Number(resultMeta[0]?.total_count || 0);
       const maxUpdated = Number(resultMeta[0]?.max_updated || 0);
 
       const docs = rows.map((r) => {
@@ -774,6 +786,7 @@ export async function GET(req: Request) {
         {
           success: true,
           count: docs.length,
+          totalCount,
           fakturs: docs,
           maxUpdated,
           nextCursor,

@@ -1144,8 +1144,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               });
             }
           };
-          setTimeout(syncFromTiDB, 1000);
-          setTimeout(syncFromTiDB, 3500);
+          // Run immediately (< 1 second response across all devices) with non-blocking follow-up
+          syncFromTiDB();
+          setTimeout(syncFromTiDB, 1500);
         }
 
         if (reason === "print" || reason === "meta") {
