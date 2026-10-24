@@ -77,7 +77,8 @@ export default function KomplainPage() {
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [photoSizeKb, setPhotoSizeKb] = useState<number>(0);
   const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -248,9 +249,8 @@ export default function KomplainPage() {
   const handleRemovePhoto = () => {
     setPhotoBase64(null);
     setPhotoSizeKb(0);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    if (galleryInputRef.current) galleryInputRef.current.value = "";
   };
 
   // Add & Remove Product rows
@@ -546,9 +546,8 @@ ${photoStatus}
     ]);
     setPhotoBase64(null);
     setPhotoSizeKb(0);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    if (galleryInputRef.current) galleryInputRef.current.value = "";
     setSubmittedData(null);
     setSubmittedTimestamp("");
     setIsSuccess(false);
@@ -1059,37 +1058,70 @@ ${photoStatus}
 
               <input
                 type="file"
-                ref={fileInputRef}
+                ref={cameraInputRef}
                 accept="image/*"
                 capture="environment"
                 onChange={handlePhotoUpload}
                 className="hidden"
-                id="return-photo-input"
+                id="return-camera-input"
+              />
+              <input
+                type="file"
+                ref={galleryInputRef}
+                accept="image/*"
+                onChange={handlePhotoUpload}
+                className="hidden"
+                id="return-gallery-input"
               />
 
               {!photoBase64 ? (
-                <label
-                  htmlFor="return-photo-input"
-                  className={`border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-zinc-500 dark:hover:border-zinc-500 rounded-xl p-5 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all bg-zinc-50/50 dark:bg-zinc-900/40 text-center ${
-                    isCompressingPhoto ? "opacity-50 pointer-events-none" : ""
-                  }`}
-                >
-                  <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-300 shadow-xs">
-                    {isCompressingPhoto ? (
-                      <div className="w-5 h-5 border-2 border-zinc-600 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Camera className="w-5 h-5" />
-                    )}
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
-                      {isCompressingPhoto ? "Sedang Mengompres Foto..." : "Ambil Foto / Pilih dari Galeri"}
-                    </span>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                      Foto otomatis dikompres agar hemat kuota dan cepat terkirim
-                    </p>
-                  </div>
-                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label
+                    htmlFor="return-camera-input"
+                    className={`border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-zinc-500 dark:hover:border-zinc-500 rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all bg-zinc-50/50 dark:bg-zinc-900/40 text-center ${
+                      isCompressingPhoto ? "opacity-50 pointer-events-none" : ""
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-300 shadow-xs">
+                      {isCompressingPhoto ? (
+                        <div className="w-5 h-5 border-2 border-zinc-600 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Camera className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 block">
+                        Ambil Foto (Kamera Langsung)
+                      </span>
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        Jepret langsung menggunakan kamera
+                      </p>
+                    </div>
+                  </label>
+
+                  <label
+                    htmlFor="return-gallery-input"
+                    className={`border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-zinc-500 dark:hover:border-zinc-500 rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all bg-zinc-50/50 dark:bg-zinc-900/40 text-center ${
+                      isCompressingPhoto ? "opacity-50 pointer-events-none" : ""
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-300 shadow-xs">
+                      {isCompressingPhoto ? (
+                        <div className="w-5 h-5 border-2 border-zinc-600 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <ImageIcon className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 block">
+                        Pilih dari Galeri / File
+                      </span>
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        Pilih foto tersimpan di HP / laptop
+                      </p>
+                    </div>
+                  </label>
+                </div>
               ) : (
                 <div className="relative rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 bg-zinc-50 dark:bg-zinc-900 flex items-center gap-3">
                   <img
