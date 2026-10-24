@@ -43,6 +43,96 @@ function compressedJsonResponse(
   });
 }
 
+function normalizeDateStr(val: any): string {
+  if (val === null || val === undefined) return "";
+  const s = String(val).trim();
+  if (!s || s === "-" || s === "#N/A") return "";
+  
+  if (/^\d{5}$/.test(s)) {
+    const serial = Number(s);
+    const utcDays = serial - 25569;
+    const date = new Date(utcDays * 86400 * 1000);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split("T")[0];
+    }
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  const ddmmyyyy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (ddmmyyyy) {
+    const [, d, m, y] = ddmmyyyy;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  const monthMap: Record<string, string> = {
+    jan: "01", feb: "02", mar: "03", apr: "04", mei: "05", may: "05", jun: "06",
+    jul: "07", agu: "08", aug: "08", sep: "09", okt: "10", oct: "10", nov: "11", des: "12", dec: "12"
+  };
+  const textDateMatch = s.match(/^(\d{1,2})\s+([a-zA-Z]+)\s+(\d{4})/);
+  if (textDateMatch) {
+    const d = textDateMatch[1].padStart(2, "0");
+    const mStr = textDateMatch[2].toLowerCase().slice(0, 3);
+    const m = monthMap[mStr] || "01";
+    const y = textDateMatch[3];
+    return `${y}-${m}-${d}`;
+  }
+
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 2000 && parsed.getFullYear() < 2100) {
+    return parsed.toISOString().split("T")[0];
+  }
+
+  return s;
+}
+
+async function getWebhookUrl(conn: any): Promise<string> {
+  if (process.env.APPS_SCRIPT_SHIPMENT_WEBHOOK_URL) {
+    return process.env.APPS_SCRIPT_SHIPMENT_WEBHOOK_URL;
+  }
+  try {
+    const rows = (await conn.execute(
+      "SELECT value_text FROM app_settings WHERE key_name = 'shipment_error_webhook_url' LIMIT 1"
+    )) as any[];
+    return rows?.[0]?.value_text || "";
+  } catch {
+    return "";
+  }
+}
+
+async function saveWebhookUrl(conn: any, url: string): Promise<void> {
+  if (!url) return;
+  try {
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key_name VARCHAR(64) PRIMARY KEY,
+        value_text TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    await conn.execute(
+      `INSERT INTO app_settings (key_name, value_text) VALUES ('shipment_error_webhook_url', ?)
+       ON DUPLICATE KEY UPDATE value_text = VALUES(value_text)`,
+      [url]
+    );
+  } catch (e) {
+    console.error("Failed to save webhook URL:", e);
+  }
+}
+
+function forwardToGSheetWebhook(conn: any, payload: any) {
+  getWebhookUrl(conn).then((webhookUrl) => {
+    if (!webhookUrl) return;
+    fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch((err) => {
+      console.error("GSheet webhook background error:", err);
+    });
+  }).catch(() => {});
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -302,7 +392,7 @@ export async function GET(req: Request) {
           GROUP BY no_faktur
         ) fa ON sr.invoice_no = fa.no_faktur
         ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|status|pbf|category)\b/g, 'sr.$1')}
-        ORDER BY sr.id DESC 
+        ORDER BY CASE WHEN sr.report_date IS NOT NULL AND sr.report_date != '' THEN sr.report_date ELSE '1970-01-01' END DESC, sr.id DESC 
         LIMIT ? OFFSET ?
       `;
       const rows = await conn.execute(dataSql, [...params, limit, offset]);
@@ -957,12 +1047,225 @@ export async function POST(req: Request) {
       return Response.json({ success: true, count: updatedCount });
     }
 
-    // 0.1. Sync shipment errors from Google Sheets (DISABLED - Disconnected per user request, system now uses internal App directly)
+    // 0.1. Sync shipment errors from Google Sheets (Bulk sync / Sheet sync)
     if (action === "sync_shipment_errors") {
+      const items = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
+      const mode = body?.mode || "upsert";
+      const webhookUrl = body?.webhook_url || body?.webhookUrl || "";
+
+      if (webhookUrl) {
+        await saveWebhookUrl(conn, webhookUrl);
+      }
+
+      if (items.length === 0) {
+        return Response.json({ success: true, count: 0, inserted: 0, updated: 0 });
+      }
+
+      // Preserve existing photo_urls
+      const photoMap = new Map<string, string>();
+      try {
+        const existingPhotos = (await conn.execute(
+          "SELECT invoice_no, product_name, photo_url FROM shipment_returns WHERE photo_url IS NOT NULL AND photo_url != ''"
+        )) as Array<{ invoice_no: string; product_name: string; photo_url: string }>;
+        if (Array.isArray(existingPhotos)) {
+          for (const ep of existingPhotos) {
+            const key = `${(ep.invoice_no || "").trim().toLowerCase()}_${(ep.product_name || "").trim().toLowerCase()}`;
+            photoMap.set(key, ep.photo_url);
+          }
+        }
+      } catch {}
+
+      if (mode === "replace") {
+        await conn.execute("DELETE FROM shipment_returns");
+      }
+
+      let insertedCount = 0;
+      let updatedCount = 0;
+
+      for (const item of items) {
+        const cust = String(item.customer_name || item.apotek || item["Nama Apotek"] || "").trim();
+        const inv = String(item.invoice_no || item.faktur || item["No.Faktur"] || item["No. Invoice"] || "").trim();
+        const prod = String(item.product_name || item.produk || item["Nama Produk (diisi sesuai penamaan di invoice)"] || "").trim();
+        if (!cust && !inv && !prod) continue;
+
+        const photoKey = `${inv.toLowerCase()}_${prod.toLowerCase()}`;
+        const photoUrl = item.photo_url || photoMap.get(photoKey) || null;
+
+        const pbf = item.pbf || item["PBF"] || "MBI";
+        const soNo = item.so_no || item.so || item["No. Sales order/Transfer order/Shipmet ID HDP"] || item["SO number"] || "";
+        const qty = Number(item.qty || item["Kuantitas (yg di retur)"]) || 1;
+        const batchNo = item.batch_no || item.batch || item["Batch Number"] || "";
+        const expDate = normalizeDateStr(item.expiry_date || item.ed || item["Expiry Date"] || "");
+        const reason = item.reason || item.jenis || item["Reason"] || "";
+        const invDate = normalizeDateStr(item.invoice_date || item.tanggal || item["Tanggal Faktur"] || "");
+        const week = Number(item.week || item["Week"]) || null;
+        const cat = item.category || item.cat || item["Category"] || "";
+        const month = Number(item.month || item["Month"]) || null;
+        const repDate = normalizeDateStr(item.report_date || item.tgl_report || item["Tanggal report"] || invDate || new Date().toISOString().split("T")[0]);
+        const confirmVal = item.confirm || item["Confirm"] || "Pending";
+        const actionVal = item.action || item["Action"] || "";
+        const notaReturNo = item.nota_retur_no || item["No. Nota Retur"] || "";
+        const resDate = normalizeDateStr(item.resolved_date || item["Tanggal penyelesaian"] || "");
+        const statusVal = item.status || item["Status"] || "Open case";
+        const noteVal = item.note || item["Note"] || "";
+        const personVal = item.person || item.personil || item["Person"] || "";
+        const rootCause = item.root_cause || item.cause || item["Root cause"] || "";
+
+        if (mode === "replace") {
+          await conn.execute(
+            `INSERT INTO shipment_returns (
+              pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date,
+              reason, invoice_date, week, category, month, report_date, confirm, action,
+              nota_retur_no, resolved_date, status, note, person, root_cause, photo_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              pbf, cust, inv, soNo, prod, qty, batchNo, expDate, reason, invDate, week, cat, month,
+              repDate, confirmVal, actionVal, notaReturNo, resDate || null, statusVal, noteVal,
+              personVal, rootCause, photoUrl
+            ]
+          );
+          insertedCount++;
+        } else {
+          let existing: any[] = [];
+          if (inv && prod) {
+            existing = (await conn.execute(
+              "SELECT id, photo_url FROM shipment_returns WHERE invoice_no = ? AND product_name = ? LIMIT 1",
+              [inv, prod]
+            )) as any[];
+          }
+
+          if (existing && existing.length > 0) {
+            const targetId = existing[0].id;
+            const finalPhoto = photoUrl || existing[0].photo_url || null;
+            await conn.execute(
+              `UPDATE shipment_returns SET
+                pbf = ?, customer_name = ?, so_no = ?, qty = ?, batch_no = ?, expiry_date = ?,
+                reason = ?, invoice_date = ?, week = ?, category = ?, month = ?, report_date = ?,
+                confirm = ?, action = ?, nota_retur_no = ?, resolved_date = ?, status = ?,
+                note = ?, person = ?, root_cause = ?, photo_url = ?
+              WHERE id = ?`,
+              [
+                pbf, cust, soNo, qty, batchNo, expDate, reason, invDate, week, cat, month,
+                repDate, confirmVal, actionVal, notaReturNo, resDate || null, statusVal,
+                noteVal, personVal, rootCause, finalPhoto, targetId
+              ]
+            );
+            updatedCount++;
+          } else {
+            await conn.execute(
+              `INSERT INTO shipment_returns (
+                pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date,
+                reason, invoice_date, week, category, month, report_date, confirm, action,
+                nota_retur_no, resolved_date, status, note, person, root_cause, photo_url
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                pbf, cust, inv, soNo, prod, qty, batchNo, expDate, reason, invDate, week, cat, month,
+                repDate, confirmVal, actionVal, notaReturNo, resDate || null, statusVal, noteVal,
+                personVal, rootCause, photoUrl
+              ]
+            );
+            insertedCount++;
+          }
+        }
+      }
+
       return Response.json({
-        success: false,
-        message: "Google Sheets sync for shipment errors has been disconnected. Return & complaint management is now handled directly within the application.",
-      }, { status: 410 });
+        success: true,
+        count: insertedCount + updatedCount,
+        inserted: insertedCount,
+        updated: updatedCount,
+      });
+    }
+
+    // 0.1b. Sync single shipment error from Google Sheets (onEdit trigger in real-time)
+    if (action === "sync_single_shipment_error") {
+      const item = body?.item || body?.return || body;
+      const webhookUrl = body?.webhook_url || body?.webhookUrl || "";
+      if (webhookUrl) {
+        await saveWebhookUrl(conn, webhookUrl);
+      }
+
+      const cust = String(item.customer_name || item.apotek || item["Nama Apotek"] || "").trim();
+      const inv = String(item.invoice_no || item.faktur || item["No.Faktur"] || item["No. Invoice"] || "").trim();
+      const prod = String(item.product_name || item.produk || item["Nama Produk (diisi sesuai penamaan di invoice)"] || "").trim();
+
+      if (!cust && !inv && !prod) {
+        return Response.json({ success: false, error: "Empty row data" }, { status: 400 });
+      }
+
+      const pbf = item.pbf || item["PBF"] || "MBI";
+      const soNo = item.so_no || item.so || item["No. Sales order/Transfer order/Shipmet ID HDP"] || item["SO number"] || "";
+      const qty = Number(item.qty || item["Kuantitas (yg di retur)"]) || 1;
+      const batchNo = item.batch_no || item.batch || item["Batch Number"] || "";
+      const expDate = normalizeDateStr(item.expiry_date || item.ed || item["Expiry Date"] || "");
+      const reason = item.reason || item.jenis || item["Reason"] || "";
+      const invDate = normalizeDateStr(item.invoice_date || item.tanggal || item["Tanggal Faktur"] || "");
+      const week = Number(item.week || item["Week"]) || null;
+      const cat = item.category || item.cat || item["Category"] || "";
+      const month = Number(item.month || item["Month"]) || null;
+      const repDate = normalizeDateStr(item.report_date || item.tgl_report || item["Tanggal report"] || invDate || new Date().toISOString().split("T")[0]);
+      const confirmVal = item.confirm || item["Confirm"] || "Pending";
+      const actionVal = item.action || item["Action"] || "";
+      const notaReturNo = item.nota_retur_no || item["No. Nota Retur"] || "";
+      const resDate = normalizeDateStr(item.resolved_date || item["Tanggal penyelesaian"] || "");
+      const statusVal = item.status || item["Status"] || "Open case";
+      const noteVal = item.note || item["Note"] || "";
+      const personVal = item.person || item.personil || item["Person"] || "";
+      const rootCause = item.root_cause || item.cause || item["Root cause"] || "";
+      const photoUrl = item.photo_url || null;
+
+      let existingRows: any[] = [];
+      if (inv && prod) {
+        existingRows = (await conn.execute(
+          "SELECT id, photo_url FROM shipment_returns WHERE invoice_no = ? AND product_name = ? LIMIT 1",
+          [inv, prod]
+        )) as any[];
+      }
+      if ((!existingRows || existingRows.length === 0) && inv) {
+        existingRows = (await conn.execute(
+          "SELECT id, photo_url FROM shipment_returns WHERE invoice_no = ? LIMIT 1",
+          [inv]
+        )) as any[];
+      }
+
+      if (existingRows && existingRows.length > 0) {
+        const targetId = existingRows[0].id;
+        const finalPhoto = photoUrl || existingRows[0].photo_url || null;
+        await conn.execute(
+          `UPDATE shipment_returns SET
+            pbf = ?, customer_name = ?, invoice_no = ?, so_no = ?, product_name = ?,
+            qty = ?, batch_no = ?, expiry_date = ?, reason = ?, invoice_date = ?,
+            week = ?, category = ?, month = ?, report_date = ?, confirm = ?,
+            action = ?, nota_retur_no = ?, resolved_date = ?, status = ?, note = ?,
+            person = ?, root_cause = ?, photo_url = ?
+          WHERE id = ?`,
+          [
+            pbf, cust, inv, soNo, prod,
+            qty, batchNo, expDate, reason, invDate,
+            week, cat, month, repDate, confirmVal,
+            actionVal, notaReturNo, resDate || null, statusVal, noteVal,
+            personVal, rootCause, finalPhoto,
+            targetId
+          ]
+        );
+        return Response.json({ success: true, mode: "updated", id: targetId });
+      } else {
+        const [res] = (await conn.execute(
+          `INSERT INTO shipment_returns (
+            pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date,
+            reason, invoice_date, week, category, month, report_date, confirm, action,
+            nota_retur_no, resolved_date, status, note, person, root_cause, photo_url
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            pbf, cust, inv, soNo, prod,
+            qty, batchNo, expDate, reason, invDate,
+            week, cat, month, repDate, confirmVal,
+            actionVal, notaReturNo, resDate || null, statusVal, noteVal,
+            personVal, rootCause, photoUrl
+          ]
+        )) as any;
+        return Response.json({ success: true, mode: "inserted", id: res?.insertId });
+      }
     }
 
     // 0.2. Sync customers from Google Sheets (DISABLED - Disconnected per user request)
@@ -1376,6 +1679,28 @@ export async function POST(req: Request) {
           ]
         )) as any;
         if (res?.insertId) insertedIds.push(res.insertId);
+
+        forwardToGSheetWebhook(conn, {
+          actionType: "create",
+          pbf: pbf || item.pbf || "MBI",
+          namaApotek: customer_name || item.customer_name || "",
+          invoiceNo: itemInv,
+          soNo: so_no || item.so_no || "",
+          productName: item.product_name || item.name || "",
+          qty: Number(item.qty) || 1,
+          batchNo: item.batch_no || "",
+          expiryDate: item.expiry_date || "",
+          reason: item.reason || "",
+          invoiceDate: invDate || new Date().toISOString().split("T")[0],
+          reportDate: report_date || item.report_date || new Date().toISOString().split("T")[0],
+          category: category !== undefined && category !== null ? category : (item.category ?? ""),
+          confirm: confirm !== undefined && confirm !== null ? confirm : (item.confirm ?? ""),
+          action: item.action !== undefined && item.action !== null ? item.action : (returnAction ?? ""),
+          status: status || item.status || "Pending",
+          note: item.note || note || "",
+          person: person !== undefined && person !== null ? person : (item.person ?? ""),
+          rootCause: item.root_cause || root_cause || "",
+        });
       }
 
       return Response.json({ success: true, count: items.length, insertedIds });
@@ -1462,6 +1787,30 @@ export async function POST(req: Request) {
         ]
       );
 
+      forwardToGSheetWebhook(conn, {
+        actionType: "update",
+        pbf,
+        namaApotek: customer_name,
+        invoiceNo: invoice_no,
+        soNo: so_no,
+        productName: product_name,
+        qty,
+        batchNo: batch_no,
+        expiryDate: expiry_date,
+        reason,
+        invoiceDate: invoice_date,
+        reportDate: report_date,
+        category,
+        confirm,
+        action: returnAction,
+        notaReturNo: nota_retur_no,
+        resolvedDate: resolved_date,
+        status,
+        note,
+        person,
+        rootCause: root_cause,
+      });
+
       return Response.json({ success: true });
     }
 
@@ -1472,9 +1821,25 @@ export async function POST(req: Request) {
         return Response.json({ success: false, error: "Missing return id" }, { status: 400 });
       }
 
+      let targetInvoice = "";
+      let targetProduct = "";
+      try {
+        const rows = (await conn.execute("SELECT invoice_no, product_name FROM shipment_returns WHERE id = ? LIMIT 1", [id])) as any[];
+        targetInvoice = rows?.[0]?.invoice_no || "";
+        targetProduct = rows?.[0]?.product_name || "";
+      } catch (e) {}
+
       await conn.execute("DELETE FROM shipment_returns WHERE id = ?", [id]);
 
-      return Response.json({ success: true });
+      if (targetInvoice) {
+        forwardToGSheetWebhook(conn, {
+          actionType: "delete",
+          invoiceNo: targetInvoice,
+          productName: targetProduct,
+        });
+      }
+
+      return Response.json({ success: true, deletedInvoice: targetInvoice });
     }
 
     // 2.6. Batch Import shipment returns from Excel
