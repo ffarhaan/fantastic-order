@@ -543,6 +543,7 @@ export default function Home() {
       await Promise.all([
         clearAllFaktursInTiDB(),
         clearAllFakturs(),
+        clearLocalCachedFakturs(),
       ]);
 
       setRecords([]);
@@ -878,21 +879,24 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
         // If TiDB has been wiped to 0 by Owner Reset Data, immediately wipe local cache to 0!
         if (check && check.totalCount === 0) {
-          await clearLocalCachedFakturs();
-          if (isMounted) {
-            currentFakturDocsRef.current = [];
-            clientUpdatedRef.current = 0;
-            printedInvoicesRef.current = new Set();
-            printedAtMapRef.current = {};
-            printedByMapRef.current = {};
-            setRecords([]);
-            setPrintedInvoices(new Set());
-            setPrintedAtMap({});
-            setPrintedByMap({});
-            setInvoiceProgression(null);
-            setLoading(false);
+          const isRecentUploadActive = isUploadingRef.current || (currentFakturDocsRef.current && currentFakturDocsRef.current.length > 0 && clientUpdated > Math.floor(Date.now() / 1000) - 180);
+          if (!isRecentUploadActive) {
+            await clearLocalCachedFakturs();
+            if (isMounted) {
+              currentFakturDocsRef.current = [];
+              clientUpdatedRef.current = 0;
+              printedInvoicesRef.current = new Set();
+              printedAtMapRef.current = {};
+              printedByMapRef.current = {};
+              setRecords([]);
+              setPrintedInvoices(new Set());
+              setPrintedAtMap({});
+              setPrintedByMap({});
+              setInvoiceProgression(null);
+              setLoading(false);
+            }
+            return;
           }
-          return;
         }
 
         // If this browser has MORE complete data in IndexedDB than TiDB (e.g. 17,309 vs 17,304),
@@ -1136,6 +1140,20 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         if (docs.length > 0) {
           const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], docs);
           currentFakturDocsRef.current = merged;
+
+          // Ensure incoming unprinted docs from peer upload are purged from local printed set
+          if (uploadNotif && uploadNotif.uploaderId !== deviceIdRef.current) {
+            const nextPrinted = new Set(printedInvoicesRef.current);
+            docs.forEach((d) => {
+              const k = d.id || d.no_faktur;
+              if (k && !d.status_cetak) {
+                nextPrinted.delete(k);
+              }
+            });
+            printedInvoicesRef.current = nextPrinted;
+            setPrintedInvoices(nextPrinted);
+          }
+
           const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
             merged as unknown as Array<Record<string, unknown>>,
             prodOverrides || productOverridesRef.current,
@@ -2660,15 +2678,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           updatedAt: new Date().toLocaleTimeString("id-ID"),
         };
 
+        const finalPrintedSet = new Set<string>(mergedPrintedSet);
+        const finalPrintedAtMap = { ...mergedPrintedAtMap };
+        brandNewUnprintedKeysSet.forEach((k) => {
+          finalPrintedSet.delete(k);
+          delete finalPrintedAtMap[k];
+        });
+        newUnprintedKeysSet.forEach((k) => {
+          finalPrintedSet.delete(k);
+          delete finalPrintedAtMap[k];
+        });
+
         // 5. Update Local State Instantly (< 1 second response)
         const { records: localRecs } = dbRowsToFakturRecords(
           payload as unknown as Array<Record<string, unknown>>,
           productOverridesRef.current,
-          mergedPrintedSet
+          finalPrintedSet
         );
-
-        const finalPrintedSet = new Set<string>(mergedPrintedSet);
-        const finalPrintedAtMap = { ...mergedPrintedAtMap };
 
         printedInvoicesRef.current = finalPrintedSet;
         printedAtMapRef.current = finalPrintedAtMap;
