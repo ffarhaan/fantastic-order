@@ -396,23 +396,147 @@ export async function GET(req: Request) {
       });
     }
 
+    if (action === "keys") {
+      const allKeys: string[] = [];
+      let lastKey = "";
+      while (true) {
+        const batch = (await conn.execute(
+          "SELECT invoice_key FROM fakturs_archive WHERE invoice_key > ? AND invoice_key NOT LIKE 'TEST-%' ORDER BY invoice_key ASC LIMIT 5000;",
+          [lastKey]
+        )) as Array<{ invoice_key: string }>;
+        if (!batch || batch.length === 0) break;
+        for (const r of batch) allKeys.push(r.invoice_key);
+        lastKey = batch[batch.length - 1].invoice_key;
+        if (batch.length < 5000) break;
+      }
+      return compressedJsonResponse(
+        req,
+        { success: true, count: allKeys.length, keys: allKeys },
+        { "Cache-Control": "no-store, no-cache, must-revalidate" }
+      );
+    }
+
     if (action === "check") {
       const result = (await conn.execute(
-        "SELECT COUNT(*) as count, UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive;"
+        "SELECT COUNT(*) as count, UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
       )) as Array<{ count: number; max_updated: number | null }>;
       const totalCount = Number(result[0]?.count || 0);
       const maxUpdated = Number(result[0]?.max_updated || 0);
 
       const clientCount = Number(searchParams.get("count") || 0);
       const clientUpdated = Number(searchParams.get("updated") || 0);
-      const isUpToDate = clientCount === totalCount && (clientUpdated === 0 || clientUpdated >= maxUpdated);
+      const isUpToDate = clientCount === totalCount && totalCount > 0 && (clientUpdated === 0 || clientUpdated >= maxUpdated);
 
-      return Response.json({
-        success: true,
-        upToDate: isUpToDate,
-        totalCount,
-        maxUpdated,
+      return Response.json(
+        {
+          success: true,
+          upToDate: isUpToDate,
+          totalCount,
+          maxUpdated,
+        },
+        {
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "CDN-Cache-Control": "no-store",
+            "Vercel-CDN-Cache-Control": "no-store",
+          },
+        }
+      );
+    }
+
+    if (action === "delta") {
+      const sinceTimestamp = Number(searchParams.get("since") || 0);
+      const deltaRows = (await conn.execute(
+        sinceTimestamp > 0
+          ? `SELECT 
+              invoice_key, no_faktur, no_sales_order, customer_name,
+              order_date, transaction_date, jenis_transaksi, kategori,
+              kategori_produk, status_cetak, printed_at, printed_by,
+              total_harga, items_json, UNIX_TIMESTAMP(updated_at) as row_updated
+            FROM fakturs_archive 
+            WHERE invoice_key NOT LIKE 'TEST-%' AND UNIX_TIMESTAMP(updated_at) > ?
+            ORDER BY updated_at DESC LIMIT 3500;`
+          : `SELECT 
+              invoice_key, no_faktur, no_sales_order, customer_name,
+              order_date, transaction_date, jenis_transaksi, kategori,
+              kategori_produk, status_cetak, printed_at, printed_by,
+              total_harga, items_json, UNIX_TIMESTAMP(updated_at) as row_updated
+            FROM fakturs_archive 
+            WHERE invoice_key NOT LIKE 'TEST-%'
+            ORDER BY updated_at DESC LIMIT 1000;`,
+        sinceTimestamp > 0 ? [sinceTimestamp] : []
+      )) as Array<{
+        invoice_key: string;
+        no_faktur: string;
+        no_sales_order: string;
+        customer_name: string;
+        order_date: string;
+        transaction_date: string;
+        jenis_transaksi: string;
+        kategori: string;
+        kategori_produk: string;
+        status_cetak: number;
+        printed_at: string | null;
+        printed_by: string | null;
+        total_harga: string | number;
+        items_json: string | null;
+        row_updated?: number | string;
+      }>;
+
+      let maxUpdated = sinceTimestamp;
+      const docs = deltaRows.map((r) => {
+        if (r.row_updated) {
+          const ts = Number(r.row_updated);
+          if (ts > maxUpdated) maxUpdated = ts;
+        }
+        let parsedItems: unknown[] = [];
+        if (r.items_json) {
+          try {
+            const parsed = typeof r.items_json === "string" ? JSON.parse(r.items_json) : r.items_json;
+            parsedItems = Array.isArray(parsed) ? parsed : [];
+          } catch {
+            parsedItems = [];
+          }
+        }
+
+        return {
+          id: r.invoice_key,
+          no_faktur: r.no_faktur,
+          no_sales_order: r.no_sales_order || "-",
+          customer_name: r.customer_name || "-",
+          order_date: r.order_date || "-",
+          transaction_date: r.transaction_date || r.order_date || "-",
+          jenis_transaksi: r.jenis_transaksi || "DOO",
+          kategori: r.kategori || "3P",
+          status_cetak: Number(r.status_cetak) === 1,
+          printed_at: r.printed_at || null,
+          printed_by: r.printed_by || null,
+          extra: {
+            nama_pelanggan: r.customer_name || "-",
+            order_date: r.order_date || "-",
+            transaction_date: r.transaction_date || r.order_date || "-",
+            jenis_transaksi: r.jenis_transaksi || "DOO",
+            kategori: r.kategori || "3P",
+            total_harga: Number(r.total_harga || 0),
+            items: parsedItems,
+          },
+        };
       });
+
+      return compressedJsonResponse(
+        req,
+        {
+          success: true,
+          count: docs.length,
+          fakturs: docs,
+          maxUpdated,
+        },
+        {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          "CDN-Cache-Control": "no-store",
+          "Vercel-CDN-Cache-Control": "no-store",
+        }
+      );
     }
 
     // ==========================================
@@ -539,6 +663,104 @@ export async function GET(req: Request) {
       });
     }
 
+    // ==========================================
+    // DEFAULT (!action): FETCH ALL FAKTURS FROM TiDB (Cursor Paginated to bypass 10k HTTP driver cap)
+    // ==========================================
+    if (!action) {
+      const allRows: Array<{
+        invoice_key: string;
+        no_faktur: string;
+        no_sales_order: string;
+        customer_name: string;
+        order_date: string;
+        transaction_date: string;
+        jenis_transaksi: string;
+        kategori: string;
+        kategori_produk: string;
+        status_cetak: number;
+        printed_at: string | null;
+        printed_by: string | null;
+        total_harga: string | number;
+        items_json: string | null;
+      }> = [];
+
+      let lastKey = "";
+      while (true) {
+        const batch = (await conn.execute(
+          `SELECT 
+            invoice_key, no_faktur, no_sales_order, customer_name,
+            order_date, transaction_date, jenis_transaksi, kategori,
+            kategori_produk, status_cetak, printed_at, printed_by,
+            total_harga, items_json
+          FROM fakturs_archive 
+          WHERE invoice_key > ? AND invoice_key NOT LIKE 'TEST-%'
+          ORDER BY invoice_key ASC LIMIT 5000;`,
+          [lastKey]
+        )) as typeof allRows;
+
+        if (!batch || batch.length === 0) break;
+        allRows.push(...batch);
+        lastKey = batch[batch.length - 1].invoice_key;
+        if (batch.length < 5000) break;
+      }
+
+      const resultMeta = (await conn.execute(
+        "SELECT UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
+      )) as Array<{ max_updated: number | null }>;
+      const maxUpdated = Number(resultMeta[0]?.max_updated || 0);
+
+      const docs = allRows.map((r) => {
+        let parsedItems: unknown[] = [];
+        if (r.items_json) {
+          try {
+            const parsed = typeof r.items_json === "string" ? JSON.parse(r.items_json) : r.items_json;
+            parsedItems = Array.isArray(parsed) ? parsed : [];
+          } catch {
+            parsedItems = [];
+          }
+        }
+
+        return {
+          id: r.invoice_key,
+          no_faktur: r.no_faktur,
+          no_sales_order: r.no_sales_order || "-",
+          customer_name: r.customer_name || "-",
+          order_date: r.order_date || "-",
+          transaction_date: r.transaction_date || r.order_date || "-",
+          jenis_transaksi: r.jenis_transaksi || "DOO",
+          kategori: r.kategori || "3P",
+          status_cetak: Number(r.status_cetak) === 1,
+          printed_at: r.printed_at || null,
+          printed_by: r.printed_by || null,
+          extra: {
+            nama_pelanggan: r.customer_name || "-",
+            order_date: r.order_date || "-",
+            transaction_date: r.transaction_date || r.order_date || "-",
+            jenis_transaksi: r.jenis_transaksi || "DOO",
+            kategori: r.kategori || "3P",
+            total_harga: Number(r.total_harga || 0),
+            items: parsedItems,
+          },
+        };
+      });
+
+      return compressedJsonResponse(
+        req,
+        {
+          success: true,
+          count: docs.length,
+          fakturs: docs,
+          maxUpdated,
+          timestamp: Date.now(),
+        },
+        {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          "CDN-Cache-Control": "no-store",
+          "Vercel-CDN-Cache-Control": "no-store",
+        }
+      );
+    }
+
     return Response.json({ success: false, error: `Invalid action: ${action}` }, { status: 400 });
   } catch (error) {
     console.error("GET /api/tidb error:", error);
@@ -549,7 +771,6 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const action = searchParams.get("action");
     const conn = getTiDBClient();
     let body: any = {};
     try {
@@ -557,6 +778,7 @@ export async function POST(req: Request) {
     } catch (e) {
       body = {};
     }
+    const action = searchParams.get("action") || body?.action;
 
     // 0. Sync checkers from Google Sheets
     if (action === "sync_checkers") {
@@ -1282,67 +1504,102 @@ export async function POST(req: Request) {
       return Response.json({ success: true });
     }
 
-    // 3. Batch sync fakturs / upsert_batch (Direct storage from Order Proses upload)
+    // 3. Batch sync fakturs / upsert_batch (Multi-row high-speed batch with items_json)
     if (action === "sync_fakturs" || action === "upsert_batch" || Array.isArray(body)) {
       const fakturs = Array.isArray(body) ? body : body.fakturs || [];
       if (fakturs.length === 0) {
         return Response.json({ success: true, count: 0 });
       }
 
-      for (const f of fakturs) {
+      const CHUNK_SIZE = 50;
+      for (let i = 0; i < fakturs.length; i += CHUNK_SIZE) {
+        const slice = fakturs
+          .slice(i, i + CHUNK_SIZE)
+          .filter((item: any) => Boolean(String(item.invoice_key || item.invoiceKey || item.no_faktur || item.invoiceNumber || "").trim()));
+        if (slice.length === 0) continue;
+
+        const placeholders = slice.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+        const params: (string | number | null)[] = [];
+
+        for (const item of slice) {
+          const invKey = String(item.invoice_key || item.invoiceKey || item.no_faktur || item.invoiceNumber || "").trim();
+          const noFaktur = String(item.no_faktur || item.invoiceNumber || invKey).trim();
+          const noSO = String(item.no_sales_order || item.so || "-").trim();
+          const cust = String(item.customer_name || item.customerName || "-").trim();
+          const oDate = String(item.order_date || item.orderDate || "-").trim();
+          const txDate = String(item.transaction_date || item.transactionDate || oDate || "-").trim();
+          const jenis = String(item.jenis_transaksi || item.jenisTransaksi || "DOO").trim();
+          const kat = String(item.kategori || "3P").trim();
+          const katProd = String(item.kategori_produk || item.kategoriProduk || "FARMA").trim();
+          const isPrinted = item.status_cetak ? 1 : 0;
+          const pAt = item.printed_at || null;
+          const pBy = item.printed_by || null;
+          const totalHarga = Number(item.total_harga || item.totalHarga || 0);
+          const itemsJson = item.items ? JSON.stringify(item.items) : null;
+
+          params.push(
+            invKey,
+            noFaktur,
+            noSO,
+            cust,
+            oDate,
+            txDate,
+            jenis,
+            kat,
+            katProd,
+            isPrinted,
+            pAt,
+            pBy,
+            totalHarga,
+            itemsJson
+          );
+        }
+
         await conn.execute(
           `INSERT INTO fakturs_archive (
-            invoice_key, no_faktur, no_sales_order, customer_name, order_date, transaction_date,
-            jenis_transaksi, kategori, kategori_produk, status_cetak, printed_at, printed_by, total_harga
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            invoice_key, no_faktur, no_sales_order, customer_name,
+            order_date, transaction_date, jenis_transaksi, kategori,
+            kategori_produk, status_cetak, printed_at, printed_by,
+            total_harga, items_json
+          ) VALUES ${placeholders}
           ON DUPLICATE KEY UPDATE
-            no_sales_order = COALESCE(VALUES(no_sales_order), no_sales_order),
-            customer_name = COALESCE(VALUES(customer_name), customer_name),
-            status_cetak = VALUES(status_cetak),
-            printed_at = VALUES(printed_at),
-            printed_by = VALUES(printed_by),
-            total_harga = VALUES(total_harga)`,
-          [
-            f.invoiceKey || f.invoice_key,
-            f.invoiceNumber || f.no_faktur,
-            f.so || f.no_sales_order || "",
-            f.customerName || f.customer_name || "",
-            f.orderDate || f.order_date || "",
-            f.transactionDate || f.transaction_date || "",
-            f.jenisTransaksi || f.jenis_transaksi || "DOO",
-            f.kategori || "3P",
-            f.kategoriProduk || f.kategori_produk || "FARMA",
-            f.status_cetak ? 1 : 0,
-            f.printed_at || null,
-            f.printed_by || null,
-            f.totalHarga || f.total_harga || 0,
-          ]
+            no_sales_order = IF(VALUES(no_sales_order) IS NOT NULL AND CHAR_LENGTH(VALUES(no_sales_order)) > 1, VALUES(no_sales_order), fakturs_archive.no_sales_order),
+            customer_name = IF(VALUES(customer_name) IS NOT NULL AND CHAR_LENGTH(VALUES(customer_name)) > 1, VALUES(customer_name), fakturs_archive.customer_name),
+            transaction_date = IF(VALUES(transaction_date) IS NOT NULL AND CHAR_LENGTH(VALUES(transaction_date)) > 1, VALUES(transaction_date), fakturs_archive.transaction_date),
+            kategori = VALUES(kategori),
+            kategori_produk = VALUES(kategori_produk),
+            status_cetak = IF(fakturs_archive.status_cetak = 1, 1, VALUES(status_cetak)),
+            printed_at = IF(fakturs_archive.status_cetak = 1, fakturs_archive.printed_at, VALUES(printed_at)),
+            printed_by = IF(fakturs_archive.status_cetak = 1, fakturs_archive.printed_by, VALUES(printed_by)),
+            total_harga = VALUES(total_harga),
+            items_json = IF(VALUES(items_json) IS NOT NULL, VALUES(items_json), fakturs_archive.items_json);`,
+          params
         );
-
-        // Directly persist line items if present
-        if (Array.isArray(f.items) && f.items.length > 0) {
-          for (const it of f.items) {
-            await conn.execute(
-              `INSERT INTO faktur_items_archive (
-                invoice_key, item_name, qty, uom, batch_no, exp_date, kategori_item, harga_satuan, subtotal
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                f.invoiceKey || f.invoice_key,
-                it.item_description || it.nama_barang || it.item_name || "-",
-                Number(it.qty) || 1,
-                it.uom || "-",
-                it.lot_number || it.batch_no || "-",
-                it.exp_date || "-",
-                it.kategori_produk || f.kategori_produk || "FARMA",
-                Number(it.harga_satuan) || 0,
-                Number(it.total || it.subtotal) || 0,
-              ]
-            );
-          }
-        }
       }
 
-      return Response.json({ success: true, count: fakturs.length });
+      return Response.json({ success: true, count: fakturs.length, processed: fakturs.length });
+    }
+
+    if (action === "update_print") {
+      const keys: string[] = (body.keys || []).map((k: string) => String(k).trim()).filter(Boolean);
+      if (keys.length === 0) {
+        return Response.json({ success: true, updated: 0 });
+      }
+      const isPrinted = body.isPrinted ? 1 : 0;
+      const printedAt = body.printedAt || null;
+      const printedBy = body.printedBy || null;
+
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
+        const slice = keys.slice(i, i + CHUNK_SIZE);
+        const inPlaceholders = slice.map(() => "?").join(", ");
+        await conn.execute(
+          `UPDATE fakturs_archive SET status_cetak = ?, printed_at = ?, printed_by = ? WHERE invoice_key IN (${inPlaceholders});`,
+          [isPrinted, printedAt, printedBy, ...slice]
+        );
+      }
+
+      return Response.json({ success: true, updated: keys.length });
     }
 
     // ==========================================

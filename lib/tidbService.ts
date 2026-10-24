@@ -58,6 +58,33 @@ export function syncFaktursToTiDBBackground(fakturs: FirestoreFakturDoc[]) {
   }, 50);
 }
 
+export async function syncMissingFaktursToTiDB(localFakturs: FirestoreFakturDoc[]): Promise<number> {
+  if (!localFakturs || localFakturs.length === 0) return 0;
+  try {
+    const res = await fetch(`/api/tidb?action=keys&_t=${Date.now()}`, {
+      method: "GET",
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
+    });
+    if (!res.ok) return 0;
+    const data = await res.json();
+    if (!data.success || !Array.isArray(data.keys)) return 0;
+    const serverKeySet = new Set<string>(data.keys);
+    const missing = localFakturs.filter((f) => {
+      const k = String(f.id || f.no_faktur || "").trim();
+      return k && !k.startsWith("TEST-") && !serverKeySet.has(k);
+    });
+    if (missing.length > 0) {
+      await syncFaktursToTiDB(missing);
+      return missing.length;
+    }
+    return 0;
+  } catch (err) {
+    console.warn("[TiDB Missing Sync] Error:", err);
+    return 0;
+  }
+}
+
 export function syncPrintStatusToTiDBBackground(
   keys: string[],
   isPrinted: boolean,
@@ -92,8 +119,9 @@ export async function checkTiDBUpdates(
   clientUpdated: number
 ): Promise<{ upToDate: boolean; totalCount: number; maxUpdated: number } | null> {
   try {
-    const res = await fetch(`/api/tidb?action=check&count=${clientCount}&updated=${clientUpdated}`, {
+    const res = await fetch(`/api/tidb?action=check&count=${clientCount}&updated=${clientUpdated}&_t=${Date.now()}`, {
       method: "GET",
+      cache: "no-store",
       headers: { "Cache-Control": "no-cache" },
     });
     if (!res.ok) return null;
@@ -135,8 +163,10 @@ export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreF
 
 export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> {
   try {
-    const res = await fetch("/api/tidb", {
+    const res = await fetch(`/api/tidb?_t=${Date.now()}`, {
       method: "GET",
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
     });
     if (!res.ok) {
       console.warn("[TiDB Read] HTTP error:", res.status);
