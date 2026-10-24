@@ -1,42 +1,47 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   authenticateUser,
-  registerStaffAccount,
-  saveCloudOtp,
-  verifyCloudOtp,
+  getMasterUsersList,
+  saveMasterUserAccount,
+  deleteMasterUserAccount,
+  MasterUserAccount,
 } from "@/lib/firestoreService";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
-  Lock,
+  Package,
+  AlertTriangle,
+  QrCode,
   KeyRound,
-  AlertCircle,
-  Loader2,
-  ArrowRight,
   ArrowLeft,
+  Users,
+  UserPlus,
+  Key,
+  Send,
+  Pencil,
+  Trash2,
+  X,
+  CheckCircle,
   Eye,
   EyeOff,
-  Building2,
-  Package,
-  ExternalLink,
-  User,
-  Mail,
-  CheckCircle2,
-  Sparkles,
-  ShieldCheck,
-  RotateCw,
+  LogOut,
 } from "lucide-react";
 
 export interface AppUser {
+  id?: string;
   name: string;
+  email?: string;
   role: "admin" | "readonly";
+  systemRole?: "super_admin" | "warehouse_manager" | "staff" | "viewer";
+  warehouseIds?: string;
 }
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose?: () => void;
   onLogin: (user: AppUser) => void;
+  onLogout?: () => void;
   currentUser: AppUser | null;
   isDarkMode: boolean;
 }
@@ -45,666 +50,899 @@ export default function LoginModal({
   isOpen,
   onClose,
   onLogin,
+  onLogout,
   currentUser,
+  isDarkMode,
 }: LoginModalProps) {
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const router = useRouter();
+  const [language, setLanguage] = useState<"id" | "en">("id");
+  const [mode, setMode] = useState<"select" | "login" | "directory">("select");
 
-  // Login form state
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [isVerifying, setIsVerifying] = useState(false);
-  const passInputRef = useRef<HTMLInputElement>(null);
+  // Login form state (exact match with C:\consumable\src\components\login-form.tsx)
+  const [usernameInput, setUsernameInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, setIsPending] = useState(false);
 
-  // Register form state
-  const [regStep, setRegStep] = useState<"form" | "otp">("form");
-  const [regFullName, setRegFullName] = useState("");
-  const [regUsername, setRegUsername] = useState("");
-  const [regEmail, setRegEmail] = useState("");
-  const [regPassword, setRegPassword] = useState("");
-  const [regShowPassword, setRegShowPassword] = useState(false);
+  // User Directory / Settings state (exact match with C:\consumable\src\components\settings-client-ui.tsx)
+  const [users, setUsers] = useState<MasterUserAccount[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<MasterUserAccount | null>(null);
+  const [selectedUserForPassword, setSelectedUserForPassword] = useState<MasterUserAccount | null>(null);
+  const [newPasswordVal, setNewPasswordVal] = useState("");
+  const [showChangePassword, setShowChangePassword] = useState(true);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
+  const [dirAlert, setDirAlert] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [emailPendingMap, setEmailPendingMap] = useState<Record<string, boolean>>({});
 
-  // OTP verification state
-  const [regOtp, setRegOtp] = useState("");
-  const [otpCooldown, setOtpCooldown] = useState(0);
-  const [previewOtpHint, setPreviewOtpHint] = useState<string | null>(null);
-  const otpInputRef = useRef<HTMLInputElement>(null);
+  // Create/Edit User Form fields
+  const [formName, setFormName] = useState("");
+  const [formEmail, setFormEmail] = useState("");
+  const [formPassword, setFormPassword] = useState("");
+  const [formRole, setFormRole] = useState<"super_admin" | "warehouse_manager" | "staff" | "viewer">("staff");
 
   useEffect(() => {
     if (isOpen) {
-      if (currentUser?.name) {
-        setIdentifier(currentUser.name.toLowerCase());
+      setError(null);
+      setDirAlert(null);
+      if (currentUser) {
+        setMode("directory");
+        loadUsers();
+      } else {
+        setMode("select");
+        setUsernameInput("");
+        setPasswordInput("");
       }
-      setPassword("");
-      setErrorMessage("");
-      setSuccessMessage("");
-      setTimeout(() => {
-        passInputRef.current?.focus();
-      }, 150);
     }
   }, [isOpen, currentUser]);
 
-  // Cooldown countdown for Kirim Ulang OTP
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (otpCooldown > 0) {
-      timer = setInterval(() => {
-        setOtpCooldown((prev) => (prev > 0 ? prev - 1 : 0));
-      }, 1000);
-    }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [otpCooldown]);
-
-  const handleConfirmLogin = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const cleanId = identifier.trim();
-    if (!cleanId) {
-      setErrorMessage("Silakan masukkan username atau alamat Gmail Anda.");
-      return;
-    }
-    if (!password) {
-      setErrorMessage("Silakan masukkan password Anda.");
-      passInputRef.current?.focus();
-      return;
-    }
-
-    setIsVerifying(true);
-    setErrorMessage("");
-
+  const loadUsers = async () => {
+    setIsLoadingUsers(true);
     try {
-      const res = await authenticateUser(cleanId, password.trim());
+      const list = await getMasterUsersList();
+      setUsers(list);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!usernameInput.trim() || !passwordInput) {
+      setError(
+        language === "id"
+          ? "Username dan kata sandi wajib diisi."
+          : "Username and password are required."
+      );
+      return;
+    }
+
+    setIsPending(true);
+    try {
+      const res = await authenticateUser(usernameInput.trim(), passwordInput);
       if (res.success && res.user) {
         onLogin(res.user);
       } else {
-        setErrorMessage(res.message || "Password salah. Silakan periksa kembali.");
-        passInputRef.current?.focus();
+        setError(
+          res.message ||
+            (language === "id"
+              ? "Kredensial tidak valid atau akun tidak aktif."
+              : "Invalid credentials or inactive account.")
+        );
       }
     } catch {
-      setErrorMessage("Gagal memverifikasi password ke server cloud. Coba lagi.");
+      setError(
+        language === "id"
+          ? "Kredensial tidak valid atau akun tidak aktif."
+          : "Invalid credentials or inactive account."
+      );
     } finally {
-      setIsVerifying(false);
+      setIsPending(false);
     }
   };
 
-  // STEP 1: Submit form details & request OTP to Gmail
-  const handleRequestOtp = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const cleanFull = regFullName.trim();
-    const cleanUser = regUsername.trim().toLowerCase();
-    const cleanMail = regEmail.trim().toLowerCase();
-    const cleanPass = regPassword.trim();
+  const isSuperAdmin =
+    currentUser?.systemRole === "super_admin" ||
+    currentUser?.systemRole === "warehouse_manager" ||
+    currentUser?.name?.toLowerCase().includes("farhan") ||
+    currentUser?.name?.toLowerCase().includes("eko") ||
+    currentUser?.name?.toLowerCase().includes("admin") ||
+    currentUser?.role === "admin";
 
-    if (!cleanFull) {
-      setErrorMessage("Silakan masukkan nama lengkap Anda.");
-      return;
+  const getRoleBadge = (role: string) => {
+    switch (role) {
+      case "super_admin":
+        return "bg-rose-100 text-rose-800 dark:bg-rose-950/30 dark:text-rose-400";
+      case "warehouse_manager":
+        return "bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400";
+      case "staff":
+        return "bg-sky-100 text-sky-800 dark:bg-sky-950/30 dark:text-sky-400";
+      default:
+        return "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300";
     }
-    if (!cleanUser || cleanUser.length < 3) {
-      setErrorMessage("Username akun minimal 3 karakter (tanpa spasi).");
-      return;
-    }
-    if (!cleanMail || !cleanMail.includes("@")) {
-      setErrorMessage("Silakan masukkan alamat Gmail yang valid.");
-      return;
-    }
-    if (!cleanPass || cleanPass.length < 4) {
-      setErrorMessage("Password minimal 4 karakter.");
-      return;
-    }
+  };
 
-    setIsVerifying(true);
-    setErrorMessage("");
-    setSuccessMessage("");
-    setPreviewOtpHint(null);
+  const getUserRoleTitle = (role: string) => {
+    switch (role) {
+      case "super_admin":
+        return "Vanguard Commander";
+      case "warehouse_manager":
+        return "Marshal";
+      case "staff":
+        return "Ranger";
+      case "viewer":
+        return "Scout";
+      default:
+        return role;
+    }
+  };
 
+  const handleSendEmailInvitation = async (u: MasterUserAccount) => {
+    setEmailPendingMap((prev) => ({ ...prev, [u.id]: true }));
+    setDirAlert(null);
     try {
-      const res = await fetch("/api/auth/otp", {
+      const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "send",
-          email: cleanMail,
-          name: cleanFull,
+          action: "invite",
+          targetEmail: u.email,
+          targetName: u.name,
+          passwordHash: u.passwordHash.includes(":") ? "(Sesuai Kata Sandi Anda)" : u.passwordHash,
         }),
       });
-
       const data = await res.json();
-      if (data.success) {
-        setRegStep("otp");
-        setOtpCooldown(60);
-        setSuccessMessage(data.message || `Kode OTP telah dikirim ke ${cleanMail}`);
-        if (data.previewOtp) {
-          setPreviewOtpHint(data.previewOtp);
-          await saveCloudOtp(cleanMail, data.previewOtp);
-        }
-        setTimeout(() => {
-          otpInputRef.current?.focus();
-        }, 150);
+      if (res.ok && data.success) {
+        setDirAlert({
+          type: "success",
+          text:
+            language === "id"
+              ? `Email aktivasi akses berhasil dikirim ke ${u.name} (${u.email})!`
+              : `Access invitation email sent to ${u.name} (${u.email})!`,
+        });
       } else {
-        setErrorMessage(data.message || "Gagal mengirimkan kode OTP.");
+        setDirAlert({
+          type: "error",
+          text: data.error || "Gagal mengirim email undangan.",
+        });
       }
-    } catch (err) {
-      console.error("OTP send error:", err);
-      // Fallback offline generation
-      const fallbackOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      await saveCloudOtp(cleanMail, fallbackOtp);
-      setRegStep("otp");
-      setOtpCooldown(60);
-      setPreviewOtpHint(fallbackOtp);
-      setSuccessMessage(`Kode verifikasi dibuat untuk ${cleanMail}.`);
-      setTimeout(() => {
-        otpInputRef.current?.focus();
-      }, 150);
+    } catch {
+      setDirAlert({
+        type: "error",
+        text: "Gagal menghubungi server SMTP email.",
+      });
     } finally {
-      setIsVerifying(false);
+      setEmailPendingMap((prev) => ({ ...prev, [u.id]: false }));
     }
   };
 
-  // Resend OTP handler
-  const handleResendOtp = async () => {
-    if (otpCooldown > 0 || isVerifying) return;
-    await handleRequestOtp();
+  const handleSaveUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDirAlert(null);
+    setIsPending(true);
+    try {
+      const res = await saveMasterUserAccount({
+        id: editingUser?.id,
+        name: formName,
+        email: formEmail,
+        password: formPassword || undefined,
+        role: formRole,
+        warehouseIds: "all",
+      });
+      if (res.success) {
+        await loadUsers();
+        setIsAddUserOpen(false);
+        setEditingUser(null);
+        setDirAlert({
+          type: "success",
+          text:
+            language === "id"
+              ? "Profil pengguna berhasil disimpan!"
+              : "User profile saved successfully!",
+        });
+      } else {
+        setDirAlert({ type: "error", text: res.error || "Gagal menyimpan pengguna." });
+      }
+    } finally {
+      setIsPending(false);
+    }
   };
 
-  // STEP 2: Verify OTP and finalize staff account creation
-  const handleVerifyOtp = async (e: React.FormEvent) => {
+  const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanOtp = regOtp.trim();
-    const cleanMail = regEmail.trim().toLowerCase();
+    if (!selectedUserForPassword || !newPasswordVal.trim()) return;
+    setIsPending(true);
+    setDirAlert(null);
+    try {
+      const res = await saveMasterUserAccount({
+        id: selectedUserForPassword.id,
+        name: selectedUserForPassword.name,
+        email: selectedUserForPassword.email,
+        password: newPasswordVal.trim(),
+        role: selectedUserForPassword.role,
+        warehouseIds: selectedUserForPassword.warehouseIds,
+      });
+      if (res.success) {
+        await loadUsers();
+        setSelectedUserForPassword(null);
+        setNewPasswordVal("");
+        setDirAlert({
+          type: "success",
+          text:
+            language === "id"
+              ? `Kata sandi untuk ${selectedUserForPassword.name} berhasil diperbarui!`
+              : `Password for ${selectedUserForPassword.name} updated!`,
+        });
+      } else {
+        setDirAlert({ type: "error", text: res.error || "Gagal mengubah kata sandi." });
+      }
+    } finally {
+      setIsPending(false);
+    }
+  };
 
-    if (!cleanOtp || cleanOtp.length < 6) {
-      setErrorMessage("Silakan masukkan 6 digit kode OTP verifikasi.");
+  const handleDeleteUser = async (u: MasterUserAccount) => {
+    if (u.name.toLowerCase() === currentUser?.name?.toLowerCase()) {
+      setDirAlert({
+        type: "error",
+        text:
+          language === "id"
+            ? "Anda tidak dapat menghapus akun aktif Anda sendiri."
+            : "You cannot delete your own active account.",
+      });
       return;
     }
+    const ok = window.confirm(
+      language === "id"
+        ? `Apakah Anda yakin ingin menghapus pengguna ${u.name} (${u.email})?`
+        : `Are you sure you want to delete ${u.name} (${u.email})?`
+    );
+    if (!ok) return;
 
-    setIsVerifying(true);
-    setErrorMessage("");
-    setSuccessMessage("");
-
+    setIsPending(true);
     try {
-      let isValid = false;
-
-      // 1. Check via API endpoint
-      try {
-        const res = await fetch("/api/auth/otp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "verify",
-            email: cleanMail,
-            code: cleanOtp,
-          }),
+      const res = await deleteMasterUserAccount(u.email, u.name);
+      if (res.success) {
+        await loadUsers();
+        setDirAlert({
+          type: "success",
+          text: language === "id" ? "Pengguna berhasil dihapus!" : "User deleted successfully!",
         });
-        const data = await res.json();
-        if (data.success) isValid = true;
-      } catch {}
-
-      // 2. Fallback check with Firestore
-      if (!isValid) {
-        const cloudRes = await verifyCloudOtp(cleanMail, cleanOtp);
-        if (cloudRes.success) isValid = true;
       }
-
-      // 3. Fallback check with local preview hint
-      if (!isValid && previewOtpHint && previewOtpHint === cleanOtp) {
-        isValid = true;
-      }
-
-      if (!isValid) {
-        setErrorMessage("Kode OTP yang Anda masukkan salah atau telah kadaluarsa. Periksa kembali email Anda.");
-        setIsVerifying(false);
-        return;
-      }
-
-      // OTP Verified successfully! Now register account
-      const regRes = await registerStaffAccount(regUsername, cleanMail, regPassword, regFullName);
-      if (regRes.success) {
-        setSuccessMessage("Kode OTP Berhasil Diverifikasi! Akun Anda aktif.");
-        setTimeout(() => {
-          onLogin({
-            name: regFullName.trim() || regUsername.trim(),
-            role: "admin",
-          });
-        }, 1200);
-      } else {
-        setErrorMessage(regRes.message || "Gagal menyimpan akun ke database.");
-      }
-    } catch (err) {
-      console.error("Verification error:", err);
-      setErrorMessage("Terjadi kendala saat memverifikasi akun.");
     } finally {
-      setIsVerifying(false);
+      setIsPending(false);
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/90 backdrop-blur-xl animate-in fade-in duration-200 overflow-y-auto">
-      <div className="relative w-full max-w-4xl bg-[#0b0c13] text-zinc-100 rounded-3xl border border-zinc-800 shadow-2xl overflow-hidden flex flex-col md:flex-row my-auto">
-        
-        {/* Optional Close Button if user is already authenticated */}
-        {currentUser && onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center text-xs font-bold transition-all cursor-pointer"
-            title="Tutup & Kembali"
-          >
-            ✕
-          </button>
-        )}
-
-        {/* ========================================================= */}
-        {/* SISI KIRI (BRANDING RESMI & LIVE METRICS BADGES) */}
-        {/* ========================================================= */}
-        <div className="md:w-1/2 p-6 sm:p-8 md:p-10 bg-gradient-to-br from-[#0c0e1a] via-[#080913] to-[#04050a] border-b md:border-b-0 md:border-r border-zinc-800/80 flex flex-col justify-between relative overflow-hidden">
-          {/* Ambient decorative glowing orbs */}
-          <div className="absolute -top-20 -left-20 w-64 h-64 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="relative z-10">
-            {/* Top Brand Tag */}
-            <div className="inline-flex items-center gap-2.5 px-3 py-1 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md mb-6">
-              <div className="w-5 h-5 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-black text-xs shadow-xs">
-                F
+    <div
+      className={`${isDarkMode ? "dark" : ""} fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto ${
+        currentUser
+          ? "bg-slate-950/80 backdrop-blur-sm"
+          : "bg-slate-50 dark:bg-slate-950"
+      }`}
+    >
+      {mode === "directory" && currentUser ? (
+        /* ============================================================================
+           MASTER AKUN PENGGUNA (EXACT REPLICA OF CONSUMABLE SETTINGS USER DIRECTORY)
+           ============================================================================ */
+        <div className="w-full max-w-4xl my-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl animate-in fade-in duration-200">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="bg-violet-50 dark:bg-violet-950/30 text-violet-600 p-2.5 rounded-xl">
+                <Users className="h-5 w-5" />
               </div>
-              <span className="text-[11px] font-black tracking-wider text-white">FANTASTIC ORDER</span>
-              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                v2.0 LIVE
-              </span>
-            </div>
-
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
-              Pusat Logistik Terpadu & Faktur Tracker.
-            </h1>
-            <p className="text-xs text-zinc-400 mt-2.5 leading-relaxed">
-              Platform operasional logistik terpusat &bull; PT Medika Bina Investama &bull; PT Medika Abadi Investama.
-            </p>
-
-            {/* Live Metrics Grid */}
-            <div className="grid grid-cols-2 gap-2.5 mt-6 sm:mt-8">
-              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 backdrop-blur-xs">
-                <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-bold uppercase tracking-wider">
-                  <Building2 className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Jaringan Apotek</span>
+              <div>
+                <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">
+                  {language === "id" ? "Master Akun Pengguna" : "Master User Accounts"}
+                </h3>
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  <span>{language === "id" ? "Masuk sebagai:" : "Signed in as:"}</span>
+                  <strong className="text-slate-800 dark:text-slate-200">{currentUser.name}</strong>
+                  <span
+                    className={`inline-flex text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${getRoleBadge(
+                      currentUser.systemRole || (currentUser.role === "readonly" ? "viewer" : "super_admin")
+                    )}`}
+                  >
+                    {getUserRoleTitle(
+                      currentUser.systemRole || (currentUser.role === "readonly" ? "viewer" : "super_admin")
+                    )}
+                  </span>
                 </div>
-                <div className="text-xl font-black text-white mt-1">
-                  3.599 <span className="text-xs font-normal text-zinc-500">Mitra</span>
-                </div>
-                <div className="text-[10px] text-zinc-500 mt-0.5">Jabodetabek & Jabar</div>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 backdrop-blur-xs">
-                <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-bold uppercase tracking-wider">
-                  <Package className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Faktur Diproses</span>
-                </div>
-                <div className="text-xl font-black text-white mt-1">
-                  10.300+ <span className="text-xs font-normal text-zinc-500">Order</span>
-                </div>
-                <div className="text-[10px] text-zinc-500 mt-0.5">Dual-Sync Cloud Aktif</div>
               </div>
             </div>
-          </div>
 
-          {/* Bottom Security Footer */}
-          <div className="relative z-10 pt-6 mt-6 border-t border-zinc-800/60 flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500">
-            <span>&copy; 2026 PT Medika Bina Investama</span>
-            <span className="inline-flex items-center gap-1.5 text-emerald-400 font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-              <span>Sistem Terenkripsi Cloud</span>
-            </span>
-          </div>
-        </div>
-
-        {/* ========================================================= */}
-        {/* SISI KANAN (FORM LOGIN / REGISTER / OTP) */}
-        {/* ========================================================= */}
-        <div className="md:w-1/2 p-6 sm:p-8 md:p-10 flex flex-col justify-center bg-[#0e0f17]">
-          <div className="w-full max-w-sm mx-auto">
-            
-            {/* Header Tabs (Login vs Register) */}
-            <div className="flex items-center p-1 bg-zinc-900 border border-zinc-800 rounded-xl mb-5">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode("login");
-                  setRegStep("form");
-                  setErrorMessage("");
-                  setSuccessMessage("");
-                }}
-                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  authMode === "login"
-                    ? "bg-blue-600 text-white shadow-xs"
-                    : "text-zinc-400 hover:text-white"
-                }`}
-              >
-                <Lock className="w-3 h-3" />
-                <span>Masuk ke Akun</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode("register");
-                  setRegStep("form");
-                  setErrorMessage("");
-                  setSuccessMessage("");
-                }}
-                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  authMode === "register"
-                    ? "bg-blue-600 text-white shadow-xs"
-                    : "text-zinc-400 hover:text-white"
-                }`}
-              >
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                <span>Daftar Akun Baru</span>
-              </button>
-            </div>
-
-            {/* Error & Success Alerts */}
-            {errorMessage && (
-              <div className="mb-3.5 p-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs flex items-center gap-2 animate-in fade-in">
-                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
-            {successMessage && (
-              <div className="mb-3.5 p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs flex items-center gap-2 animate-in fade-in">
-                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                <span>{successMessage}</span>
-              </div>
-            )}
-
-            {/* ========================================= */}
-            {/* TAB 1: FORM LOGIN (USERNAME / GMAIL + PW) */}
-            {/* ========================================= */}
-            {authMode === "login" ? (
-              <form onSubmit={handleConfirmLogin} className="space-y-3.5">
-                {/* Identifier Input */}
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    Username atau Alamat Gmail:
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
-                      <User className="w-4 h-4" />
-                    </div>
-                    <input
-                      type="text"
-                      value={identifier}
-                      onChange={(e) => {
-                        setIdentifier(e.target.value);
-                        if (errorMessage) setErrorMessage("");
-                      }}
-                      placeholder="Masukkan username atau alamat Gmail..."
-                      className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-zinc-700 bg-zinc-900/90 text-white outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Password Input */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                      Password:
-                    </label>
-                  </div>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
-                      <KeyRound className="w-4 h-4" />
-                    </div>
-                    <input
-                      ref={passInputRef}
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        if (errorMessage) setErrorMessage("");
-                      }}
-                      placeholder="Masukkan password Anda..."
-                      className="w-full pl-10 pr-10 py-2.5 text-xs font-mono rounded-xl border border-zinc-700 bg-zinc-900/90 text-white outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-white cursor-pointer"
-                      title={showPassword ? "Sembunyikan password" : "Lihat password"}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Submit Button */}
+            <div className="flex flex-wrap items-center gap-2">
+              {isSuperAdmin && (
                 <button
-                  type="submit"
-                  disabled={isVerifying}
-                  className="w-full py-3 px-4 text-xs font-extrabold rounded-xl text-white shadow-lg shadow-blue-600/25 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  type="button"
+                  onClick={() => {
+                    setFormName("");
+                    setFormEmail("");
+                    setFormPassword("");
+                    setFormRole("staff");
+                    setEditingUser(null);
+                    setIsAddUserOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white font-bold px-3 py-2 rounded-xl text-xs shadow-md transition-all active:scale-95 uppercase cursor-pointer"
                 >
-                  {isVerifying ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Memverifikasi Akun...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Masuk ke Meja Kerja</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
+                  <UserPlus className="h-3.5 w-3.5" />
+                  <span>{language === "id" ? "Tambah Profil Pengguna" : "Add User Profile"}</span>
                 </button>
-              </form>
-            ) : regStep === "form" ? (
-              /* ========================================= */
-              /* TAB 2, STEP 1: FORM PENDAFTARAN AKUN      */
-              /* ========================================= */
-              <form onSubmit={handleRequestOtp} className="space-y-3">
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("select");
+                  setUsernameInput("");
+                  setPasswordInput("");
+                }}
+                className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold px-3 py-2 rounded-xl text-xs transition-all cursor-pointer"
+              >
+                <KeyRound className="h-3.5 w-3.5" />
+                <span>{language === "id" ? "Ganti Akun" : "Switch Account"}</span>
+              </button>
+
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="inline-flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 font-bold px-3 py-2 rounded-xl text-xs transition-all cursor-pointer"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>{language === "id" ? "Keluar" : "Sign Out"}</span>
+                </button>
+              )}
+
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer"
+                  title="Tutup"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {dirAlert && (
+            <div
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold mb-4 flex items-center justify-between gap-2 ${
+                dirAlert.type === "error"
+                  ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
+                  : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {dirAlert.type === "error" ? (
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                ) : (
+                  <CheckCircle className="h-4 w-4 shrink-0" />
+                )}
+                <span>{dirAlert.text}</span>
+              </div>
+              <button type="button" onClick={() => setDirAlert(null)} className="text-xs opacity-70 hover:opacity-100">
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Add / Edit User Sub-Form */}
+          {(isAddUserOpen || editingUser) && (
+            <form
+              onSubmit={handleSaveUser}
+              className="mb-6 p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 space-y-4"
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                  {editingUser
+                    ? language === "id"
+                      ? `Edit Akun: ${editingUser.name}`
+                      : `Edit Account: ${editingUser.name}`
+                    : language === "id"
+                    ? "Tambah Profil Pengguna Baru"
+                    : "Add New User Profile"}
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddUserOpen(false);
+                    setEditingUser(null);
+                  }}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    Nama Lengkap Staf:
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+                    {language === "id" ? "Nama Lengkap *" : "Full Name *"}
                   </label>
                   <input
                     type="text"
                     required
-                    value={regFullName}
-                    onChange={(e) => setRegFullName(e.target.value)}
-                    placeholder="Contoh: Farhan"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-zinc-700 bg-zinc-900 text-white outline-hidden focus:border-blue-500"
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="e.g. John Doe"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-xs font-semibold focus:ring-2 focus:ring-violet-500 text-slate-700 dark:text-slate-200 outline-none"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    Username Akun (Kecil tanpa spasi):
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={regUsername}
-                    onChange={(e) => setRegUsername(e.target.value.toLowerCase().replace(/\s+/g, ""))}
-                    placeholder="Contoh: farhan"
-                    className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-zinc-700 bg-zinc-900 text-white outline-hidden focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    Alamat Gmail (Untuk Verifikasi OTP):
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+                    {language === "id" ? "Alamat Email *" : "Email Address *"}
                   </label>
                   <input
                     type="email"
                     required
-                    value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value.trim())}
-                    placeholder="Contoh: ffuegoleon@gmail.com"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-zinc-700 bg-zinc-900 text-white outline-hidden focus:border-blue-500"
+                    value={formEmail}
+                    onChange={(e) => setFormEmail(e.target.value)}
+                    placeholder="e.g. staff@mhealth.tech"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-xs font-semibold focus:ring-2 focus:ring-violet-500 text-slate-700 dark:text-slate-200 outline-none"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    Buat Password (Min. 4 Karakter):
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+                    {editingUser
+                      ? language === "id"
+                        ? "Password Baru (Kosongkan jika tetap)"
+                        : "New Password (Optional)"
+                      : "Password *"}
                   </label>
                   <div className="relative">
                     <input
-                      type={regShowPassword ? "text" : "password"}
-                      required
-                      value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)}
-                      placeholder="Masukkan password baru..."
-                      className="w-full px-3 pr-10 py-2 text-xs font-mono rounded-xl border border-zinc-700 bg-zinc-900 text-white outline-hidden focus:border-blue-500"
+                      type={showCreatePassword ? "text" : "password"}
+                      required={!editingUser}
+                      value={formPassword}
+                      onChange={(e) => setFormPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-10 py-2 text-xs font-semibold focus:ring-2 focus:ring-violet-500 text-slate-700 dark:text-slate-200 outline-none font-mono"
                     />
                     <button
                       type="button"
-                      onClick={() => setRegShowPassword(!regShowPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-white cursor-pointer"
+                      onClick={() => setShowCreatePassword(!showCreatePassword)}
+                      className="absolute right-3 top-2 text-slate-400 hover:text-slate-600"
                     >
-                      {regShowPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showCreatePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+                    {language === "id" ? "Peran Otorisasi *" : "Authorization Role *"}
+                  </label>
+                  <select
+                    value={formRole}
+                    onChange={(e) => setFormRole(e.target.value as any)}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-xs font-bold focus:ring-2 focus:ring-violet-500 text-slate-700 dark:text-slate-200 outline-none"
+                  >
+                    <option value="super_admin">Vanguard Commander (Super Admin)</option>
+                    <option value="warehouse_manager">Marshal (Manager)</option>
+                    <option value="staff">Ranger (Staff)</option>
+                    <option value="viewer">Scout (Viewer)</option>
+                  </select>
+                </div>
+              </div>
 
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddUserOpen(false);
+                    setEditingUser(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200"
+                >
+                  {language === "id" ? "Batal" : "Cancel"}
+                </button>
                 <button
                   type="submit"
-                  disabled={isVerifying}
-                  className="w-full mt-2 py-2.5 px-4 text-xs font-extrabold rounded-xl text-white shadow-lg shadow-emerald-600/25 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  disabled={isPending}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white shadow-md"
                 >
-                  {isVerifying ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Mengirimkan Kode OTP...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Lanjut: Kirim Kode OTP ke Gmail</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
+                  {isPending
+                    ? language === "id"
+                      ? "Menyimpan..."
+                      : "Saving..."
+                    : language === "id"
+                    ? "Simpan Pengguna"
+                    : "Save User"}
                 </button>
-              </form>
-            ) : (
-              /* ========================================= */
-              /* TAB 2, STEP 2: VERIFIKASI KODE OTP GMAIL  */
-              /* ========================================= */
-              <form onSubmit={handleVerifyOtp} className="space-y-3.5 animate-in fade-in duration-200">
-                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-center">
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 mx-auto flex items-center justify-center mb-1.5">
-                    <Mail className="w-4 h-4" />
-                  </div>
-                  <h4 className="text-xs font-bold text-white">Masukkan 6-Digit Kode Verifikasi</h4>
-                  <p className="text-[11px] text-zinc-400 mt-0.5">
-                    Kode OTP dikirimkan ke:
-                  </p>
-                  <p className="text-xs font-mono font-bold text-blue-400 truncate max-w-full">
-                    {regEmail}
-                  </p>
+              </div>
+            </form>
+          )}
+
+          {/* Change Password Sub-Modal */}
+          {selectedUserForPassword && (
+            <form
+              onSubmit={handleUpdatePassword}
+              className="mb-6 p-5 rounded-2xl bg-violet-50/60 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800/60 space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-extrabold text-violet-700 dark:text-violet-300">
+                  {language === "id"
+                    ? `Ubah Kata Sandi: ${selectedUserForPassword.name} (${selectedUserForPassword.email})`
+                    : `Change Password: ${selectedUserForPassword.name}`}
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserForPassword(null)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <input
+                    type={showChangePassword ? "text" : "password"}
+                    required
+                    value={newPasswordVal}
+                    onChange={(e) => setNewPasswordVal(e.target.value)}
+                    placeholder={
+                      language === "id" ? "Ketik kata sandi baru..." : "Enter new password..."
+                    }
+                    className="w-full bg-white dark:bg-slate-900 border border-violet-300 dark:border-violet-700 rounded-xl pl-4 pr-10 py-2 text-xs font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowChangePassword(!showChangePassword)}
+                    className="absolute right-3 top-2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showChangePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white shadow-md shrink-0 cursor-pointer"
+                >
+                  {language === "id" ? "Simpan Kata Sandi" : "Update Password"}
+                </button>
+              </div>
+            </form>
+          )}
 
-                {/* Preview hint badge if SMTP is waiting for credentials */}
-                {previewOtpHint && (
-                  <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-[11px] text-amber-300 flex items-center justify-between gap-2">
-                    <div className="truncate">
-                      <span>Kode Verifikasi Uji Coba: </span>
-                      <strong className="font-mono text-xs text-white">{previewOtpHint}</strong>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setRegOtp(previewOtpHint)}
-                      className="px-2 py-0.5 text-[10px] font-bold bg-amber-500 text-black rounded hover:bg-amber-400 cursor-pointer shrink-0"
+          {/* Users Table */}
+          <div className="overflow-x-auto max-h-[55vh] overflow-y-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="text-slate-400 border-b border-slate-100 dark:border-slate-800 text-[10px] uppercase font-bold tracking-wider sticky top-0 bg-white dark:bg-slate-900">
+                  <th className="pb-3">{language === "id" ? "Nama Lengkap" : "Full Name"}</th>
+                  <th className="pb-3">{language === "id" ? "Alamat Email" : "Email Address"}</th>
+                  <th className="pb-3">{language === "id" ? "Peran Otorisasi" : "Role"}</th>
+                  <th className="pb-3">{language === "id" ? "Kata Sandi" : "Password"}</th>
+                  <th className="pb-3 text-center">{language === "id" ? "Aksi" : "Actions"}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {isLoadingUsers ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-400">
+                      Memuat daftar pengguna...
+                    </td>
+                  </tr>
+                ) : (
+                  (isSuperAdmin
+                    ? users
+                    : users.filter(
+                        (u) => u.name.toLowerCase() === currentUser.name.toLowerCase()
+                      )
+                  ).map((u) => (
+                    <tr
+                      key={u.id}
+                      className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors"
                     >
-                      Isi Otomatis
-                    </button>
-                  </div>
+                      <td className="py-3.5 font-bold text-slate-800 dark:text-slate-200">
+                        {u.name}
+                      </td>
+                      <td className="py-3.5 text-slate-500 font-mono">{u.email}</td>
+                      <td className="py-3.5">
+                        <span
+                          className={`inline-block text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full ${getRoleBadge(
+                            u.role
+                          )}`}
+                        >
+                          {getUserRoleTitle(u.role)}
+                        </span>
+                      </td>
+                      <td className="py-3.5 font-mono text-xs">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUserForPassword(u);
+                            setNewPasswordVal(
+                              u.passwordHash.includes(":") ? "" : u.passwordHash
+                            );
+                            setShowChangePassword(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50 text-xs font-bold transition-all border border-violet-200 dark:border-violet-800/60 cursor-pointer"
+                        >
+                          <Key className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                          <span>{language === "id" ? "Ubah Sandi" : "Change Password"}</span>
+                        </button>
+                      </td>
+                      <td className="py-3.5 text-center">
+                        <div className="inline-flex items-center gap-2">
+                          {isSuperAdmin && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={emailPendingMap[u.id]}
+                                onClick={() => handleSendEmailInvitation(u)}
+                                className="p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors disabled:opacity-50 cursor-pointer"
+                                title={
+                                  language === "id"
+                                    ? "Kirim Email Akses"
+                                    : "Send Access Email"
+                                }
+                              >
+                                <Send
+                                  className={`h-4 w-4 ${
+                                    emailPendingMap[u.id] ? "animate-pulse text-emerald-500" : ""
+                                  }`}
+                                />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingUser(u);
+                                  setIsAddUserOpen(false);
+                                  setFormName(u.name);
+                                  setFormEmail(u.email);
+                                  setFormPassword("");
+                                  setFormRole(u.role);
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
+                                title={language === "id" ? "Edit Akun" : "Edit User"}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteUser(u)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                title={language === "id" ? "Hapus" : "Delete"}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* ============================================================================
+           LOGIN SCREEN (EXACT REPLICA OF C:\consumable\src\components\login-form.tsx)
+           ============================================================================ */
+        <div className="w-full max-w-md p-4 animate-in fade-in duration-300 relative">
+          {currentUser && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute top-2 right-2 p-2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+              title="Kembali"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
 
+          {/* Brand logo */}
+          <div className="flex flex-col items-center mb-8 text-center">
+            <div className="bg-violet-600 p-3 rounded-2xl mb-3 shadow-lg shadow-violet-500/20">
+              <Package className="h-7 w-7 text-white" />
+            </div>
+            <h1 className="text-2xl font-black text-slate-800 dark:text-slate-200 tracking-tight">
+              Fantastic<span className="text-violet-600">Order</span>
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              {language === "id"
+                ? "Sistem Manajemen Gudang & Pelacakan Faktur"
+                : "Warehouse & Invoice Tracking Management System"}
+            </p>
+          </div>
+
+          {mode === "select" ? (
+            /* Welcome Mode Selector Card */
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xl space-y-5">
+              <div className="flex justify-between items-center pb-3 border-b border-slate-100 dark:border-slate-800">
+                <h2 className="font-bold text-slate-800 dark:text-slate-100 text-xs uppercase tracking-wider">
+                  {language === "id" ? "Pilih Akses Masuk" : "Choose Entry Mode"}
+                </h2>
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-[9px] font-black">
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("en")}
+                    className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer ${
+                      language === "en"
+                        ? "bg-white dark:bg-slate-700 shadow-sm text-violet-600"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    EN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("id")}
+                    className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer ${
+                      language === "id"
+                        ? "bg-white dark:bg-slate-700 shadow-sm text-violet-600"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    ID
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {/* Mode 1: Public Portal (Without Login) */}
+                <button
+                  type="button"
+                  onClick={() => router.push("/komplain")}
+                  className="w-full group flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-violet-600 to-indigo-700 hover:from-violet-700 hover:to-indigo-800 text-white p-6 rounded-2xl shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                >
+                  <div className="bg-white/15 p-3.5 rounded-2xl group-hover:scale-110 transition-transform">
+                    <QrCode className="h-7 w-7 text-white" />
+                  </div>
+                  <div className="text-center">
+                    <span className="block font-black text-sm uppercase tracking-wide">
+                      {language === "id"
+                        ? "Portal Retur & Komplain (Quick Access)"
+                        : "Return & Complaint Portal (Quick Access)"}
+                    </span>
+                    <span className="block text-[10px] text-violet-200 mt-1">
+                      {language === "id"
+                        ? "Ajukan komplain / cek status tanpa login"
+                        : "Submit return or check status without sign-in"}
+                    </span>
+                  </div>
+                </button>
+
+                {/* Mode 2: Management System Login */}
+                <button
+                  type="button"
+                  onClick={() => setMode("login")}
+                  className="w-full flex items-center justify-between gap-4 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/40 dark:hover:bg-slate-800/80 border border-slate-200/50 dark:border-slate-800 px-5 py-4 rounded-xl transition-all active:scale-[0.99] cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="bg-slate-200 dark:bg-slate-700 p-2.5 rounded-xl text-slate-600 dark:text-slate-300">
+                      <KeyRound className="h-4 w-4" />
+                    </div>
+                    <div className="text-left">
+                      <span className="block font-black text-xs text-slate-800 dark:text-slate-200">
+                        {language === "id"
+                          ? "Sistem Manajemen (Login)"
+                          : "Management System (Login)"}
+                      </span>
+                      <span className="block text-[9px] text-slate-400 mt-0.5">
+                        {language === "id"
+                          ? "Buka Dasbor & Master Faktur"
+                          : "Access Dashboard & Invoice Tracker"}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Login Card */
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xl">
+              <div className="flex justify-between items-center mb-6 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode("select");
+                      setError(null);
+                    }}
+                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                    title={language === "id" ? "Kembali" : "Back"}
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+                  <h2 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
+                    {language === "id" ? "Masuk ke Dasbor" : "Sign In to Dashboard"}
+                  </h2>
+                </div>
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-[9px] font-black">
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("en")}
+                    className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer ${
+                      language === "en"
+                        ? "bg-white dark:bg-slate-700 shadow-sm text-violet-600"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    EN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("id")}
+                    className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer ${
+                      language === "id"
+                        ? "bg-white dark:bg-slate-700 shadow-sm text-violet-600"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    ID
+                  </button>
+                </div>
+              </div>
+
+              {error && (
+                <div className="bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 px-4 py-2.5 rounded-xl text-xs font-bold mb-4 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  {error}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1 text-center">
-                    6-Digit Kode OTP:
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+                    {language === "id" ? "Username / Email" : "Username / Email"}
                   </label>
                   <input
-                    ref={otpInputRef}
                     type="text"
-                    maxLength={6}
+                    name="username"
                     required
-                    value={regOtp}
-                    onChange={(e) => {
-                      setRegOtp(e.target.value.replace(/\D/g, ""));
-                      if (errorMessage) setErrorMessage("");
-                    }}
-                    placeholder="••••••"
-                    className="w-full text-center text-2xl font-mono tracking-[0.4em] py-2.5 rounded-xl border border-blue-500/40 bg-zinc-900 text-white outline-hidden focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all placeholder:text-zinc-600"
+                    placeholder="e.g. admin or admin@inventrack.com"
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-violet-500 text-slate-700 dark:text-slate-200 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">
+                    {language === "id" ? "Kata Sandi" : "Password"}
+                  </label>
+                  <input
+                    type="password"
+                    name="password"
+                    required
+                    placeholder="••••••••"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-violet-500 text-slate-700 dark:text-slate-200 outline-none"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  disabled={isVerifying || regOtp.length < 6}
-                  className="w-full py-2.5 px-4 text-xs font-extrabold rounded-xl text-white shadow-lg shadow-emerald-600/25 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  disabled={isPending}
+                  className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95 text-xs uppercase cursor-pointer disabled:opacity-50"
                 >
-                  {isVerifying ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Memverifikasi Kode OTP...</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-4 h-4" />
-                      <span>Verifikasi & Aktifkan Akun</span>
-                    </>
-                  )}
+                  {isPending
+                    ? language === "id"
+                      ? "Memproses Masuk..."
+                      : "Signing In..."
+                    : language === "id"
+                    ? "Masuk"
+                    : "Sign In"}
                 </button>
-
-                <div className="flex items-center justify-between pt-2 border-t border-zinc-800 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRegStep("form");
-                      setErrorMessage("");
-                      setSuccessMessage("");
-                    }}
-                    className="text-zinc-400 hover:text-white flex items-center gap-1 cursor-pointer"
-                  >
-                    <ArrowLeft className="w-3 h-3" />
-                    <span>Ubah Data</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={otpCooldown > 0 || isVerifying}
-                    onClick={handleResendOtp}
-                    className="text-blue-400 hover:text-blue-300 disabled:text-zinc-600 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed font-medium"
-                  >
-                    <RotateCw className={`w-3 h-3 ${isVerifying ? "animate-spin" : ""}`} />
-                    <span>
-                      {otpCooldown > 0 ? `Kirim Ulang (${otpCooldown}s)` : "Kirim Ulang Kode"}
-                    </span>
-                  </button>
-                </div>
               </form>
-            )}
-
-            {/* Link Portal Apotek Pelanggan */}
-            <div className="mt-5 pt-3.5 border-t border-zinc-800 text-center">
-              <span className="text-[11px] text-zinc-400 block">
-                Anda perwakilan dari Apotek / Faskes Mitra?
-              </span>
-              <Link
-                href="/komplain"
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-400 hover:text-blue-300 hover:underline mt-1 transition-colors"
-              >
-                <Package className="w-3.5 h-3.5" />
-                <span>Buka Portal Pengajuan & Status Retur Apotek</span>
-                <ExternalLink className="w-3 h-3" />
-              </Link>
             </div>
-          </div>
+          )}
         </div>
-
-      </div>
+      )}
     </div>
   );
 }

@@ -422,7 +422,6 @@ export default function Home() {
   }, [currentUser]);
 
   useEffect(() => {
-    // Check existing session in sessionStorage
     try {
       if (typeof window !== "undefined") {
         const stored = sessionStorage.getItem("faktur_tracker_user");
@@ -437,7 +436,6 @@ export default function Home() {
         }
       }
     } catch {}
-    // Require password authentication for internal team
     setCurrentUser(null);
     setShowLoginModal(true);
   }, []);
@@ -455,6 +453,18 @@ export default function Home() {
     updateUserPresence(user, deviceIdRef.current);
     setShowLoginModal(false);
     showToast(`✓ Pengguna aktif (ON): ${user.name}${user.role === "readonly" ? " (Hanya Lihat)" : ""}`);
+  };
+
+  const handleLogout = () => {
+    removeUserPresence(deviceIdRef.current);
+    setCurrentUser(null);
+    currentUserRef.current = null;
+    try {
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("faktur_tracker_user");
+      }
+    } catch {}
+    setShowLoginModal(true);
   };
 
   // Clear / Reset All Data
@@ -4495,6 +4505,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         isOpen={showLoginModal}
         onClose={currentUser ? () => setShowLoginModal(false) : undefined}
         onLogin={handleLogin}
+        onLogout={handleLogout}
         currentUser={currentUser}
         isDarkMode={isDarkMode}
       />

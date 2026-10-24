@@ -1453,77 +1453,212 @@ export async function changeUserPassword(
 
 const USER_PROFILES_DOC = "user_profiles";
 
+export interface MasterUserAccount {
+  id: string;
+  name: string;
+  email: string;
+  passwordHash: string;
+  role: "super_admin" | "warehouse_manager" | "staff" | "viewer";
+  warehouseIds: string;
+  isActive: boolean;
+}
+
 /**
- * Authenticate user by username OR email, checking password
+ * Fetch Master Users list from Firestore (user_profiles / user_credentials) for Fantastic Order only
  */
-export async function authenticateUser(
-  identifier: string,
-  inputPass: string
-): Promise<{ success: boolean; user?: { name: string; role: "admin" | "readonly" }; message?: string }> {
-  const cleanId = String(identifier || "").trim().toLowerCase();
-  const cleanPass = String(inputPass || "").trim();
-
-  if (!cleanId) {
-    return { success: false, message: "Username atau email wajib diisi." };
-  }
-  if (!cleanPass) {
-    return { success: false, message: "Password wajib diisi." };
-  }
-
+export async function getMasterUsersList(): Promise<MasterUserAccount[]> {
   try {
     const [credSnap, profSnap] = await Promise.all([
       getDoc(doc(db, APP_DATA_COLLECTION, USER_CREDENTIALS_DOC)).catch(() => null),
       getDoc(doc(db, APP_DATA_COLLECTION, USER_PROFILES_DOC)).catch(() => null),
     ]);
-
     const creds = (credSnap?.exists() ? credSnap.data() : {}) as Record<string, string>;
     const profiles = (profSnap?.exists() ? profSnap.data() : {}) as Record<string, any>;
 
-    let matchedUsername = cleanId;
-    let displayName = identifier;
-    let role: "admin" | "readonly" = "admin";
+    const mapByEmail = new Map<string, MasterUserAccount>();
 
-    // Check if identifier matches any username or email in profiles
     for (const [uKey, prof] of Object.entries(profiles)) {
-      if (
-        uKey.toLowerCase() === cleanId ||
-        String(prof.username || "").toLowerCase() === cleanId ||
-        String(prof.email || "").toLowerCase() === cleanId
-      ) {
-        matchedUsername = uKey;
-        displayName = prof.displayName || prof.username || uKey;
-        role = prof.role === "readonly" ? "readonly" : "admin";
-        break;
+      if (!prof || typeof prof !== "object") continue;
+      if (prof.deleted) {
+        const delEmail = String(prof.email || "").toLowerCase();
+        if (delEmail) mapByEmail.delete(delEmail);
+        continue;
       }
+      const email = String(prof.email || `${uKey}@gmail.com`).toLowerCase().trim();
+      const name = String(prof.displayName || prof.name || uKey).trim();
+      const pass = creds[uKey] || creds[name] || creds[name.toLowerCase()] || prof.passwordHash || "123";
+      const rawRole = String(prof.systemRole || prof.role || "staff");
+      const role: MasterUserAccount["role"] =
+        rawRole === "super_admin" || rawRole === "warehouse_manager" || rawRole === "staff" || rawRole === "viewer"
+          ? rawRole
+          : rawRole === "readonly"
+          ? "viewer"
+          : name.toLowerCase().includes("farhan") || name.toLowerCase().includes("farrhan")
+          ? "super_admin"
+          : "staff";
+
+      mapByEmail.set(email, {
+        id: prof.id || `usr-${uKey.toLowerCase()}`,
+        name,
+        email,
+        passwordHash: String(pass),
+        role,
+        warehouseIds: prof.warehouseIds || "all",
+        isActive: prof.isActive !== false,
+      });
     }
 
-    // Check password
-    let validPass = null;
-    for (const [cKey, cVal] of Object.entries(creds)) {
-      if (cKey.toLowerCase() === matchedUsername.toLowerCase()) {
-        validPass = String(cVal);
-        break;
+    return Array.from(mapByEmail.values()).sort((a, b) => a.email.localeCompare(b.email));
+  } catch (e) {
+    console.warn("Error loading master users:", e);
+    return [];
+  }
+}
+
+/**
+ * Create or update a Master User Account in Firestore
+ */
+export async function saveMasterUserAccount(user: {
+  id?: string;
+  name: string;
+  email: string;
+  password?: string;
+  role: "super_admin" | "warehouse_manager" | "staff" | "viewer";
+  warehouseIds?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const cleanName = user.name.trim();
+  const cleanEmail = user.email.trim().toLowerCase();
+  const cleanKey = cleanEmail.split("@")[0].replace(/[^a-z0-9_]/gi, "_").toLowerCase();
+
+  if (!cleanName || !cleanEmail) {
+    return { success: false, error: "Missing required fields." };
+  }
+
+  try {
+    const profilePayload: Record<string, any> = {
+      id: user.id || `usr-${cleanKey}`,
+      username: cleanKey,
+      name: cleanName,
+      displayName: cleanName,
+      email: cleanEmail,
+      role: user.role === "viewer" ? "readonly" : "admin",
+      systemRole: user.role,
+      warehouseIds: user.warehouseIds || "all",
+      isActive: true,
+      deleted: false,
+      verified: true,
+      updatedAt: new Date().toISOString(),
+    };
+    if (user.password && user.password.trim()) {
+      profilePayload.passwordHash = user.password.trim();
+    }
+
+    await setDoc(
+      doc(db, APP_DATA_COLLECTION, USER_PROFILES_DOC),
+      { [cleanKey]: profilePayload, [cleanName]: profilePayload },
+      { merge: true }
+    );
+
+    if (user.password && user.password.trim()) {
+      await setDoc(
+        doc(db, APP_DATA_COLLECTION, USER_CREDENTIALS_DOC),
+        {
+          [cleanKey]: user.password.trim(),
+          [cleanName]: user.password.trim(),
+          [cleanName.toLowerCase()]: user.password.trim(),
+        },
+        { merge: true }
+      );
+    }
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || "Failed to save user." };
+  }
+}
+
+/**
+ * Delete a Master User Account
+ */
+export async function deleteMasterUserAccount(email: string, name: string): Promise<{ success: boolean; error?: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanKey = cleanEmail.split("@")[0].replace(/[^a-z0-9_]/gi, "_").toLowerCase();
+  try {
+    await setDoc(
+      doc(db, APP_DATA_COLLECTION, USER_PROFILES_DOC),
+      {
+        [cleanKey]: { email: cleanEmail, deleted: true, isActive: false },
+        [name.trim()]: { email: cleanEmail, deleted: true, isActive: false },
+      },
+      { merge: true }
+    );
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || "Failed to delete user." };
+  }
+}
+
+/**
+ * Authenticate user by username OR email against Firestore
+ */
+export async function authenticateUser(
+  identifier: string,
+  inputPass: string
+): Promise<{
+  success: boolean;
+  user?: {
+    id?: string;
+    name: string;
+    email?: string;
+    role: "admin" | "readonly";
+    systemRole?: "super_admin" | "warehouse_manager" | "staff" | "viewer";
+    warehouseIds?: string;
+  };
+  message?: string;
+}> {
+  const cleanId = String(identifier || "").trim();
+  const cleanPass = String(inputPass || "");
+
+  if (!cleanId || !cleanPass) {
+    return { success: false, message: "Username and password are required." };
+  }
+
+  try {
+    const normalized = cleanId.toLowerCase();
+    const allUsers = await getMasterUsersList();
+    const matched = allUsers.find((u) => {
+      if (!u.isActive) return false;
+      const uEmail = u.email.toLowerCase();
+      const uName = u.name.toLowerCase();
+      const firstWord = uName.split(" ")[0];
+      if (cleanId.includes("@")) {
+        return uEmail === normalized;
       }
-    }
+      return (
+        uEmail.startsWith(`${normalized}@`) ||
+        uName === normalized ||
+        firstWord === normalized ||
+        (uName === "farrhan" && normalized === "farhan")
+      );
+    });
 
-    if (validPass === null) {
-      return { success: false, message: "Akun tidak ditemukan. Silakan daftar akun baru terlebih dahulu." };
-    }
-
-    if (cleanPass === validPass) {
+    if (matched && matched.passwordHash === cleanPass) {
       return {
         success: true,
         user: {
-          name: displayName,
-          role,
+          id: matched.id,
+          name: matched.name,
+          email: matched.email,
+          role: matched.role === "viewer" ? "readonly" : "admin",
+          systemRole: matched.role,
+          warehouseIds: matched.warehouseIds,
         },
       };
-    } else {
-      return { success: false, message: "Password yang Anda masukkan salah." };
     }
+
+    return { success: false, message: "Invalid credentials or inactive account." };
   } catch (err) {
     console.error("Auth error:", err);
-    return { success: false, message: "Gagal menghubungkan ke server autentikasi." };
+    return { success: false, message: "Invalid credentials or inactive account." };
   }
 }
 
