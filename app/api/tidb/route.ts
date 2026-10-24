@@ -1091,7 +1091,10 @@ export async function POST(req: Request) {
         const cust = String(item.customer_name || item.apotek || item["Nama Apotek"] || "").trim();
         const inv = String(item.invoice_no || item.faktur || item["No.Faktur"] || item["No. Invoice"] || "").trim();
         const prod = String(item.product_name || item.produk || item["Nama Produk (diisi sesuai penamaan di invoice)"] || "").trim();
-        if (!cust && !inv && !prod) continue;
+        
+        // Skip empty or #N/A formula rows
+        if ((!cust || cust === "#N/A") && (!inv || inv === "#N/A") && (!prod || prod === "#N/A")) continue;
+        if (cust === "#N/A" && (!inv || inv === "#N/A")) continue;
 
         const invLower = inv.toLowerCase();
         const prodLower = prod.toLowerCase();
