@@ -55,7 +55,8 @@ function installSyncTrigger() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var triggers = ScriptApp.getProjectTriggers();
   for (var i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === "syncOnEdit") {
+    var fn = triggers[i].getHandlerFunction();
+    if (fn === "syncOnEdit" || fn === "onRealtimeChange" || fn === "onChange" || fn === "onEditTrigger") {
       ScriptApp.deleteTrigger(triggers[i]);
     }
   }
@@ -119,6 +120,13 @@ function formatCellDate(val) {
   }
   
   return s;
+}
+
+/**
+ * Alias backward compatibility untuk trigger lama (jika ada trigger lama 'onRealtimeChange')
+ */
+function onRealtimeChange(e) {
+  syncOnEdit(e);
 }
 
 /**
