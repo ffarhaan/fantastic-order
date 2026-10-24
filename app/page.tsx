@@ -2968,7 +2968,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         <div className={`p-2.5 border-b shrink-0 ${isDarkMode ? "border-zinc-800/80" : "border-zinc-200"}`}>
           {isSidebarCollapsed ? (
             /* Collapsed view top icon */
-            <div className="flex flex-col items-center gap-2 py-1">
+            <div className="flex flex-col items-center py-1">
               <button
                 type="button"
                 onClick={() => setShowLoginModal(true)}
@@ -2976,18 +2976,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 title={`${currentUser?.name || "User"}${currentUser?.role === "readonly" ? " (Viewer)" : ""}`}
               >
                 {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "S"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsSidebarCollapsed(false)}
-                className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                  isDarkMode
-                    ? "border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800"
-                    : "border-zinc-200 text-zinc-600 hover:text-black hover:bg-zinc-100"
-                }`}
-                title="Perluas Sidebar (Expand)"
-              >
-                <PanelLeftOpen className="w-4 h-4" />
               </button>
             </div>
           ) : (
