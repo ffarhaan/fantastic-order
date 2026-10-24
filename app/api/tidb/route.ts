@@ -137,7 +137,7 @@ export async function GET(req: Request) {
           GROUP BY customer_id
         ) cd ON c.id = cd.customer_id
         ${whereClause.replace(/\b(name|customer_id_oracle|id|address|apj_name|phone|category|status_merchant)\b/g, "c.$1")}
-        ORDER BY c.name ASC
+        ORDER BY COALESCE(cd.doc_count, 0) DESC, CASE WHEN c.name LIKE '%[INACTIVE]%' THEN 1 ELSE 0 END ASC, c.name ASC
         LIMIT ? OFFSET ?
       `;
       const rows = await conn.execute(dataSql, [...params, limit, offset]);

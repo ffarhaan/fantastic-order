@@ -165,8 +165,9 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
 
-  // Customer Detail Drawer state
+  // Customer Detail / Docs Gallery state
   const [selectedCust, setSelectedCust] = useState<CustomerRecord | null>(null);
+  const [docsGalleryCust, setDocsGalleryCust] = useState<CustomerRecord | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [customerReturns, setCustomerReturns] = useState<ShipmentReturnRecord[]>([]);
   const [customerFakturs, setCustomerFakturs] = useState<any[]>([]);
@@ -365,6 +366,8 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
   };
 
   const handleOpenEdit = (cust: CustomerRecord) => {
+    setSelectedCust(null);
+    setDocsGalleryCust(null);
     setEditForm({
       ...cust,
       sia_expired: parseToDateInputValue(cust.sia_expired),
@@ -372,6 +375,14 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
     });
     setCustomerDocs([]);
     setShowEditModal(true);
+    loadCustomerDocs(cust.id, cust.name);
+  };
+
+  const handleOpenDocsGallery = (cust: CustomerRecord) => {
+    setSelectedCust(null);
+    setShowEditModal(false);
+    setDocsGalleryCust(cust);
+    setCustomerDocs([]);
     loadCustomerDocs(cust.id, cust.name);
   };
 
@@ -785,19 +796,6 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-500" : ""}`} />
           </button>
-
-          {/* Direct Link to Google Drive Master Folder */}
-          <a
-            href="https://drive.google.com/drive/folders/1vcadO7xGZXEdUxRLap7H76wTcQUxii1w"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer whitespace-nowrap"
-            title="Buka Folder Google Drive Foto Dokumen & NPWP Apotek"
-          >
-            <FolderOpen className="w-3.5 h-3.5" />
-            <span>Folder Drive Dokumen</span>
-            <ExternalLink className="w-3 h-3 opacity-75" />
-          </a>
         </div>
       </div>
 
@@ -856,12 +854,12 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                 </tr>
               ) : (
                 customers.map((c) => {
-                  const isSelected = selectedCust?.id === c.id || (showEditModal && editForm?.id === c.id);
+                  const isSelected = docsGalleryCust?.id === c.id || (showEditModal && editForm?.id === c.id);
 
                   return (
                     <tr
                       key={c.id}
-                      onClick={() => handleOpenDetail(c)}
+                      onClick={() => handleOpenEdit(c)}
                       className={`group transition-all cursor-pointer ${
                         isSelected
                           ? "bg-blue-50/90 dark:bg-slate-800/70 border-l-4 border-blue-600 dark:border-indigo-500"
@@ -958,31 +956,36 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                         </span>
                       </td>
 
-                      {/* Action Buttons */}
+                      {/* Action Buttons: Edit + Dokumen (di sebelah kanan Edit) */}
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleOpenDetail(c);
+                              handleOpenEdit(c);
                             }}
-                            className="px-2 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-indigo-600 text-zinc-700 hover:text-black dark:text-slate-200 dark:hover:text-white text-[11px] font-semibold border border-zinc-200 dark:border-slate-700 transition-all flex items-center gap-1 shadow-2xs active:scale-95 cursor-pointer"
-                            title="Lihat Detail Customer"
+                            className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-slate-800 dark:hover:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-slate-700 text-[11px] font-bold transition-all flex items-center gap-1 shadow-2xs active:scale-95 cursor-pointer"
+                            title="Edit Data Customer (Buka Panel Kanan)"
                           >
-                            <span>Lihat</span>
-                            <ArrowRight className="w-3 h-3" />
+                            <Pencil className="w-3 h-3" />
+                            <span>Edit</span>
                           </button>
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleOpenEdit(c);
+                              handleOpenDocsGallery(c);
                             }}
-                            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-slate-800 dark:hover:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-slate-700 transition-all shadow-2xs active:scale-95 cursor-pointer"
-                            title="Edit Data Customer"
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all flex items-center gap-1 shadow-2xs active:scale-95 cursor-pointer ${
+                              Number(c.doc_count) > 0
+                                ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500"
+                                : "bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-700 dark:text-slate-200 border-zinc-200 dark:border-slate-700"
+                            }`}
+                            title="Lihat Foto & Dokumen Customer"
                           >
-                            <Pencil className="w-3.5 h-3.5" />
+                            <ImageIcon className="w-3 h-3" />
+                            <span>Dokumen{Number(c.doc_count) > 0 ? ` (${c.doc_count})` : ""}</span>
                           </button>
                         </div>
                       </td>
@@ -1032,450 +1035,170 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
         </div>
       </div>
 
-      {/* ─── CUSTOMER DETAIL MODAL / DRAWER (100% COMPLETE DATA) ─── */}
-      {selectedCust && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden text-zinc-900 dark:text-zinc-100">
-            {/* Modal Header */}
-            <div className="p-4 sm:p-6 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/90 flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-600/20 to-cyan-500/20 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-inner shrink-0">
-                  <Building2 className="w-6 h-6" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-lg font-black text-zinc-900 dark:text-white flex items-center gap-2 flex-wrap">
-                    <span className="truncate">{selectedCust.name}</span>
-                    <span
-                      className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase ${
-                        selectedCust.status_merchant === "ACTIVE"
-                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
-                          : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
-                      }`}
-                    >
-                      {selectedCust.status_merchant || "N/A"}
-                    </span>
-                  </h3>
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 flex items-center gap-2 flex-wrap font-medium">
-                    <span>ID: <strong className="font-mono text-zinc-800 dark:text-zinc-200">{selectedCust.id}</strong></span>
-                    <span>•</span>
-                    <span>Oracle: <strong className="font-mono text-indigo-600 dark:text-indigo-300">{selectedCust.customer_id_oracle || "-"}</strong></span>
-                    <span>•</span>
-                    <span>Kategori: <strong className="text-amber-600 dark:text-amber-400 font-bold">{selectedCust.category || "REG"}</strong></span>
-                    {selectedCust.is_active_2p && (
-                      <>
-                        <span>•</span>
-                        <span className="text-[10px] px-2 py-0.2 rounded bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20 font-bold">
-                          {selectedCust.is_active_2p}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
+      {/* ─── GALERI FOTO & DOKUMEN LANGSUNG (DIBUKA DARI TOMBOL SEBELAH KANAN EDIT) ─── */}
+      {docsGalleryCust && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150"
+          onClick={() => setDocsGalleryCust(null)}
+        >
+          <div
+            className="bg-white dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden text-zinc-900 dark:text-zinc-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-4 sm:p-5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/90 flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <h3 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white truncate">
+                  🖼️ Foto &amp; Dokumen: {docsGalleryCust.name}
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 font-mono mt-0.5">
+                  ID: {docsGalleryCust.id} • Oracle: {docsGalleryCust.customer_id_oracle || "-"} • Total: {customerDocs.length} Berkas
+                </p>
               </div>
-
               <div className="flex items-center gap-2 shrink-0">
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs cursor-pointer transition">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>{zipProgress ? "Mengupload..." : "Tambah Foto / PDF"}</span>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf,.zip"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      if (f.name.toLowerCase().endsWith(".zip")) {
+                        handleImportZipDocs(e, docsGalleryCust.id);
+                      } else {
+                        const reader = new FileReader();
+                        reader.onload = async (ev) => {
+                          const dataUrl = ev.target?.result as string;
+                          try {
+                            setZipProgress(`Mengunggah ${f.name}...`);
+                            await uploadSingleDocToTiDB(docsGalleryCust.id, f.name, f.type || "application/pdf", f.size, dataUrl, docsGalleryCust.name);
+                            await loadCustomerDocs(docsGalleryCust.id, docsGalleryCust.name);
+                            fetchCustomers();
+                          } finally {
+                            setZipProgress(null);
+                          }
+                        };
+                        reader.readAsDataURL(f);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                </label>
                 <button
                   type="button"
-                  onClick={() => {
-                    handleOpenEdit(selectedCust);
-                    setSelectedCust(null);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                  title="Edit Data Customer (Buka Laci Kanan)"
+                  onClick={() => handleOpenEdit(docsGalleryCust)}
+                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <Pencil className="w-3.5 h-3.5" />
                   <span>Edit Data</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSelectedCust(null)}
-                  className="w-8 h-8 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 dark:hover:bg-zinc-700 text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
-                  title="Tutup (Esc)"
+                  onClick={() => setDocsGalleryCust(null)}
+                  className="w-8 h-8 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-500 flex items-center justify-center cursor-pointer"
+                  title="Tutup"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* Modal Body (Complete Data Canvas) */}
-            <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs">
-
-              {/* SECTION 1: LEGALITAS APOTEK & APJ (SIA & SIPA) */}
-              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800/80 bg-zinc-50/80 dark:bg-zinc-950/70 p-4 space-y-3">
-                <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
-                  <span className="font-black text-xs uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>Legalitas Izin Apotek &amp; APJ (SIA / SIPA)</span>
-                  </span>
-                  <span className="text-[10px] text-zinc-500 font-mono">Format: Tanggal Bulan Tahun</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-2xs">
-                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Apoteker PJ (APJ)</span>
-                    <strong className="text-zinc-900 dark:text-zinc-100 block mt-1 text-xs">{selectedCust.apj_name || "-"}</strong>
-                  </div>
-
-                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-2xs">
-                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Nomor SIPA</span>
-                    <strong className="text-zinc-900 dark:text-indigo-300 font-mono block mt-1 text-xs truncate" title={selectedCust.sipa_number || "-"}>
-                      {selectedCust.sipa_number || "-"}
-                    </strong>
-                  </div>
-
-                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-indigo-200 dark:border-indigo-500/30 shadow-2xs">
-                    <span className="text-indigo-600 dark:text-indigo-400 block text-[10px] uppercase font-bold">Masa Berlaku SIPA (Expired)</span>
-                    <strong className="text-indigo-700 dark:text-indigo-300 font-mono block mt-1 text-xs font-black">
-                      {formatIndonesianDate(selectedCust.sipa_expired)}
-                    </strong>
-                  </div>
-
-                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-2xs">
-                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Kode SIPNAP</span>
-                    <strong className="text-zinc-900 dark:text-zinc-200 font-mono block mt-1 text-xs">{selectedCust.sipnap_code || "-"}</strong>
-                  </div>
-
-                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-2xs">
-                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Nomor SIA (Izin Apotek)</span>
-                    <strong className="text-zinc-900 dark:text-cyan-300 font-mono block mt-1 text-xs truncate" title={selectedCust.sia_number || "-"}>
-                      {selectedCust.sia_number || "-"}
-                    </strong>
-                  </div>
-
-                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-cyan-200 dark:border-cyan-500/30 shadow-2xs">
-                    <span className="text-cyan-600 dark:text-cyan-400 block text-[10px] uppercase font-bold">Masa Berlaku SIA (Expired)</span>
-                    <strong className="text-cyan-700 dark:text-cyan-300 font-mono block mt-1 text-xs font-black">
-                      {formatIndonesianDate(selectedCust.sia_expired)}
-                    </strong>
-                  </div>
-                </div>
+            {zipProgress && (
+              <div className="px-5 py-2 bg-amber-50 dark:bg-amber-950/60 border-b border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-bold animate-pulse">
+                {zipProgress}
               </div>
+            )}
 
-              {/* SECTION 2: LOKASI PENGIRIMAN & KONTAK LOGISTIK */}
-              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800/80 bg-zinc-50/80 dark:bg-zinc-950/70 p-4 space-y-3">
-                <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
-                  <span className="font-black text-xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                    <MapPin className="w-4 h-4" />
-                    <span>Lokasi Pengiriman &amp; Distribusi Logistik</span>
-                  </span>
-                  <span className="text-[10px] text-zinc-500 font-mono">{selectedCust.branch || "-"} ({selectedCust.zone || "-"})</span>
+            {/* Gallery Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-zinc-100/60 dark:bg-zinc-950">
+              {detailLoading ? (
+                <div className="py-16 text-center text-zinc-500">
+                  <RefreshCw className="w-7 h-7 animate-spin mx-auto text-indigo-500 mb-2" />
+                  <p className="text-sm font-semibold">Memuat foto &amp; dokumen...</p>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold mb-1">
-                      Alamat Pengiriman (Default Delivery)
-                    </span>
-                    <p className="text-zinc-800 dark:text-zinc-200 leading-relaxed font-medium bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                      {selectedCust.address || "-"}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold flex items-center gap-1">
-                        <Phone className="w-3 h-3 text-emerald-500" />
-                        No. Telepon / HP
-                      </span>
-                      <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">{selectedCust.phone || "-"}</strong>
-                    </div>
-
-                    <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold flex items-center gap-1">
-                        <Mail className="w-3 h-3 text-cyan-500" />
-                        Email Resmi
-                      </span>
-                      <strong className="text-zinc-900 dark:text-zinc-100 block mt-1 text-xs truncate" title={selectedCust.email || "-"}>
-                        {selectedCust.email || "-"}
-                      </strong>
-                    </div>
-
-                    <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Site Ship To</span>
-                      <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">{selectedCust.site_ship_to || "-"}</strong>
-                    </div>
-
-                    <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Site Bill To</span>
-                      <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">{selectedCust.site_bill_to || "-"}</strong>
-                    </div>
-                  </div>
+              ) : customerDocs.length === 0 ? (
+                <div className="py-16 text-center text-zinc-500 max-w-md mx-auto">
+                  <ImageIcon className="w-12 h-12 mx-auto text-zinc-400 mb-3 opacity-60" />
+                  <p className="font-bold text-sm text-zinc-800 dark:text-zinc-200">
+                    Belum ada foto / dokumen untuk {docsGalleryCust.name} ({docsGalleryCust.id})
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Klik tombol <strong>Tambah Foto / PDF</strong> di kanan atas untuk mengunggah foto, PDF, atau file .ZIP dokumen apotek.
+                  </p>
                 </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {customerDocs.map((doc) => {
+                    const isLocalDoc = doc.file_id.startsWith("local_") || doc.folder_id === "local_zip";
+                    const docStreamUrl = isLocalDoc
+                      ? `/api/tidb?action=view_document&file_id=${encodeURIComponent(doc.file_id)}`
+                      : `https://drive.google.com/file/d/${doc.file_id}/preview`;
+                    const isImage = (doc.mime_type || "").startsWith("image/");
 
-                {selectedCust.halodoc_pharma && (
-                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center justify-between text-xs">
-                    <span className="text-zinc-500 dark:text-zinc-400 font-bold text-[10px] uppercase">Halodoc Pharma Alias</span>
-                    <span className="font-semibold text-zinc-900 dark:text-zinc-100">{selectedCust.halodoc_pharma}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* SECTION 3: DATA PEMILIK (PSA), KEUANGAN & AKUNTANSI */}
-              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800/80 bg-zinc-50/80 dark:bg-zinc-950/70 p-4 space-y-3">
-                <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
-                  <span className="font-black text-xs uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                    <Building2 className="w-4 h-4" />
-                    <span>Data Pemilik (PSA), Keuangan &amp; Akuntansi COA</span>
-                  </span>
-                  <span className="text-[10px] text-zinc-500 font-mono">Tax, Finance &amp; Identity</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Nama Pemilik / PSA</span>
-                    <strong className="text-zinc-900 dark:text-zinc-100 block mt-1 text-xs truncate" title={selectedCust.owner_name || "-"}>
-                      {selectedCust.owner_name || "-"}
-                    </strong>
-                  </div>
-
-                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">NPWP (VAT ID)</span>
-                    <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">{selectedCust.vat_id || "-"}</strong>
-                  </div>
-
-                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">NIK Pemilik</span>
-                    <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">{selectedCust.nik || "-"}</strong>
-                  </div>
-
-                  <div className="bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Status Riwayat Order</span>
-                    <span
-                      className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold ${
-                        selectedCust.order_status?.includes("SUDAH")
-                          ? "bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800"
-                          : "bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
-                      }`}
-                    >
-                      {selectedCust.order_status || "BELUM PERNAH ORDER"}
-                    </span>
-                  </div>
-
-                  {/* COA REC & COA REV */}
-                  <div className="col-span-1 sm:col-span-2 bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-blue-200/80 dark:border-blue-900/50">
-                    <span className="text-blue-600 dark:text-blue-400 block text-[10px] uppercase font-bold">COA Piutang (COA - REC)</span>
-                    <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs select-all">
-                      {selectedCust.coa_rec || "-"}
-                    </strong>
-                  </div>
-
-                  <div className="col-span-1 sm:col-span-2 bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-emerald-200/80 dark:border-emerald-900/50">
-                    <span className="text-emerald-600 dark:text-emerald-400 block text-[10px] uppercase font-bold">COA Pendapatan (COA - REV)</span>
-                    <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs select-all">
-                      {selectedCust.coa_rev || "-"}
-                    </strong>
-                  </div>
-
-                  <div className="col-span-1 sm:col-span-2 md:col-span-4 bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                    <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Waktu Terdaftar</span>
-                    <strong className="text-zinc-900 dark:text-zinc-100 font-mono block mt-1 text-xs">
-                      {selectedCust.created_at ? formatIndonesianDate(selectedCust.created_at) : "-"}
-                    </strong>
-                  </div>
-
-                  {selectedCust.owner_address && (
-                    <div className="col-span-1 sm:col-span-2 md:col-span-4 bg-white dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold mb-0.5">Alamat Pemilik (PSA)</span>
-                      <p className="text-zinc-800 dark:text-zinc-200 text-xs font-medium">{selectedCust.owner_address}</p>
-                    </div>
-                  )}
-
-                  {/* DOKUMEN & BERKAS NPWP / LEGALITAS */}
-                  <div className="col-span-1 sm:col-span-2 md:col-span-4 bg-white dark:bg-zinc-900/80 p-3 rounded-lg border border-amber-200/80 dark:border-amber-500/20">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-amber-700 dark:text-amber-400 block text-[10px] uppercase font-bold">
-                        Dokumen NPWP &amp; Berkas Legalitas
-                      </span>
-                      <a
-                        href="https://drive.google.com/drive/folders/1vcadO7xGZXEdUxRLap7H76wTcQUxii1w"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400 font-bold flex items-center gap-1 hover:underline"
-                        title="Buka Folder Master Dokumen Apotek MBI"
-                      >
-                        <FolderOpen className="w-3 h-3" />
-                        <span>Folder Master Dokumen</span>
-                        <ExternalLink className="w-2.5 h-2.5 opacity-70" />
-                      </a>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {selectedCust.npwp_drive_url && (
-                        <a
-                          href={selectedCust.npwp_drive_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-bold transition shadow-2xs"
-                        >
-                          <FolderOpen className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Buka Drive NPWP / Dokumen</span>
-                          <ExternalLink className="w-3 h-3 opacity-60" />
-                        </a>
-                      )}
-
-                      <a
-                        href={`https://drive.google.com/drive/search?q=${encodeURIComponent(selectedCust.name)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold transition shadow-2xs"
-                        title="Cari Dokumen Apotek Ini di Google Drive"
-                      >
-                        <Search className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Cari di GDrive: {selectedCust.name}</span>
-                        <ExternalLink className="w-3 h-3 opacity-60" />
-                      </a>
-
-                      {selectedCust.document_url && (
-                        <a
-                          href={selectedCust.document_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold transition shadow-2xs"
-                        >
-                          <FileText className="w-3.5 h-3.5 text-purple-600" />
-                          <span>{selectedCust.document_name || "Dokumen Legalitas Khusus"}</span>
-                          <ExternalLink className="w-3 h-3 opacity-60" />
-                        </a>
-                      )}
-
-                      {selectedCust.npwp_file_url && (
-                        <a
-                          href={selectedCust.npwp_file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold transition shadow-2xs"
-                        >
-                          <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Lihat Berkas NPWP</span>
-                          <ExternalLink className="w-3 h-3 opacity-60" />
-                        </a>
-                      )}
-                    </div>
-
-                    {/* DAFTAR DOKUMEN DARI GOOGLE DRIVE (preview langsung di aplikasi) */}
-                    <div className="mt-3 pt-3 border-t border-amber-100 dark:border-amber-500/10">
-                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold mb-2">
-                        Dokumen Tersimpan ({customerDocs.length})
-                      </span>
-                      {detailLoading ? (
-                        <p className="text-[11px] text-zinc-500">Memuat dokumen...</p>
-                      ) : customerDocs.length === 0 ? (
-                        <p className="text-[11px] text-zinc-500">
-                          Belum ada dokumen di folder Drive customer ini.
-                        </p>
-                      ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {customerDocs.map((doc) => {
-                            const isImage = (doc.mime_type || "").startsWith("image/");
-                            return (
-                              <button
-                                key={doc.file_id}
-                                type="button"
-                                onClick={() => setPreviewDoc(doc)}
-                                className="flex items-center gap-2 p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 hover:bg-amber-50 dark:bg-zinc-950/60 dark:hover:bg-amber-950/30 text-left transition cursor-pointer"
-                                title={doc.file_name}
-                              >
-                                {isImage ? (
-                                  <ImageIcon className="w-4 h-4 text-sky-600 shrink-0" />
-                                ) : (
-                                  <FileText className="w-4 h-4 text-rose-600 shrink-0" />
-                                )}
-                                <span className="flex-1 min-w-0">
-                                  <span className="block text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate">
-                                    {doc.file_name}
-                                  </span>
-                                  <span className="block text-[10px] text-zinc-500 truncate">
-                                    {[doc.folder_name, formatFileSize(doc.size_bytes)].filter(Boolean).join(" · ")}
-                                  </span>
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 4: RIWAYAT RETUR / KOMPLAIN */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2 text-zinc-900 dark:text-white">
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Riwayat Komplain &amp; Retur ({customerReturns.length})</span>
-                  </h4>
-                  {onSelectCustomerForFilter && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSelectCustomerForFilter(selectedCust.name);
-                        setSelectedCust(null);
-                      }}
-                      className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>Lihat Semua Faktur Apotek Ini</span>
-                      <ArrowRight className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-
-                {detailLoading ? (
-                  <div className="py-8 text-center text-zinc-500 bg-zinc-50 dark:bg-zinc-950/60 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                    <RefreshCw className="w-5 h-5 animate-spin mx-auto text-indigo-500 mb-1" />
-                    <span>Memeriksa catatan retur apotek...</span>
-                  </div>
-                ) : customerReturns.length === 0 ? (
-                  <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/30 p-3.5 rounded-xl text-center text-zinc-600 dark:text-zinc-400 flex items-center justify-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                    <span>Tidak ada catatan komplain atau retur untuk merchant ini (Catatan Bersih ✨)</span>
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                    {customerReturns.map((cr) => (
+                    return (
                       <div
-                        key={cr.id}
-                        className="bg-white dark:bg-zinc-950/80 p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-3 text-xs shadow-2xs"
+                        key={doc.file_id}
+                        className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden shadow-sm flex flex-col"
                       >
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-zinc-900 dark:text-zinc-100">{cr.product_name}</span>
-                            <span className="text-zinc-600 dark:text-zinc-400 text-[10px] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.2 rounded font-mono">
-                              Qty: {cr.qty}
+                        <div className="px-3.5 py-2.5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-2 bg-zinc-50 dark:bg-zinc-950/60">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {isImage ? (
+                              <ImageIcon className="w-4 h-4 text-sky-600 shrink-0" />
+                            ) : (
+                              <FileText className="w-4 h-4 text-rose-600 shrink-0" />
+                            )}
+                            <span className="text-xs font-bold text-zinc-900 dark:text-white truncate" title={doc.file_name}>
+                              {doc.file_name}
                             </span>
-                            <span className="font-mono text-indigo-600 dark:text-indigo-400 text-[10px]">
-                              Inv: {cr.invoice_no || "-"}
-                            </span>
+                            {doc.size_bytes ? (
+                              <span className="text-[10px] text-zinc-500 shrink-0">({formatFileSize(doc.size_bytes)})</span>
+                            ) : null}
                           </div>
-                          <p className="text-amber-600 dark:text-amber-300 text-[11px] mt-1 font-medium">Alasan: {cr.reason}</p>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setPreviewDoc(doc)}
+                              className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold cursor-pointer"
+                            >
+                              Layar Penuh
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCustomerDoc(doc)}
+                              className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                              title="Hapus"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                            (cr.status || "").toLowerCase().includes("resolved")
-                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
-                              : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
-                          }`}
-                        >
-                          {cr.status || "Pending"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
 
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/90 flex items-center justify-between">
-              <span className="text-[11px] text-zinc-500 font-medium">
-                Fantastic Order Master Customer Hub • Data Terverifikasi
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedCust(null)}
-                className="px-4 py-1.5 bg-zinc-900 hover:bg-black text-white dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-200 font-bold rounded-xl text-xs transition cursor-pointer"
-              >
-                Tutup
-              </button>
+                        {/* Visual Photo or PDF Preview directly rendered */}
+                        <div
+                          className="h-72 w-full bg-zinc-900/5 dark:bg-black/40 flex items-center justify-center overflow-hidden cursor-pointer"
+                          onClick={() => setPreviewDoc(doc)}
+                        >
+                          {isImage ? (
+                            <img
+                              src={docStreamUrl}
+                              alt={doc.file_name}
+                              className="w-full h-full object-contain hover:scale-[1.02] transition-transform"
+                            />
+                          ) : (
+                            <iframe
+                              src={docStreamUrl}
+                              title={doc.file_name}
+                              className="w-full h-full border-0"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1791,11 +1514,11 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                   </div>
                 </div>
 
-                {/* Section 5: Data NPWP & Dokumen Legalitas */}
+                {/* Section 5: Foto & Dokumen Legalitas (NPWP / SIA / SIPA) */}
                 <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-bold text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-400 block">
-                      5. Berkas NPWP, Google Drive &amp; Dokumen Legalitas
+                      5. Foto &amp; Dokumen Legalitas ({customerDocs.length} Berkas)
                     </span>
                     <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold shadow-2xs cursor-pointer transition">
                       <Package className="w-3.5 h-3.5" />
@@ -1816,77 +1539,66 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                     </div>
                   )}
 
-                  {/* DAFTAR DOKUMEN TERSIMPAN APOTEK INI (DI MODAL EDIT) */}
+                  {/* GALERI FOTO & DOKUMEN TERSIMPAN APOTEK INI (VISUAL LANGSUNG, TANPA LINK GDRIVE) */}
                   <div className="bg-white dark:bg-zinc-900 p-3 rounded-lg border border-amber-200 dark:border-amber-500/30">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
-                        📂 Dokumen Tersimpan di Aplikasi ({customerDocs.length} Berkas)
-                      </span>
-                      {editForm.name && (
-                        <a
-                          href={`https://drive.google.com/drive/search?q=${encodeURIComponent(editForm.name)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[10px] text-blue-600 hover:underline font-bold flex items-center gap-1"
-                        >
-                          <Search className="w-3 h-3" />
-                          <span>Cari di GDrive</span>
-                          <ExternalLink className="w-2.5 h-2.5" />
-                        </a>
-                      )}
-                    </div>
-
                     {detailLoading ? (
-                      <p className="text-xs text-zinc-500">Memuat berkas tersimpan...</p>
+                      <p className="text-xs text-zinc-500">Memuat foto &amp; berkas...</p>
                     ) : customerDocs.length === 0 ? (
                       <p className="text-[11px] text-zinc-500">
-                        Belum ada dokumen terupload untuk apotek ini ({editForm.id}). Anda bisa upload file satuan di bawah atau klik <strong>Upload File .ZIP Dokumen</strong> di kanan atas untuk mengunggah banyak apotek sekaligus.
+                        Belum ada foto/dokumen terupload untuk apotek ini ({editForm.id}). Silakan upload foto/PDF di bawah atau klik <strong>Upload File .ZIP Dokumen</strong>.
                       </p>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-3">
                         {customerDocs.map((doc) => {
+                          const isLocalDoc = doc.file_id.startsWith("local_") || doc.folder_id === "local_zip";
+                          const docStreamUrl = isLocalDoc
+                            ? `/api/tidb?action=view_document&file_id=${encodeURIComponent(doc.file_id)}`
+                            : `https://drive.google.com/file/d/${doc.file_id}/preview`;
                           const isImage = (doc.mime_type || "").startsWith("image/");
                           return (
                             <div
                               key={doc.file_id}
-                              className="flex items-center justify-between gap-2 p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/70"
+                              className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/70 overflow-hidden"
                             >
-                              <button
-                                type="button"
+                              <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800">
+                                <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">
+                                  {doc.file_name}
+                                </span>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewDoc(doc)}
+                                    className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold cursor-pointer"
+                                  >
+                                    Perbesar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteCustomerDoc(doc)}
+                                    className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                                    title="Hapus dokumen"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                              <div
+                                className="h-52 w-full bg-zinc-900/5 dark:bg-black/40 flex items-center justify-center overflow-hidden cursor-pointer"
                                 onClick={() => setPreviewDoc(doc)}
-                                className="flex items-center gap-2 flex-1 min-w-0 text-left hover:text-amber-600 cursor-pointer"
-                                title="Klik untuk melihat dokumen di aplikasi"
                               >
                                 {isImage ? (
-                                  <ImageIcon className="w-4 h-4 text-sky-600 shrink-0" />
+                                  <img
+                                    src={docStreamUrl}
+                                    alt={doc.file_name}
+                                    className="w-full h-full object-contain"
+                                  />
                                 ) : (
-                                  <FileText className="w-4 h-4 text-rose-600 shrink-0" />
+                                  <iframe
+                                    src={docStreamUrl}
+                                    title={doc.file_name}
+                                    className="w-full h-full border-0"
+                                  />
                                 )}
-                                <span className="min-w-0 flex-1">
-                                  <span className="block text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">
-                                    {doc.file_name}
-                                  </span>
-                                  <span className="block text-[10px] text-zinc-500 truncate">
-                                    {formatFileSize(doc.size_bytes) || "Klik untuk pratinjau"}
-                                  </span>
-                                </span>
-                              </button>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewDoc(doc)}
-                                  className="px-2 py-1 rounded bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 text-[10px] font-bold cursor-pointer"
-                                >
-                                  Lihat
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteCustomerDoc(doc)}
-                                  className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
-                                  title="Hapus dokumen"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
                               </div>
                             </div>
                           );
@@ -1895,86 +1607,31 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
                     )}
                   </div>
 
-                  <div className="space-y-3">
-                    {/* Link Google Drive NPWP */}
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    {/* Upload File NPWP Apotek */}
+                    <div className="bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
                       <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Link Folder / File Google Drive Data NPWP
+                        Tambah Foto / PDF NPWP
                       </label>
                       <input
-                        type="url"
-                        value={editForm.npwp_drive_url || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, npwp_drive_url: e.target.value }))}
-                        placeholder="https://drive.google.com/drive/folders/..."
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white text-xs font-mono focus:outline-none focus:border-amber-500"
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => handleFileUpload(e, "npwp_file_url")}
+                        className="w-full text-xs text-zinc-600 dark:text-zinc-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-amber-100 file:text-amber-800 hover:file:bg-amber-200 cursor-pointer"
                       />
-                      <p className="text-[10px] text-zinc-500 mt-1">Tautan Google Drive tempat berkas NPWP apotek ini disimpan.</p>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                      {/* Upload File NPWP Apotek */}
-                      <div className="bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                        <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                          Tambah File NPWP (PDF / Foto)
-                        </label>
-                        <input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          onChange={(e) => handleFileUpload(e, "npwp_file_url")}
-                          className="w-full text-xs text-zinc-600 dark:text-zinc-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-amber-100 file:text-amber-800 hover:file:bg-amber-200 cursor-pointer"
-                        />
-                        {editForm.npwp_file_url && (
-                          <div className="flex items-center justify-between mt-2 pt-1 border-t border-zinc-100 dark:border-zinc-800 text-[10px]">
-                            <a
-                              href={editForm.npwp_file_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-emerald-600 hover:underline font-bold flex items-center gap-1"
-                            >
-                              <Check className="w-3 h-3" /> Lihat Berkas NPWP
-                            </a>
-                            <button
-                              type="button"
-                              onClick={() => setEditForm((prev) => ({ ...prev, npwp_file_url: "" }))}
-                              className="text-red-500 hover:text-red-700 font-semibold cursor-pointer"
-                            >
-                              Hapus
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Upload Dokumen Legalitas */}
-                      <div className="bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                        <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                          Tambah Dokumen Legalitas / SIA / SIPA
-                        </label>
-                        <input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          onChange={(e) => handleFileUpload(e, "document_url")}
-                          className="w-full text-xs text-zinc-600 dark:text-zinc-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-800 hover:file:bg-purple-200 cursor-pointer"
-                        />
-                        {editForm.document_url && (
-                          <div className="flex items-center justify-between mt-2 pt-1 border-t border-zinc-100 dark:border-zinc-800 text-[10px]">
-                            <a
-                              href={editForm.document_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-emerald-600 hover:underline font-bold flex items-center gap-1"
-                            >
-                              <Check className="w-3 h-3" /> Lihat {editForm.document_name || "Dokumen Legalitas"}
-                            </a>
-                            <button
-                              type="button"
-                              onClick={() => setEditForm((prev) => ({ ...prev, document_url: "", document_name: "" }))}
-                              className="text-red-500 hover:text-red-700 font-semibold cursor-pointer"
-                            >
-                              Hapus
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                    {/* Upload Dokumen Legalitas */}
+                    <div className="bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Tambah Foto / PDF SIA, SIPA, KTP
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => handleFileUpload(e, "document_url")}
+                        className="w-full text-xs text-zinc-600 dark:text-zinc-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-800 hover:file:bg-purple-200 cursor-pointer"
+                      />
                     </div>
                   </div>
                 </div>
