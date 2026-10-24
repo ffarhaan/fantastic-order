@@ -1535,7 +1535,7 @@ export async function POST(req: Request) {
           const pAt = item.printed_at || null;
           const pBy = item.printed_by || null;
           const totalHarga = Number(item.total_harga || item.totalHarga || 0);
-          const itemsJson = item.items ? JSON.stringify(item.items) : null;
+          const itemsJson = Array.isArray(item.items) && item.items.length > 0 ? JSON.stringify(item.items) : null;
 
           params.push(
             invKey,
@@ -1564,14 +1564,25 @@ export async function POST(req: Request) {
           ) VALUES ${placeholders}
           ON DUPLICATE KEY UPDATE
             no_sales_order = IF(VALUES(no_sales_order) IS NOT NULL AND CHAR_LENGTH(VALUES(no_sales_order)) > 1, VALUES(no_sales_order), fakturs_archive.no_sales_order),
-            customer_name = IF(VALUES(customer_name) IS NOT NULL AND CHAR_LENGTH(VALUES(customer_name)) > 1, VALUES(customer_name), fakturs_archive.customer_name),
+            customer_name = IF(
+              VALUES(customer_name) IS NOT NULL AND CHAR_LENGTH(VALUES(customer_name)) > 1
+                AND NOT (
+                  (UPPER(VALUES(customer_name)) LIKE '%HELIOS%' OR VALUES(customer_name) = '1001')
+                  AND fakturs_archive.customer_name IS NOT NULL
+                  AND CHAR_LENGTH(fakturs_archive.customer_name) > 1
+                  AND UPPER(fakturs_archive.customer_name) NOT LIKE '%HELIOS%'
+                  AND fakturs_archive.customer_name <> '1001'
+                ),
+              VALUES(customer_name),
+              fakturs_archive.customer_name
+            ),
             transaction_date = IF(VALUES(transaction_date) IS NOT NULL AND CHAR_LENGTH(VALUES(transaction_date)) > 1, VALUES(transaction_date), fakturs_archive.transaction_date),
             kategori = VALUES(kategori),
-            kategori_produk = VALUES(kategori_produk),
+            kategori_produk = IF(VALUES(items_json) IS NOT NULL, VALUES(kategori_produk), fakturs_archive.kategori_produk),
             status_cetak = IF(fakturs_archive.status_cetak = 1, 1, VALUES(status_cetak)),
             printed_at = IF(fakturs_archive.status_cetak = 1, fakturs_archive.printed_at, VALUES(printed_at)),
             printed_by = IF(fakturs_archive.status_cetak = 1, fakturs_archive.printed_by, VALUES(printed_by)),
-            total_harga = VALUES(total_harga),
+            total_harga = IF(VALUES(items_json) IS NOT NULL OR VALUES(total_harga) <> 0, VALUES(total_harga), fakturs_archive.total_harga),
             items_json = IF(VALUES(items_json) IS NOT NULL, VALUES(items_json), fakturs_archive.items_json);`,
           params
         );

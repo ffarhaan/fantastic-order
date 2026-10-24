@@ -783,17 +783,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       map.set(d.id, d);
     } else {
       const prev = map.get(d.id)!;
+      const prevCust = String(prev.customer_name || "").trim();
+      const newCust = String(d.customer_name || "").trim();
+      const isGeneric = (n: string) => !n || n === "-" || n === "1001" || n.toUpperCase().includes("HELIOS");
+      const keepPrevCust = isGeneric(newCust) && !isGeneric(prevCust);
       map.set(d.id, {
         ...prev,
         ...d,
         no_sales_order: (d.no_sales_order && d.no_sales_order !== "-") ? d.no_sales_order : prev.no_sales_order,
-        customer_name: (d.customer_name && d.customer_name !== "-") ? d.customer_name : prev.customer_name,
+        customer_name: keepPrevCust ? prev.customer_name : (newCust && newCust !== "-" ? d.customer_name : prev.customer_name),
         status_cetak: Boolean(prev.status_cetak || d.status_cetak),
         printed_at: prev.status_cetak ? prev.printed_at : (d.printed_at || prev.printed_at),
         printed_by: prev.status_cetak ? prev.printed_by : (d.printed_by || prev.printed_by),
         extra: {
           ...prev.extra,
           ...d.extra,
+          nama_pelanggan: keepPrevCust ? (prev.extra?.nama_pelanggan || prev.customer_name) : (d.extra?.nama_pelanggan || prev.extra?.nama_pelanggan),
           items: (d.extra?.items && d.extra.items.length > 0) ? d.extra.items : (prev.extra?.items || []),
         },
       });
@@ -2320,6 +2325,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
         // 3. Merge incoming records
         const touchedInvoiceInThisUpload = new Set<string>();
+        const prevItemsBackup = new Map<string, { items: NonNullable<NonNullable<FirestoreFakturDoc["extra"]>["items"]>; total_harga: number }>();
 
         for (const r of parsed) {
           const isOra = r.jenisTransaksi === "ORA" || isOraCustomer(r.customerName);
@@ -2416,8 +2422,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           if (!entry.extra) entry.extra = {};
 
           // First time seeing this invoice in THIS upload: reset its items and total_harga for clean update
+          // (Backup previous items/total so files WITHOUT item details never wipe XXCUST items - LOCKED_RULES A.7 Anti-Downgrade)
           if (!touchedInvoiceInThisUpload.has(targetKey)) {
             touchedInvoiceInThisUpload.add(targetKey);
+            if (Array.isArray(entry.extra.items) && entry.extra.items.length > 0) {
+              prevItemsBackup.set(targetKey, {
+                items: entry.extra.items,
+                total_harga: Number(entry.extra.total_harga || 0),
+              });
+            }
             entry.extra.items = [];
             entry.extra.total_harga = 0;
           }
@@ -2479,6 +2492,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               total_harga: r.totalHarga || 0,
               order_number: r.orderNumber || "-",
             });
+          }
+        }
+
+        // Anti-Downgrade (LOCKED_RULES A.7): restore previous items/total if this upload carried no item details
+        for (const [k, backup] of prevItemsBackup) {
+          const entry = invMap.get(k);
+          if (entry && entry.extra && (!Array.isArray(entry.extra.items) || entry.extra.items.length === 0)) {
+            entry.extra.items = backup.items;
+            if (!entry.extra.total_harga) entry.extra.total_harga = backup.total_harga;
           }
         }
 
