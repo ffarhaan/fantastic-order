@@ -1576,6 +1576,30 @@ export async function updateStaffApprovalStatus(
     };
 
     await setDoc(profRef, payload, { merge: true });
+
+    // If access is rejected/revoked, immediately clear any active online presence for this user
+    if (status === "rejected") {
+      try {
+        const presRef = doc(db, APP_DATA_COLLECTION, PRESENCE_DOC);
+        const presSnap = await getDoc(presRef);
+        if (presSnap.exists()) {
+          const presData = presSnap.data() as Record<string, any>;
+          const updates: Record<string, any> = {};
+          for (const [devId, info] of Object.entries(presData)) {
+            const n = String(info?.name || "").trim().toLowerCase();
+            if (n === cleanU || n === dName.toLowerCase()) {
+              updates[devId] = { lastActive: 0 };
+            }
+          }
+          if (Object.keys(updates).length > 0) {
+            await setDoc(presRef, updates, { merge: true });
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to clear online presence on reject:", e);
+      }
+    }
+
     return {
       success: true,
       message:
@@ -1708,7 +1732,13 @@ export async function authenticateUser(
     }
 
     // Check approval status & OTP verification (Super Admin Farhan is always approved & verified)
-    if (matchedProfile && !isSuperAdminUser(matchedUsername) && !isSuperAdminUser(displayName)) {
+    if (!isSuperAdminUser(matchedUsername) && !isSuperAdminUser(displayName)) {
+      if (!matchedProfile) {
+        return {
+          success: false,
+          message: "Akun belum terdaftar atau akses telah dicabut. Silakan daftar akun baru terlebih dahulu.",
+        };
+      }
       if (matchedProfile.approvalStatus === "pending") {
         return {
           success: false,
@@ -1719,7 +1749,7 @@ export async function authenticateUser(
       if (matchedProfile.approvalStatus === "rejected") {
         return {
           success: false,
-          message: "Maaf, pengajuan pendaftaran akun Anda tidak disetujui oleh Administrator.",
+          message: "Maaf, akses akun Anda telah dicabut atau tidak disetujui oleh Administrator.",
         };
       }
       // Approved by Farhan, now waiting for user to input the 6-digit OTP sent to their Gmail!

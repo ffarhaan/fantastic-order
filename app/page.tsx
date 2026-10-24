@@ -390,17 +390,55 @@ export default function Home() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
-  // Real-time Online Users Presence
-  const [onlineUsers, setOnlineUsers] = useState<ActiveUserPresence[]>([]);
+  // Real-time Online Users Presence (strictly filtered to approved accounts only)
+  const [rawOnlineUsers, setRawOnlineUsers] = useState<ActiveUserPresence[]>([]);
   const [showOnlinePopover, setShowOnlinePopover] = useState(false);
   const [allUserProfiles, setAllUserProfiles] = useState<StaffAccountProfile[]>([]);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
 
+  const onlineUsers = useMemo(() => {
+    if (allUserProfiles.length === 0) return rawOnlineUsers;
+    const approvedSet = new Set<string>();
+    for (const p of allUserProfiles) {
+      if (p.approvalStatus === "approved") {
+        if (p.username) approvedSet.add(p.username.trim().toLowerCase());
+        if (p.displayName) approvedSet.add(p.displayName.trim().toLowerCase());
+      }
+    }
+    return rawOnlineUsers.filter((u) => {
+      const n = String(u.name || "").trim().toLowerCase();
+      return isSuperAdminUser(n) || approvedSet.has(n);
+    });
+  }, [rawOnlineUsers, allUserProfiles]);
+
   useEffect(() => {
     const unsub = subscribeToUserProfiles((list) => {
       setAllUserProfiles(list);
       setPendingApprovalCount(list.filter((p) => p.approvalStatus === "pending").length);
+
+      // Real-time Auto-Kick: If current logged-in user's access was revoked or not in approved list, log out immediately!
+      const activeUser = currentUserRef.current;
+      if (activeUser && list.length > 0 && !isSuperAdminUser(activeUser.name)) {
+        const cleanActive = activeUser.name.trim().toLowerCase();
+        const isStillApproved = list.some(
+          (p) =>
+            p.approvalStatus === "approved" &&
+            (p.username.trim().toLowerCase() === cleanActive ||
+              p.displayName.trim().toLowerCase() === cleanActive)
+        );
+        if (!isStillApproved) {
+          removeUserPresence(deviceIdRef.current);
+          setCurrentUser(null);
+          currentUserRef.current = null;
+          try {
+            if (typeof window !== "undefined") {
+              sessionStorage.removeItem("faktur_tracker_user");
+            }
+          } catch {}
+          setShowLoginModal(true);
+        }
+      }
     });
     return () => unsub();
   }, []);
@@ -412,7 +450,7 @@ export default function Home() {
   // Subscribe to real-time online presence
   useEffect(() => {
     const unsub = subscribeToOnlinePresence((users) => {
-      setOnlineUsers(users);
+      setRawOnlineUsers(users);
     });
     return () => unsub();
   }, []);
