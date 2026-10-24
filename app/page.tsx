@@ -29,6 +29,8 @@ import {
   isStalePrintTimestamp,
   broadcastRecentUpload,
   subscribeToCheckers,
+  subscribeToUserProfiles,
+  isSuperAdminUser,
 } from "@/lib/firestoreService";
 import { syncFaktursToTiDB, syncFaktursToTiDBBackground, syncPrintStatusToTiDBBackground, fetchFaktursFromTiDB, getLocalCachedFakturs, setLocalCachedFakturs, setLocalCachedPrintState, checkTiDBUpdates, fetchTiDBDelta } from "@/lib/tidbService";
 import MasterApotekModal from "@/components/MasterApotekModal";
@@ -388,6 +390,14 @@ export default function Home() {
   // Real-time Online Users Presence
   const [onlineUsers, setOnlineUsers] = useState<ActiveUserPresence[]>([]);
   const [showOnlinePopover, setShowOnlinePopover] = useState(false);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
+
+  useEffect(() => {
+    const unsub = subscribeToUserProfiles((list) => {
+      setPendingApprovalCount(list.filter((p) => p.approvalStatus === "pending").length);
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -2584,6 +2594,19 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   <PanelLeftClose className="w-3.5 h-3.5" />
                 </button>
               </div>
+
+              {isSuperAdminUser(currentUser?.name) && pendingApprovalCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowLoginModal(true)}
+                  className="mt-2 w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 text-[11px] font-bold transition cursor-pointer"
+                >
+                  <span className="truncate">Menunggu ACC Akun Baru</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-black animate-pulse">
+                    {pendingApprovalCount}
+                  </span>
+                </button>
+              )}
 
             </>
           )}

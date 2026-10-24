@@ -64,14 +64,14 @@ export async function POST(req: NextRequest) {
             <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 24px; background-color: #ffffff; color: #1e293b; line-height: 1.6;">
               <div style="text-align: center; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9;">
                 <h2 style="margin: 0; color: #2563eb; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">FANTASTIC <span style="color: #4f46e5;">ORDER</span></h2>
-                <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 1px;">Pusat Logistik Terpadu &bull; Faktur Tracker</p>
+                <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: 700; color: #10b981; text-transform: uppercase; letter-spacing: 1px;">Akun Telah Di-ACC Admin &bull; Kode Verifikasi OTP</p>
               </div>
               <p style="font-size: 14px; font-weight: 600; margin-top: 0;">Halo ${name || "Staf Fantastic Order"},</p>
-              <p style="font-size: 13px; color: #475569;">Kami menerima permintaan pendaftaran akun baru di sistem <strong>Fantastic Order</strong>. Gunakan 6 digit kode verifikasi (OTP) berikut untuk mengaktifkan akun Anda:</p>
+              <p style="font-size: 13px; color: #475569;">Pengajuan pendaftaran akun Anda di sistem <strong>Fantastic Order</strong> telah <strong>disetujui (di-ACC) oleh Administrator (Farhan)</strong>! Gunakan 6 digit kode verifikasi (OTP) berikut untuk mengaktifkan dan masuk ke akun Anda:</p>
               <div style="background-color: #f8fafc; border: 2px dashed #3b82f6; border-radius: 16px; padding: 24px; margin: 24px 0; text-align: center;">
                 <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 1px; margin-bottom: 8px;">Kode Verifikasi OTP Anda</div>
                 <div style="font-family: monospace; font-size: 36px; font-weight: 900; letter-spacing: 10px; color: #1d4ed8;">${generatedCode}</div>
-                <div style="font-size: 11px; color: #d97706; font-weight: 600; margin-top: 10px;">&bull; Kode ini berlaku selama 10 menit &bull; Jangan bagikan ke siapapun</div>
+                <div style="font-size: 11px; color: #d97706; font-weight: 600; margin-top: 10px;">&bull; Masukkan kode ini di halaman login Fantastic Order &bull; Jangan bagikan ke siapapun</div>
               </div>
               <p style="font-size: 12px; color: #64748b; margin-bottom: 0;">Jika Anda tidak merasa melakukan pendaftaran akun di sistem ini, silakan abaikan email ini.</p>
               <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 12px; font-weight: 700; color: #64748b;">
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
           await transporter.sendMail({
             from: `"Fantastic Order System" <${smtpUser}>`,
             to: cleanEmail,
-            subject: `[${generatedCode}] Kode Verifikasi OTP - Fantastic Order`,
+            subject: `[${generatedCode}] Akun Di-ACC! Kode OTP Fantastic Order Anda`,
             html: mailHtml,
           });
 
@@ -110,7 +110,8 @@ export async function POST(req: NextRequest) {
         success: true,
         emailSent: true,
         otpToken: signedToken,
-        message: `Kode OTP 6 digit telah dikirim ke Gmail ${cleanEmail}. Silakan cek Kotak Masuk (atau folder Spam) Anda.`,
+        cloudOtpCode: generatedCode,
+        message: `Kode OTP 6 digit telah dikirim ke Gmail ${cleanEmail}.`,
       });
     }
 
@@ -170,6 +171,111 @@ export async function POST(req: NextRequest) {
         success: true,
         message: "Kode OTP berhasil diverifikasi!",
       });
+    }
+
+    // -------------------------------------------------------------
+    // ACTION 3: NOTIFY ADMIN (FARHAN) WHEN NEW USER REQUESTS ACC
+    // -------------------------------------------------------------
+    if (action === "notify_admin") {
+      const smtpUser = process.env.GMAIL_USER || process.env.SMTP_USER || "ffuegoleon@gmail.com";
+      const smtpPass = process.env.GMAIL_APP_PASS || process.env.SMTP_PASS || "cigqumslcdwlyfsu";
+      const adminEmail = "ffuegoleon@gmail.com";
+      const reqUsername = String(body.username || "").trim().toLowerCase();
+
+      if (smtpUser && smtpPass) {
+        try {
+          const transporter = nodemailer.createTransport({
+            host: "smtp.gmail.com",
+            port: 587,
+            secure: false,
+            auth: { user: smtpUser, pass: smtpPass },
+          });
+
+          const mailHtml = `
+            <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 24px; background-color: #ffffff; color: #1e293b; line-height: 1.6;">
+              <div style="text-align: center; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9;">
+                <h2 style="margin: 0; color: #2563eb; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">FANTASTIC <span style="color: #4f46e5;">ORDER</span></h2>
+                <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: 700; color: #d97706; text-transform: uppercase; letter-spacing: 1px;">Permintaan Persetujuan Akun Baru (Menunggu ACC)</p>
+              </div>
+              <p style="font-size: 14px; font-weight: 600; margin-top: 0;">Halo Farhan,</p>
+              <p style="font-size: 13px; color: #475569;">Terdapat pendaftar akun baru di sistem <strong>Fantastic Order</strong> yang telah memverifikasi OTP Gmail dan sedang menunggu persetujuan (ACC) dari akun Anda:</p>
+              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; margin: 24px 0; font-size: 13px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="width: 35%; padding: 4px 0; font-weight: 700; color: #64748b; font-size: 12px;">Nama Lengkap:</td>
+                    <td style="padding: 4px 0; font-weight: 800; color: #0f172a; font-size: 13px;">${name || reqUsername}</td>
+                  </tr>
+                  <tr>
+                    <td style="width: 35%; padding: 4px 0; font-weight: 700; color: #64748b; font-size: 12px;">Username:</td>
+                    <td style="padding: 4px 0; font-family: monospace; font-weight: 800; color: #0f172a; font-size: 13px;">@${reqUsername}</td>
+                  </tr>
+                  <tr>
+                    <td style="width: 35%; padding: 4px 0; font-weight: 700; color: #64748b; font-size: 12px;">Alamat Gmail:</td>
+                    <td style="padding: 4px 0; font-family: monospace; font-weight: 800; color: #2563eb; font-size: 13px;">${cleanEmail}</td>
+                  </tr>
+                  <tr>
+                    <td style="width: 35%; padding: 4px 0; font-weight: 700; color: #64748b; font-size: 12px;">Status:</td>
+                    <td style="padding: 4px 0; font-weight: 800; color: #d97706; font-size: 12px;">MENUNGGU ACC ADMIN</td>
+                  </tr>
+                </table>
+              </div>
+              <p style="font-size: 12px; color: #475569;">Silakan buka aplikasi <strong>Fantastic Order</strong> menggunakan akun Anda, lalu klik menu <strong>Persetujuan Akun (ACC)</strong> untuk menyetujui atau menolak pendaftaran ini.</p>
+            </div>
+          `;
+
+          await transporter.sendMail({
+            from: `"Fantastic Order System" <${smtpUser}>`,
+            to: adminEmail,
+            subject: `[Menunggu ACC] Pendaftaran Akun Baru: ${name || reqUsername} (@${reqUsername})`,
+            html: mailHtml,
+          });
+        } catch (e) {
+          console.error("Admin notify email error:", e);
+        }
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    // -------------------------------------------------------------
+    // ACTION 4: NOTIFY USER WHEN APPROVED BY FARHAN
+    // -------------------------------------------------------------
+    if (action === "notify_approved") {
+      const smtpUser = process.env.GMAIL_USER || process.env.SMTP_USER || "ffuegoleon@gmail.com";
+      const smtpPass = process.env.GMAIL_APP_PASS || process.env.SMTP_PASS || "cigqumslcdwlyfsu";
+      const reqUsername = String(body.username || "").trim().toLowerCase();
+
+      if (smtpUser && smtpPass) {
+        try {
+          const transporter = nodemailer.createTransport({
+            host: "smtp.gmail.com",
+            port: 587,
+            secure: false,
+            auth: { user: smtpUser, pass: smtpPass },
+          });
+
+          const mailHtml = `
+            <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 24px; background-color: #ffffff; color: #1e293b; line-height: 1.6;">
+              <div style="text-align: center; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9;">
+                <h2 style="margin: 0; color: #10b981; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">FANTASTIC <span style="color: #2563eb;">ORDER</span></h2>
+                <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: 700; color: #10b981; text-transform: uppercase; letter-spacing: 1px;">Akun Anda Telah Disetujui (ACC)</p>
+              </div>
+              <p style="font-size: 14px; font-weight: 600; margin-top: 0;">Halo ${name || reqUsername},</p>
+              <p style="font-size: 13px; color: #475569;">Pendaftaran akun Anda di sistem <strong>Fantastic Order</strong> telah <strong>disetujui (di-ACC)</strong> oleh Administrator.</p>
+              <p style="font-size: 13px; color: #475569;">Sekarang Anda sudah dapat masuk (login) menggunakan username <strong>${reqUsername}</strong> atau email <strong>${cleanEmail}</strong> beserta password yang telah Anda buat.</p>
+            </div>
+          `;
+
+          await transporter.sendMail({
+            from: `"Fantastic Order System" <${smtpUser}>`,
+            to: cleanEmail,
+            subject: `Akun Fantastic Order Anda Telah Disetujui (ACC)!`,
+            html: mailHtml,
+          });
+        } catch (e) {
+          console.error("Approved notify email error:", e);
+        }
+      }
+      return NextResponse.json({ success: true });
     }
 
     return NextResponse.json({ success: false, message: "Aksi tidak dikenali." }, { status: 400 });

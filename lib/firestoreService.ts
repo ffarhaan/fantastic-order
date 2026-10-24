@@ -1453,13 +1453,200 @@ export async function changeUserPassword(
 
 const USER_PROFILES_DOC = "user_profiles";
 
+export interface StaffAccountProfile {
+  username: string;
+  displayName: string;
+  email: string;
+  role: "admin" | "readonly";
+  verified: boolean;
+  approvalStatus: "pending" | "approved" | "rejected";
+  updatedAt: string;
+}
+
 /**
- * Authenticate user by username OR email, checking password
+ * Helper to check if a user is the Super Admin (Farhan)
+ */
+export function isSuperAdminUser(nameOrEmail?: string | null): boolean {
+  if (!nameOrEmail) return false;
+  const clean = nameOrEmail.trim().toLowerCase();
+  return (
+    clean === "farhan" ||
+    clean === "farrhan" ||
+    clean === "ffuegoleon@gmail.com" ||
+    clean === "farhaangs12@gmail.com"
+  );
+}
+
+/**
+ * Real-time listener for all user profiles (used by Farhan to approve/reject pending registrations)
+ */
+export function subscribeToUserProfiles(
+  onUpdate: (profiles: StaffAccountProfile[]) => void
+): Unsubscribe {
+  const profRef = doc(db, APP_DATA_COLLECTION, USER_PROFILES_DOC);
+  return onSnapshot(
+    profRef,
+    (snap) => {
+      if (!snap.exists()) {
+        onUpdate([]);
+        return;
+      }
+      const data = snap.data() as Record<string, any>;
+      const byUsername = new Map<string, StaffAccountProfile>();
+
+      Object.entries(data).forEach(([key, val]) => {
+        if (!val || typeof val !== "object") return;
+        const username = String(val.username || key).trim().toLowerCase();
+        if (!username) return;
+        const displayName = String(val.displayName || val.username || key).trim();
+        const email = String(val.email || "").trim().toLowerCase();
+        const role: "admin" | "readonly" = val.role === "readonly" ? "readonly" : "admin";
+        const approvalStatus: "pending" | "approved" | "rejected" =
+          val.approvalStatus === "pending" || val.approvalStatus === "rejected"
+            ? val.approvalStatus
+            : "approved";
+        const updatedAt = String(val.updatedAt || "");
+
+        const existing = byUsername.get(username);
+        if (!existing || updatedAt >= existing.updatedAt) {
+          byUsername.set(username, {
+            username,
+            displayName,
+            email,
+            role,
+            verified: Boolean(val.verified),
+            approvalStatus,
+            updatedAt,
+          });
+        }
+      });
+
+      const list = Array.from(byUsername.values()).sort((a, b) => {
+        if (a.approvalStatus === "pending" && b.approvalStatus !== "pending") return -1;
+        if (a.approvalStatus !== "pending" && b.approvalStatus === "pending") return 1;
+        return b.updatedAt.localeCompare(a.updatedAt);
+      });
+      onUpdate(list);
+    },
+    (err) => {
+      console.warn("Error subscribing to user profiles:", err);
+    }
+  );
+}
+
+/**
+ * Approve or Reject a staff account registration (Only by Farhan)
+ */
+export async function updateStaffApprovalStatus(
+  username: string,
+  displayName: string,
+  status: "approved" | "rejected",
+  role: "admin" | "readonly" = "admin"
+): Promise<{ success: boolean; message: string }> {
+  const cleanU = String(username || "").trim().toLowerCase();
+  const dName = String(displayName || username || "").trim();
+  const nowIso = new Date().toISOString();
+
+  try {
+    const profRef = doc(db, APP_DATA_COLLECTION, USER_PROFILES_DOC);
+    const snap = await getDoc(profRef);
+    const data = (snap.exists() ? snap.data() : {}) as Record<string, any>;
+
+    const baseProfile = data[cleanU] || data[dName] || {
+      username: cleanU,
+      displayName: dName,
+      email: "",
+      verified: false,
+    };
+
+    const updatedObj = {
+      ...baseProfile,
+      username: cleanU,
+      displayName: dName,
+      role,
+      // Keep verified: false when newly approved so user must enter the OTP sent to their Gmail
+      verified: status === "approved" ? Boolean(baseProfile.verified) : false,
+      approvalStatus: status,
+      updatedAt: nowIso,
+    };
+
+    const payload: Record<string, any> = {
+      [cleanU]: updatedObj,
+      [dName]: updatedObj,
+    };
+
+    await setDoc(profRef, payload, { merge: true });
+    return {
+      success: true,
+      message:
+        status === "approved"
+          ? `Akun ${dName} (@${cleanU}) berhasil di-ACC! Kode OTP telah dikirim ke Gmail ${baseProfile.email || "pengguna"}.`
+          : `Pengajuan akun ${dName} (@${cleanU}) telah ditolak.`,
+    };
+  } catch (err) {
+    console.error("Error updating approval status:", err);
+    return { success: false, message: "Gagal memperbarui status persetujuan akun." };
+  }
+}
+
+/**
+ * Mark staff account as OTP-verified after they input the 6-digit OTP sent upon Admin ACC
+ */
+export async function markAccountOtpVerified(
+  username: string,
+  displayName?: string
+): Promise<boolean> {
+  const cleanU = String(username || "").trim().toLowerCase();
+  const dName = String(displayName || username || "").trim();
+  const nowIso = new Date().toISOString();
+
+  try {
+    const profRef = doc(db, APP_DATA_COLLECTION, USER_PROFILES_DOC);
+    const snap = await getDoc(profRef);
+    const data = (snap.exists() ? snap.data() : {}) as Record<string, any>;
+    const baseProfile = data[cleanU] || data[dName] || {
+      username: cleanU,
+      displayName: dName,
+      role: "admin",
+    };
+
+    const updatedObj = {
+      ...baseProfile,
+      username: cleanU,
+      displayName: baseProfile.displayName || dName,
+      approvalStatus: "approved",
+      verified: true,
+      updatedAt: nowIso,
+    };
+
+    await setDoc(
+      profRef,
+      {
+        [cleanU]: updatedObj,
+        [updatedObj.displayName]: updatedObj,
+      },
+      { merge: true }
+    );
+    return true;
+  } catch (e) {
+    console.error("Error marking account OTP verified:", e);
+    return false;
+  }
+}
+
+/**
+ * Authenticate user by username OR email, checking password, approval status, and OTP verification
  */
 export async function authenticateUser(
   identifier: string,
   inputPass: string
-): Promise<{ success: boolean; user?: { name: string; role: "admin" | "readonly" }; message?: string }> {
+): Promise<{
+  success: boolean;
+  user?: { name: string; role: "admin" | "readonly" };
+  requiresOtp?: boolean;
+  pendingProfile?: { username: string; displayName: string; email: string };
+  message?: string;
+}> {
   const cleanId = String(identifier || "").trim().toLowerCase();
   const cleanPass = String(inputPass || "").trim();
 
@@ -1482,17 +1669,20 @@ export async function authenticateUser(
     let matchedUsername = cleanId;
     let displayName = identifier;
     let role: "admin" | "readonly" = "admin";
+    let matchedProfile: any = null;
 
     // Check if identifier matches any username or email in profiles
     for (const [uKey, prof] of Object.entries(profiles)) {
+      if (!prof || typeof prof !== "object") continue;
       if (
         uKey.toLowerCase() === cleanId ||
         String(prof.username || "").toLowerCase() === cleanId ||
         String(prof.email || "").toLowerCase() === cleanId
       ) {
-        matchedUsername = uKey;
+        matchedUsername = String(prof.username || uKey).toLowerCase();
         displayName = prof.displayName || prof.username || uKey;
         role = prof.role === "readonly" ? "readonly" : "admin";
+        matchedProfile = prof;
         break;
       }
     }
@@ -1500,7 +1690,10 @@ export async function authenticateUser(
     // Check password
     let validPass = null;
     for (const [cKey, cVal] of Object.entries(creds)) {
-      if (cKey.toLowerCase() === matchedUsername.toLowerCase()) {
+      if (
+        cKey.toLowerCase() === matchedUsername.toLowerCase() ||
+        cKey.toLowerCase() === displayName.toLowerCase()
+      ) {
         validPass = String(cVal);
         break;
       }
@@ -1510,17 +1703,48 @@ export async function authenticateUser(
       return { success: false, message: "Akun tidak ditemukan. Silakan daftar akun baru terlebih dahulu." };
     }
 
-    if (cleanPass === validPass) {
-      return {
-        success: true,
-        user: {
-          name: displayName,
-          role,
-        },
-      };
-    } else {
+    if (cleanPass !== validPass) {
       return { success: false, message: "Password yang Anda masukkan salah." };
     }
+
+    // Check approval status & OTP verification (Super Admin Farhan is always approved & verified)
+    if (matchedProfile && !isSuperAdminUser(matchedUsername) && !isSuperAdminUser(displayName)) {
+      if (matchedProfile.approvalStatus === "pending") {
+        return {
+          success: false,
+          message:
+            "Akun Anda masih menunggu di-ACC oleh Farhan (Admin). Kode OTP akan dikirim ke Gmail Anda setelah akun di-ACC.",
+        };
+      }
+      if (matchedProfile.approvalStatus === "rejected") {
+        return {
+          success: false,
+          message: "Maaf, pengajuan pendaftaran akun Anda tidak disetujui oleh Administrator.",
+        };
+      }
+      // Approved by Farhan, now waiting for user to input the 6-digit OTP sent to their Gmail!
+      if (matchedProfile.verified === false) {
+        return {
+          success: false,
+          requiresOtp: true,
+          pendingProfile: {
+            username: matchedUsername,
+            displayName,
+            email: String(matchedProfile.email || ""),
+          },
+          message:
+            "Akun Anda telah di-ACC oleh Farhan! Silakan masukkan 6-digit Kode OTP yang telah dikirimkan ke Gmail Anda.",
+        };
+      }
+    }
+
+    return {
+      success: true,
+      user: {
+        name: displayName,
+        role,
+      },
+    };
   } catch (err) {
     console.error("Auth error:", err);
     return { success: false, message: "Gagal menghubungkan ke server autentikasi." };
@@ -1528,7 +1752,7 @@ export async function authenticateUser(
 }
 
 /**
- * Register a new staff member and store their profile & credentials
+ * Register a new staff member with PENDING approval status (OTP will be sent AFTER Farhan approves!)
  */
 export async function registerStaffAccount(
   username: string,
@@ -1551,6 +1775,8 @@ export async function registerStaffAccount(
     return { success: false, message: "Password minimal 4 karakter." };
   }
 
+  const isSelfAdmin = isSuperAdminUser(cleanU) || isSuperAdminUser(cleanE);
+
   try {
     await setDoc(
       doc(db, APP_DATA_COLLECTION, USER_CREDENTIALS_DOC),
@@ -1558,30 +1784,31 @@ export async function registerStaffAccount(
       { merge: true }
     );
 
+    const profileData: StaffAccountProfile = {
+      username: cleanU,
+      displayName: dName,
+      email: cleanE,
+      role: "admin",
+      verified: isSelfAdmin ? true : false,
+      approvalStatus: isSelfAdmin ? "approved" : "pending",
+      updatedAt: new Date().toISOString(),
+    };
+
     await setDoc(
       doc(db, APP_DATA_COLLECTION, USER_PROFILES_DOC),
       {
-        [cleanU]: {
-          username: cleanU,
-          displayName: dName,
-          email: cleanE,
-          role: "admin",
-          verified: true,
-          updatedAt: new Date().toISOString(),
-        },
-        [dName]: {
-          username: cleanU,
-          displayName: dName,
-          email: cleanE,
-          role: "admin",
-          verified: true,
-          updatedAt: new Date().toISOString(),
-        },
+        [cleanU]: profileData,
+        [dName]: profileData,
       },
       { merge: true }
     );
 
-    return { success: true, message: `Akun ${dName} (${cleanU}) berhasil didaftarkan!` };
+    return {
+      success: true,
+      message: isSelfAdmin
+        ? `Akun ${dName} (${cleanU}) berhasil diaktifkan!`
+        : `Permintaan pendaftaran akun ${dName} (@${cleanU}) berhasil dikirim! Menunggu di-ACC oleh Farhan sebelum kode OTP dikirim ke Gmail Anda.`,
+    };
   } catch (err) {
     console.error("Register error:", err);
     return { success: false, message: "Gagal menyimpan akun ke server database." };
@@ -1598,7 +1825,7 @@ const OTP_CODES_DOC = "otp_codes";
 export async function saveCloudOtp(email: string, code: string): Promise<boolean> {
   const cleanE = email.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
   try {
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
     await setDoc(
       doc(db, APP_DATA_COLLECTION, OTP_CODES_DOC),
       {
