@@ -134,6 +134,13 @@ function formatPrintTime(dStr?: string | null): string {
   }
 }
 
+// ============================================================================
+// 🔒 LOCKED MODULE: DAFTAR FAKTUR CORE ENGINE & 14-COLUMN TABLE (LOCKED_RULES.md)
+// Seluruh aturan bisnis, Strict Key Isolation (DOO vs ORA), print toggle,
+// batch print, navigasi keyboard (14 kolom: 0-13), dan filtering DI-LOCK TOTAL.
+// DILARANG MENGUBAH TANPA PERSETUJUAN EKSPLISIT DARI OWNER (Farhan).
+// ============================================================================
+
 function dbRowsToFakturRecords(
   rows: Array<Record<string, unknown>>,
   productOverrides?: Record<string, string>,
@@ -4298,7 +4305,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           </select>
         </div>
 
-        {/* Faktur Table Card - Clean High-Contrast Table Canvas */}
+        {/* ===================================================================== */}
+        {/* 🔒 LOCKED COMPONENT: DAFTAR FAKTUR 14-COLUMN TABLE (LOCKED_RULES.md) */}
+        {/* Struktur 14 kolom (termasuk Checker & Packer) dan navigasi di-LOCK. */}
+        {/* ===================================================================== */}
         <div className={`rounded-xl overflow-hidden border shadow-xs transition-colors ${
           isDarkMode ? "bg-[#09090b] border-zinc-800" : "bg-white border-zinc-300"
         }`}>
