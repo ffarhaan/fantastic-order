@@ -136,6 +136,30 @@ export default function KomplainPage() {
 
   // Real-time server search as user types
   useEffect(() => {
+    // Parse URL query parameter for direct tracking or invoice prefill
+    if (typeof window !== "undefined") {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        const invParam = sp.get("invoice") || sp.get("invoice_no") || sp.get("inv");
+        const tabParam = sp.get("tab");
+        if (invParam) {
+          setActiveTab("track");
+          setTrackInvoice(invParam);
+          setIsTracking(true);
+          fetch(`/api/tidb?action=track_return&invoice_no=${encodeURIComponent(invParam)}`)
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.success && Array.isArray(d.data)) setTrackResults(d.data);
+            })
+            .catch(() => {})
+            .finally(() => setIsTracking(false));
+        } else if (tabParam === "track") {
+          setActiveTab("track");
+        }
+      } catch {}
+    }
+  }, []);
+  useEffect(() => {
     const q = (headerData.customer_name || "").trim();
     if (q.length < 2) return;
 
@@ -608,37 +632,35 @@ ${photoStatus}
 
       {/* Main Content */}
       <main className="max-w-2xl mx-auto w-full px-4 py-6 sm:py-8 flex-1">
-        {/* Tab Switcher */}
-        {!isSuccess && (
-          <div className="flex items-center justify-center p-1 bg-zinc-200/80 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl mb-6 max-w-xs sm:max-w-sm mx-auto shadow-2xs">
-            <button
-              type="button"
-              onClick={() => setActiveTab("form")}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                activeTab === "form"
-                  ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-xs"
-                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
-              }`}
-            >
-              <Package className="w-3.5 h-3.5" />
-              <span>Pengajuan Retur</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("track")}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                activeTab === "track"
-                  ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-xs"
-                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
-              }`}
-            >
-              <Search className="w-3.5 h-3.5" />
-              <span>Lacak Status Tiket</span>
-            </button>
-          </div>
-        )}
+        {/* Tab Switcher (Selalu tampil di mobile/desktop agar pengguna/apotek bisa lacak status tiket kapanpun) */}
+        <div className="flex items-center justify-center p-1 bg-zinc-200/80 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-xl mb-6 max-w-xs sm:max-w-sm mx-auto shadow-2xs">
+          <button
+            type="button"
+            onClick={() => { setActiveTab("form"); }}
+            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === "form"
+                ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+            }`}
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span>Pengajuan Retur</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("track")}
+            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeTab === "track"
+                ? "bg-blue-600 text-white shadow-xs"
+                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+            }`}
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>Lacak Status Tiket</span>
+          </button>
+        </div>
 
-        {isSuccess ? (
+        {isSuccess && activeTab !== "track" ? (
           /* SUCCESS STATE WITH WHATSAPP COPY & SHARE */
           <div className="bg-white dark:bg-[#0c0c0e] border border-emerald-500/40 rounded-2xl p-6 sm:p-8 shadow-sm text-center animate-in fade-in zoom-in-95 duration-200">
             <div className="w-14 h-14 bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 rounded-full flex items-center justify-center mx-auto text-emerald-600 dark:text-emerald-400 mb-3 shadow-sm">
@@ -648,6 +670,49 @@ ${photoStatus}
             <span className="text-[11px] font-black uppercase tracking-wider px-3 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
               Pengajuan Berhasil Disimpan
             </span>
+
+            {/* LIVE TICKET STATUS CARD KHUSUS HP & DESKTOP */}
+            <div className="mt-4 p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 block">
+                    Status Tiket Anda Saat Ini:
+                  </span>
+                  <div className="text-sm font-black text-zinc-900 dark:text-white flex items-center gap-2">
+                    <span>Sedang Ditinjau (Pending)</span>
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  </div>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    Faktur: <strong className="font-mono text-zinc-900 dark:text-zinc-200">#{submittedData?.invoice_no}</strong> • Data tiket komplain sudah tersimpan di sistem logistik.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const inv = submittedData?.invoice_no;
+                  setActiveTab("track");
+                  if (inv) {
+                    setTrackInvoice(inv);
+                    setIsTracking(true);
+                    fetch(`/api/tidb?action=track_return&invoice_no=${encodeURIComponent(inv)}`)
+                      .then((r) => r.json())
+                      .then((d) => {
+                        if (d.success && Array.isArray(d.data)) setTrackResults(d.data);
+                      })
+                      .catch(() => {})
+                      .finally(() => setIsTracking(false));
+                  }
+                }}
+                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition-all shrink-0"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>Lacak Status Tiket</span>
+              </button>
+            </div>
 
             <h2 className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-white mt-3">
               {submittedData?.products?.length || 1} Produk Retur Berhasil Dicatat!
@@ -756,11 +821,34 @@ ${photoStatus}
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center justify-center gap-3 mt-6">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  const inv = submittedData?.invoice_no;
+                  setActiveTab("track");
+                  if (inv) {
+                    setTrackInvoice(inv);
+                    setIsTracking(true);
+                    fetch(`/api/tidb?action=track_return&invoice_no=${encodeURIComponent(inv)}`)
+                      .then((r) => r.json())
+                      .then((d) => {
+                        if (d.success && Array.isArray(d.data)) setTrackResults(d.data);
+                      })
+                      .catch(() => {})
+                      .finally(() => setIsTracking(false));
+                  }
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+              >
+                <Search className="w-4 h-4" />
+                <span>Lacak Status Tiket #{submittedData?.invoice_no}</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handleReset}
-                className="w-full sm:w-auto px-6 py-2.5 bg-black hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                className="w-full sm:w-auto px-5 py-2.5 bg-black hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
               >
                 <Sparkles className="w-4 h-4" />
                 <span>Ajukan Retur Lainnya</span>

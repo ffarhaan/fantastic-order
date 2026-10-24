@@ -759,6 +759,381 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
   const totalPages = Math.ceil(total / limit);
 
+  const renderAccordionContent = (r: any) => (
+    <div className="bg-white dark:bg-[#0d1424] border border-zinc-300 dark:border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm space-y-3 text-left">
+      {/* Header Bar */}
+      <div className="flex flex-wrap items-center justify-between border-b border-zinc-200 dark:border-slate-800 pb-2.5 gap-2">
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 dark:bg-indigo-400"></span>
+          <h4 className="font-bold text-xs sm:text-sm text-black dark:text-white">
+            Tiket #{r.id} - Faktur {r.invoice_no || "-"}
+          </h4>
+          <span className="text-xs text-zinc-500 dark:text-slate-400 font-semibold truncate">
+            ({r.customer_name})
+          </span>
+        </div>
+
+        {r.photo_url && (
+          <button
+            type="button"
+            onClick={() => setPreviewPhotoUrl(r.photo_url || null)}
+            className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800"
+          >
+            <Maximize2 className="w-3 h-3" />
+            <span>Lihat Foto Bukti</span>
+          </button>
+        )}
+      </div>
+
+      {/* Form Edit Ringkas & Lengkap (3 Bagian Rapi) */}
+      <div className="space-y-3 text-xs">
+        {/* Bagian 1: Data Faktur & Merchant */}
+        <div className="bg-zinc-50 dark:bg-slate-950/80 p-2.5 sm:p-3 rounded-lg border border-zinc-200 dark:border-slate-800 space-y-2">
+          <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-400 block">
+            1. Data Faktur & Merchant
+          </span>
+          <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
+            {/* Nama Apotek with Suggestion */}
+            <div className="relative sm:col-span-3">
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
+                Nama Apotek / Merchant
+              </label>
+              <input
+                type="text"
+                value={editForm.customer_name}
+                onChange={(e) => {
+                  setEditForm({ ...editForm, customer_name: e.target.value });
+                  setShowEditCustomerSuggestions(true);
+                }}
+                onFocus={() => setShowEditCustomerSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowEditCustomerSuggestions(false), 250)}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
+              />
+              {showEditCustomerSuggestions && editCustomerSuggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto py-1">
+                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-slate-500 border-b border-zinc-100 dark:border-slate-800">
+                    Saran Nama Apotek ({editCustomerSuggestions.length})
+                  </div>
+                  {editCustomerSuggestions.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEditForm({ ...editForm, customer_name: name });
+                        setShowEditCustomerSuggestions(false);
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-slate-800 flex items-center justify-between transition-colors cursor-pointer border-b border-zinc-50 dark:border-slate-800/40 last:border-b-0"
+                    >
+                      <span className="font-semibold truncate">{name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">PBF</label>
+              <select
+                value={editForm.pbf}
+                onChange={(e) => setEditForm({ ...editForm, pbf: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
+              >
+                <option value="MBI">MBI</option>
+                <option value="MAI">MAI</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">No. Faktur</label>
+              <input
+                type="text"
+                value={editForm.invoice_no}
+                onChange={(e) => setEditForm({ ...editForm, invoice_no: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-indigo-700 dark:text-indigo-400 font-mono font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tgl Faktur</label>
+              <input
+                type="date"
+                value={editForm.invoice_date ? editForm.invoice_date.split("T")[0] : ""}
+                onChange={(e) => setEditForm({ ...editForm, invoice_date: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tgl Lapor / Kejadian</label>
+              <input
+                type="date"
+                value={editForm.report_date ? editForm.report_date.split("T")[0] : ""}
+                onChange={(e) => setEditForm({ ...editForm, report_date: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-rose-700 dark:text-rose-400 font-mono font-semibold"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">No. Sales Order (SO)</label>
+              <input
+                type="text"
+                value={editForm.so_no}
+                onChange={(e) => setEditForm({ ...editForm, so_no: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Kategori</label>
+              <select
+                value={editForm.category}
+                onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
+              >
+                <option value="">-- Belum --</option>
+                <option value="1P">1P</option>
+                <option value="2P">2P</option>
+                <option value="3P">3P</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Bagian 2: Produk & Detail Retur */}
+        <div className="bg-zinc-50 dark:bg-slate-950/80 p-2.5 sm:p-3 rounded-lg border border-zinc-200 dark:border-slate-800 space-y-2">
+          <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400 block">
+            2. Detail Produk & Kendala (Reason)
+          </span>
+          <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
+            <div className="sm:col-span-3">
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Nama Produk</label>
+              <input
+                type="text"
+                value={editForm.product_name}
+                onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Kuantitas (Qty)</label>
+              <input
+                type="number"
+                min="1"
+                value={editForm.qty}
+                onChange={(e) => setEditForm({ ...editForm, qty: Number(e.target.value) || 1 })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Batch Number</label>
+              <input
+                type="text"
+                value={editForm.batch_no}
+                onChange={(e) => setEditForm({ ...editForm, batch_no: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Expiry Date (ED)</label>
+              <input
+                type="text"
+                value={editForm.expiry_date}
+                onChange={(e) => setEditForm({ ...editForm, expiry_date: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white"
+              />
+            </div>
+
+            <div className="sm:col-span-6">
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Alasan / Kendala Dilaporkan</label>
+              <input
+                type="text"
+                value={editForm.reason}
+                onChange={(e) => setEditForm({ ...editForm, reason: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-amber-800 dark:text-amber-300 font-bold"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Bagian 3: Tindak Lanjut & Resolusi */}
+        <div className="bg-zinc-50 dark:bg-slate-950/80 p-2.5 sm:p-3 rounded-lg border border-zinc-200 dark:border-slate-800 space-y-2">
+          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block">
+            3. Tindakan (Action) & Status Resolusi
+          </span>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Status Tiket</label>
+              <select
+                value={editForm.status}
+                onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
+              >
+                <option value="Pending">Pending</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Resolved">Resolved</option>
+                <option value="Approve">Approve</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tgl Penyelesaian</label>
+              <input
+                type="date"
+                value={editForm.resolved_date ? editForm.resolved_date.split("T")[0] : ""}
+                onChange={(e) => setEditForm({ ...editForm, resolved_date: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Days Until Close</label>
+              <div className={`p-1.5 border rounded-lg font-mono font-bold text-xs flex items-center justify-between ${
+                calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status) === "#N/A"
+                  ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800"
+                  : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+              }`}>
+                <span>{calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status) === "#N/A" ? "#N/A (Belum Close)" : `${calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status)} hari`}</span>
+                <span className="text-[10px] font-normal text-zinc-500">Today: {calculateDaysUntilToday(editForm.report_date)} hr</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Konfirmasi (Confirm)</label>
+              <select
+                value={editForm.confirm}
+                onChange={(e) => setEditForm({ ...editForm, confirm: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
+              >
+                <option value="">-- Belum Ditentukan --</option>
+                <option value="Approve">Approve</option>
+                <option value="Reject">Reject</option>
+                <option value="Pending">Pending</option>
+                <option value="Review">Review</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">No. Nota Retur</label>
+              <input
+                type="text"
+                value={editForm.nota_retur_no}
+                onChange={(e) => setEditForm({ ...editForm, nota_retur_no: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tindakan (Action)</label>
+              <input
+                type="text"
+                value={editForm.action}
+                onChange={(e) => setEditForm({ ...editForm, action: e.target.value })}
+                placeholder="Tukar fisik / Retur nota / dll"
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Penyebab (Root Cause)</label>
+              <input
+                type="text"
+                value={editForm.root_cause}
+                onChange={(e) => setEditForm({ ...editForm, root_cause: e.target.value })}
+                placeholder="Human error / dll"
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-medium"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
+                Person (Pelaku Kesalahan / Picker & Checker)
+              </label>
+              <input
+                type="text"
+                value={editForm.person}
+                onChange={(e) => setEditForm({ ...editForm, person: e.target.value })}
+                placeholder=""
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
+              />
+            </div>
+
+            <div className="sm:col-span-4">
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Catatan Tambahan (Note)</label>
+              <input
+                type="text"
+                value={editForm.note}
+                onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-medium"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer Bar: Actions & Links */}
+      <div className="flex flex-wrap items-center justify-between border-t border-zinc-200 dark:border-slate-800 pt-3 gap-2">
+        <span className="text-[11px] text-zinc-500 dark:text-slate-400 font-medium">
+          Tersimpan di Master Database TiDB Cloud
+        </span>
+
+        <div className="flex items-center gap-2">
+          {/* Delete Return Button */}
+          <button
+            type="button"
+            onClick={() => handleDeleteReturn(r.id, r.invoice_no)}
+            disabled={isUpdating}
+            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 rounded-xl text-xs font-bold border border-red-300 dark:border-red-800 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            title="Hapus komplain ini dari database"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Hapus</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedReturn(null)}
+            className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-black dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold border border-zinc-300 dark:border-slate-700 transition-all"
+          >
+            Tutup
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSaveEdit}
+            disabled={isUpdating}
+            className="px-4 py-1.5 bg-black hover:bg-zinc-800 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50"
+          >
+            {isUpdating ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <CheckCircle2 className="w-3.5 h-3.5" />
+            )}
+            <span>{isUpdating ? "Menyimpan..." : "Simpan Perubahan"}</span>
+          </button>
+
+          {onSelectCustomer && (
+            <button
+              type="button"
+              onClick={() => {
+                const c = r.customer_name;
+                setSelectedReturn(null);
+                onSelectCustomer(c);
+              }}
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-1 ml-2"
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              <span>Lihat Master Customer</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       {/* View Switcher Tabs (Data Kasus, Weekly & QC2, Personil, Analisis) */}
@@ -1138,7 +1513,173 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       </div>
 
       {/* â”€â”€â”€ Enterprise Returns Table â”€â”€â”€ */}
-      <div className="rounded-2xl border border-zinc-300 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
+      {/* ─── Mobile Cards View (Khusus Tampilan HP / Layar Kecil) ─── */}
+      <div className="block md:hidden space-y-3">
+        {loading && returns.length === 0 ? (
+          <div className="py-12 text-center text-zinc-400 bg-white dark:bg-[#0a0f1c] rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-xs">
+            <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-500 mb-2" />
+            <span className="font-semibold text-xs">Memuat data tiket komplain...</span>
+          </div>
+        ) : returns.length === 0 ? (
+          <div className="py-12 text-center text-zinc-400 bg-white dark:bg-[#0a0f1c] rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-xs">
+            <RotateCcw className="w-8 h-8 mx-auto text-zinc-400 mb-2 opacity-50" />
+            <p className="font-semibold text-xs text-zinc-600 dark:text-slate-400">Tidak ada tiket komplain yang cocok</p>
+            <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">Gunakan kata kunci lain atau ubah status filter.</p>
+          </div>
+        ) : (
+          returns.map((r) => {
+            const isResolved = (r.status || "").toLowerCase().includes("resolved");
+            const isPending = (r.status || "").toLowerCase().includes("pending");
+            const isExpanded = selectedReturn?.id === r.id;
+
+            return (
+              <div
+                key={`mobile-${r.id}`}
+                className={`rounded-2xl border transition-all p-3.5 shadow-xs ${
+                  isExpanded
+                    ? "bg-indigo-50/70 dark:bg-slate-800/80 border-indigo-500 ring-1 ring-indigo-500"
+                    : "bg-white dark:bg-[#0a0f1c] border-zinc-200 dark:border-zinc-800"
+                }`}
+              >
+                {/* 1. Header: PBF, Faktur No, & STATUS BADGE (Sangat Jelas di HP) */}
+                <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-zinc-100 dark:border-zinc-800/80">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                        r.pbf === "MAI"
+                          ? "bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30"
+                          : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
+                      }`}
+                    >
+                      {r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"}
+                    </span>
+
+                    {r.invoice_no && r.invoice_no !== "#N/A" ? (
+                      <button
+                        type="button"
+                        onClick={() => onSelectInvoice && onSelectInvoice(r.invoice_no)}
+                        className="font-mono text-xs font-bold text-blue-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                        title="Buka Faktur Terkait"
+                      >
+                        <span>#{r.invoice_no}</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </button>
+                    ) : (
+                      <span className="text-[11px] font-mono text-zinc-400">#Tiket-{r.id}</span>
+                    )}
+                  </div>
+
+                  {/* STATUS BADGE - LANGSUNG TERLIHAT JELAS DI HP */}
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black shrink-0 shadow-2xs ${
+                      isResolved
+                        ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/25 dark:text-emerald-300 dark:border-emerald-500/40"
+                        : isPending
+                        ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/25 dark:text-amber-300 dark:border-amber-500/40"
+                        : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/25 dark:text-blue-300 dark:border-blue-500/40"
+                    }`}
+                  >
+                    {isResolved ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    ) : (
+                      <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    )}
+                    <span>{isResolved ? "Resolved" : (r.status || "Pending")}</span>
+                  </span>
+                </div>
+
+                {/* 2. Nama Apotek & Kategori */}
+                <div className="py-2.5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="font-extrabold text-xs sm:text-sm text-zinc-900 dark:text-white line-clamp-1">
+                      {r.customer_name || "-"}
+                    </h4>
+                    {r.category && r.category !== "#N/A" && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 shrink-0">
+                        {r.category}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Produk & Alasan Komplain */}
+                  <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-100 dark:border-zinc-800/80 text-xs space-y-1">
+                    <div className="flex items-center justify-between gap-1 font-bold text-zinc-900 dark:text-zinc-100">
+                      <span className="line-clamp-1">{r.product_name || "-"}</span>
+                      <span className="shrink-0 text-indigo-600 dark:text-indigo-400 font-mono">
+                        Qty: {r.qty || 1}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-600 dark:text-zinc-400 line-clamp-2">
+                      <strong className="text-zinc-700 dark:text-zinc-300">Kendala:</strong> {r.reason || "-"}
+                    </p>
+                    {r.action && r.action !== "#N/A" && (
+                      <p className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold line-clamp-1 pt-0.5">
+                        Tindakan: {r.action}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. Tanggal Lapor & Selesai */}
+                <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-500 dark:text-zinc-400 pt-1 pb-2">
+                  <span className="flex items-center gap-1 font-medium">
+                    <Calendar className="w-3 h-3 text-zinc-400" />
+                    <span>Lapor: {formatDate(r.report_date || r.created_at?.split(" ")[0])}</span>
+                  </span>
+
+                  {r.resolved_date && r.resolved_date !== "#N/A" ? (
+                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                      Selesai: {formatDate(r.resolved_date)}
+                    </span>
+                  ) : (
+                    <span className="text-amber-600 dark:text-amber-400 font-bold">
+                      Dalam Proses
+                    </span>
+                  )}
+                </div>
+
+                {/* 4. Action Buttons */}
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800/80">
+                  {r.photo_url ? (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPhotoUrl(r.photo_url || null)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300 border border-violet-200 dark:border-violet-800 hover:scale-105 transition-all cursor-pointer"
+                    >
+                      <Camera className="w-3 h-3 text-violet-600 dark:text-violet-400" />
+                      <span>Lihat Foto Bukti</span>
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedReturn((prev) => (prev?.id === r.id ? null : r))}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      isExpanded
+                        ? "bg-black text-white dark:bg-indigo-600"
+                        : "bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-100 dark:border-zinc-700"
+                    }`}
+                  >
+                    {isExpanded ? "Tutup Detail" : "Edit & Tindakan"}
+                  </button>
+                </div>
+
+                {/* Mobile Expanded Form */}
+                {isExpanded && (
+                  <div className="mt-3 pt-3 border-t border-indigo-200 dark:border-indigo-900/60 animate-in fade-in duration-150">
+                    {renderAccordionContent(r)}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* ─── Enterprise Returns Table (Desktop & Tablet) ─── */}
+      <div className="hidden md:block rounded-2xl border border-zinc-300 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
@@ -1146,12 +1687,12 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 <th className="py-2.5 px-3 w-16">PBF</th>
                 <th className="py-2.5 px-4">Nama Apotek</th>
                 <th className="py-2.5 px-3">No. Faktur</th>
+                <th className="py-2.5 px-3 text-center">Status</th>
                 <th className="py-2.5 px-3">Tgl Faktur</th>
                 <th className="py-2.5 px-3 whitespace-nowrap">Tgl Lapor</th>
                 <th className="py-2.5 px-3">No. SO</th>
                 <th className="py-2.5 px-4">Nama Produk & Qty</th>
                 <th className="py-2.5 px-4">Alasan (Reason)</th>
-                <th className="py-2.5 px-3 text-center">Status</th>
                 <th className="py-2.5 px-3 text-center">Tgl Selesai</th>
                 <th className="py-2.5 px-2.5 text-center whitespace-nowrap" title="Days until Today (Hari sejak lapor)">Days Today</th>
                 <th className="py-2.5 px-2.5 text-center whitespace-nowrap" title="Days until close (#N/A jika belum selesai)">Days Until Close</th>
@@ -1243,6 +1784,26 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                           )}
                         </td>
 
+                        {/* Status Tiket (Langsung di samping No Faktur) */}
+                        <td className="py-2.5 px-3 text-center">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              isResolved
+                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30"
+                                : isPending
+                                ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
+                                : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/30"
+                            }`}
+                          >
+                            {isResolved ? (
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                            ) : (
+                              <Clock className="w-2.5 h-2.5" />
+                            )}
+                            <span>{r.status || "Pending"}</span>
+                          </span>
+                        </td>
+
                         <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap text-zinc-700 dark:text-slate-300">
                           {getInvoiceDate(r) ? (
                             <span className="inline-flex items-center gap-1 font-semibold" title="Tanggal Faktur (dari daftar faktur)">
@@ -1315,25 +1876,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                           )}
                         </td>
 
-                        <td className="py-2.5 px-3 text-center">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                              isResolved
-                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30"
-                                : isPending
-                                ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
-                                : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/30"
-                            }`}
-                          >
-                            {isResolved ? (
-                              <CheckCircle2 className="w-2.5 h-2.5" />
-                            ) : (
-                              <Clock className="w-2.5 h-2.5" />
-                            )}
-                            <span>{r.status || "Pending"}</span>
-                          </span>
-                        </td>
-
                         <td className="py-2.5 px-3 text-center font-mono text-[11px] whitespace-nowrap">
                           {r.resolved_date && r.resolved_date !== "#N/A" ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60" title="Tanggal Penyelesaian Tiket">
@@ -1404,383 +1946,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                       </tr>
 
                       {/* â”€â”€â”€ OPSI 4: EXPANDABLE ROW (AKORDEON) â”€â”€â”€ */}
+                      {/* ─── EXPANDABLE ROW (AKORDEON) ─── */}
                       {isExpanded && (
                         <tr className="bg-zinc-100/90 dark:bg-[#070b16] border-y-2 border-indigo-500/50 animate-in fade-in duration-150">
                           <td colSpan={14} className="p-2 sm:p-3">
-                            <div className="bg-white dark:bg-[#0d1424] border border-zinc-300 dark:border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm space-y-3">
-                              
-                              {/* Header Bar */}
-                              <div className="flex flex-wrap items-center justify-between border-b border-zinc-200 dark:border-slate-800 pb-2.5 gap-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 dark:bg-indigo-400"></span>
-                                  <h4 className="font-bold text-xs sm:text-sm text-black dark:text-white">
-                                    Tiket #{r.id} - Faktur {r.invoice_no || "-"}
-                                  </h4>
-                                  <span className="text-xs text-zinc-500 dark:text-slate-400 font-semibold truncate">
-                                    ({r.customer_name})
-                                  </span>
-                                </div>
-                                
-                                {r.photo_url && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setPreviewPhotoUrl(r.photo_url || null)}
-                                    className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800"
-                                  >
-                                    <Maximize2 className="w-3 h-3" />
-                                    <span>Lihat Foto Bukti</span>
-                                  </button>
-                                )}
-                              </div>
-
-                              {/* Form Edit Ringkas & Lengkap (3 Bagian Rapi) */}
-                              <div className="space-y-3 text-xs">
-                                {/* Bagian 1: Data Faktur & Merchant */}
-                                <div className="bg-zinc-50 dark:bg-slate-950/80 p-2.5 sm:p-3 rounded-lg border border-zinc-200 dark:border-slate-800 space-y-2">
-                                  <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-400 block">
-                                    1. Data Faktur & Merchant
-                                  </span>
-                                  <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
-                                    {/* Nama Apotek with Suggestion */}
-                                    <div className="relative sm:col-span-3">
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
-                                        Nama Apotek / Merchant
-                                      </label>
-                                      <input
-                                        type="text"
-                                        value={editForm.customer_name}
-                                        onChange={(e) => {
-                                          setEditForm({ ...editForm, customer_name: e.target.value });
-                                          setShowEditCustomerSuggestions(true);
-                                        }}
-                                        onFocus={() => setShowEditCustomerSuggestions(true)}
-                                        onBlur={() => setTimeout(() => setShowEditCustomerSuggestions(false), 250)}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-                                      />
-                                      {showEditCustomerSuggestions && editCustomerSuggestions.length > 0 && (
-                                        <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto py-1">
-                                          <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-slate-500 border-b border-zinc-100 dark:border-slate-800">
-                                            Saran Nama Apotek ({editCustomerSuggestions.length})
-                                          </div>
-                                          {editCustomerSuggestions.map((name) => (
-                                            <button
-                                              key={name}
-                                              type="button"
-                                              onMouseDown={(e) => {
-                                                e.preventDefault();
-                                                setEditForm({ ...editForm, customer_name: name });
-                                                setShowEditCustomerSuggestions(false);
-                                              }}
-                                              className="w-full text-left px-3 py-1.5 text-xs text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-slate-800 flex items-center justify-between transition-colors cursor-pointer border-b border-zinc-50 dark:border-slate-800/40 last:border-b-0"
-                                            >
-                                              <span className="font-semibold truncate">{name}</span>
-                                            </button>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">PBF</label>
-                                      <select
-                                        value={editForm.pbf}
-                                        onChange={(e) => setEditForm({ ...editForm, pbf: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-                                      >
-                                        <option value="MBI">MBI</option>
-                                        <option value="MAI">MAI</option>
-                                      </select>
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">No. Faktur</label>
-                                      <input
-                                        type="text"
-                                        value={editForm.invoice_no}
-                                        onChange={(e) => setEditForm({ ...editForm, invoice_no: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-indigo-700 dark:text-indigo-400 font-mono font-bold"
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tgl Faktur</label>
-                                      <input
-                                        type="date"
-                                        value={editForm.invoice_date ? editForm.invoice_date.split("T")[0] : ""}
-                                        onChange={(e) => setEditForm({ ...editForm, invoice_date: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tgl Lapor / Kejadian</label>
-                                      <input
-                                        type="date"
-                                        value={editForm.report_date ? editForm.report_date.split("T")[0] : ""}
-                                        onChange={(e) => setEditForm({ ...editForm, report_date: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-rose-700 dark:text-rose-400 font-mono font-semibold"
-                                      />
-                                    </div>
-
-                                    <div className="sm:col-span-2">
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">No. Sales Order (SO)</label>
-                                      <input
-                                        type="text"
-                                        value={editForm.so_no}
-                                        onChange={(e) => setEditForm({ ...editForm, so_no: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Kategori</label>
-                                      <select
-                                        value={editForm.category}
-                                        onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-                                      >
-                                        <option value="">-- Belum --</option>
-                                        <option value="1P">1P</option>
-                                        <option value="2P">2P</option>
-                                        <option value="3P">3P</option>
-                                      </select>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Bagian 2: Produk & Detail Retur */}
-                                <div className="bg-zinc-50 dark:bg-slate-950/80 p-2.5 sm:p-3 rounded-lg border border-zinc-200 dark:border-slate-800 space-y-2">
-                                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400 block">
-                                    2. Detail Produk & Kendala (Reason)
-                                  </span>
-                                  <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
-                                    <div className="sm:col-span-3">
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Nama Produk</label>
-                                      <input
-                                        type="text"
-                                        value={editForm.product_name}
-                                        onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Kuantitas (Qty)</label>
-                                      <input
-                                        type="number"
-                                        min="1"
-                                        value={editForm.qty}
-                                        onChange={(e) => setEditForm({ ...editForm, qty: Number(e.target.value) || 1 })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Batch Number</label>
-                                      <input
-                                        type="text"
-                                        value={editForm.batch_no}
-                                        onChange={(e) => setEditForm({ ...editForm, batch_no: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Expiry Date (ED)</label>
-                                      <input
-                                        type="text"
-                                        value={editForm.expiry_date}
-                                        onChange={(e) => setEditForm({ ...editForm, expiry_date: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white"
-                                      />
-                                    </div>
-
-                                    <div className="sm:col-span-6">
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Alasan / Kendala Dilaporkan</label>
-                                      <input
-                                        type="text"
-                                        value={editForm.reason}
-                                        onChange={(e) => setEditForm({ ...editForm, reason: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-amber-800 dark:text-amber-300 font-bold"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Bagian 3: Tindak Lanjut & Resolusi */}
-                                <div className="bg-zinc-50 dark:bg-slate-950/80 p-2.5 sm:p-3 rounded-lg border border-zinc-200 dark:border-slate-800 space-y-2">
-                                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block">
-                                    3. Tindakan (Action) & Status Resolusi
-                                  </span>
-                                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Status Tiket</label>
-                                      <select
-                                        value={editForm.status}
-                                        onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-                                      >
-                                        <option value="Pending">Pending</option>
-                                        <option value="In Progress">In Progress</option>
-                                        <option value="Resolved">Resolved</option>
-                                        <option value="Approve">Approve</option>
-                                      </select>
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tgl Penyelesaian</label>
-                                      <input
-                                        type="date"
-                                        value={editForm.resolved_date ? editForm.resolved_date.split("T")[0] : ""}
-                                        onChange={(e) => setEditForm({ ...editForm, resolved_date: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Days Until Close</label>
-                                      <div className={`p-1.5 border rounded-lg font-mono font-bold text-xs flex items-center justify-between ${
-                                        calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status) === "#N/A"
-                                          ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800"
-                                          : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
-                                      }`}>
-                                        <span>{calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status) === "#N/A" ? "#N/A (Belum Close)" : `${calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status)} hari`}</span>
-                                        <span className="text-[10px] font-normal text-zinc-500">Today: {calculateDaysUntilToday(editForm.report_date)} hr</span>
-                                      </div>
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Konfirmasi (Confirm)</label>
-                                      <select
-                                        value={editForm.confirm}
-                                        onChange={(e) => setEditForm({ ...editForm, confirm: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-                                      >
-                                        <option value="">-- Belum Ditentukan --</option>
-                                        <option value="Approve">Approve</option>
-                                        <option value="Reject">Reject</option>
-                                        <option value="Pending">Pending</option>
-                                        <option value="Review">Review</option>
-                                      </select>
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">No. Nota Retur</label>
-                                      <input
-                                        type="text"
-                                        value={editForm.nota_retur_no}
-                                        onChange={(e) => setEditForm({ ...editForm, nota_retur_no: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tindakan (Action)</label>
-                                      <input
-                                        type="text"
-                                        value={editForm.action}
-                                        onChange={(e) => setEditForm({ ...editForm, action: e.target.value })}
-                                        placeholder="Tukar fisik / Retur nota / dll"
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Penyebab (Root Cause)</label>
-                                      <input
-                                        type="text"
-                                        value={editForm.root_cause}
-                                        onChange={(e) => setEditForm({ ...editForm, root_cause: e.target.value })}
-                                        placeholder="Human error / dll"
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-medium"
-                                      />
-                                    </div>
-
-                                    <div className="sm:col-span-2">
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
-                                        Person (Pelaku Kesalahan / Picker & Checker)
-                                      </label>
-                                      <input
-                                        type="text"
-                                        value={editForm.person}
-                                        onChange={(e) => setEditForm({ ...editForm, person: e.target.value })}
-                                        placeholder=""
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-                                      />
-                                    </div>
-
-                                    <div className="sm:col-span-4">
-                                      <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Catatan Tambahan (Note)</label>
-                                      <input
-                                        type="text"
-                                        value={editForm.note}
-                                        onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
-                                        className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-medium"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Footer Bar: Actions & Links */}
-                              <div className="flex flex-wrap items-center justify-between border-t border-zinc-200 dark:border-slate-800 pt-3 gap-2">
-                                <span className="text-[11px] text-zinc-500 dark:text-slate-400 font-medium">
-                                  Tersimpan di Master Database TiDB Cloud
-                                </span>
-
-                                <div className="flex items-center gap-2">
-                                  {/* Delete Return Button */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteReturn(r.id, r.invoice_no)}
-                                    disabled={isUpdating}
-                                    className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 rounded-xl text-xs font-bold border border-red-300 dark:border-red-800 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                                    title="Hapus komplain ini dari database"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                    <span>Hapus</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedReturn(null)}
-                                    className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-black dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold border border-zinc-300 dark:border-slate-700 transition-all"
-                                  >
-                                    Tutup
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={handleSaveEdit}
-                                    disabled={isUpdating}
-                                    className="px-4 py-1.5 bg-black hover:bg-zinc-800 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50"
-                                  >
-                                    {isUpdating ? (
-                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                    ) : (
-                                      <CheckCircle2 className="w-3.5 h-3.5" />
-                                    )}
-                                    <span>{isUpdating ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                                  </button>
-
-                                  {onSelectCustomer && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const c = r.customer_name;
-                                        setSelectedReturn(null);
-                                        onSelectCustomer(c);
-                                      }}
-                                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-1 ml-2"
-                                    >
-                                      <Building2 className="w-3.5 h-3.5" />
-                                      <span>Lihat Master Customer</span>
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                            </div>
+                            {renderAccordionContent(r)}
                           </td>
                         </tr>
                       )}
