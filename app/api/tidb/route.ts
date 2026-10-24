@@ -446,16 +446,36 @@ export async function GET(req: Request) {
 
     if (action === "delta") {
       const sinceTimestamp = Number(searchParams.get("since") || 0);
-      const deltaRows = (await conn.execute(
-        sinceTimestamp > 0
+      const cursor = (searchParams.get("cursor") || "").trim();
+      const limit = Math.min(Number(searchParams.get("limit")) || 5000, 10000);
+
+      const querySql = sinceTimestamp > 0
+        ? cursor
           ? `SELECT 
               invoice_key, no_faktur, no_sales_order, customer_name,
               order_date, transaction_date, jenis_transaksi, kategori,
               kategori_produk, status_cetak, printed_at, printed_by,
               total_harga, items_json, UNIX_TIMESTAMP(updated_at) as row_updated
             FROM fakturs_archive 
+            WHERE invoice_key NOT LIKE 'TEST-%' AND UNIX_TIMESTAMP(updated_at) > ? AND invoice_key > ?
+            ORDER BY invoice_key ASC LIMIT ?;`
+          : `SELECT 
+              invoice_key, no_faktur, no_sales_order, customer_name,
+              order_date, transaction_date, jenis_transaksi, kategori,
+              kategori_produk, status_cetak, printed_at, printed_by,
+              total_harga, items_json, UNIX_TIMESTAMP(updated_at) as row_updated
+            FROM fakturs_archive 
             WHERE invoice_key NOT LIKE 'TEST-%' AND UNIX_TIMESTAMP(updated_at) > ?
-            ORDER BY updated_at DESC LIMIT 3500;`
+            ORDER BY invoice_key ASC LIMIT ?;`
+        : cursor
+          ? `SELECT 
+              invoice_key, no_faktur, no_sales_order, customer_name,
+              order_date, transaction_date, jenis_transaksi, kategori,
+              kategori_produk, status_cetak, printed_at, printed_by,
+              total_harga, items_json, UNIX_TIMESTAMP(updated_at) as row_updated
+            FROM fakturs_archive 
+            WHERE invoice_key NOT LIKE 'TEST-%' AND invoice_key > ?
+            ORDER BY invoice_key ASC LIMIT ?;`
           : `SELECT 
               invoice_key, no_faktur, no_sales_order, customer_name,
               order_date, transaction_date, jenis_transaksi, kategori,
@@ -463,9 +483,13 @@ export async function GET(req: Request) {
               total_harga, items_json, UNIX_TIMESTAMP(updated_at) as row_updated
             FROM fakturs_archive 
             WHERE invoice_key NOT LIKE 'TEST-%'
-            ORDER BY updated_at DESC LIMIT 1000;`,
-        sinceTimestamp > 0 ? [sinceTimestamp] : []
-      )) as Array<{
+            ORDER BY invoice_key ASC LIMIT ?;`;
+
+      const queryParams = sinceTimestamp > 0
+        ? (cursor ? [sinceTimestamp, cursor, limit] : [sinceTimestamp, limit])
+        : (cursor ? [cursor, limit] : [limit]);
+
+      const deltaRows = (await conn.execute(querySql, queryParams)) as Array<{
         invoice_key: string;
         no_faktur: string;
         no_sales_order: string;
@@ -523,6 +547,9 @@ export async function GET(req: Request) {
         };
       });
 
+      const nextCursor = deltaRows.length > 0 ? deltaRows[deltaRows.length - 1].invoice_key : null;
+      const hasMore = deltaRows.length === limit;
+
       return compressedJsonResponse(
         req,
         {
@@ -530,6 +557,8 @@ export async function GET(req: Request) {
           count: docs.length,
           fakturs: docs,
           maxUpdated,
+          nextCursor,
+          hasMore,
         },
         {
           "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -661,6 +690,102 @@ export async function GET(req: Request) {
           gagal: Number(summary.gagal || 0),
         },
       });
+    }
+
+    // ==========================================
+    // 5.5. CURSOR-PAGINATED FAKTURS (Safely bypasses 4.5MB Vercel serverless limit)
+    // ==========================================
+    if (action === "paged") {
+      const limit = Math.min(Number(searchParams.get("limit")) || 3000, 5000);
+      const cursor = (searchParams.get("cursor") || "").trim();
+
+      const rows = (await conn.execute(
+        `SELECT 
+          invoice_key, no_faktur, no_sales_order, customer_name,
+          order_date, transaction_date, jenis_transaksi, kategori,
+          kategori_produk, status_cetak, printed_at, printed_by,
+          total_harga, items_json
+        FROM fakturs_archive 
+        WHERE invoice_key > ? AND invoice_key NOT LIKE 'TEST-%'
+        ORDER BY invoice_key ASC LIMIT ?;`,
+        [cursor, limit]
+      )) as Array<{
+        invoice_key: string;
+        no_faktur: string;
+        no_sales_order: string;
+        customer_name: string;
+        order_date: string;
+        transaction_date: string;
+        jenis_transaksi: string;
+        kategori: string;
+        kategori_produk: string;
+        status_cetak: number;
+        printed_at: string | null;
+        printed_by: string | null;
+        total_harga: string | number;
+        items_json: string | null;
+      }>;
+
+      const resultMeta = (await conn.execute(
+        "SELECT UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
+      )) as Array<{ max_updated: number | null }>;
+      const maxUpdated = Number(resultMeta[0]?.max_updated || 0);
+
+      const docs = rows.map((r) => {
+        let parsedItems: unknown[] = [];
+        if (r.items_json) {
+          try {
+            const parsed = typeof r.items_json === "string" ? JSON.parse(r.items_json) : r.items_json;
+            parsedItems = Array.isArray(parsed) ? parsed : [];
+          } catch {
+            parsedItems = [];
+          }
+        }
+
+        return {
+          id: r.invoice_key,
+          no_faktur: r.no_faktur,
+          no_sales_order: r.no_sales_order || "-",
+          customer_name: r.customer_name || "-",
+          order_date: r.order_date || "-",
+          transaction_date: r.transaction_date || r.order_date || "-",
+          jenis_transaksi: r.jenis_transaksi || "DOO",
+          kategori: r.kategori || "3P",
+          status_cetak: Number(r.status_cetak) === 1,
+          printed_at: r.printed_at || null,
+          printed_by: r.printed_by || null,
+          extra: {
+            nama_pelanggan: r.customer_name || "-",
+            order_date: r.order_date || "-",
+            transaction_date: r.transaction_date || r.order_date || "-",
+            jenis_transaksi: r.jenis_transaksi || "DOO",
+            kategori: r.kategori || "3P",
+            total_harga: Number(r.total_harga || 0),
+            items: parsedItems,
+          },
+        };
+      });
+
+      const nextCursor = rows.length > 0 ? rows[rows.length - 1].invoice_key : null;
+      const hasMore = rows.length === limit;
+
+      return compressedJsonResponse(
+        req,
+        {
+          success: true,
+          count: docs.length,
+          fakturs: docs,
+          maxUpdated,
+          nextCursor,
+          hasMore,
+          timestamp: Date.now(),
+        },
+        {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          "CDN-Cache-Control": "no-store",
+          "Vercel-CDN-Cache-Control": "no-store",
+        }
+      );
     }
 
     // ==========================================
@@ -1007,7 +1132,7 @@ export async function POST(req: Request) {
       }
 
       let insertedCount = 0;
-      const CHUNK_SIZE = 50;
+      const CHUNK_SIZE = 500;
       for (let i = 0; i < validCustomers.length; i += CHUNK_SIZE) {
         const chunk = validCustomers.slice(i, i + CHUNK_SIZE);
         const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
@@ -1511,7 +1636,7 @@ export async function POST(req: Request) {
         return Response.json({ success: true, count: 0 });
       }
 
-      const CHUNK_SIZE = 50;
+      const CHUNK_SIZE = 500;
       for (let i = 0; i < fakturs.length; i += CHUNK_SIZE) {
         const slice = fakturs
           .slice(i, i + CHUNK_SIZE)

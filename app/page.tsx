@@ -2366,6 +2366,30 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           existingStatusMap.set(targetKey, statusInfo);
         });
 
+        // Cross-verify with authoritative TiDB keys to guarantee 100% accurate brand-new detection
+        // even if local memory currently only has a partial in-memory subset
+        try {
+          const tidbKeysRes = await fetch(`/api/tidb?action=keys&_t=${Date.now()}`).catch(() => null);
+          if (tidbKeysRes && tidbKeysRes.ok) {
+            const tidbKeysData = await tidbKeysRes.json().catch(() => null);
+            if (tidbKeysData && Array.isArray(tidbKeysData.keys)) {
+              tidbKeysData.keys.forEach((k: string) => {
+                if (k && !existingStatusMap.has(k)) {
+                  const isDocPrinted = livePrintedKeys.has(k);
+                  existingStatusMap.set(k, {
+                    status_cetak: isDocPrinted,
+                    printed_at: isDocPrinted ? (livePrintedAtMap[k] || null) : null,
+                    no_sales_order: "-",
+                    extra: {},
+                  });
+                }
+              });
+            }
+          }
+        } catch {
+          // Non-blocking fail-safe
+        }
+
         // 2. Pre-populate invMap with existing records
         const invMap = new Map<string, FirestoreFakturDoc>();
         existingDBDocsUnified.forEach((doc) => {

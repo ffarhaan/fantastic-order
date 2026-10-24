@@ -918,6 +918,16 @@ export async function updatePrintState(
     }
   }
 
+  // Ensure partitions containing unprinted keys are also evaluated for removal
+  if (unprintedKeys && unprintedKeys.length > 0) {
+    for (const k of unprintedKeys) {
+      const partId = getPrintPartitionId(k);
+      if (!partitionBuckets[partId]) {
+        partitionBuckets[partId] = { keys: [], map: {} };
+      }
+    }
+  }
+
   // Non-destructive partition update with explicit unprint & ghost purge support:
   const partitionWrites = Object.entries(partitionBuckets).map(async ([partId, data]) => {
     const existing = globalPartitionMap.get(partId);
