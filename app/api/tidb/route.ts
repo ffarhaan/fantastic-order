@@ -2247,6 +2247,28 @@ export async function POST(req: Request) {
             photoFirst || null,
           ]
         );
+
+        // Otomatis teruskan retur yang dikonfirmasi ke Google Sheet Order Proses
+        forwardToGSheetWebhook(conn, {
+          actionType: "create",
+          pbf: existing.pbf || "MBI",
+          namaApotek: existing.customer_name || "",
+          invoiceNo: existing.invoice_no || "",
+          productName: existing.product_name || "",
+          qty: Number(existing.qty) || 1,
+          batchNo: existing.batch_no || "",
+          expiryDate: existing.expiry_date || "",
+          reason: existing.reason || "",
+          invoiceDate: todayYMD,
+          reportDate: todayYMD,
+          category: "Retur",
+          confirm: "Approve",
+          action: "Proses Retur",
+          status: "In Progress",
+          note: existing.note || "",
+          person: "Admin",
+          rootCause: "Human Error",
+        });
       }
 
       return Response.json({
