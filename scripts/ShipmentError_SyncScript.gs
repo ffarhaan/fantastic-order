@@ -79,6 +79,7 @@ function installSyncTrigger() {
   } catch (e) {}
 
   if (serviceUrl) {
+    serviceUrl = serviceUrl.replace(/\/a\/[^\/]+\/macros\/s\//, "/macros/s/");
     try {
       UrlFetchApp.fetch(WEB_APP_API_URL + "?action=sync_single_shipment_error", {
         method: "post",
@@ -92,7 +93,11 @@ function installSyncTrigger() {
     } catch (e) {}
   }
 
-  SpreadsheetApp.getUi().alert("✅ Sync otomatis aktif! Setiap perubahan di sheet ini akan langsung terkirim ke Web App dalam 1-3 detik.");
+  if (serviceUrl) {
+    showAlertSafe("✅ Trigger sinkronisasi onEdit aktif!\n\nWebhook URL terdaftar: \n" + serviceUrl + "\n\nPastikan Penerapan Web App Anda diset ke 'Siapa saja (Anyone)' agar edit dari Web App dapat langsung masuk ke sheet.");
+  } else {
+    showAlertSafe("✅ Trigger sinkronisasi onEdit aktif!\n\n⚠️ PENTING: Web App belum di-Deploy. Silakan klik tombol 'Terapkan (Deploy)' di pojok kanan atas -> 'Penerapan baru' -> pilih 'Aplikasi web' -> Akses: 'Siapa saja (Anyone)' -> Terapkan.");
+  }
 }
 
 /**
@@ -380,6 +385,14 @@ function pushAllShipmentErrorsToWebApp() {
  * 5. WEBHOOK RECEIVER (DARI WEB APP KE GOOGLE SHEET):
  * Menerima panggilan saat ada edit/tambah/hapus dari Web App
  */
+function doGet(e) {
+  return ContentService.createTextOutput(JSON.stringify({
+    success: true,
+    status: "ok",
+    message: "Webhook Fantastic Order Aktif dan Siap Menerima Data!"
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
@@ -459,7 +472,7 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 3. CREATE (Append row)
+    // 3. CREATE (Append row atau timpa baris kosong/formula #N/A pertama)
     if (actionType === "create" || foundRow === -1) {
       var newRow = new Array(headers.length).fill("");
       var setCol = function(headerName, val) {
@@ -467,6 +480,14 @@ function doPost(e) {
           newRow[colMap[headerName]] = val;
         }
       };
+
+      var repDateObj = new Date();
+      if (body.reportDate || body.report_date) {
+        var pd = new Date(body.reportDate || body.report_date);
+        if (!isNaN(pd.getTime())) repDateObj = pd;
+      }
+      var weekNum = Math.max(1, Math.floor((repDateObj - new Date(repDateObj.getFullYear(), 0, 1)) / 604800000) + 1);
+      var monthNum = repDateObj.getMonth() + 1;
 
       setCol("PBF", body.pbf || "MBI");
       setCol("Nama Apotek", body.namaApotek || body.customer_name || "");
@@ -478,6 +499,9 @@ function doPost(e) {
       setCol("Expiry Date", body.expiryDate || body.expiry_date || "");
       setCol("Reason", body.reason || "");
       setCol("Tanggal Faktur", body.invoiceDate || body.invoice_date || "");
+      setCol("Week", body.week || weekNum);
+      setCol("Category", body.category || "Retur");
+      setCol("Month", body.month || monthNum);
       setCol("Tanggal report", body.reportDate || body.report_date || Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd"));
       setCol("Confirm", body.confirm || "Pending");
       setCol("Action", body.action || "");
@@ -486,9 +510,25 @@ function doPost(e) {
       setCol("Person", body.person || "");
       setCol("Root cause", body.rootCause || body.root_cause || "");
 
-      sheet.appendRow(newRow);
+      // Cari baris pertama yang kosong / baris formula #N/A agar tidak meloncat ke baris 3000+
+      var insertRow = -1;
+      for (var r = 1; r < data.length; r++) {
+        var rCust = colMap["Nama Apotek"] !== undefined ? String(data[r][colMap["Nama Apotek"]] || "").trim() : "";
+        var rInv = invCol !== undefined ? String(data[r][invCol] || "").trim() : "";
+        if ((!rCust || rCust === "#N/A") && (!rInv || rInv === "#N/A")) {
+          insertRow = r + 1;
+          break;
+        }
+      }
 
-      return ContentService.createTextOutput(JSON.stringify({ success: true, action: "created" }))
+      if (insertRow > 0) {
+        sheet.getRange(insertRow, 1, 1, newRow.length).setValues([newRow]);
+      } else {
+        sheet.appendRow(newRow);
+        insertRow = sheet.getLastRow();
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({ success: true, action: "created", row: insertRow }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 

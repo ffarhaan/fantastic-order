@@ -123,13 +123,22 @@ async function saveWebhookUrl(conn: any, url: string): Promise<void> {
 function forwardToGSheetWebhook(conn: any, payload: any) {
   getWebhookUrl(conn).then((webhookUrl) => {
     if (!webhookUrl) return;
-    fetch(webhookUrl, {
+    const cleanUrl = webhookUrl.replace(/\/a\/[^\/]+\/macros\/s\//, "/macros/s/");
+    fetch(cleanUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    }).catch((err) => {
-      console.error("GSheet webhook background error:", err);
-    });
+    })
+      .then(async (res) => {
+        console.log(`[GSheet Webhook] Status: ${res.status}`);
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "");
+          console.error(`[GSheet Webhook Error] Status ${res.status}: ${errText.slice(0, 300)}`);
+        }
+      })
+      .catch((err) => {
+        console.error("GSheet webhook background error:", err);
+      });
   }).catch(() => {});
 }
 
@@ -1754,6 +1763,12 @@ export async function POST(req: Request) {
         return Response.json({ success: false, error: "Missing return id" }, { status: 400 });
       }
 
+      let existingRow: any = null;
+      try {
+        const rows = (await conn.execute("SELECT * FROM shipment_returns WHERE id = ? LIMIT 1", [id])) as any[];
+        existingRow = rows?.[0];
+      } catch {}
+
       await conn.execute(
         `UPDATE shipment_returns SET 
           pbf = COALESCE(?, pbf),
@@ -1806,26 +1821,26 @@ export async function POST(req: Request) {
 
       forwardToGSheetWebhook(conn, {
         actionType: "update",
-        pbf,
-        namaApotek: customer_name,
-        invoiceNo: invoice_no,
-        soNo: so_no,
-        productName: product_name,
-        qty,
-        batchNo: batch_no,
-        expiryDate: expiry_date,
-        reason,
-        invoiceDate: invoice_date,
-        reportDate: report_date,
-        category,
-        confirm,
-        action: returnAction,
-        notaReturNo: nota_retur_no,
-        resolvedDate: resolved_date,
-        status,
-        note,
-        person,
-        rootCause: root_cause,
+        pbf: pbf ?? existingRow?.pbf,
+        namaApotek: customer_name ?? existingRow?.customer_name,
+        invoiceNo: invoice_no ?? existingRow?.invoice_no,
+        soNo: so_no ?? existingRow?.so_no,
+        productName: product_name ?? existingRow?.product_name,
+        qty: qty ?? existingRow?.qty,
+        batchNo: batch_no ?? existingRow?.batch_no,
+        expiryDate: expiry_date ?? existingRow?.expiry_date,
+        reason: reason ?? existingRow?.reason,
+        invoiceDate: invoice_date ?? existingRow?.invoice_date,
+        reportDate: report_date ?? existingRow?.report_date,
+        category: category ?? existingRow?.category,
+        confirm: confirm ?? existingRow?.confirm,
+        action: returnAction ?? existingRow?.action,
+        notaReturNo: nota_retur_no ?? existingRow?.nota_retur_no,
+        resolvedDate: resolved_date ?? existingRow?.resolved_date,
+        status: status ?? existingRow?.status,
+        note: note ?? existingRow?.note,
+        person: person ?? existingRow?.person,
+        rootCause: root_cause ?? existingRow?.root_cause,
       });
 
       return Response.json({ success: true });
