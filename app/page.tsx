@@ -46,7 +46,7 @@ import CustomersView from "@/components/CustomersView";
 import DatabaseStatsModal from "@/components/DatabaseStatsModal";
 import {
   LayoutDashboard,
-  FileText,
+  ReceiptText,
   RotateCcw,
   Building2,
   FileSpreadsheet,
@@ -345,7 +345,7 @@ export default function Home() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Sidebar Resizable & Collapsible State (TiDB Cloud style)
-  const [sidebarWidth, setSidebarWidth] = useState<number>(240);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(205);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const isResizingRef = useRef(false);
@@ -355,7 +355,7 @@ export default function Home() {
     try {
       const savedWidth = localStorage.getItem("fo_sidebar_width");
       const savedCollapsed = localStorage.getItem("fo_sidebar_collapsed");
-      if (savedWidth && Number(savedWidth) >= 220) { setSidebarWidth(Number(savedWidth)); } else { setSidebarWidth(240); }
+      if (savedWidth && Number(savedWidth) >= 180 && Number(savedWidth) <= 300) { setSidebarWidth(Number(savedWidth)); } else { setSidebarWidth(205); }
       if (savedCollapsed) setIsSidebarCollapsed(savedCollapsed === "true");
     } catch {}
   }, []);
@@ -376,7 +376,7 @@ export default function Home() {
         try { localStorage.setItem("fo_sidebar_collapsed", "true"); } catch {}
       } else {
         setIsSidebarCollapsed(false);
-        setSidebarWidth(Math.max(newWidth, 230));
+        setSidebarWidth(Math.max(newWidth, 195));
         try {
           localStorage.setItem("fo_sidebar_collapsed", "false");
           localStorage.setItem("fo_sidebar_width", String(newWidth));
@@ -2940,7 +2940,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
       {/* ─── LEFT SIDEBAR (TiDB Cloud / Vercel Console Style) ─── */}
       <aside
-        style={{ width: isSidebarCollapsed ? 64 : `${Math.max(sidebarWidth || 240, 230)}px` }}
+        style={{ width: isSidebarCollapsed ? 64 : `${Math.max(sidebarWidth || 205, 195)}px` }}
         className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-[width] duration-150 md:static md:translate-x-0 shrink-0 relative select-none ${
           mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
         } ${
@@ -3087,7 +3087,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 }`}
                 title="Daftar Faktur"
               >
-                <FileText className="w-4 h-4" />
+                <ReceiptText className="w-4 h-4" />
                 {workspaceStats.belumCount > 0 && (
                   <span className="w-2 h-2 rounded-full bg-blue-500 absolute top-1.5 right-1.5 ring-2 ring-black" />
                 )}
@@ -3185,7 +3185,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
                 }`}
               >
-                <FileText className={`w-4 h-4 ${mainView === "workspace" ? "text-white" : isDarkMode ? "text-zinc-400" : "text-zinc-500"}`} />
+                <ReceiptText className={`w-4 h-4 ${mainView === "workspace" ? "text-white" : isDarkMode ? "text-zinc-400" : "text-zinc-500"}`} />
                 <span className="flex-1">Daftar Faktur</span>
                 {workspaceStats.belumCount > 0 && (
                   <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold ${
@@ -3305,40 +3305,28 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <button
                 type="button"
                 onClick={() => { setShowDbStatsModal(true); setMobileSidebarOpen(false); }}
-                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition text-left cursor-pointer ${
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition text-left cursor-pointer ${
                   isDarkMode
                     ? "text-zinc-400 hover:text-emerald-400 hover:bg-zinc-900/60"
                     : "text-zinc-600 hover:text-emerald-600 hover:bg-zinc-100"
                 }`}
                 title="Buka transparansi kapasitas database & limit kuota"
               >
-                <div className="flex items-center gap-2">
-                  <Database className="w-3.5 h-3.5 text-emerald-500" />
-                  <span className="font-medium text-[11px]">Kapasitas & Kuota DB</span>
-                </div>
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20">
-                  Transparan
-                </span>
+                <Database className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span className="font-medium text-xs">Kapasitas &amp; Kuota DB</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setIsDarkMode(prev => !prev)}
-                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition text-left cursor-pointer ${
                   isDarkMode
                     ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
                     : "text-zinc-700 hover:text-black hover:bg-zinc-100"
                 }`}
               >
-                <div className="flex items-center gap-2.5">
-                  {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-zinc-700" />}
-                  <span className="font-semibold">{isDarkMode ? "Ganti ke Terang" : "Ganti ke Gelap"}</span>
-                </div>
-                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
-                  isDarkMode ? "bg-zinc-900 text-zinc-400 border-zinc-800" : "bg-zinc-100 text-zinc-800 border-zinc-300"
-                }`}>
-                  {isDarkMode ? "Gelap" : "Terang"}
-                </span>
+                {isDarkMode ? <Sun className="w-4 h-4 text-amber-400 shrink-0" /> : <Moon className="w-4 h-4 text-zinc-700 shrink-0" />}
+                <span className="font-medium text-xs">{isDarkMode ? "Ganti ke Terang" : "Ganti ke Gelap"}</span>
               </button>
 
 
