@@ -1226,7 +1226,14 @@ export async function POST(req: Request) {
         const resDate = normalizeDateStr(item.resolved_date || item["Tanggal penyelesaian"] || "");
         const statusVal = item.status || item["Status"] || "Open case";
         const noteVal = item.note || item["Note"] || "";
-        const personVal = item.person || item.personil || item["Person"] || "";
+        let personVal = String(
+          item.person || item.pelaku || item.personil || item.checker || item.picker ||
+          item["Person"] || item["Pelaku"] || item["Personil"] || item["Nama Personil"] ||
+          item["Checker"] || item["Picker"] || item["Checker / Picker"] || item["Picker / Checker"] || ""
+        ).trim();
+        if (['REJECT', '-', '#N/A', 'NONE', 'NULL'].includes(personVal.toUpperCase())) {
+          personVal = '';
+        }
         const rootCause = item.root_cause || item.cause || item["Root cause"] || "";
         const photoUrl = item.photo_url || existing?.photo_url || null;
 
@@ -1335,7 +1342,14 @@ export async function POST(req: Request) {
       const resDate = normalizeDateStr(item.resolved_date || item["Tanggal penyelesaian"] || "");
       const statusVal = item.status || item["Status"] || "Open case";
       const noteVal = item.note || item["Note"] || "";
-      const personVal = item.person || item.personil || item["Person"] || "";
+      let personVal = String(
+        item.person || item.pelaku || item.personil || item.checker || item.picker ||
+        item["Person"] || item["Pelaku"] || item["Personil"] || item["Nama Personil"] ||
+        item["Checker"] || item["Picker"] || item["Checker / Picker"] || item["Picker / Checker"] || ""
+      ).trim();
+      if (['REJECT', '-', '#N/A', 'NONE', 'NULL'].includes(personVal.toUpperCase())) {
+        personVal = '';
+      }
       const rootCause = item.root_cause || item.cause || item["Root cause"] || "";
       const photoUrl = item.photo_url || null;
 
@@ -2007,7 +2021,7 @@ export async function POST(req: Request) {
             item.nota_retur_no || "-",
             item.resolved_date || null,
             item.note || "-",
-            item.person || "-",
+            ['REJECT', '-', '#N/A', 'NONE', 'NULL'].includes(String(item.person || '').trim().toUpperCase()) ? '' : (item.person || ''),
             item.root_cause || "-",
           ]
         );

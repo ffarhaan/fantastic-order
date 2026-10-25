@@ -33,15 +33,39 @@ function showAlertSafe(msg) {
 }
 
 /**
- * Mendapatkan sheet target yang sesuai
+ * Mendapatkan seluruh sheet target yang sesuai (mendukung multi-tab MBI & MAI)
  */
-function getTargetSheet() {
+function getAllTargetSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  for (var i = 0; i < TARGET_SHEET_NAMES.length; i++) {
-    var sh = ss.getSheetByName(TARGET_SHEET_NAMES[i]);
-    if (sh) return sh;
+  var sheets = ss.getSheets();
+  var targets = [];
+  for (var i = 0; i < sheets.length; i++) {
+    var sh = sheets[i];
+    var n = sh.getName().toLowerCase();
+    try {
+      if (sh.isSheetHidden()) continue;
+    } catch(e) {}
+    if (
+      n.includes("shipment") || 
+      n.includes("error") || 
+      n.includes("retur") || 
+      n.includes("komplain") || 
+      n.includes("mbi") || 
+      n.includes("mai") || 
+      n.includes("form responses") ||
+      n === "sheet1" ||
+      n === "sheet2"
+    ) {
+      targets.push(sh);
+    }
   }
-  return ss.getActiveSheet();
+  if (targets.length === 0) targets.push(ss.getActiveSheet());
+  return targets;
+}
+
+function getTargetSheet() {
+  var all = getAllTargetSheets();
+  return all[0] || SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
 }
 
 /**
@@ -235,52 +259,74 @@ function getValidShipmentRows(sheet) {
 
   var headers = data[0];
   var rows = data.slice(1);
+  var sheetName = sheet.getName();
 
   var colMap = {};
   for (var c = 0; c < headers.length; c++) {
-    var headerStr = String(headers[c] || "").trim();
+    var headerStr = String(headers[c] || "").toLowerCase().trim();
     if (headerStr) colMap[headerStr] = c;
   }
 
-  var getVal = function(r, key) {
-    var idx = colMap[key];
-    return idx !== undefined ? r[idx] : "";
+  var getVal = function(r, keys) {
+    if (!Array.isArray(keys)) keys = [keys];
+    for (var k = 0; k < keys.length; k++) {
+      var idx = colMap[String(keys[k]).toLowerCase().trim()];
+      if (idx !== undefined && r[idx] !== undefined && r[idx] !== null && String(r[idx]).trim() !== "") {
+        return r[idx];
+      }
+    }
+    return "";
   };
+
+  var defaultPbf = "MBI";
+  if (sheetName.toLowerCase().indexOf("mai") !== -1) defaultPbf = "MAI";
 
   var validItems = [];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
-    var invoiceNo = String(getVal(r, "No.Faktur") || getVal(r, "No. Invoice") || "").trim();
-    var customerName = String(getVal(r, "Nama Apotek") || "").trim();
-    var productName = String(getVal(r, "Nama Produk (diisi sesuai penamaan di invoice)") || getVal(r, "Nama Produk") || "").trim();
+    var invoiceNo = String(getVal(r, ["No.Faktur", "No. Invoice", "no faktur", "faktur", "invoice"]) || "").trim();
+    var customerName = String(getVal(r, ["Nama Apotek", "Apotek", "Customer", "Nama Pelanggan", "pelanggan"]) || "").trim();
+    var productName = String(getVal(r, ["Nama Produk (diisi sesuai penamaan di invoice)", "Nama Produk", "produk", "barang", "item description"]) || "").trim();
 
     // Lewati baris template rumus yang menghasilkan #N/A atau baris kosong
     if ((!customerName || customerName === "#N/A") && (!invoiceNo || invoiceNo === "#N/A") && (!productName || productName === "#N/A")) continue;
     if (customerName === "#N/A" && (!invoiceNo || invoiceNo === "#N/A")) continue;
 
+    var rawPerson = String(getVal(r, [
+      "Person", "Pelaku", "Personil", "Nama Personil", "Checker", "Picker",
+      "Checker / Picker", "Picker / Checker", "Petugas", "PIC", "Nama Petugas"
+    ]) || "").trim();
+
+    if (["-", "REJECT", "#N/A", "NONE", "NULL"].indexOf(rawPerson.toUpperCase()) !== -1) {
+      rawPerson = "";
+    }
+
+    var pbfVal = String(getVal(r, ["PBF", "Distributor", "Perusahaan"]) || defaultPbf).trim();
+    if (!pbfVal || pbfVal === "#N/A") pbfVal = defaultPbf;
+
     validItems.push({
-      pbf: String(getVal(r, "PBF") || "MBI").trim(),
+      pbf: pbfVal,
       customer_name: customerName,
       invoice_no: invoiceNo,
-      so_no: String(getVal(r, "No. Sales order/Transfer order/Shipmet ID HDP") || getVal(r, "SO number") || "").trim(),
+      so_no: String(getVal(r, ["No. Sales order/Transfer order/Shipmet ID HDP", "SO number", "No. SO", "so"]) || "").trim(),
       product_name: productName,
-      qty: Number(getVal(r, "Kuantitas (yg di retur)")) || 1,
-      batch_no: String(getVal(r, "Batch Number") || "").trim(),
-      expiry_date: formatCellDate(getVal(r, "Expiry Date")),
-      reason: String(getVal(r, "Reason") || "").trim(),
-      invoice_date: formatCellDate(getVal(r, "Tanggal Faktur")),
-      week: Number(getVal(r, "Week")) || null,
-      category: String(getVal(r, "Category") || "").trim(),
-      month: Number(getVal(r, "Month")) || null,
-      report_date: formatCellDate(getVal(r, "Tanggal report")),
-      confirm: String(getVal(r, "Confirm") || "Pending").trim(),
-      action: String(getVal(r, "Action") || "").trim(),
-      nota_retur_no: String(getVal(r, "No. Nota Retur") || "").trim(),
-      resolved_date: formatCellDate(getVal(r, "Tanggal penyelesaian")),
-      status: String(getVal(r, "Status") || "Open case").trim(),
-      note: String(getVal(r, "Note") || "").trim(),
-      person: String(getVal(r, "Person") || "").trim(),
-      root_cause: String(getVal(r, "Root cause") || "").trim(),
+      qty: Number(getVal(r, ["Kuantitas (yg di retur)", "qty", "jumlah"])) || 1,
+      batch_no: String(getVal(r, ["Batch Number", "batch", "lot"]) || "").trim(),
+      expiry_date: formatCellDate(getVal(r, ["Expiry Date", "ed", "exp date"])),
+      reason: String(getVal(r, ["Reason", "alasan", "kendala"]) || "").trim(),
+      invoice_date: formatCellDate(getVal(r, ["Tanggal Faktur", "tgl faktur"])),
+      week: Number(getVal(r, ["Week", "minggu"])) || null,
+      category: String(getVal(r, ["Category", "kategori"]) || "").trim(),
+      month: Number(getVal(r, ["Month", "bulan"])) || null,
+      report_date: formatCellDate(getVal(r, ["Tanggal report", "tgl report", "tanggal lapor"])),
+      confirm: String(getVal(r, ["Confirm", "konfirmasi"]) || "Pending").trim(),
+      action: String(getVal(r, ["Action", "tindakan"]) || "").trim(),
+      nota_retur_no: String(getVal(r, ["No. Nota Retur", "nota retur"]) || "").trim(),
+      resolved_date: formatCellDate(getVal(r, ["Tanggal penyelesaian", "tgl selesai"])),
+      status: String(getVal(r, ["Status", "status retur"]) || "Open case").trim(),
+      note: String(getVal(r, ["Note", "catatan", "keterangan"]) || "").trim(),
+      person: rawPerson,
+      root_cause: String(getVal(r, ["Root cause", "akar masalah", "penyebab"]) || "").trim(),
     });
   }
   return validItems;
@@ -288,26 +334,24 @@ function getValidShipmentRows(sheet) {
 
 /**
  * 4a. PUSH RECENT SHIPMENT ERRORS KE WEB APP (Instan 3 Detik):
- * Mengirim 300 data valid paling akhir (termasuk tanggal 23 & 24 Okt).
- * Sangat cepat dan tidak akan timeout!
+ * Mengirim 350 data valid paling akhir dari seluruh sheet.
  */
 function pushRecentShipmentErrorsToWebApp() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = getTargetSheet();
-  if (!sheet) {
-    showAlertSafe("Sheet target shipment error tidak ditemukan!");
-    return;
+  var sheets = getAllTargetSheets();
+  var allValid = [];
+
+  for (var s = 0; s < sheets.length; s++) {
+    var items = getValidShipmentRows(sheets[s]);
+    allValid = allValid.concat(items);
   }
 
-  var validItems = getValidShipmentRows(sheet);
-  if (validItems.length === 0) {
+  if (allValid.length === 0) {
     showAlertSafe("Tidak ada data valid yang ditemukan.");
     return;
   }
 
-  // Ambil 350 data valid paling akhir
-  var recentItems = validItems.slice(Math.max(0, validItems.length - 350));
-
+  var recentItems = allValid.slice(Math.max(0, allValid.length - 350));
   var serviceUrl = "";
   try { serviceUrl = ScriptApp.getService().getUrl(); } catch (err) {}
 
@@ -328,36 +372,37 @@ function pushRecentShipmentErrorsToWebApp() {
     ss.toast("Mengirim " + recentItems.length + " data terbaru ke Web App...", "Sinkronisasi Berjalan", 5);
   } catch(e) {}
 
-  var resp = UrlFetchApp.fetch(WEB_APP_API_URL + "?action=sync_shipment_errors", options);
-  showAlertSafe("🎉 Berhasil! Sebanyak " + recentItems.length + " data terbaru (termasuk 23 & 24 Okt) telah tersinkron ke Web App Fantastic Order.");
+  UrlFetchApp.fetch(WEB_APP_API_URL + "?action=sync_shipment_errors", options);
+  showAlertSafe("🎉 Berhasil! Sebanyak " + recentItems.length + " data terbaru (MBI & MAI) telah tersinkron lengkap ke Web App Fantastic Order.");
 }
 
 /**
  * 4. PUSH ALL SHIPMENT ERRORS KE WEB APP (Sync Seluruh Data):
- * Menarik semua baris valid di sheet dan mengirimkannya dalam batch ke Web App
+ * Menarik semua baris valid dari seluruh sheet (MBI & MAI) dan mengirimkannya dalam batch ke Web App
  */
 function pushAllShipmentErrorsToWebApp() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = getTargetSheet();
-  if (!sheet) {
-    showAlertSafe("Sheet target shipment error tidak ditemukan!");
-    return;
+  var sheets = getAllTargetSheets();
+  var allValid = [];
+
+  for (var s = 0; s < sheets.length; s++) {
+    var items = getValidShipmentRows(sheets[s]);
+    allValid = allValid.concat(items);
   }
 
-  var validItems = getValidShipmentRows(sheet);
-  if (validItems.length === 0) {
-    showAlertSafe("Sheet kosong atau hanya ada header.");
+  if (allValid.length === 0) {
+    showAlertSafe("Sheet kosong atau tidak ada data valid.");
     return;
   }
 
   var serviceUrl = "";
   try { serviceUrl = ScriptApp.getService().getUrl(); } catch (err) {}
 
-  var batchSize = 300;
+  var batchSize = 250;
   var totalSent = 0;
 
-  for (var b = 0; b < validItems.length; b += batchSize) {
-    var chunk = validItems.slice(b, b + batchSize);
+  for (var b = 0; b < allValid.length; b += batchSize) {
+    var chunk = allValid.slice(b, b + batchSize);
     var payload = {
       items: chunk,
       mode: "upsert",
@@ -374,11 +419,11 @@ function pushAllShipmentErrorsToWebApp() {
     UrlFetchApp.fetch(WEB_APP_API_URL + "?action=sync_shipment_errors", options);
     totalSent += chunk.length;
     try {
-      ss.toast("Mengirim " + totalSent + " dari " + validItems.length + " data...", "Sinkronisasi Berjalan", 3);
+      ss.toast("Mengirim " + totalSent + " dari " + allValid.length + " data...", "Sinkronisasi Berjalan", 3);
     } catch(e) {}
   }
 
-  showAlertSafe("🎉 Berhasil! Seluruh " + totalSent + " data valid dari sheet termasuk tanggal 23 & 24 Okt telah tersinkron ke Web App Fantastic Order.");
+  showAlertSafe("🎉 Berhasil! Seluruh " + totalSent + " data valid dari seluruh sheet (MBI & MAI) telah tersinkron lengkap ke Web App Fantastic Order.");
 }
 
 /**

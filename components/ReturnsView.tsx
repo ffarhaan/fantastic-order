@@ -278,7 +278,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       const notaCol = getColIdx("no nota retur", "nota retur", "nota retur no");
       const resDateCol = getColIdx("tanggal penyelesaian", "tgl penyelesaian", "resolved date", "tgl selesai");
       const noteCol = getColIdx("catatan", "note", "keterangan tambahan");
-      const personCol = getColIdx("personil", "person", "petugas", "pic", "nama personil");
+      const personCol = getColIdx("personil", "person", "petugas", "pic", "nama personil", "pelaku", "checker", "picker", "checker / picker", "picker / checker", "nama petugas");
       const rootCol = getColIdx("root cause", "akar masalah", "penyebab");
 
       const items: any[] = [];
@@ -314,7 +314,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           nota_retur_no: val(notaCol) || "-",
           resolved_date: val(resDateCol) || null,
           note: val(noteCol) || "-",
-          person: val(personCol) || "-",
+          person: ["-", "reject", "#n/a", "none", "null"].includes(val(personCol).toLowerCase()) ? "" : val(personCol),
           root_cause: val(rootCol) || "-",
         });
       }
