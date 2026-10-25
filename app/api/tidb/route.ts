@@ -752,11 +752,11 @@ export async function GET(req: Request) {
         const upper = raw.toUpperCase();
         if (['REJECT', '-', '#N/A', 'NONE', 'NULL', 'ADMIN'].includes(upper)) continue;
 
-        // Split compound entries by /, ,, +, & (e.g., "RIANDI/RIO" or "ANAM / AGUS")
-        const parts = raw.split(/[\/,+&]/).map((p: string) => p.trim()).filter(Boolean);
+        // Split compound entries by /, ,, +, &, or " - " (e.g., "RIANDI/RIO", "ANAM / AGUS", "Firly - Fajri")
+        const parts = raw.split(/[\/,+&]|\s+-\s+/).map((p: string) => p.trim()).filter(Boolean);
         for (let p of parts) {
           const norm = p.trim().toUpperCase();
-          if (!norm || ['REJECT', '-', '#N/A', 'NONE', 'NULL', 'ADMIN'].includes(norm)) continue;
+          if (!norm || ['REJECT', '-', '#N/A', 'NONE', 'NULL', 'ADMIN', 'KESALAHAN PAXEL'].includes(norm)) continue;
 
           let entry = personMap.get(norm);
           if (!entry) {
