@@ -415,9 +415,9 @@ export async function GET(req: Request) {
       const params: (string | number)[] = [];
 
       if (search) {
-        whereClause += " AND (invoice_no LIKE ? OR so_no LIKE ? OR customer_name LIKE ? OR product_name LIKE ? OR reason LIKE ?)";
+        whereClause += " AND (invoice_no LIKE ? OR so_no LIKE ? OR customer_name LIKE ? OR product_name LIKE ? OR reason LIKE ? OR person LIKE ? OR batch_no LIKE ? OR root_cause LIKE ? OR note LIKE ?)";
         const s = `%${search}%`;
-        params.push(s, s, s, s, s);
+        params.push(s, s, s, s, s, s, s, s, s);
       }
       if (status && status !== "ALL") {
         if (status === "Pending" || status === "Unresolved" || status === "In Progress" || status === "Open case") {
@@ -454,7 +454,7 @@ export async function GET(req: Request) {
           WHERE no_faktur != '' AND no_faktur IS NOT NULL
           GROUP BY no_faktur
         ) fa ON sr.invoice_no = fa.no_faktur
-        ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|status|pbf|category)\b/g, 'sr.$1')}
+        ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|person|batch_no|root_cause|note|status|pbf|category)\b/g, 'sr.$1')}
         ORDER BY CASE WHEN sr.report_date IS NOT NULL AND sr.report_date != '' THEN sr.report_date ELSE '1970-01-01' END DESC, sr.id DESC 
         LIMIT ? OFFSET ?
       `;
@@ -729,27 +729,69 @@ export async function GET(req: Request) {
     // 4.5. LOGISTICS ANALYTICS & PERSONNEL LEADERBOARD
     // ==========================================
     if (action === "personnel_stats") {
-      const rows = (await conn.execute(`
-        SELECT 
-          person,
-          COUNT(*) as total_cases,
-          SUM(CASE WHEN pbf = 'MBI' THEN 1 ELSE 0 END) as mbi_cases,
-          SUM(CASE WHEN pbf = 'MAI' THEN 1 ELSE 0 END) as mai_cases,
-          SUM(CASE WHEN status LIKE '%Resolved%' THEN 1 ELSE 0 END) as resolved_cases,
-          SUM(CASE WHEN status NOT LIKE '%Resolved%' THEN 1 ELSE 0 END) as pending_cases
+      const rawReturns = (await conn.execute(`
+        SELECT person, pbf, status
         FROM shipment_returns
-        WHERE person != '' AND person IS NOT NULL AND person != 'Admin' AND person != '#N/A'
-        GROUP BY person
-        ORDER BY total_cases DESC
-        LIMIT 50;
+        WHERE person != '' 
+          AND person IS NOT NULL 
+          AND UPPER(TRIM(person)) NOT IN ('REJECT', '-', '#N/A', 'ADMIN', 'NONE', 'NULL')
       `)) as any[];
+
+      const personMap = new Map<string, {
+        person: string;
+        total_cases: number;
+        mbi_cases: number;
+        mai_cases: number;
+        resolved_cases: number;
+        pending_cases: number;
+      }>();
+
+      for (const r of rawReturns) {
+        const raw = String(r.person || "").trim();
+        if (!raw) continue;
+        const upper = raw.toUpperCase();
+        if (['REJECT', '-', '#N/A', 'NONE', 'NULL', 'ADMIN'].includes(upper)) continue;
+
+        // Split compound entries by /, ,, +, & (e.g., "RIANDI/RIO" or "ANAM / AGUS")
+        const parts = raw.split(/[\/,+&]/).map((p: string) => p.trim()).filter(Boolean);
+        for (let p of parts) {
+          const norm = p.trim().toUpperCase();
+          if (!norm || ['REJECT', '-', '#N/A', 'NONE', 'NULL', 'ADMIN'].includes(norm)) continue;
+
+          let entry = personMap.get(norm);
+          if (!entry) {
+            entry = {
+              person: norm,
+              total_cases: 0,
+              mbi_cases: 0,
+              mai_cases: 0,
+              resolved_cases: 0,
+              pending_cases: 0,
+            };
+            personMap.set(norm, entry);
+          }
+
+          entry.total_cases++;
+          if (r.pbf === "MBI") entry.mbi_cases++;
+          if (r.pbf === "MAI") entry.mai_cases++;
+          if (String(r.status || "").toLowerCase().includes("resolved")) {
+            entry.resolved_cases++;
+          } else {
+            entry.pending_cases++;
+          }
+        }
+      }
+
+      const rows = Array.from(personMap.values())
+        .sort((a, b) => b.total_cases - a.total_cases)
+        .slice(0, 100);
 
       const rootCauses = (await conn.execute(`
         SELECT 
           root_cause,
           COUNT(*) as total
         FROM shipment_returns
-        WHERE root_cause != '' AND root_cause IS NOT NULL AND root_cause != '#N/A'
+        WHERE root_cause != '' AND root_cause IS NOT NULL AND UPPER(TRIM(root_cause)) NOT IN ('-', '#N/A', 'NONE', 'NULL')
         GROUP BY root_cause
         ORDER BY total DESC
         LIMIT 20;
@@ -760,7 +802,7 @@ export async function GET(req: Request) {
           reason,
           COUNT(*) as total
         FROM shipment_returns
-        WHERE reason != '' AND reason IS NOT NULL AND reason != '#N/A'
+        WHERE reason != '' AND reason IS NOT NULL AND UPPER(TRIM(reason)) NOT IN ('-', '#N/A', 'NONE', 'NULL')
         GROUP BY reason
         ORDER BY total DESC
         LIMIT 20;
