@@ -3109,17 +3109,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
               <div className={`w-8 h-px my-1 ${isDarkMode ? "bg-zinc-800" : "bg-zinc-200"}`} />
 
-              <button
-                type="button"
-                onClick={() => { handleExportExcel(); setMobileSidebarOpen(false); }}
-                className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer ${
-                  isDarkMode ? "text-emerald-400 hover:bg-zinc-800/60" : "text-emerald-600 hover:bg-zinc-100"
-                }`}
-                title="Ekspor Excel (.xlsx)"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-              </button>
-
               {isSuperAdminUser(currentUser?.name) && (
                 <button
                   type="button"
@@ -3246,19 +3235,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               >
                 <Pill className={`w-4 h-4 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} />
                 <span>Master Produk (Farma/Alkes)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => { handleExportExcel(); setMobileSidebarOpen(false); }}
-                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
-                  isDarkMode
-                    ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
-                    : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
-                }`}
-              >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-                <span>Ekspor Excel (.xlsx)</span>
               </button>
 
               {isSuperAdminUser(currentUser?.name) && (
@@ -3976,6 +3952,82 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               </div>
             </div>
 
+            {/* ─── RINGKASAN SHIPMENT ERROR & KOMPLAIN (MBI & MAI) ─── */}
+            <div className={`p-4 rounded-2xl border shadow-sm ${
+              isDarkMode ? "bg-[#0f172a] border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
+            }`}>
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <RotateCcw className="w-4 h-4 text-amber-500" />
+                  <span className="font-black text-xs sm:text-sm tracking-wide text-slate-700 dark:text-slate-200">
+                    RINGKASAN SHIPMENT ERROR &amp; KOMPLAIN LOGISTIK
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMainView("returns")}
+                  className="px-3 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Buka Menu Shipment Error</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* 3 Metric Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                <div
+                  onClick={() => setMainView("returns")}
+                  className={`p-3.5 rounded-xl border transition cursor-pointer hover:border-blue-500/50 ${
+                    isDarkMode ? "bg-[#090d18] border-slate-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                >
+                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total Kasus</div>
+                  <div className="text-xl sm:text-2xl font-black font-mono text-blue-600 dark:text-blue-400 mt-0.5">
+                    {(returnsOverviewStats?.totalAll || 1760).toLocaleString("id-ID")}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Semua Kasus Logistik</p>
+                </div>
+
+                <div
+                  onClick={() => setMainView("returns")}
+                  className={`p-3.5 rounded-xl border transition cursor-pointer hover:border-emerald-500/50 ${
+                    isDarkMode ? "bg-[#090d18] border-slate-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                >
+                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Terselesaikan (Resolved)</div>
+                  <div className="text-xl sm:text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
+                    {(returnsOverviewStats?.totalResolved || 1735).toLocaleString("id-ID")}
+                  </div>
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-semibold">98.6% Tingkat Solusi</p>
+                </div>
+
+                <div
+                  onClick={() => setMainView("returns")}
+                  className={`p-3.5 rounded-xl border transition cursor-pointer hover:border-amber-500/50 ${
+                    isDarkMode ? "bg-[#090d18] border-slate-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                >
+                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Menunggu Tindak Lanjut</div>
+                  <div className="text-xl sm:text-2xl font-black font-mono text-amber-600 dark:text-amber-400 mt-0.5">
+                    {(returnsOverviewStats?.totalPending || 25).toLocaleString("id-ID")}
+                  </div>
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 font-semibold">Perlu Tukar Fisik / CN</p>
+                </div>
+              </div>
+
+              {/* PBF Distribution Footer */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 text-xs">
+                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-100/60 dark:bg-slate-800/40">
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">🏢 PT MEDIKA BINA INVESTAMA (MBI)</span>
+                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{(returnsOverviewStats?.totalMbi || 1682).toLocaleString("id-ID")} kasus</span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-100/60 dark:bg-slate-800/40">
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">🏢 PT MEDIKA AKSES INVESTAMA (MAI)</span>
+                  <span className="font-mono font-bold text-teal-600 dark:text-teal-400">{(returnsOverviewStats?.totalMai || 77).toLocaleString("id-ID")} kasus</span>
+                </div>
+              </div>
+            </div>
+
             {/* GRID ANALYTICS CARDS */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* Card 1: Progress Print */}
@@ -4083,93 +4135,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   </div>
                 ))}
               </div>
-            </div>
-
-            {/* ─── RINGKASAN SHIPMENT ERROR & KOMPLAIN (MBI & MAI) ─── */}
-            <div className={`p-4 rounded-2xl border shadow-sm ${
-              isDarkMode ? "bg-[#0f172a] border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
-            }`}>
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <RotateCcw className="w-4 h-4 text-amber-500" />
-                  <span className="font-black text-xs sm:text-sm tracking-wide text-slate-700 dark:text-slate-200">
-                    RINGKASAN SHIPMENT ERROR &amp; KOMPLAIN LOGISTIK
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setMainView("returns")}
-                  className="px-3 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                >
-                  <span>Buka Menu Shipment Error</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* 3 Metric Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-                <div
-                  onClick={() => setMainView("returns")}
-                  className={`p-3.5 rounded-xl border transition cursor-pointer hover:border-blue-500/50 ${
-                    isDarkMode ? "bg-[#090d18] border-slate-800" : "bg-slate-50 border-slate-200"
-                  }`}
-                >
-                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total Kasus</div>
-                  <div className="text-xl sm:text-2xl font-black font-mono text-blue-600 dark:text-blue-400 mt-0.5">
-                    {(returnsOverviewStats?.totalAll || 1760).toLocaleString("id-ID")}
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Semua Kasus Logistik</p>
-                </div>
-
-                <div
-                  onClick={() => setMainView("returns")}
-                  className={`p-3.5 rounded-xl border transition cursor-pointer hover:border-emerald-500/50 ${
-                    isDarkMode ? "bg-[#090d18] border-slate-800" : "bg-slate-50 border-slate-200"
-                  }`}
-                >
-                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Terselesaikan (Resolved)</div>
-                  <div className="text-xl sm:text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
-                    {(returnsOverviewStats?.totalResolved || 1735).toLocaleString("id-ID")}
-                  </div>
-                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-semibold">98.6% Tingkat Solusi</p>
-                </div>
-
-                <div
-                  onClick={() => setMainView("returns")}
-                  className={`p-3.5 rounded-xl border transition cursor-pointer hover:border-amber-500/50 ${
-                    isDarkMode ? "bg-[#090d18] border-slate-800" : "bg-slate-50 border-slate-200"
-                  }`}
-                >
-                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Menunggu Tindak Lanjut</div>
-                  <div className="text-xl sm:text-2xl font-black font-mono text-amber-600 dark:text-amber-400 mt-0.5">
-                    {(returnsOverviewStats?.totalPending || 25).toLocaleString("id-ID")}
-                  </div>
-                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 font-semibold">Perlu Tukar Fisik / CN</p>
-                </div>
-              </div>
-
-              {/* PBF Distribution Footer */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 text-xs">
-                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-100/60 dark:bg-slate-800/40">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">🏢 PT MEDIKA BINA INVESTAMA (MBI)</span>
-                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{(returnsOverviewStats?.totalMbi || 1682).toLocaleString("id-ID")} kasus</span>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-100/60 dark:bg-slate-800/40">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">🏢 PT MEDIKA AKSES INVESTAMA (MAI)</span>
-                  <span className="font-mono font-bold text-teal-600 dark:text-teal-400">{(returnsOverviewStats?.totalMai || 77).toLocaleString("id-ID")} kasus</span>
-                </div>
-              </div>
-            </div>
-
-            {/* QUICK BUTTON TO RETURN TO WORKSPACE */}
-            <div className="text-center pt-2">
-              <button
-                type="button"
-                onClick={() => setMainView("workspace")}
-                className="px-5 py-2.5 bg-black dark:bg-white text-white dark:text-black font-bold text-xs rounded-xl shadow-md hover:opacity-90 transition active:scale-95"
-              >
-                ➔ Kembali ke Antrean Kerja Faktur
-              </button>
             </div>
           </div>
         ) : (
