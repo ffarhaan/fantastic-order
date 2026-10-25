@@ -723,7 +723,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
   const filteredPersonnel = useMemo(() => {
     if (!personnelStats?.personnel) return [];
-    return personnelStats.personnel.filter((p) => {
+    const list = personnelStats.personnel.filter((p) => {
       const matchQuery =
         !personnelSearchQuery ||
         p.person.toLowerCase().includes(personnelSearchQuery.toLowerCase());
@@ -735,17 +735,36 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           : Number(p.mai_cases) > 0;
       return matchQuery && matchPbf;
     });
+
+    if (personnelFilterPbf === "MAI") {
+      return [...list].sort((a, b) => Number(b.mai_cases || 0) - Number(a.mai_cases || 0));
+    }
+    if (personnelFilterPbf === "MBI") {
+      return [...list].sort((a, b) => Number(b.mbi_cases || 0) - Number(a.mbi_cases || 0));
+    }
+    return list;
   }, [personnelStats, personnelSearchQuery, personnelFilterPbf]);
 
   const maxPersonnelCases = useMemo(() => {
     if (!filteredPersonnel.length) return 1;
-    return Math.max(...filteredPersonnel.map((p) => Number(p.total_cases) || 0), 1);
-  }, [filteredPersonnel]);
+    return Math.max(
+      ...filteredPersonnel.map((p) => {
+        if (personnelFilterPbf === "MAI") return Number(p.mai_cases) || 0;
+        if (personnelFilterPbf === "MBI") return Number(p.mbi_cases) || 0;
+        return Number(p.total_cases) || 0;
+      }),
+      1
+    );
+  }, [filteredPersonnel, personnelFilterPbf]);
 
   const totalPersonnelErrors = useMemo(() => {
-    if (!personnelStats?.personnel) return 0;
-    return personnelStats.personnel.reduce((sum, p) => sum + Number(p.total_cases || 0), 0);
-  }, [personnelStats]);
+    if (!filteredPersonnel.length) return 0;
+    return filteredPersonnel.reduce((sum, p) => {
+      if (personnelFilterPbf === "MAI") return sum + Number(p.mai_cases || 0);
+      if (personnelFilterPbf === "MBI") return sum + Number(p.mbi_cases || 0);
+      return sum + Number(p.total_cases || 0);
+    }, 0);
+  }, [filteredPersonnel, personnelFilterPbf]);
 
   const totalRootCauses = useMemo(() => {
     if (!personnelStats?.rootCauses) return 0;
@@ -2024,10 +2043,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 Jumlah Personil Terlibat
               </span>
               <h3 className="text-2xl font-black text-zinc-900 dark:text-white mt-1">
-                {personnelStats?.personnel?.length || 0} Orang
+                {filteredPersonnel.length} Orang
               </h3>
               <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">
-                Picker & Checker MBI & MAI
+                {personnelFilterPbf === "MAI" ? "Picker & Checker MAI" : personnelFilterPbf === "MBI" ? "Picker & Checker MBI" : "Picker & Checker MBI & MAI"}
               </p>
             </div>
 
@@ -2036,8 +2055,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 Rata-rata Kasus per Personil
               </span>
               <h3 className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">
-                {personnelStats?.personnel?.length
-                  ? (totalPersonnelErrors / personnelStats.personnel.length).toFixed(1)
+                {filteredPersonnel.length
+                  ? (totalPersonnelErrors / filteredPersonnel.length).toFixed(1)
                   : 0}{" "}
                 Kasus
               </h3>
@@ -2050,7 +2069,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           {/* Top 3 Spotlight Cards (Matching Friend's Apps Script App) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {/* Rank 1 (Gold) */}
-            {filteredPersonnel[0] && (
+            {filteredPersonnel[0] && (() => {
+              const p0 = filteredPersonnel[0];
+              const c0 = personnelFilterPbf === "MAI" ? Number(p0.mai_cases || 0) : personnelFilterPbf === "MBI" ? Number(p0.mbi_cases || 0) : Number(p0.total_cases || 0);
+              const pct0 = totalPersonnelErrors > 0 ? ((c0 / totalPersonnelErrors) * 100).toFixed(1) : "0";
+              return (
               <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border-2 border-amber-400/70 dark:border-amber-400/50 shadow-sm flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between">
@@ -2059,21 +2082,18 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                       <span>PERINGKAT #1</span>
                     </span>
                     <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
-                      {totalPersonnelErrors > 0
-                        ? ((Number(filteredPersonnel[0].total_cases) / totalPersonnelErrors) * 100).toFixed(1)
-                        : 0}
-                      % dari total
+                      {pct0}% dari total
                     </span>
                   </div>
-                  <h4 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white mt-2.5 truncate" title={filteredPersonnel[0].person}>
-                    {filteredPersonnel[0].person}
+                  <h4 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white mt-2.5 truncate" title={p0.person}>
+                    {p0.person}
                   </h4>
                   <div className="mt-2 flex items-baseline gap-2">
                     <span className="text-3xl font-black text-rose-600 dark:text-rose-400">
-                      {filteredPersonnel[0].total_cases}
+                      {c0}
                     </span>
                     <span className="text-xs font-bold text-zinc-600 dark:text-slate-400">
-                      Kesalahan Pengiriman
+                      Kesalahan Pengiriman {personnelFilterPbf !== "ALL" ? `(${personnelFilterPbf})` : ""}
                     </span>
                   </div>
                 </div>
@@ -2081,16 +2101,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 <div className="mt-4 pt-3 border-t border-amber-300/40 dark:border-amber-500/20 flex items-center justify-between text-xs font-medium text-zinc-700 dark:text-slate-300">
                   <div className="flex items-center gap-2">
                     <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[10px] font-bold">
-                      MBI: {filteredPersonnel[0].mbi_cases || 0}
+                      MBI: {p0.mbi_cases || 0}
                     </span>
                     <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 text-[10px] font-bold">
-                      MAI: {filteredPersonnel[0].mai_cases || 0}
+                      MAI: {p0.mai_cases || 0}
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
-                      setSearch(filteredPersonnel[0].person);
+                      setSearch(p0.person);
                       setActiveTab("list");
                     }}
                     className="text-xs text-amber-700 dark:text-amber-300 font-bold hover:underline flex items-center gap-1 cursor-pointer"
@@ -2100,10 +2120,15 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   </button>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* Rank 2 (Silver) */}
-            {filteredPersonnel[1] && (
+            {filteredPersonnel[1] && (() => {
+              const p1 = filteredPersonnel[1];
+              const c1 = personnelFilterPbf === "MAI" ? Number(p1.mai_cases || 0) : personnelFilterPbf === "MBI" ? Number(p1.mbi_cases || 0) : Number(p1.total_cases || 0);
+              const pct1 = totalPersonnelErrors > 0 ? ((c1 / totalPersonnelErrors) * 100).toFixed(1) : "0";
+              return (
               <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-slate-300/20 via-slate-400/5 to-transparent border border-slate-300 dark:border-slate-600 shadow-sm flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between">
@@ -2112,21 +2137,18 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                       <span>PERINGKAT #2</span>
                     </span>
                     <span className="text-xs font-bold text-slate-600 dark:text-slate-400">
-                      {totalPersonnelErrors > 0
-                        ? ((Number(filteredPersonnel[1].total_cases) / totalPersonnelErrors) * 100).toFixed(1)
-                        : 0}
-                      % dari total
+                      {pct1}% dari total
                     </span>
                   </div>
-                  <h4 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white mt-2.5 truncate" title={filteredPersonnel[1].person}>
-                    {filteredPersonnel[1].person}
+                  <h4 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white mt-2.5 truncate" title={p1.person}>
+                    {p1.person}
                   </h4>
                   <div className="mt-2 flex items-baseline gap-2">
                     <span className="text-3xl font-black text-rose-600 dark:text-rose-400">
-                      {filteredPersonnel[1].total_cases}
+                      {c1}
                     </span>
                     <span className="text-xs font-bold text-zinc-600 dark:text-slate-400">
-                      Kesalahan Pengiriman
+                      Kesalahan Pengiriman {personnelFilterPbf !== "ALL" ? `(${personnelFilterPbf})` : ""}
                     </span>
                   </div>
                 </div>
@@ -2134,16 +2156,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-xs font-medium text-zinc-700 dark:text-slate-300">
                   <div className="flex items-center gap-2">
                     <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[10px] font-bold">
-                      MBI: {filteredPersonnel[1].mbi_cases || 0}
+                      MBI: {p1.mbi_cases || 0}
                     </span>
                     <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 text-[10px] font-bold">
-                      MAI: {filteredPersonnel[1].mai_cases || 0}
+                      MAI: {p1.mai_cases || 0}
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
-                      setSearch(filteredPersonnel[1].person);
+                      setSearch(p1.person);
                       setActiveTab("list");
                     }}
                     className="text-xs text-zinc-700 dark:text-slate-300 font-bold hover:underline flex items-center gap-1 cursor-pointer"
@@ -2153,10 +2175,15 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   </button>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* Rank 3 (Bronze) */}
-            {filteredPersonnel[2] && (
+            {filteredPersonnel[2] && (() => {
+              const p2 = filteredPersonnel[2];
+              const c2 = personnelFilterPbf === "MAI" ? Number(p2.mai_cases || 0) : personnelFilterPbf === "MBI" ? Number(p2.mbi_cases || 0) : Number(p2.total_cases || 0);
+              const pct2 = totalPersonnelErrors > 0 ? ((c2 / totalPersonnelErrors) * 100).toFixed(1) : "0";
+              return (
               <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-amber-700/10 via-amber-800/5 to-transparent border border-amber-600/40 dark:border-amber-700/50 shadow-sm flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between">
@@ -2165,21 +2192,18 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                       <span>PERINGKAT #3</span>
                     </span>
                     <span className="text-xs font-bold text-amber-700 dark:text-amber-400">
-                      {totalPersonnelErrors > 0
-                        ? ((Number(filteredPersonnel[2].total_cases) / totalPersonnelErrors) * 100).toFixed(1)
-                        : 0}
-                      % dari total
+                      {pct2}% dari total
                     </span>
                   </div>
-                  <h4 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white mt-2.5 truncate" title={filteredPersonnel[2].person}>
-                    {filteredPersonnel[2].person}
+                  <h4 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white mt-2.5 truncate" title={p2.person}>
+                    {p2.person}
                   </h4>
                   <div className="mt-2 flex items-baseline gap-2">
                     <span className="text-3xl font-black text-rose-600 dark:text-rose-400">
-                      {filteredPersonnel[2].total_cases}
+                      {c2}
                     </span>
                     <span className="text-xs font-bold text-zinc-600 dark:text-slate-400">
-                      Kesalahan Pengiriman
+                      Kesalahan Pengiriman {personnelFilterPbf !== "ALL" ? `(${personnelFilterPbf})` : ""}
                     </span>
                   </div>
                 </div>
@@ -2187,16 +2211,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 <div className="mt-4 pt-3 border-t border-amber-600/20 flex items-center justify-between text-xs font-medium text-zinc-700 dark:text-slate-300">
                   <div className="flex items-center gap-2">
                     <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[10px] font-bold">
-                      MBI: {filteredPersonnel[2].mbi_cases || 0}
+                      MBI: {p2.mbi_cases || 0}
                     </span>
                     <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 text-[10px] font-bold">
-                      MAI: {filteredPersonnel[2].mai_cases || 0}
+                      MAI: {p2.mai_cases || 0}
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
-                      setSearch(filteredPersonnel[2].person);
+                      setSearch(p2.person);
                       setActiveTab("list");
                     }}
                     className="text-xs text-amber-700 dark:text-amber-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
@@ -2206,7 +2230,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   </button>
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* Filter Bar */}
@@ -2268,7 +2293,13 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   </tr>
                 ) : (
                   filteredPersonnel.map((p, idx) => {
-                    const percent = Math.round((Number(p.total_cases) / maxPersonnelCases) * 100);
+                    const displayCases =
+                      personnelFilterPbf === "MAI"
+                        ? Number(p.mai_cases || 0)
+                        : personnelFilterPbf === "MBI"
+                        ? Number(p.mbi_cases || 0)
+                        : Number(p.total_cases || 0);
+                    const percent = Math.round((displayCases / maxPersonnelCases) * 100);
                     return (
                       <tr
                         key={p.person}
@@ -2297,7 +2328,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-3">
                             <span className="w-10 font-black text-rose-600 dark:text-rose-400 text-sm">
-                              {p.total_cases}
+                              {displayCases}
                             </span>
                             <div className="flex-1 max-w-xs h-2.5 bg-zinc-100 dark:bg-slate-800 rounded-full overflow-hidden">
                               <div
@@ -2313,7 +2344,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                             </div>
                             <span className="text-[11px] text-zinc-400 dark:text-slate-500 w-10 text-right">
                               {totalPersonnelErrors > 0
-                                ? ((Number(p.total_cases) / totalPersonnelErrors) * 100).toFixed(0)
+                                ? ((displayCases / totalPersonnelErrors) * 100).toFixed(0)
                                 : 0}
                               %
                             </span>

@@ -783,8 +783,7 @@ export async function GET(req: Request) {
       }
 
       const rows = Array.from(personMap.values())
-        .sort((a, b) => b.total_cases - a.total_cases)
-        .slice(0, 100);
+        .sort((a, b) => b.total_cases - a.total_cases);
 
       const rootCauses = (await conn.execute(`
         SELECT 
