@@ -746,17 +746,31 @@ export async function GET(req: Request) {
         pending_cases: number;
       }>();
 
-      for (const r of rawReturns) {
-        const raw = String(r.person || "").trim();
-        if (!raw) continue;
-        const upper = raw.toUpperCase();
-        if (['REJECT', '-', '#N/A', 'NONE', 'NULL', 'ADMIN'].includes(upper)) continue;
+      const EXCLUDE_WORDS = new Set([
+        'REJECT', '-', '#N/A', 'NONE', 'NULL', 'ADMIN',
+        'KESALAHAN PAXEL', 'PAXEL', 'EXPEDISI', 'EKSPEDISI',
+        'TIKI', 'JNE', 'SICEPAT', 'ANTERAJA', 'GOSEND', 'GRAB', 'LALAMOVE',
+        'QC SESUAI', 'TIDAK ADA', 'TIDAK DIKETAHUI', 'UNKNOWN'
+      ]);
 
-        // Split compound entries by /, ,, +, &, or " - " (e.g., "RIANDI/RIO", "ANAM / AGUS", "Firly - Fajri")
-        const parts = raw.split(/[\/,+&]|\s+-\s+/).map((p: string) => p.trim()).filter(Boolean);
+      for (const r of rawReturns) {
+        let raw = String(r.person || "").trim();
+        if (!raw) continue;
+
+        // Remove parenthetical annotations like (picker), (checker), (gudang)
+        raw = raw.replace(/\([^)]*\)/g, ' ');
+
+        // Split by /, \, ,, +, &, " - ", " dan ", " and " (handles single, pairs, and triplets like AGUS/FAHRI/FATHUR)
+        const parts = raw.split(/[\/\\,+&]|\s+-\s+|\s+dan\s+|\s+and\s+/i);
+
         for (let p of parts) {
-          const norm = p.trim().toUpperCase();
-          if (!norm || ['REJECT', '-', '#N/A', 'NONE', 'NULL', 'ADMIN', 'KESALAHAN PAXEL'].includes(norm)) continue;
+          // Strip leading/trailing dots, spaces, dashes, slashes, backslashes
+          p = p.replace(/^[.\\\/\s\-_]+|[.\\\/\s\-_]+$/g, '').replace(/\s+/g, ' ').trim();
+          if (!p) continue;
+
+          const norm = p.toUpperCase();
+          if (EXCLUDE_WORDS.has(norm)) continue;
+          if (norm.length <= 1) continue;
 
           let entry = personMap.get(norm);
           if (!entry) {
