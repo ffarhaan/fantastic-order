@@ -435,6 +435,13 @@ export async function GET(req: Request) {
         whereClause += " AND category = ?";
         params.push(category);
       }
+      const monthParam = (searchParams.get("month") || "").trim();
+      if (monthParam && monthParam !== "ALL") {
+        const mNum = Number(monthParam);
+        const mStr = String(mNum).padStart(2, '0');
+        whereClause += " AND (month = ? OR report_date LIKE ? OR invoice_date LIKE ?)";
+        params.push(mNum, `%-${mStr}-%`, `%-${mStr}-%`);
+      }
 
       const countSql = `SELECT COUNT(*) as total FROM shipment_returns ${whereClause}`;
       const [countResult] = (await conn.execute(countSql, params)) as Array<{ total: number }>;
@@ -454,7 +461,7 @@ export async function GET(req: Request) {
           WHERE no_faktur != '' AND no_faktur IS NOT NULL
           GROUP BY no_faktur
         ) fa ON sr.invoice_no = fa.no_faktur
-        ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|person|batch_no|root_cause|note|status|pbf|category)\b/g, 'sr.$1')}
+        ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|person|batch_no|root_cause|note|status|pbf|category|month|report_date|invoice_date)\b/g, 'sr.$1')}
         ORDER BY CASE WHEN sr.report_date IS NOT NULL AND sr.report_date != '' THEN sr.report_date ELSE '1970-01-01' END DESC, sr.id DESC 
         LIMIT ? OFFSET ?
       `;
@@ -729,13 +736,25 @@ export async function GET(req: Request) {
     // 4.5. LOGISTICS ANALYTICS & PERSONNEL LEADERBOARD
     // ==========================================
     if (action === "personnel_stats") {
+      const monthParam = (searchParams.get("month") || "").trim();
+      let monthCondition = "";
+      const statsParams: (string | number)[] = [];
+
+      if (monthParam && monthParam !== "ALL") {
+        const mNum = Number(monthParam);
+        const mStr = String(mNum).padStart(2, '0');
+        monthCondition = " AND (month = ? OR report_date LIKE ? OR invoice_date LIKE ?)";
+        statsParams.push(mNum, `%-${mStr}-%`, `%-${mStr}-%`);
+      }
+
       const rawReturns = (await conn.execute(`
         SELECT person, pbf, status
         FROM shipment_returns
         WHERE person != '' 
           AND person IS NOT NULL 
           AND UPPER(TRIM(person)) NOT IN ('REJECT', '-', '#N/A', 'ADMIN', 'NONE', 'NULL')
-      `)) as any[];
+          ${monthCondition}
+      `, statsParams)) as any[];
 
       const personMap = new Map<string, {
         person: string;
@@ -805,10 +824,11 @@ export async function GET(req: Request) {
           COUNT(*) as total
         FROM shipment_returns
         WHERE root_cause != '' AND root_cause IS NOT NULL AND UPPER(TRIM(root_cause)) NOT IN ('-', '#N/A', 'NONE', 'NULL')
+          ${monthCondition}
         GROUP BY root_cause
         ORDER BY total DESC
         LIMIT 20;
-      `)) as any[];
+      `, statsParams)) as any[];
 
       const reasons = (await conn.execute(`
         SELECT 
@@ -816,10 +836,11 @@ export async function GET(req: Request) {
           COUNT(*) as total
         FROM shipment_returns
         WHERE reason != '' AND reason IS NOT NULL AND UPPER(TRIM(reason)) NOT IN ('-', '#N/A', 'NONE', 'NULL')
+          ${monthCondition}
         GROUP BY reason
         ORDER BY total DESC
         LIMIT 20;
-      `)) as any[];
+      `, statsParams)) as any[];
 
       const pbfComparison = (await conn.execute(`
         SELECT 
@@ -829,8 +850,9 @@ export async function GET(req: Request) {
           SUM(CASE WHEN status NOT LIKE '%Resolved%' THEN 1 ELSE 0 END) as pending
         FROM shipment_returns
         WHERE pbf IN ('MBI', 'MAI')
+          ${monthCondition}
         GROUP BY pbf;
-      `)) as any[];
+      `, statsParams)) as any[];
 
       return compressedJsonResponse(req, {
         success: true,
@@ -838,6 +860,7 @@ export async function GET(req: Request) {
         rootCauses,
         reasons,
         pbfComparison,
+        selectedMonth: monthParam || "ALL",
       });
     }
 

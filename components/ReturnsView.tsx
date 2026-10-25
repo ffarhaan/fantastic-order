@@ -134,6 +134,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [pbfFilter, setPbfFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [monthFilter, setMonthFilter] = useState("ALL");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState({ totalAll: 0, totalResolved: 0, totalPending: 0 });
@@ -353,10 +354,13 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   };
 
-  const fetchPersonnelStats = useCallback(async () => {
+  const fetchPersonnelStats = useCallback(async (selectedMonth = monthFilter) => {
     setLoadingStats(true);
     try {
-      const res = await fetch("/api/tidb?action=personnel_stats");
+      const url = selectedMonth && selectedMonth !== "ALL"
+        ? `/api/tidb?action=personnel_stats&month=${encodeURIComponent(selectedMonth)}`
+        : `/api/tidb?action=personnel_stats`;
+      const res = await fetch(url);
       const json = await res.json();
       if (json.success) {
         setPersonnelStats({
@@ -371,7 +375,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     } finally {
       setLoadingStats(false);
     }
-  }, []);
+  }, [monthFilter]);
 
   useEffect(() => {
     fetchPersonnelStats();
@@ -494,6 +498,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       if (pbfFilter !== "ALL") params.set("pbf", pbfFilter);
       if (categoryFilter !== "ALL") params.set("category", categoryFilter);
+      if (monthFilter !== "ALL") params.set("month", monthFilter);
 
       const res = await fetch(`/api/tidb?${params.toString()}`);
       const data = await res.json();
@@ -507,7 +512,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [debouncedSearch, statusFilter, pbfFilter, categoryFilter, page]);
+  }, [debouncedSearch, statusFilter, pbfFilter, categoryFilter, monthFilter, page]);
 
   // Real-time Firestore cross-browser signal + polling when tab is visible
   useEffect(() => {
@@ -1501,6 +1506,34 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             </select>
           </div>
 
+          {/* Month Filter */}
+          <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-slate-700/60 rounded-xl px-2.5 py-1">
+            <Calendar className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+            <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-medium">Bulan:</span>
+            <select
+              value={monthFilter}
+              onChange={(e) => {
+                const m = e.target.value;
+                setMonthFilter(m);
+                setPage(0);
+                fetchPersonnelStats(m);
+              }}
+              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
+            >
+              <option value="ALL">Semua Bulan (Jan - Okt 2026)</option>
+              <option value="10">Oktober 2026</option>
+              <option value="9">September 2026</option>
+              <option value="8">Agustus 2026</option>
+              <option value="7">Juli 2026</option>
+              <option value="6">Juni 2026</option>
+              <option value="5">Mei 2026</option>
+              <option value="4">April 2026</option>
+              <option value="3">Maret 2026</option>
+              <option value="2">Februari 2026</option>
+              <option value="1">Januari 2026</option>
+            </select>
+          </div>
+
           {/* Kategori Filter */}
           <div className="flex items-center gap-1.5 bg-slate-950/80 dark:bg-[#070b13] border border-slate-700/60 rounded-xl px-2.5 py-1">
             <span className="text-[10px] text-slate-400 font-medium">Kategori:</span>
@@ -2247,25 +2280,55 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               />
             </div>
 
-            <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
-              {[
-                { id: "ALL", label: "Semua PBF" },
-                { id: "MBI", label: "MBI Saja" },
-                { id: "MAI", label: "MAI Saja" },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPersonnelFilterPbf(p.id)}
-                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                    personnelFilterPbf === p.id
-                      ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                      : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-                  }`}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Filter Bulan Leaderboard */}
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-zinc-100 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
+                <Calendar className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase tracking-wider">Bulan:</span>
+                <select
+                  value={monthFilter}
+                  onChange={(e) => {
+                    const m = e.target.value;
+                    setMonthFilter(m);
+                    fetchPersonnelStats(m);
+                  }}
+                  className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white focus:outline-none cursor-pointer pr-1"
                 >
-                  {p.label}
-                </button>
-              ))}
+                  <option value="ALL">Semua Bulan (Jan - Okt 2026)</option>
+                  <option value="10">Oktober 2026</option>
+                  <option value="9">September 2026</option>
+                  <option value="8">Agustus 2026</option>
+                  <option value="7">Juli 2026</option>
+                  <option value="6">Juni 2026</option>
+                  <option value="5">Mei 2026</option>
+                  <option value="4">April 2026</option>
+                  <option value="3">Maret 2026</option>
+                  <option value="2">Februari 2026</option>
+                  <option value="1">Januari 2026</option>
+                </select>
+              </div>
+
+              {/* Filter PBF Buttons */}
+              <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
+                {[
+                  { id: "ALL", label: "Semua PBF" },
+                  { id: "MBI", label: "MBI Saja" },
+                  { id: "MAI", label: "MAI Saja" },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPersonnelFilterPbf(p.id)}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                      personnelFilterPbf === p.id
+                        ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                        : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
