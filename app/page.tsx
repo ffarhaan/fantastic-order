@@ -617,7 +617,17 @@ export default function Home() {
     const raw = String(so).trim();
     const noSpace = raw.replace(/\s+/g, "");
     const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-    return checkerMap[raw] || checkerMap[noSpace] || checkerMap[alpha] || null;
+
+    if (checkerMap[raw]) return checkerMap[raw];
+    if (checkerMap[noSpace]) return checkerMap[noSpace];
+    if (checkerMap[alpha]) return checkerMap[alpha];
+
+    // Robust suffix matching: if SO is "OY99DY-2666", check "2666"
+    if (raw.includes("-")) {
+      const suffix = raw.split("-").pop()?.trim();
+      if (suffix && checkerMap[suffix]) return checkerMap[suffix];
+    }
+    return null;
   }, [checkerMap]);
 
   // Real-time direct Firebase Firestore subscription (0 byte on Vercel, <100ms sync)

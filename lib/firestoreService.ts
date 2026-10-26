@@ -1983,6 +1983,10 @@ export function subscribeToCheckers(
       inMemoryMap[raw] = entry;
       if (noSpace) inMemoryMap[noSpace] = entry;
       if (alpha) inMemoryMap[alpha] = entry;
+      if (raw.includes("-")) {
+        const suffix = raw.split("-").pop()?.trim();
+        if (suffix) inMemoryMap[suffix] = entry;
+      }
       changed = true;
     }
 

@@ -223,6 +223,10 @@ export async function GET(req: Request) {
             const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
             if (noSpace && !map[noSpace]) map[noSpace] = val;
             if (alpha && !map[alpha]) map[alpha] = val;
+            if (raw.includes("-")) {
+              const suffix = raw.split("-").pop()?.trim();
+              if (suffix && !map[suffix]) map[suffix] = val;
+            }
           }
         }
       }
