@@ -213,10 +213,27 @@ export async function GET(req: Request) {
         for (const r of rows) {
           if (r.so_number) {
             const raw = String(r.so_number).trim();
+            let p = r.packer_name || "";
+            let k = r.picker_name || "";
+            if (
+              p.toLowerCase().startsWith("apotek") ||
+              p.toLowerCase().startsWith("pt ") ||
+              p.includes("00:00:00") ||
+              p.includes("GMT")
+            ) {
+              p = "";
+            }
+            if (
+              k.includes("00:00:00") ||
+              k.includes("GMT") ||
+              /^(mon|tue|wed|thu|fri|sat|sun)\s/i.test(k)
+            ) {
+              k = "";
+            }
             const val = {
               checker: r.checker_name || "",
-              packer: r.packer_name || "",
-              picker: r.picker_name || "",
+              packer: p,
+              picker: k,
             };
             map[raw] = val;
             const noSpace = raw.replace(/\s+/g, "");

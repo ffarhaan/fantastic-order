@@ -1961,8 +1961,12 @@ export function subscribeToCheckers(
     try {
       const cached = localStorage.getItem("fantastic_so_checkers_cache");
       if (cached) {
-        inMemoryMap = JSON.parse(cached);
-        onUpdate(inMemoryMap);
+        if (cached.includes("Apotek") || cached.includes("00:00:00") || cached.includes("GMT")) {
+          localStorage.removeItem("fantastic_so_checkers_cache");
+        } else {
+          inMemoryMap = JSON.parse(cached);
+          onUpdate(inMemoryMap);
+        }
       }
     } catch {}
   }
@@ -1972,8 +1976,26 @@ export function subscribeToCheckers(
     for (const [key, val] of Object.entries(incoming)) {
       if (!key) continue;
       const checker = String(val.checker || val.c || "").trim();
-      const packer = String(val.packer || val.p || "").trim();
-      const picker = String(val.picker || val.k || "").trim();
+      let packer = String(val.packer || val.p || "").trim();
+      let picker = String(val.picker || val.k || "").trim();
+
+      // Strict guard against poisoned cache
+      if (
+        packer.toLowerCase().startsWith("apotek") ||
+        packer.toLowerCase().startsWith("pt ") ||
+        packer.includes("00:00:00") ||
+        packer.includes("GMT")
+      ) {
+        packer = "";
+      }
+      if (
+        picker.includes("00:00:00") ||
+        picker.includes("GMT") ||
+        /^(mon|tue|wed|thu|fri|sat|sun)\s/i.test(picker)
+      ) {
+        picker = "";
+      }
+
       const entry = { checker, packer, picker };
 
       const raw = key.trim();

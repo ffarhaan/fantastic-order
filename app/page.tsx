@@ -618,32 +618,66 @@ export default function Home() {
     const noSpace = raw.replace(/\s+/g, "");
     const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 
-    if (checkerMap[raw]) return checkerMap[raw];
-    if (checkerMap[noSpace]) return checkerMap[noSpace];
-    if (checkerMap[alpha]) return checkerMap[alpha];
+    let entry = checkerMap[raw] || checkerMap[noSpace] || checkerMap[alpha] || null;
 
     // Robust suffix matching: if SO is "OY99DY-2666", check "2666"
-    if (raw.includes("-")) {
+    if (!entry && raw.includes("-")) {
       const suffix = raw.split("-").pop()?.trim();
-      if (suffix && checkerMap[suffix]) return checkerMap[suffix];
+      if (suffix && checkerMap[suffix]) entry = checkerMap[suffix];
     }
-    return null;
+    if (!entry) return null;
+
+    let p = entry.packer;
+    let k = entry.picker;
+    if (
+      p &&
+      (p.toLowerCase().startsWith("apotek") ||
+        p.toLowerCase().startsWith("pt ") ||
+        p.includes("00:00:00") ||
+        p.includes("GMT"))
+    ) {
+      p = "";
+    }
+    if (
+      k &&
+      (k.includes("00:00:00") ||
+        k.includes("GMT") ||
+        /^(mon|tue|wed|thu|fri|sat|sun)\s/i.test(k))
+    ) {
+      k = "";
+    }
+
+    return {
+      checker: entry.checker,
+      packer: p,
+      picker: k,
+    };
   }, [checkerMap]);
 
   // Real-time direct Firebase Firestore subscription (0 byte on Vercel, <100ms sync)
   useEffect(() => {
+    // Immediate wipe of poisoned cache from user browser
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("fantastic_so_checkers_cache");
+        if (cached && (cached.includes("Apotek") || cached.includes("00:00:00") || cached.includes("GMT"))) {
+          localStorage.removeItem("fantastic_so_checkers_cache");
+        }
+      } catch {}
+    }
+
     const unsub = subscribeToCheckers((map) => {
       setCheckerMap((prev) => ({ ...prev, ...map }));
       checkerMapRef.current = { ...checkerMapRef.current, ...map };
     });
 
-    // Also fetch initial checkers from TiDB for 100% full database coverage
+    // Also fetch initial checkers from TiDB for 100% full database coverage (TiDB wins)
     fetch("/api/tidb?action=get_checkers")
       .then((r) => r.json())
       .then((d) => {
         if (d.success && d.data) {
-          setCheckerMap((prev) => ({ ...d.data, ...prev }));
-          checkerMapRef.current = { ...d.data, ...checkerMapRef.current };
+          setCheckerMap((prev) => ({ ...prev, ...d.data }));
+          checkerMapRef.current = { ...checkerMapRef.current, ...d.data };
         }
       })
       .catch(() => {});
