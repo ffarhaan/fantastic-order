@@ -431,7 +431,7 @@ export async function GET(req: Request) {
       const status = searchParams.get("status") || "";
       const pbf = searchParams.get("pbf") || "";
       const category = searchParams.get("category") || "";
-      const limit = Math.min(Number(searchParams.get("limit")) || 50, 500);
+      const limit = Math.min(Number(searchParams.get("limit")) || 50, 5000);
       const offset = Number(searchParams.get("offset")) || 0;
 
       let whereClause = "WHERE customer_name != '#N/A' AND customer_name != '' AND customer_name IS NOT NULL";

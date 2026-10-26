@@ -273,7 +273,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   // Fetch all returns for analytic tabs
   const fetchAllReturns = useCallback(async () => {
     try {
-      const res = await fetch("/api/tidb?action=returns&limit=3000");
+      const res = await fetch("/api/tidb?action=returns&limit=5000");
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setAllReturns(json.data);

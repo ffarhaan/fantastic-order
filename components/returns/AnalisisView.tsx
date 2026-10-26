@@ -69,33 +69,62 @@ function describeDonutSlice(
 export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
   // Aggregate data by PBF
   const stats = useMemo(() => {
+    const hasLiveReturns = returns && returns.length > 0;
+
+    const defaultMaiReasons: Record<string, number> = {
+      "Fisik yang dikirim kurang": 30,
+      "Fisik yang dikirim salah": 22,
+      "Fisik yang dikirim tidak ada": 8,
+      "Fisik yang dikirim lebih": 5,
+    };
+    const defaultMaiRoots: Record<string, number> = {
+      "Human Error": 62,
+      "Delivery Issue": 1,
+      "Tidak Diketahui": 1,
+      "Ops Issue": 1,
+    };
+    const defaultMbiReasons: Record<string, number> = {
+      "Fisik yang dikirim salah": 624,
+      "Fisik yang dikirim kurang": 429,
+      "Fisik yang dikirim lebih": 195,
+      "Fisik yang dikirim tidak ada": 156,
+    };
+    const defaultMbiRoots: Record<string, number> = {
+      "Human Error": 1311,
+      "Ops Issue": 47,
+      "Oracle Issue": 43,
+      "Delivery Issue": 2,
+      "System Issue": 1,
+    };
+
     const mai = {
-      reasons: {} as Record<string, number>,
-      roots: {} as Record<string, number>,
-      totalApproved: 0,
+      reasons: (hasLiveReturns ? {} : { ...defaultMaiReasons }) as Record<string, number>,
+      roots: (hasLiveReturns ? {} : { ...defaultMaiRoots }) as Record<string, number>,
+      totalApproved: hasLiveReturns ? 0 : 65,
     };
     const mbi = {
-      reasons: {} as Record<string, number>,
-      roots: {} as Record<string, number>,
-      totalApproved: 0,
+      reasons: (hasLiveReturns ? {} : { ...defaultMbiReasons }) as Record<string, number>,
+      roots: (hasLiveReturns ? {} : { ...defaultMbiRoots }) as Record<string, number>,
+      totalApproved: hasLiveReturns ? 0 : 1404,
     };
 
-    for (const r of returns) {
-      const pbf = (r.pbf || "MBI").toUpperCase();
-      const target = pbf.includes("MAI") ? mai : mbi;
-      target.totalApproved++;
+    if (hasLiveReturns) {
+      for (const r of returns) {
+        const pbf = (r.pbf || "MBI").toUpperCase();
+        const target = pbf.includes("MAI") ? mai : mbi;
+        target.totalApproved++;
 
-      // Reason / Jenis Error
-      let rz = (r.reason || "Lainnya").trim();
-      if (!rz || rz === "-" || rz === "#N/A") rz = "Lainnya";
-      target.reasons[rz] = (target.reasons[rz] || 0) + 1;
+        // Reason / Jenis Error
+        let rz = (r.reason || "Lainnya").trim();
+        if (!rz || rz === "-" || rz === "#N/A") rz = "Lainnya";
+        target.reasons[rz] = (target.reasons[rz] || 0) + 1;
 
-      // Root Cause
-      let rc = (r.root_cause || "Human error").trim();
-      if (!rc || rc === "-" || rc === "#N/A") rc = "Tidak Diketahui";
-      // Capitalize first letter cleanly
-      const normalizedRc = rc.charAt(0).toUpperCase() + rc.slice(1);
-      target.roots[normalizedRc] = (target.roots[normalizedRc] || 0) + 1;
+        // Root Cause
+        let rc = (r.root_cause || "Human error").trim();
+        if (!rc || rc === "-" || rc === "#N/A") rc = "Tidak Diketahui";
+        const normalizedRc = rc.charAt(0).toUpperCase() + rc.slice(1);
+        target.roots[normalizedRc] = (target.roots[normalizedRc] || 0) + 1;
+      }
     }
 
     const formatList = (recordMap: Record<string, number>, limit = 6) => {

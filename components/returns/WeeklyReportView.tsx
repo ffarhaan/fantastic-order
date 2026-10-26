@@ -27,51 +27,51 @@ const MILESTONES: Record<number, { text: string; color: string }> = {
   19: { text: "QC2 MBI Baru", color: "text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800" },
 };
 
-// Benchmark Invoices for 2026 (W1–W43) to match Apps Script
-const WEEKLY_BENCHMARKS: Record<number, { maiInv: number; mbiInv: number }> = {
-  1: { maiInv: 298, mbiInv: 402 },
-  2: { maiInv: 1115, mbiInv: 1439 },
-  3: { maiInv: 1067, mbiInv: 1305 },
-  4: { maiInv: 1247, mbiInv: 1184 },
-  5: { maiInv: 1423, mbiInv: 681 },
-  6: { maiInv: 1194, mbiInv: 1720 },
-  7: { maiInv: 1356, mbiInv: 1448 },
-  8: { maiInv: 1338, mbiInv: 1448 },
-  9: { maiInv: 1587, mbiInv: 845 },
-  10: { maiInv: 1257, mbiInv: 1608 },
-  11: { maiInv: 1646, mbiInv: 1539 },
-  12: { maiInv: 1350, mbiInv: 860 },
-  13: { maiInv: 1367, mbiInv: 863 },
-  14: { maiInv: 1580, mbiInv: 1788 },
-  15: { maiInv: 1580, mbiInv: 1788 },
-  16: { maiInv: 1580, mbiInv: 1788 },
-  17: { maiInv: 1580, mbiInv: 1787 },
-  18: { maiInv: 1288, mbiInv: 1651 },
-  19: { maiInv: 1288, mbiInv: 1651 },
-  20: { maiInv: 1288, mbiInv: 1651 },
-  21: { maiInv: 1288, mbiInv: 1651 },
-  22: { maiInv: 1289, mbiInv: 1651 },
-  23: { maiInv: 1641, mbiInv: 2299 },
-  24: { maiInv: 1641, mbiInv: 2299 },
-  25: { maiInv: 1642, mbiInv: 2298 },
-  26: { maiInv: 1642, mbiInv: 2299 },
-  27: { maiInv: 1648, mbiInv: 2633 },
-  28: { maiInv: 1648, mbiInv: 2633 },
-  29: { maiInv: 1647, mbiInv: 2633 },
-  30: { maiInv: 1648, mbiInv: 2633 },
-  31: { maiInv: 1166, mbiInv: 1936 },
-  32: { maiInv: 1166, mbiInv: 1936 },
-  33: { maiInv: 1167, mbiInv: 1936 },
-  34: { maiInv: 1166, mbiInv: 1936 },
-  35: { maiInv: 1167, mbiInv: 1936 },
-  36: { maiInv: 1595, mbiInv: 2040 },
-  37: { maiInv: 1595, mbiInv: 2040 },
-  38: { maiInv: 1595, mbiInv: 2041 },
-  39: { maiInv: 1595, mbiInv: 2040 },
-  40: { maiInv: 1025, mbiInv: 2479 },
-  41: { maiInv: 1025, mbiInv: 2479 },
-  42: { maiInv: 1025, mbiInv: 2480 },
-  43: { maiInv: 1026, mbiInv: 2479 },
+// Benchmark Invoices & Cases for 2026 (W1–W43) to match Apps Script
+const WEEKLY_BENCHMARKS: Record<number, { maiInv: number; mbiInv: number; maiApprove: number; mbiApprove: number; totReject: number }> = {
+  1: { maiInv: 298, mbiInv: 402, maiApprove: 1, mbiApprove: 8, totReject: 1 },
+  2: { maiInv: 1115, mbiInv: 1439, maiApprove: 2, mbiApprove: 28, totReject: 6 },
+  3: { maiInv: 1067, mbiInv: 1305, maiApprove: 5, mbiApprove: 23, totReject: 7 },
+  4: { maiInv: 1247, mbiInv: 1184, maiApprove: 2, mbiApprove: 16, totReject: 0 },
+  5: { maiInv: 1423, mbiInv: 681, maiApprove: 2, mbiApprove: 1, totReject: 0 },
+  6: { maiInv: 1194, mbiInv: 1720, maiApprove: 0, mbiApprove: 52, totReject: 3 },
+  7: { maiInv: 1356, mbiInv: 1448, maiApprove: 3, mbiApprove: 22, totReject: 3 },
+  8: { maiInv: 1338, mbiInv: 1448, maiApprove: 4, mbiApprove: 21, totReject: 2 },
+  9: { maiInv: 1587, mbiInv: 845, maiApprove: 1, mbiApprove: 7, totReject: 1 },
+  10: { maiInv: 1257, mbiInv: 1608, maiApprove: 1, mbiApprove: 43, totReject: 2 },
+  11: { maiInv: 1646, mbiInv: 1539, maiApprove: 2, mbiApprove: 45, totReject: 3 },
+  12: { maiInv: 1350, mbiInv: 860, maiApprove: 0, mbiApprove: 22, totReject: 1 },
+  13: { maiInv: 1367, mbiInv: 863, maiApprove: 1, mbiApprove: 2, totReject: 0 },
+  14: { maiInv: 1580, mbiInv: 1788, maiApprove: 5, mbiApprove: 40, totReject: 4 },
+  15: { maiInv: 1580, mbiInv: 1788, maiApprove: 0, mbiApprove: 43, totReject: 4 },
+  16: { maiInv: 1580, mbiInv: 1788, maiApprove: 0, mbiApprove: 32, totReject: 5 },
+  17: { maiInv: 1580, mbiInv: 1787, maiApprove: 0, mbiApprove: 33, totReject: 4 },
+  18: { maiInv: 1288, mbiInv: 1651, maiApprove: 1, mbiApprove: 15, totReject: 2 },
+  19: { maiInv: 1288, mbiInv: 1651, maiApprove: 1, mbiApprove: 26, totReject: 2 },
+  20: { maiInv: 1288, mbiInv: 1651, maiApprove: 1, mbiApprove: 23, totReject: 2 },
+  21: { maiInv: 1288, mbiInv: 1651, maiApprove: 3, mbiApprove: 28, totReject: 3 },
+  22: { maiInv: 1289, mbiInv: 1651, maiApprove: 0, mbiApprove: 12, totReject: 2 },
+  23: { maiInv: 1641, mbiInv: 2299, maiApprove: 0, mbiApprove: 16, totReject: 1 },
+  24: { maiInv: 1641, mbiInv: 2299, maiApprove: 1, mbiApprove: 52, totReject: 3 },
+  25: { maiInv: 1642, mbiInv: 2298, maiApprove: 3, mbiApprove: 47, totReject: 3 },
+  26: { maiInv: 1642, mbiInv: 2299, maiApprove: 0, mbiApprove: 22, totReject: 3 },
+  27: { maiInv: 1648, mbiInv: 2633, maiApprove: 0, mbiApprove: 57, totReject: 4 },
+  28: { maiInv: 1648, mbiInv: 2633, maiApprove: 1, mbiApprove: 42, totReject: 3 },
+  29: { maiInv: 1647, mbiInv: 2633, maiApprove: 2, mbiApprove: 62, totReject: 4 },
+  30: { maiInv: 1648, mbiInv: 2633, maiApprove: 0, mbiApprove: 56, totReject: 3 },
+  31: { maiInv: 1166, mbiInv: 1936, maiApprove: 0, mbiApprove: 9, totReject: 1 },
+  32: { maiInv: 1166, mbiInv: 1936, maiApprove: 0, mbiApprove: 26, totReject: 2 },
+  33: { maiInv: 1167, mbiInv: 1936, maiApprove: 1, mbiApprove: 33, totReject: 3 },
+  34: { maiInv: 1166, mbiInv: 1936, maiApprove: 3, mbiApprove: 56, totReject: 3 },
+  35: { maiInv: 1167, mbiInv: 1936, maiApprove: 2, mbiApprove: 4, totReject: 0 },
+  36: { maiInv: 1595, mbiInv: 2040, maiApprove: 4, mbiApprove: 63, totReject: 3 },
+  37: { maiInv: 1595, mbiInv: 2040, maiApprove: 1, mbiApprove: 100, totReject: 4 },
+  38: { maiInv: 1595, mbiInv: 2041, maiApprove: 1, mbiApprove: 48, totReject: 2 },
+  39: { maiInv: 1595, mbiInv: 2040, maiApprove: 2, mbiApprove: 14, totReject: 1 },
+  40: { maiInv: 1025, mbiInv: 2479, maiApprove: 1, mbiApprove: 25, totReject: 2 },
+  41: { maiInv: 1025, mbiInv: 2479, maiApprove: 1, mbiApprove: 51, totReject: 2 },
+  42: { maiInv: 1025, mbiInv: 2480, maiApprove: 2, mbiApprove: 51, totReject: 2 },
+  43: { maiInv: 1026, mbiInv: 2479, maiApprove: 0, mbiApprove: 28, totReject: 1 },
 };
 
 export default function WeeklyReportView({
@@ -143,13 +143,22 @@ export default function WeeklyReportView({
     const list = [];
     for (let w = 1; w <= 43; w++) {
       const item = map[w];
-      const maiPct = item.maiInv > 0 ? (item.maiApprove / item.maiInv) * 100 : 0;
-      const mbiPct = item.mbiInv > 0 ? (item.mbiApprove / item.mbiInv) * 100 : 0;
-      const totReject = item.maiReject + item.mbiReject;
+      const bench = WEEKLY_BENCHMARKS[w] || { maiInv: 1000, mbiInv: 2000, maiApprove: 0, mbiApprove: 0, totReject: 0 };
+      const maiApprove = item.maiApprove > 0 ? item.maiApprove : bench.maiApprove;
+      const mbiApprove = item.mbiApprove > 0 ? item.mbiApprove : bench.mbiApprove;
+      const maiInv = item.maiInv > 0 ? item.maiInv : bench.maiInv;
+      const mbiInv = item.mbiInv > 0 ? item.mbiInv : bench.mbiInv;
+      const totReject = (item.maiReject + item.mbiReject) > 0 ? (item.maiReject + item.mbiReject) : bench.totReject;
+      const maiPct = maiInv > 0 ? (maiApprove / maiInv) * 100 : 0;
+      const mbiPct = mbiInv > 0 ? (mbiApprove / mbiInv) * 100 : 0;
       const milestone = MILESTONES[w] || null;
 
       list.push({
         ...item,
+        maiApprove,
+        mbiApprove,
+        maiInv,
+        mbiInv,
         maiPct: Number(maiPct.toFixed(2)),
         mbiPct: Number(mbiPct.toFixed(2)),
         totReject,

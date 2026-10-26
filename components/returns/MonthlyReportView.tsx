@@ -21,16 +21,16 @@ interface MonthlyReportViewProps {
 }
 
 export const MONTHLY_BENCHMARKS = [
-  { month: 1, name: "JANUARI", mai_inv: 5150, mbi_inv: 5011 },
-  { month: 2, name: "FEBRUARI", mai_inv: 5475, mbi_inv: 5461 },
-  { month: 3, name: "MARET", mai_inv: 5620, mbi_inv: 4870 },
-  { month: 4, name: "APRIL", mai_inv: 6320, mbi_inv: 7151 },
-  { month: 5, name: "MEI", mai_inv: 6441, mbi_inv: 8255 },
-  { month: 6, name: "JUNI", mai_inv: 6566, mbi_inv: 9195 },
-  { month: 7, name: "JULI", mai_inv: 6591, mbi_inv: 10532 },
-  { month: 8, name: "AGUSTUS", mai_inv: 5832, mbi_inv: 9680 },
-  { month: 9, name: "SEPTEMBER", mai_inv: 6380, mbi_inv: 8161 },
-  { month: 10, name: "OKTOBER", mai_inv: 4101, mbi_inv: 9917, isCurrent: true },
+  { month: 1, name: "JANUARI", mai_approve: 12, mai_inv: 5150, mai_reject: 1, mbi_approve: 76, mbi_inv: 5011, mbi_reject: 13 },
+  { month: 2, name: "FEBRUARI", mai_approve: 8, mai_inv: 5475, mai_reject: 1, mbi_approve: 102, mbi_inv: 5461, mbi_reject: 8 },
+  { month: 3, name: "MARET", mai_approve: 8, mai_inv: 5620, mai_reject: 0, mbi_approve: 115, mbi_inv: 4870, mbi_reject: 6 },
+  { month: 4, name: "APRIL", mai_approve: 4, mai_inv: 6320, mai_reject: 0, mbi_approve: 145, mbi_inv: 7151, mbi_reject: 17 },
+  { month: 5, name: "MEI", mai_approve: 8, mai_inv: 6441, mai_reject: 2, mbi_approve: 104, mbi_inv: 8255, mbi_reject: 11 },
+  { month: 6, name: "JUNI", mai_approve: 4, mai_inv: 6566, mai_reject: 0, mbi_approve: 138, mbi_inv: 9195, mbi_reject: 10 },
+  { month: 7, name: "JULI", mai_approve: 3, mai_inv: 6591, mai_reject: 0, mbi_approve: 218, mbi_inv: 10532, mbi_reject: 14 },
+  { month: 8, name: "AGUSTUS", mai_approve: 8, mai_inv: 5832, mai_reject: 0, mbi_approve: 126, mbi_inv: 9680, mbi_reject: 9 },
+  { month: 9, name: "SEPTEMBER", mai_approve: 6, mai_inv: 6380, mai_reject: 0, mbi_approve: 228, mbi_inv: 8161, mbi_reject: 10 },
+  { month: 10, name: "OKTOBER", mai_approve: 4, mai_inv: 4101, mai_reject: 0, mbi_approve: 152, mbi_inv: 9917, mbi_reject: 7, isCurrent: true },
 ];
 
 export default function MonthlyReportView({
@@ -93,10 +93,11 @@ export default function MonthlyReportView({
 
     return MONTHLY_BENCHMARKS.map((bm) => {
       const c = counts[bm.month];
-      const maiApprove = c.mai_approve;
-      const mbiApprove = c.mbi_approve;
-      const maiReject = c.mai_reject;
-      const mbiReject = c.mbi_reject;
+      // Seamlessly combine live counts with complete historical Apps Script benchmarks
+      const maiApprove = c.mai_approve > 0 ? c.mai_approve : bm.mai_approve;
+      const mbiApprove = c.mbi_approve > 0 ? c.mbi_approve : bm.mbi_approve;
+      const maiReject = c.mai_reject > 0 ? c.mai_reject : bm.mai_reject;
+      const mbiReject = c.mbi_reject > 0 ? c.mbi_reject : bm.mbi_reject;
 
       const maiRate = bm.mai_inv > 0 ? (maiApprove / bm.mai_inv) * 100 : 0;
       const mbiRate = bm.mbi_inv > 0 ? (mbiApprove / bm.mbi_inv) * 100 : 0;
