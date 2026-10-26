@@ -97,8 +97,20 @@ export default function WeeklyReportView({
       }
     > = {};
 
-    for (let w = 1; w <= 43; w++) {
-      const bench = WEEKLY_BENCHMARKS[w] || { maiInv: 1000, mbiInv: 2000 };
+    const now = new Date();
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+    const currentWeekNumber = Math.max(1, Math.min(52, Math.floor((now.getTime() - startOfYear.getTime()) / 604800000) + 1));
+    let maxW = Math.max(43, currentWeekNumber);
+
+    for (const r of returns) {
+      if (r.week) {
+        const wNum = Number(String(r.week).replace(/\D/g, ""));
+        if (wNum > maxW && wNum <= 52) maxW = wNum;
+      }
+    }
+
+    for (let w = 1; w <= maxW; w++) {
+      const bench = WEEKLY_BENCHMARKS[w] || { maiInv: 1000, mbiInv: 2000, maiApprove: 0, mbiApprove: 0, totReject: 0 };
       map[w] = {
         week: w,
         maiApprove: 0,
@@ -116,32 +128,43 @@ export default function WeeklyReportView({
       let w = 1;
       if (r.week) {
         w = Number(String(r.week).replace(/\D/g, "")) || 1;
-      }
-      if (w < 1 || w > 43) continue;
-
-      map[w].cases.push(r);
-      const pbf = (r.pbf || "MBI").toUpperCase();
-      const conf = (r.confirm || "").toLowerCase();
-      const isReject = conf.includes("reject") || conf.includes("tolak") || (r.status || "").toLowerCase().includes("reject");
-
-      if (pbf.includes("MAI")) {
-        if (isReject) {
-          map[w].maiReject++;
-        } else {
-          map[w].maiApprove++;
-        }
       } else {
-        if (isReject) {
-          map[w].mbiReject++;
+        const dStr = r.report_date || r.invoice_date || r.created_at;
+        if (dStr) {
+          const d = new Date(dStr);
+          if (!isNaN(d.getTime())) {
+            const soy = new Date(d.getFullYear(), 0, 1);
+            w = Math.max(1, Math.min(52, Math.floor((d.getTime() - soy.getTime()) / 604800000) + 1));
+          }
+        }
+      }
+      if (w < 1 || w > 52) continue;
+
+      if (map[w]) {
+        map[w].cases.push(r);
+        const pbf = (r.pbf || "MBI").toUpperCase();
+        const conf = (r.confirm || "").toLowerCase();
+        const isReject = conf.includes("reject") || conf.includes("tolak") || (r.status || "").toLowerCase().includes("reject");
+
+        if (pbf.includes("MAI")) {
+          if (isReject) {
+            map[w].maiReject++;
+          } else {
+            map[w].maiApprove++;
+          }
         } else {
-          map[w].mbiApprove++;
+          if (isReject) {
+            map[w].mbiReject++;
+          } else {
+            map[w].mbiApprove++;
+          }
         }
       }
     }
 
     // Compile rows
     const list = [];
-    for (let w = 1; w <= 43; w++) {
+    for (let w = 1; w <= maxW; w++) {
       const item = map[w];
       const bench = WEEKLY_BENCHMARKS[w] || { maiInv: 1000, mbiInv: 2000, maiApprove: 0, mbiApprove: 0, totReject: 0 };
       const maiApprove = item.maiApprove > 0 ? item.maiApprove : bench.maiApprove;

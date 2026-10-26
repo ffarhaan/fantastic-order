@@ -178,7 +178,19 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   }, [currentWeekNumber]);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
-  const [stats, setStats] = useState({ totalAll: 0, totalResolved: 0, totalPending: 0 });
+  const [stats, setStats] = useState({
+    totalAll: 0,
+    totalResolved: 0,
+    totalPending: 0,
+    totalMbi: 0,
+    totalMai: 0,
+    mbiApproved: 0,
+    maiApproved: 0,
+    openMbi: 0,
+    openMai: 0,
+    totalOpen: 0,
+    totalReject: 0,
+  });
   const [selectedReturn, setSelectedReturn] = useState<ShipmentReturnRecord | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -1236,6 +1248,30 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     </div>
   );
 
+  // Benchmark monthly invoices matching Apps Script
+  const monthBenchmarkInvoices: Record<string, { mai: number; mbi: number }> = {
+    ALL: { mai: 58304, mbi: 78056 },
+    "1": { mai: 5150, mbi: 5011 },
+    "2": { mai: 5475, mbi: 5461 },
+    "3": { mai: 5620, mbi: 4870 },
+    "4": { mai: 6320, mbi: 7151 },
+    "5": { mai: 6441, mbi: 8255 },
+    "6": { mai: 6566, mbi: 9195 },
+    "7": { mai: 6591, mbi: 10532 },
+    "8": { mai: 5832, mbi: 9680 },
+    "9": { mai: 6380, mbi: 8161 },
+    "10": { mai: 4101, mbi: 9917 },
+  };
+
+  const currentBenchmark = monthBenchmarkInvoices[monthFilter] || monthBenchmarkInvoices.ALL;
+  const maiInvoiceCount = currentBenchmark.mai;
+  const mbiInvoiceCount = currentBenchmark.mbi;
+
+  const errorRateMai = maiInvoiceCount > 0 ? (((stats.maiApproved || stats.totalMai) / maiInvoiceCount) * 100).toFixed(2) : "0.00";
+  const errorRateMbi = mbiInvoiceCount > 0 ? (((stats.mbiApproved || stats.totalMbi) / mbiInvoiceCount) * 100).toFixed(2) : "0.00";
+  const totApproved = (stats.maiApproved || stats.totalMai) + (stats.mbiApproved || stats.totalMbi);
+  const resolutionRate = totApproved > 0 ? ((stats.totalResolved / totApproved) * 100).toFixed(1) : "0.0";
+
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       {/* View Switcher Tabs (Apps Script Navigation Suite) */}
@@ -1469,162 +1505,225 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       {/* Tab 10: Daftar Retur (Data Kasus) */}
       {activeTab === "list" && (
         <div className="space-y-4 animate-in fade-in duration-150">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* Card 1: Total Retur (Filter Klik) */}
-        <div
-          onClick={() => { setStatusFilter("ALL"); setPage(0); }}
-          className={`relative overflow-hidden rounded-xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border shadow-xs transition-all cursor-pointer select-none active:scale-95 group ${
-            statusFilter === "ALL"
-              ? "border-blue-500/80 shadow-md bg-blue-500/5 dark:bg-blue-500/10"
-              : "border-zinc-200 dark:border-blue-500/20 hover:border-blue-500/40 opacity-90 hover:opacity-100"
-          }`}
-          title="Klik untuk tampilkan Semua Status"
-        >
-          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-xl pointer-events-none -mr-8 -mt-8" />
-          <div className="flex items-center justify-between relative z-10">
-            <div>
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-300">
-                <Package className="w-3 h-3 text-blue-500 dark:text-blue-400" />
-                <span>Total Komplain & Retur</span>
-              </div>
-              <h3 className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-white mt-1 tracking-tight">
-                {stats.totalAll.toLocaleString("id-ID")}
-              </h3>
-              <p className="text-[10px] text-zinc-500 dark:text-slate-400 mt-0.5">
-                Semua Riwayat Kasus
-              </p>
-            </div>
-            <div className={`w-9 h-9 rounded-lg border flex items-center justify-center transition-transform ${
-              statusFilter === "ALL"
-                ? "bg-blue-600 text-white border-blue-500 shadow-sm"
-                : "bg-blue-50 dark:bg-blue-600/20 border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-blue-400"
-            }`}>
-              <RotateCcw className="w-4 h-4" />
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Selesai (Filter Klik Resolved) */}
-        <div
-          onClick={() => { setStatusFilter("Resolved"); setPage(0); }}
-          className={`relative overflow-hidden rounded-xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border shadow-xs transition-all cursor-pointer select-none active:scale-95 group ${
-            statusFilter === "Resolved"
-              ? "border-emerald-500/80 shadow-md bg-emerald-500/5 dark:bg-emerald-500/10"
-              : "border-zinc-200 dark:border-emerald-500/20 hover:border-emerald-500/40 opacity-90 hover:opacity-100"
-          }`}
-          title="Klik untuk filter kasus Selesai (Resolved)"
-        >
-          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full blur-xl pointer-events-none -mr-8 -mt-8" />
-          <div className="flex items-center justify-between relative z-10">
-            <div>
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">
-                <CheckCircle2 className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
-                <span>Terselesaikan (Resolved)</span>
-              </div>
-              <h3 className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1 tracking-tight">
-                {stats.totalResolved.toLocaleString("id-ID")}
-              </h3>
-              <p className="text-[10px] text-zinc-500 dark:text-slate-400 mt-0.5">
-                {stats.totalAll > 0 ? ((stats.totalResolved / stats.totalAll) * 100).toFixed(1) : 0}% Tingkat Solusi
-              </p>
-            </div>
-            <div className={`w-9 h-9 rounded-lg border flex items-center justify-center transition-transform ${
-              statusFilter === "Resolved"
-                ? "bg-emerald-600 text-white border-emerald-500 shadow-sm"
-                : "bg-emerald-50 dark:bg-emerald-600/20 border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-            }`}>
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Pending (Filter Klik Pending/Unresolved) */}
-        <div
-          onClick={() => { setStatusFilter("Pending"); setPage(0); }}
-          className={`relative overflow-hidden rounded-xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border shadow-xs transition-all cursor-pointer select-none active:scale-95 group ${
-            statusFilter === "Pending" || statusFilter === "In Progress" || statusFilter === "Open case"
-              ? "border-amber-500/80 shadow-md bg-amber-500/5 dark:bg-amber-500/10"
-              : "border-zinc-200 dark:border-amber-500/20 hover:border-amber-500/40 opacity-90 hover:opacity-100"
-          }`}
-          title="Klik untuk filter kasus Menunggu Tindak Lanjut"
-        >
-          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 dark:bg-amber-500/10 rounded-full blur-xl pointer-events-none -mr-8 -mt-8" />
-          <div className="flex items-center justify-between relative z-10">
-            <div>
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-300">
-                <Clock className="w-3 h-3 text-amber-500 dark:text-amber-400" />
-                <span>Menunggu Tindak Lanjut</span>
-              </div>
-              <h3 className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 mt-1 tracking-tight">
-                {stats.totalPending.toLocaleString("id-ID")}
-              </h3>
-              <p className="text-[10px] text-zinc-500 dark:text-slate-400 mt-0.5">
-                Perlu tukar fisik / CN Retur
-              </p>
-            </div>
-            <div className={`w-9 h-9 rounded-lg border flex items-center justify-center transition-transform ${
-              statusFilter === "Pending" || statusFilter === "In Progress" || statusFilter === "Open case"
-                ? "bg-amber-600 text-white border-amber-500 shadow-sm"
-                : "bg-amber-50 dark:bg-amber-600/20 border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-400"
-            }`}>
-              <Clock className="w-4 h-4" />
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Action Hub */}
-        <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-gradient-to-br dark:from-[#0d1322] dark:to-[#070b14] border border-zinc-200 dark:border-indigo-500/20 shadow-sm hover:border-indigo-500/40 transition-all flex flex-col justify-between group">
-          <div className="absolute top-0 right-0 w-28 h-28 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10" />
-          <div className="flex items-center justify-between relative z-10">
-            <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
-                <span>Aksi Cepat</span>
-              </div>
-              <h4 className="text-sm font-semibold text-zinc-900 dark:text-white mt-1">Impor, Ekspor & Input</h4>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-600/20 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-xs">
-              <ShieldAlert className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="flex items-center gap-2 mt-3">
-            <button
-              type="button"
-              onClick={() => setShowAddModal(true)}
-              className="flex-1 py-1.5 px-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-xs transition-all active:scale-95 cursor-pointer"
+          {/* Top 6 Metric Cards matching Apps Script layout */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {/* Card 1: TOTAL CASES MAI */}
+            <div
+              onClick={() => {
+                setPbfFilter(pbfFilter === "MAI" ? "ALL" : "MAI");
+                setPage(0);
+              }}
+              className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                pbfFilter === "MAI"
+                  ? "border-red-500 ring-2 ring-red-500/20 bg-red-50/20 dark:bg-red-950/20"
+                  : "border-slate-200 dark:border-slate-800 hover:border-red-300 dark:hover:border-red-800"
+              }`}
+              title="Klik untuk filter PBF MAI"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Input</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => importFileRef.current?.click()}
-              disabled={isImporting}
-              className="py-1.5 px-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 rounded-xl text-xs font-bold flex items-center gap-1 transition-all shadow-xs cursor-pointer disabled:opacity-50"
-              title="Impor Data Excel / CSV"
+              <div className="absolute top-0 left-0 right-0 h-1 bg-red-500" />
+              <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase">
+                TOTAL CASES MAI
+              </div>
+              <div className="my-1.5">
+                <span className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
+                  {(stats.maiApproved || stats.totalMai).toLocaleString("id-ID")}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                dari {maiInvoiceCount.toLocaleString("id-ID")} invoice
+              </div>
+            </div>
+
+            {/* Card 2: TOTAL CASES MBI */}
+            <div
+              onClick={() => {
+                setPbfFilter(pbfFilter === "MBI" ? "ALL" : "MBI");
+                setPage(0);
+              }}
+              className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                pbfFilter === "MBI"
+                  ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20 dark:bg-blue-950/20"
+                  : "border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-800"
+              }`}
+              title="Klik untuk filter PBF MBI"
             >
-              <Download className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 rotate-180 ${isImporting ? "animate-bounce" : ""}`} />
-              <span>{isImporting ? "Impor..." : "Impor"}</span>
-            </button>
-            <input
-              ref={importFileRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="hidden"
-              onChange={handleImportExcel}
-            />
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              className="py-1.5 px-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-700 dark:text-slate-200 border border-zinc-200 dark:border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all shadow-xs cursor-pointer"
-              title="Unduh Excel"
+              <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500" />
+              <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase">
+                TOTAL CASES MBI
+              </div>
+              <div className="my-1.5">
+                <span className="text-2xl font-black text-blue-600 dark:text-blue-400 font-mono">
+                  {(stats.mbiApproved || stats.totalMbi).toLocaleString("id-ID")}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                dari {mbiInvoiceCount.toLocaleString("id-ID")} invoice
+              </div>
+            </div>
+
+            {/* Card 3: ERROR RATE MAI */}
+            <div className="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs p-3.5 flex flex-col justify-between">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-red-500" />
+              <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase">
+                ERROR RATE MAI
+              </div>
+              <div className="my-1.5">
+                <span className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
+                  {errorRateMai}%
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                Approve only
+              </div>
+            </div>
+
+            {/* Card 4: ERROR RATE MBI */}
+            <div className="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs p-3.5 flex flex-col justify-between">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500" />
+              <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase">
+                ERROR RATE MBI
+              </div>
+              <div className="my-1.5">
+                <span className="text-2xl font-black text-blue-600 dark:text-blue-400 font-mono">
+                  {errorRateMbi}%
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                Approve only
+              </div>
+            </div>
+
+            {/* Card 5: OPEN CASES */}
+            <div
+              onClick={() => {
+                setStatusFilter(statusFilter === "Pending" ? "ALL" : "Pending");
+                setPage(0);
+              }}
+              className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                statusFilter === "Pending" || statusFilter === "In Progress" || statusFilter === "Open case"
+                  ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/20 dark:bg-amber-950/20"
+                  : "border-slate-200 dark:border-slate-800 hover:border-amber-300 dark:hover:border-amber-800"
+              }`}
+              title="Klik untuk filter kasus Menunggu Tindak Lanjut"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Ekspor</span>
-            </button>
+              <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500" />
+              <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase">
+                OPEN CASES
+              </div>
+              <div className="my-1.5">
+                <span className="text-2xl font-black text-amber-500 dark:text-amber-400 font-mono">
+                  {openCasesCount}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                MAI: {stats.openMai} - MBI: {stats.openMbi}
+              </div>
+            </div>
+
+            {/* Card 6: RESOLVED */}
+            <div
+              onClick={() => {
+                setStatusFilter(statusFilter === "Resolved" ? "ALL" : "Resolved");
+                setPage(0);
+              }}
+              className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                statusFilter === "Resolved"
+                  ? "border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/20 dark:bg-emerald-950/20"
+                  : "border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-800"
+              }`}
+              title="Klik untuk filter kasus Selesai (Resolved)"
+            >
+              <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500" />
+              <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase">
+                RESOLVED
+              </div>
+              <div className="my-1.5">
+                <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                  {stats.totalResolved.toLocaleString("id-ID")}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                {resolutionRate}% resolution rate
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+
+          {/* Quick Actions Row */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddModal(true)}
+                className="py-2 px-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Input Komplain</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => importFileRef.current?.click()}
+                disabled={isImporting}
+                className="py-2 px-3 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                title="Impor Data Excel / CSV"
+              >
+                <Download className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 rotate-180 ${isImporting ? "animate-bounce" : ""}`} />
+                <span>{isImporting ? "Mengimpor..." : "Impor Excel"}</span>
+              </button>
+              <input
+                ref={importFileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleImportExcel}
+              />
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                className="py-2 px-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-700 dark:text-slate-200 border border-zinc-200 dark:border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                title="Unduh Excel"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Ekspor Excel</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopyComplaintLink}
+                className={`py-2 px-3 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+                  linkCopied
+                    ? "bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-600 dark:border-emerald-500"
+                    : "bg-white hover:bg-zinc-100 text-zinc-800 border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
+                }`}
+                title="Salin link form komplain publik untuk dibagikan ke apotek atau tim sales"
+              >
+                {linkCopied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-white" />
+                    <span>Link Tersalin!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Salin Link Form</span>
+                  </>
+                )}
+              </button>
+
+              <a
+                href="/komplain"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-2 px-3 bg-white hover:bg-zinc-100 text-black dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold border border-zinc-300 dark:border-slate-700 flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                title="Buka form input komplain di tab baru"
+              >
+                <Share2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Buka Form</span>
+                <ExternalLink className="w-3 h-3 text-zinc-400" />
+              </a>
+            </div>
+          </div>
 
       {/* â”€â”€â”€ Search and Filters Command Bar â”€â”€â”€ */}
       <div className="rounded-2xl p-2.5 sm:p-3 bg-white dark:bg-[#0c121f]/90 border border-zinc-200 dark:border-slate-800/80 shadow-xs flex flex-wrap gap-2.5 items-center justify-between">

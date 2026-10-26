@@ -25,6 +25,7 @@ import {
   Loader2,
   Clock,
 } from "lucide-react";
+import { broadcastRealtimeSignal } from "@/lib/firestoreService";
 
 const COMMON_REASONS = [
   "Fisik yang dikirim kurang",
@@ -534,6 +535,9 @@ ${photoStatus}
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Gagal menyimpan pengajuan komplain ke database.");
       }
+
+      // Broadcast real-time signal agar dashboard admin langsung update seketika tanpa refresh manual
+      broadcastRealtimeSignal("returns").catch(() => {});
 
       setSubmittedData({
         ...payload,

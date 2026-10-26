@@ -30,7 +30,9 @@ export const MONTHLY_BENCHMARKS = [
   { month: 7, name: "JULI", mai_approve: 3, mai_inv: 6591, mai_reject: 0, mbi_approve: 218, mbi_inv: 10532, mbi_reject: 14 },
   { month: 8, name: "AGUSTUS", mai_approve: 8, mai_inv: 5832, mai_reject: 0, mbi_approve: 126, mbi_inv: 9680, mbi_reject: 9 },
   { month: 9, name: "SEPTEMBER", mai_approve: 6, mai_inv: 6380, mai_reject: 0, mbi_approve: 228, mbi_inv: 8161, mbi_reject: 10 },
-  { month: 10, name: "OKTOBER", mai_approve: 4, mai_inv: 4101, mai_reject: 0, mbi_approve: 152, mbi_inv: 9917, mbi_reject: 7, isCurrent: true },
+  { month: 10, name: "OKTOBER", mai_approve: 4, mai_inv: 4101, mai_reject: 0, mbi_approve: 152, mbi_inv: 9917, mbi_reject: 7 },
+  { month: 11, name: "NOVEMBER", mai_approve: 0, mai_inv: 6000, mai_reject: 0, mbi_approve: 0, mbi_inv: 9500, mbi_reject: 0 },
+  { month: 12, name: "DESEMBER", mai_approve: 0, mai_inv: 6000, mai_reject: 0, mbi_approve: 0, mbi_inv: 9500, mbi_reject: 0 },
 ];
 
 export default function MonthlyReportView({
@@ -90,14 +92,30 @@ export default function MonthlyReportView({
     // Build list of months with rate & trend
     let prevMaiRate: number | null = null;
     let prevMbiRate: number | null = null;
+    const currentMonthNum = new Date().getMonth() + 1;
 
     return MONTHLY_BENCHMARKS.map((bm) => {
       const c = counts[bm.month];
-      // Seamlessly combine live counts with complete historical Apps Script benchmarks
-      const maiApprove = c.mai_approve > 0 ? c.mai_approve : bm.mai_approve;
-      const mbiApprove = c.mbi_approve > 0 ? c.mbi_approve : bm.mbi_approve;
-      const maiReject = c.mai_reject > 0 ? c.mai_reject : bm.mai_reject;
-      const mbiReject = c.mbi_reject > 0 ? c.mbi_reject : bm.mbi_reject;
+      const isCur = bm.month === currentMonthNum;
+
+      // Closed historical months preserve complete benchmarks.
+      // Current month & upcoming months dynamically increment with any new incoming complaints!
+      let maiApprove = bm.mai_approve;
+      let mbiApprove = bm.mbi_approve;
+      let maiReject = bm.mai_reject;
+      let mbiReject = bm.mbi_reject;
+
+      if (bm.month > currentMonthNum) {
+        maiApprove = c.mai_approve;
+        mbiApprove = c.mbi_approve;
+        maiReject = c.mai_reject;
+        mbiReject = c.mbi_reject;
+      } else {
+        maiApprove = Math.max(bm.mai_approve, c.mai_approve);
+        mbiApprove = Math.max(bm.mbi_approve, c.mbi_approve);
+        maiReject = Math.max(bm.mai_reject, c.mai_reject);
+        mbiReject = Math.max(bm.mbi_reject, c.mbi_reject);
+      }
 
       const maiRate = bm.mai_inv > 0 ? (maiApprove / bm.mai_inv) * 100 : 0;
       const mbiRate = bm.mbi_inv > 0 ? (mbiApprove / bm.mbi_inv) * 100 : 0;
@@ -110,6 +128,7 @@ export default function MonthlyReportView({
 
       return {
         ...bm,
+        isCurrent: isCur,
         mai_approve: maiApprove,
         mbi_approve: mbiApprove,
         mai_reject: maiReject,

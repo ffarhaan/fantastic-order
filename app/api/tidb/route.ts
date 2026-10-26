@@ -499,15 +499,30 @@ export async function GET(req: Request) {
       const rows = await conn.execute(dataSql, [...params, limit, offset]);
 
       // Quick statistics
+      let statsCondition = "";
+      const statsQueryParams: (string | number)[] = [];
+      if (monthParam && monthParam !== "ALL") {
+        const mNum = Number(monthParam);
+        const mStr = String(mNum).padStart(2, '0');
+        statsCondition = " WHERE (month = ? OR report_date LIKE ? OR invoice_date LIKE ?)";
+        statsQueryParams.push(mNum, `%-${mStr}-%`, `%-${mStr}-%`);
+      }
+
       const [stats] = (await conn.execute(`
         SELECT 
           COUNT(*) as totalAll,
           SUM(CASE WHEN status LIKE '%Resolved%' THEN 1 ELSE 0 END) as totalResolved,
           SUM(CASE WHEN status NOT LIKE '%Resolved%' AND status != '' THEN 1 ELSE 0 END) as totalPending,
           SUM(CASE WHEN pbf = 'MBI' THEN 1 ELSE 0 END) as totalMbi,
-          SUM(CASE WHEN pbf = 'MAI' THEN 1 ELSE 0 END) as totalMai
-        FROM shipment_returns;
-      `)) as any[];
+          SUM(CASE WHEN pbf = 'MAI' THEN 1 ELSE 0 END) as totalMai,
+          SUM(CASE WHEN pbf = 'MBI' AND (confirm = 'Approve' OR confirm = '' OR confirm IS NULL) THEN 1 ELSE 0 END) as mbiApproved,
+          SUM(CASE WHEN pbf = 'MAI' AND (confirm = 'Approve' OR confirm = '' OR confirm IS NULL) THEN 1 ELSE 0 END) as maiApproved,
+          SUM(CASE WHEN pbf = 'MBI' AND status NOT LIKE '%Resolved%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as openMbi,
+          SUM(CASE WHEN pbf = 'MAI' AND status NOT LIKE '%Resolved%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as openMai,
+          SUM(CASE WHEN status NOT LIKE '%Resolved%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as totalOpen,
+          SUM(CASE WHEN confirm = 'Reject' THEN 1 ELSE 0 END) as totalReject
+        FROM shipment_returns ${statsCondition};
+      `, statsQueryParams)) as any[];
 
       return compressedJsonResponse(
         req, 
@@ -520,6 +535,12 @@ export async function GET(req: Request) {
             totalPending: Number(stats?.totalPending || 0),
             totalMbi: Number(stats?.totalMbi || 0),
             totalMai: Number(stats?.totalMai || 0),
+            mbiApproved: Number(stats?.mbiApproved || 0),
+            maiApproved: Number(stats?.maiApproved || 0),
+            openMbi: Number(stats?.openMbi || 0),
+            openMai: Number(stats?.openMai || 0),
+            totalOpen: Number(stats?.totalOpen || 0),
+            totalReject: Number(stats?.totalReject || 0),
           },
           data: rows,
           limit,
@@ -1918,11 +1939,29 @@ export async function POST(req: Request) {
           } catch {}
         }
 
+        const repDate = report_date || item.report_date || new Date().toISOString().split("T")[0];
+        let repMonth = Number(item.month);
+        if (!repMonth || isNaN(repMonth) || repMonth < 1 || repMonth > 12) {
+          const d = new Date(repDate);
+          repMonth = !isNaN(d.getTime()) ? d.getMonth() + 1 : new Date().getMonth() + 1;
+        }
+
+        let repWeek = Number(item.week);
+        if (!repWeek || isNaN(repWeek) || repWeek < 1 || repWeek > 53) {
+          const d = new Date(repDate);
+          if (!isNaN(d.getTime())) {
+            const startOfYear = new Date(d.getFullYear(), 0, 1);
+            repWeek = Math.max(1, Math.min(52, Math.floor((d.getTime() - startOfYear.getTime()) / 604800000) + 1));
+          } else {
+            repWeek = 1;
+          }
+        }
+
         const [res] = (await conn.execute(
           `INSERT INTO shipment_returns (
             pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date, reason, invoice_date, report_date,
-            category, confirm, action, status, note, person, root_cause, photo_url
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            category, confirm, action, status, note, person, root_cause, photo_url, month, week
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             pbf || item.pbf || "MBI",
             customer_name || item.customer_name || "",
@@ -1934,7 +1973,7 @@ export async function POST(req: Request) {
             item.expiry_date || "",
             item.reason || "",
             invDate || new Date().toISOString().split("T")[0],
-            report_date || item.report_date || new Date().toISOString().split("T")[0],
+            repDate,
             category !== undefined && category !== null ? category : (item.category ?? ""),
             confirm !== undefined && confirm !== null ? confirm : (item.confirm ?? ""),
             item.action !== undefined && item.action !== null ? item.action : (returnAction ?? ""),
@@ -1943,6 +1982,8 @@ export async function POST(req: Request) {
             person !== undefined && person !== null ? person : (item.person ?? ""),
             item.root_cause || root_cause || "",
             item.photo_url || photo_url || null,
+            repMonth,
+            repWeek,
           ]
         )) as any;
         if (res?.insertId) insertedIds.push(res.insertId);
