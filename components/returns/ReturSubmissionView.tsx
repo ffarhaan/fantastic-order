@@ -923,13 +923,18 @@ export default function ReturSubmissionView({
                   onChange={(e) => setFormJenis(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl text-xs border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <option value="">— Pilih Jenis Masalah —</option>
-                  <option value="Fisik yang dikirim kurang">📦 Fisik yang dikirim kurang (Shortage)</option>
-                  <option value="Fisik yang dikirim lebih">📦 Fisik yang dikirim lebih (Excess)</option>
-                  <option value="Fisik yang dikirim salah">🔄 Fisik yang dikirim salah (Wrong Item)</option>
-                  <option value="Fisik yang dikirim tidak ada">❌ Fisik yang dikirim tidak ada (Missing)</option>
-                  <option value="Batch number tidak sesuai">🏷️ Batch number tidak sesuai</option>
-                  <option value="Produk rusak / expired">⚠️ Produk rusak / expired</option>
+                  <option value="">— Pilih Jenis Masalah / Alasan Komplain —</option>
+                  <option value="Fisik yang dikirim kurang">📦 Fisik yang dikirim kurang</option>
+                  <option value="Fisik yang dikirim salah">🔄 Fisik yang dikirim salah</option>
+                  <option value="Fisik yang dikirim tidak ada">❌ Fisik yang dikirim tidak ada</option>
+                  <option value="Fisik yang dikirim lebih">➕ Fisik yang dikirim lebih</option>
+                  <option value="Damage On Delivery">💥 Damage On Delivery</option>
+                  <option value="Batch number dan expiry date tidak sesuai">🏷️ Batch number dan expiry date tidak sesuai</option>
+                  <option value="ED kurang dari 1 tahun">⏳ ED kurang dari 1 tahun</option>
+                  <option value="Isi dalam kemasan box/strip tidak utuh">🧩 Isi dalam kemasan box/strip tidak utuh</option>
+                  <option value="Produk rusak (berubah warna/berbau/kapsul bocor)">⚠️ Produk rusak (berubah warna/berbau/kapsul bocor)</option>
+                  <option value="Produk terkontaminasi">☣️ Produk terkontaminasi</option>
+                  <option value="Kemasan seal rusak">🔓 Kemasan seal rusak</option>
                   <option value="Lainnya">📋 Alasan Lainnya</option>
                 </select>
               </div>

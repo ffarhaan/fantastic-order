@@ -42,6 +42,21 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
+export const COMPLAINT_REASONS = [
+  "Fisik yang dikirim kurang",
+  "Fisik yang dikirim salah",
+  "Fisik yang dikirim tidak ada",
+  "Fisik yang dikirim lebih",
+  "Damage On Delivery",
+  "Batch number dan expiry date tidak sesuai",
+  "ED kurang dari 1 tahun",
+  "Isi dalam kemasan box/strip tidak utuh",
+  "Produk rusak (berubah warna/berbau/kapsul bocor)",
+  "Produk terkontaminasi",
+  "Kemasan seal rusak",
+  "Lainnya",
+];
+
 export const formatDate = (dateStr: string | null | undefined): string => {
   if (!dateStr || dateStr === "-" || dateStr === "#N/A") return "-";
   try {
@@ -468,7 +483,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     qty: 1,
     batch_no: "",
     expiry_date: "",
-    reason: "Fisik yang dikirim salah",
+    reason: "Fisik yang dikirim kurang",
     report_date: new Date().toISOString().split("T")[0],
     category: "",
     confirm: "",
@@ -688,7 +703,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           qty: 1,
           batch_no: "",
           expiry_date: "",
-          reason: "Fisik yang dikirim salah",
+          reason: "Fisik yang dikirim kurang",
           report_date: new Date().toISOString().split("T")[0],
           category: "",
           confirm: "",
@@ -992,10 +1007,17 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Alasan / Kendala Dilaporkan</label>
               <input
                 type="text"
+                list="complaint-reasons-list"
                 value={editForm.reason}
                 onChange={(e) => setEditForm({ ...editForm, reason: e.target.value })}
+                placeholder="Pilih atau ketik alasan..."
                 className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-amber-800 dark:text-amber-300 font-bold"
               />
+              <datalist id="complaint-reasons-list">
+                {COMPLAINT_REASONS.map((r) => (
+                  <option key={r} value={r} />
+                ))}
+              </datalist>
             </div>
           </div>
         </div>
@@ -2937,13 +2959,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   onChange={(e) => setNewForm({ ...newForm, reason: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-slate-200 font-medium"
                 >
-                  <option value="Fisik yang dikirim salah">Fisik yang dikirim salah</option>
-                  <option value="Fisik yang dikirim kurang">Fisik yang dikirim kurang</option>
-                  <option value="Fisik yang dikirim lebih">Fisik yang dikirim lebih</option>
-                  <option value="Barang rusak / bocor / basah">Barang rusak / bocor / basah</option>
-                  <option value="ED terlalu dekat (< 6 bulan)">ED terlalu dekat (&lt; 6 bulan)</option>
-                  <option value="Faktur tidak sesuai fisik">Faktur tidak sesuai fisik</option>
-                  <option value="Lainnya">Lainnya</option>
+                  {COMPLAINT_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
                 </select>
               </div>
 
