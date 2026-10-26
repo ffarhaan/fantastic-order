@@ -76,11 +76,7 @@ export function syncFaktursToTiDBBackground(fakturs: FirestoreFakturDoc[]) {
 export async function syncMissingFaktursToTiDB(localFakturs: FirestoreFakturDoc[]): Promise<number> {
   if (!localFakturs || localFakturs.length === 0) return 0;
   try {
-    const res = await fetch(`/api/tidb?action=keys&_t=${Date.now()}`, {
-      method: "GET",
-      cache: "no-store",
-      headers: { "Cache-Control": "no-cache" },
-    });
+    const res = await fetch("/api/tidb?action=keys");
     if (!res.ok) return 0;
     const data = await res.json();
     if (!data.success || !Array.isArray(data.keys)) return 0;
@@ -129,30 +125,48 @@ export function syncPrintStatusToTiDBBackground(
   }, 100);
 }
 
+let activeCheckPromise: Promise<{ upToDate: boolean; totalCount: number; maxUpdated: number } | null> | null = null;
+let lastCheckTime = 0;
+let lastCheckResult: { upToDate: boolean; totalCount: number; maxUpdated: number } | null = null;
+
 export async function checkTiDBUpdates(
   clientCount: number,
   clientUpdated: number
 ): Promise<{ upToDate: boolean; totalCount: number; maxUpdated: number } | null> {
-  try {
-    const res = await fetch(`/api/tidb?action=check&count=${clientCount}&updated=${clientUpdated}&_t=${Date.now()}`, {
-      method: "GET",
-      cache: "no-store",
-      headers: { "Cache-Control": "no-cache" },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.success) {
-      return {
-        upToDate: Boolean(data.upToDate),
-        totalCount: Number(data.totalCount || 0),
-        maxUpdated: Number(data.maxUpdated || 0),
-      };
-    }
-    return null;
-  } catch (err) {
-    console.warn("[TiDB Check] Check failed safely:", err);
-    return null;
+  const now = Date.now();
+  // Throttle redundant checks within 5s
+  if (lastCheckResult && now - lastCheckTime < 5000) {
+    return lastCheckResult;
   }
+  if (activeCheckPromise) {
+    return activeCheckPromise;
+  }
+
+  activeCheckPromise = (async () => {
+    try {
+      const res = await fetch(`/api/tidb?action=check&count=${clientCount}&updated=${clientUpdated}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.success) {
+        const result = {
+          upToDate: Boolean(data.upToDate),
+          totalCount: Number(data.totalCount || 0),
+          maxUpdated: Number(data.maxUpdated || 0),
+        };
+        lastCheckTime = Date.now();
+        lastCheckResult = result;
+        return result;
+      }
+      return null;
+    } catch (err) {
+      console.warn("[TiDB Check] Check failed safely:", err);
+      return null;
+    } finally {
+      activeCheckPromise = null;
+    }
+  })();
+
+  return activeCheckPromise;
 }
 
 export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreFakturDoc[] | null> {
@@ -163,12 +177,8 @@ export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreF
     let pageCount = 0;
 
     while (true) {
-      const url = `/api/tidb?action=delta&since=${sinceTimestamp}&cursor=${encodeURIComponent(cursor)}&limit=5000&_t=${Date.now()}`;
-      const res = await fetch(url, {
-        method: "GET",
-        cache: "no-store",
-        headers: { "Cache-Control": "no-cache" },
-      });
+      const url = `/api/tidb?action=delta&since=${sinceTimestamp}&cursor=${encodeURIComponent(cursor)}&limit=5000`;
+      const res = await fetch(url);
       if (!res.ok) break;
       const data = await res.json();
       if (!data.success || !Array.isArray(data.fakturs)) break;
@@ -195,70 +205,73 @@ export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreF
   }
 }
 
+let activeFetchFaktursPromise: Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> | null = null;
+
 export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> {
-  try {
-    const PAGE_SIZE = 3500;
-    // Step 1: Fetch Page 0 (gets first 3,500 docs + exact totalCount in ~200ms)
-    const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=0&_t=${Date.now()}`, {
-      method: "GET",
-      cache: "no-store",
-      headers: { "Cache-Control": "no-cache" },
-    });
-    if (!firstRes.ok) return null;
-    const firstData = await firstRes.json();
-    if (!firstData.success || !Array.isArray(firstData.fakturs)) return null;
-
-    const allFakturs: FirestoreFakturDoc[] = [...firstData.fakturs];
-    let maxUpdated = Number(firstData.maxUpdated || 0);
-    const totalCount = Number(firstData.totalCount || 0);
-
-    // Step 2: Lightning-Fast Parallel Fetch (< 600ms total!)
-    // Fetches all remaining pages simultaneously via Promise.all so all 17k+ records arrive in < 1 second!
-    if (totalCount > PAGE_SIZE) {
-      const remainingOffsets: number[] = [];
-      for (let offset = PAGE_SIZE; offset < totalCount; offset += PAGE_SIZE) {
-        remainingOffsets.push(offset);
-      }
-
-      const remainingResults = await Promise.all(
-        remainingOffsets.map(async (offset) => {
-          try {
-            const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=${offset}&_t=${Date.now()}`, {
-              method: "GET",
-              cache: "no-store",
-              headers: { "Cache-Control": "no-cache" },
-            });
-            if (!res.ok) return [];
-            const data = await res.json();
-            if (data.success && Array.isArray(data.fakturs)) {
-              if (Number(data.maxUpdated || 0) > maxUpdated) {
-                maxUpdated = Number(data.maxUpdated);
-              }
-              return data.fakturs as FirestoreFakturDoc[];
-            }
-            return [];
-          } catch {
-            return [];
-          }
-        })
-      );
-
-      for (const chunk of remainingResults) {
-        allFakturs.push(...chunk);
-      }
-    }
-
-    if (allFakturs.length > 0) {
-      return {
-        fakturs: allFakturs,
-        maxUpdated,
-      };
-    }
-    return null;
-  } catch (err) {
-    console.warn("[TiDB Read] Fetch failed safely:", err);
-    return null;
+  if (activeFetchFaktursPromise) {
+    return activeFetchFaktursPromise;
   }
+
+  activeFetchFaktursPromise = (async () => {
+    try {
+      const PAGE_SIZE = 3500;
+      // Step 1: Fetch Page 0 (gets first 3,500 docs + exact totalCount in ~200ms)
+      const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=0`);
+      if (!firstRes.ok) return null;
+      const firstData = await firstRes.json();
+      if (!firstData.success || !Array.isArray(firstData.fakturs)) return null;
+
+      const allFakturs: FirestoreFakturDoc[] = [...firstData.fakturs];
+      let maxUpdated = Number(firstData.maxUpdated || 0);
+      const totalCount = Number(firstData.totalCount || 0);
+
+      // Step 2: Lightning-Fast Parallel Fetch (< 600ms total!)
+      if (totalCount > PAGE_SIZE) {
+        const remainingOffsets: number[] = [];
+        for (let offset = PAGE_SIZE; offset < totalCount; offset += PAGE_SIZE) {
+          remainingOffsets.push(offset);
+        }
+
+        const remainingResults = await Promise.all(
+          remainingOffsets.map(async (offset) => {
+            try {
+              const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=${offset}`);
+              if (!res.ok) return [];
+              const data = await res.json();
+              if (data.success && Array.isArray(data.fakturs)) {
+                if (Number(data.maxUpdated || 0) > maxUpdated) {
+                  maxUpdated = Number(data.maxUpdated);
+                }
+                return data.fakturs as FirestoreFakturDoc[];
+              }
+              return [];
+            } catch {
+              return [];
+            }
+          })
+        );
+
+        for (const chunk of remainingResults) {
+          allFakturs.push(...chunk);
+        }
+      }
+
+      if (allFakturs.length > 0) {
+        return {
+          fakturs: allFakturs,
+          maxUpdated,
+        };
+      }
+      return null;
+    } catch (err) {
+      console.warn("[TiDB Read] Fetch failed safely:", err);
+      return null;
+    } finally {
+      activeFetchFaktursPromise = null;
+    }
+  })();
+
+  return activeFetchFaktursPromise;
 }
 
 // -------------------------------------------------------------

@@ -2504,7 +2504,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         // Cross-verify with authoritative TiDB keys to guarantee 100% accurate brand-new detection
         // even if local memory currently only has a partial in-memory subset
         try {
-          const tidbKeysRes = await fetch(`/api/tidb?action=keys&_t=${Date.now()}`).catch(() => null);
+          const tidbKeysRes = await fetch("/api/tidb?action=keys").catch(() => null);
           if (tidbKeysRes && tidbKeysRes.ok) {
             const tidbKeysData = await tidbKeysRes.json().catch(() => null);
             if (tidbKeysData && Array.isArray(tidbKeysData.keys)) {
@@ -3634,6 +3634,25 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
           {/* Right Action Buttons */}
           <div className="flex items-center gap-2 shrink-0">
+            {/* Realtime Online Users Pill */}
+            <button
+              type="button"
+              onClick={() => setShowOnlinePopover((prev) => !prev)}
+              className={`px-2.5 py-1 rounded-lg border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                isDarkMode
+                  ? "bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300"
+                  : "bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700"
+              }`}
+              title="Lihat daftar pengguna yang sedang online secara real-time"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="hidden sm:inline">Online:</span>
+              <span className="text-emerald-500 font-mono font-black">{onlineUsers.filter((u) => u && u.name).length}</span>
+            </button>
+
             {/* Refresh */}
             <button
               type="button"

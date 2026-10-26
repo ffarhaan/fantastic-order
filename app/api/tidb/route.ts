@@ -393,7 +393,10 @@ export async function GET(req: Request) {
           limit,
           offset,
         },
-        { "Cache-Control": "no-store" }
+        {
+          "CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        }
       );
     }
 
@@ -723,7 +726,8 @@ export async function GET(req: Request) {
       const clientUpdated = Number(searchParams.get("updated") || 0);
       const isUpToDate = clientCount === totalCount && totalCount > 0 && (clientUpdated === 0 || clientUpdated >= maxUpdated);
 
-      return Response.json(
+      return compressedJsonResponse(
+        req,
         {
           success: true,
           upToDate: isUpToDate,
@@ -731,11 +735,8 @@ export async function GET(req: Request) {
           maxUpdated,
         },
         {
-          headers: {
-            "Cache-Control": "no-store, no-cache, must-revalidate",
-            "CDN-Cache-Control": "no-store",
-            "Vercel-CDN-Cache-Control": "no-store",
-          },
+          "CDN-Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
         }
       );
     }
@@ -857,9 +858,8 @@ export async function GET(req: Request) {
           hasMore,
         },
         {
-          "Cache-Control": "no-store, no-cache, must-revalidate",
-          "CDN-Cache-Control": "no-store",
-          "Vercel-CDN-Cache-Control": "no-store",
+          "CDN-Cache-Control": "public, s-maxage=30, stale-while-revalidate=120",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=30, stale-while-revalidate=120",
         }
       );
     }
@@ -1171,9 +1171,8 @@ export async function GET(req: Request) {
           timestamp: Date.now(),
         },
         {
-          "Cache-Control": "no-store, no-cache, must-revalidate",
-          "CDN-Cache-Control": "no-store",
-          "Vercel-CDN-Cache-Control": "no-store",
+          "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
         }
       );
     }
@@ -1269,9 +1268,8 @@ export async function GET(req: Request) {
           timestamp: Date.now(),
         },
         {
-          "Cache-Control": "no-store, no-cache, must-revalidate",
-          "CDN-Cache-Control": "no-store",
-          "Vercel-CDN-Cache-Control": "no-store",
+          "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
         }
       );
     }
