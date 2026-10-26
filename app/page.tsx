@@ -557,9 +557,23 @@ export default function Home() {
     setShowLoginModal(false);
     setMainView("dashboard");
     showToast(`✓ Pengguna aktif (ON): ${user.name}${user.role === "readonly" ? " (Hanya Lihat)" : ""}`);
+    recordActivityLog({
+      user_name: user.name,
+      user_email: user.email || "",
+      action_type: "LOGIN",
+      module: "AUTH",
+      details: `Pengguna ${user.name} (@${user.name}) berhasil masuk ke sistem`,
+    });
   };
 
   const handleLogout = () => {
+    const prevName = currentUserRef.current?.name;
+    recordActivityLog({
+      user_name: prevName || "User",
+      action_type: "LOGOUT",
+      module: "AUTH",
+      details: `Pengguna ${prevName || ""} keluar (logout) dari sistem`,
+    });
     removeUserPresence(deviceIdRef.current);
     setCurrentUser(null);
     currentUserRef.current = null;
@@ -1540,8 +1554,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   // Toggle Print Status (Immediate Firestore write & real-time sync)
   const togglePrint = useCallback(
     async (group: FakturGroup) => {
-      if (currentUserRef.current?.role === "readonly") {
-        showToast("⚠️ Akses Stranger: Anda hanya memiliki izin melihat data (Read Only).");
+      const activeUser = currentUserRef.current;
+      if (
+        activeUser?.role === "readonly" ||
+        (activeUser?.permissions && !activeUser.permissions.can_edit_faktur && !isSuperAdminUser(activeUser.name))
+      ) {
+        showToast("⚠️ Akses Terbatas: Anda tidak memiliki izin untuk mengubah status cetak faktur.");
         return;
       }
       const willBePrinted = !group.allPrinted;
@@ -1613,6 +1631,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           willBePrinted ? nowIso : null,
           willBePrinted ? currentUserName : null
         );
+        recordActivityLog({
+          action_type: willBePrinted ? "PRINT_FAKTUR" : "UNPRINT_FAKTUR",
+          module: "FAKTUR",
+          target_id: targetKey,
+          details: `${willBePrinted ? "Menandai cetak" : "Membatalkan cetak"} faktur ${targetKey}`,
+          metadata: { invoiceKey: targetKey, printed: willBePrinted },
+        });
       } catch (err) {
         console.error("Print toggle sync error:", err);
         showToast(`⚠️ Gagal menyimpan status faktur ${targetKey} ke server.`);
@@ -2015,8 +2040,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
   // Batch Done Print: Mark All Visible As Printed
   const handleMarkAllPrinted = useCallback(async () => {
-    if (currentUserRef.current?.role === "readonly") {
-      showToast("⚠️ Akses Stranger: Anda hanya memiliki izin melihat data (Read Only).");
+    const activeUser = currentUserRef.current;
+    if (
+      activeUser?.role === "readonly" ||
+      (activeUser?.permissions && !activeUser.permissions.can_edit_faktur && !isSuperAdminUser(activeUser.name))
+    ) {
+      showToast("⚠️ Akses Terbatas: Anda tidak memiliki izin untuk mengubah status faktur.");
       return;
     }
     const unprinted = filtered.filter((g) => !g.allPrinted);
@@ -2082,6 +2111,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       await updateFaktursPrintStatusBatch(targetKeys, true, nowIso, currentUserName);
       syncPrintStatusToTiDBBackground(targetKeys, true, nowIso, currentUserName);
       showToast(`✓ Berhasil menandai ${targetKeys.length} faktur selesai dicetak oleh ${currentUserName}!`);
+      recordActivityLog({
+        action_type: "PRINT_FAKTUR",
+        module: "FAKTUR",
+        target_id: `${targetKeys.length} faktur`,
+        details: `Menandai cetak batch ${targetKeys.length} faktur oleh ${currentUserName}`,
+        metadata: { count: targetKeys.length, keys: targetKeys.slice(0, 10) },
+      });
     } catch (err) {
       console.error("Batch print error:", err);
       alert("Terjadi kesalahan saat menyimpan ke database.");
@@ -3202,6 +3238,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
               <button
                 type="button"
+                onClick={() => { setShowActivityLogModal(true); setMobileSidebarOpen(false); }}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer relative ${
+                  isDarkMode ? "text-indigo-400 hover:bg-zinc-800/60" : "text-indigo-600 hover:bg-zinc-100"
+                }`}
+                title="Log Aktivitas Sistem"
+              >
+                <Activity className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setIsDarkMode(prev => !prev)}
                 className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer ${
                   isDarkMode ? "text-amber-400 hover:bg-zinc-800/60" : "text-blue-500 hover:bg-zinc-100"
@@ -3353,6 +3400,20 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               >
                 <Database className="w-4 h-4 text-emerald-500 shrink-0" />
                 <span className="font-medium text-xs">Kapasitas &amp; Kuota DB</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setShowActivityLogModal(true); setMobileSidebarOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition text-left cursor-pointer ${
+                  isDarkMode
+                    ? "text-zinc-400 hover:text-indigo-400 hover:bg-zinc-900/60"
+                    : "text-zinc-600 hover:text-indigo-600 hover:bg-zinc-100"
+                }`}
+                title="Buka catatan riwayat log aktivitas staf & sistem"
+              >
+                <Activity className="w-4 h-4 text-indigo-500 shrink-0" />
+                <span className="font-medium text-xs">Log Aktivitas Sistem</span>
               </button>
 
               <button
@@ -5205,6 +5266,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       <DatabaseStatsModal
         isOpen={showDbStatsModal}
         onClose={() => setShowDbStatsModal(false)}
+        isDarkMode={isDarkMode}
+      />
+
+      <ActivityLogModal
+        isOpen={showActivityLogModal}
+        onClose={() => setShowActivityLogModal(false)}
         isDarkMode={isDarkMode}
       />
 
