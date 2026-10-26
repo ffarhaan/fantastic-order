@@ -1952,9 +1952,9 @@ const SO_CHECKERS_RECENT_DOC = "so_checkers_recent";
  * 0 byte consumed on Vercel, real-time WebSocket sync (<100ms)
  */
 export function subscribeToCheckers(
-  onUpdate: (map: Record<string, { checker: string; packer: string }>) => void
+  onUpdate: (map: Record<string, { checker: string; packer: string; picker: string }>) => void
 ): () => void {
-  let inMemoryMap: Record<string, { checker: string; packer: string }> = {};
+  let inMemoryMap: Record<string, { checker: string; packer: string; picker: string }> = {};
 
   // 1. Initial quick load from localStorage for 0ms startup
   if (typeof window !== "undefined") {
@@ -1973,7 +1973,8 @@ export function subscribeToCheckers(
       if (!key) continue;
       const checker = String(val.checker || val.c || "").trim();
       const packer = String(val.packer || val.p || "").trim();
-      const entry = { checker, packer };
+      const picker = String(val.picker || val.k || "").trim();
+      const entry = { checker, packer, picker };
 
       const raw = key.trim();
       const noSpace = raw.replace(/\s+/g, "");

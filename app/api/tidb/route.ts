@@ -199,15 +199,16 @@ export async function GET(req: Request) {
     }
 
     // ==========================================
-    // CHECKERS & PACKERS MAPPING (SO -> Checker & Packer)
+    // CHECKERS, PACKERS & PICKERS MAPPING (SO -> Checker, Packer, Picker)
     // ==========================================
     if (action === "get_checkers") {
-      const rows = (await conn.execute("SELECT so_number, checker_name, packer_name FROM so_checkers")) as Array<{
+      const rows = (await conn.execute("SELECT so_number, checker_name, packer_name, picker_name FROM so_checkers")) as Array<{
         so_number: string;
         checker_name: string;
         packer_name: string;
+        picker_name: string;
       }>;
-      const map: Record<string, { checker: string; packer: string }> = {};
+      const map: Record<string, { checker: string; packer: string; picker: string }> = {};
       if (Array.isArray(rows)) {
         for (const r of rows) {
           if (r.so_number) {
@@ -215,6 +216,7 @@ export async function GET(req: Request) {
             const val = {
               checker: r.checker_name || "",
               packer: r.packer_name || "",
+              picker: r.picker_name || "",
             };
             map[raw] = val;
             const noSpace = raw.replace(/\s+/g, "");
@@ -1160,14 +1162,15 @@ export async function POST(req: Request) {
         return Response.json({ success: true, count: 0 });
       }
 
-      const validRows: [string, string, string | null][] = [];
+      const validRows: [string, string, string | null, string | null][] = [];
       for (const item of items) {
         const so = String(item.so || item.so_number || "").trim();
         const checker = String(item.checker || item.checker_name || "").trim();
         const packer = String(item.packer || item.packer_name || "").trim();
-        if (!so || so === "-" || so === "#N/A" || (!checker && !packer)) continue;
+        const picker = String(item.picker || item.picker_name || "").trim();
+        if (!so || so === "-" || so === "#N/A" || (!checker && !packer && !picker)) continue;
 
-        validRows.push([so, checker || "-", packer || null]);
+        validRows.push([so, checker || "-", packer || null, picker || null]);
       }
 
       // High-speed Batch Upsert in chunks of 100
@@ -1175,15 +1178,16 @@ export async function POST(req: Request) {
       const CHUNK_SIZE = 100;
       for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
         const chunk = validRows.slice(i, i + CHUNK_SIZE);
-        const placeholders = chunk.map(() => "(?, ?, ?)").join(", ");
+        const placeholders = chunk.map(() => "(?, ?, ?, ?)").join(", ");
         const flatParams = chunk.flat();
 
         await conn.execute(
-          `INSERT INTO so_checkers (so_number, checker_name, packer_name)
+          `INSERT INTO so_checkers (so_number, checker_name, packer_name, picker_name)
            VALUES ${placeholders}
            ON DUPLICATE KEY UPDATE 
              checker_name = VALUES(checker_name),
-             packer_name = COALESCE(VALUES(packer_name), packer_name)`,
+             packer_name = COALESCE(VALUES(packer_name), packer_name),
+             picker_name = COALESCE(VALUES(picker_name), picker_name)`,
           flatParams
         );
         updatedCount += chunk.length;
@@ -1194,11 +1198,11 @@ export async function POST(req: Request) {
       const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "fantastic-order";
       if (apiKey && projectId && validRows.length > 0) {
         try {
-          const recentMap: Record<string, { c: string; p: string }> = {};
+          const recentMap: Record<string, { c: string; p: string; k?: string }> = {};
           // Take the most recent up to 500 items to avoid payload limits
           const sliceRows = validRows.slice(-500);
           for (const row of sliceRows) {
-            recentMap[row[0]] = { c: row[1], p: row[2] || "" };
+            recentMap[row[0]] = { c: row[1], p: row[2] || "", k: row[3] || "" };
           }
           await fetch(
             `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/app_data/so_checkers_recent?key=${apiKey}&updateMask.fieldPaths=data&updateMask.fieldPaths=updatedAt`,

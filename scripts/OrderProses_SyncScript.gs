@@ -1,212 +1,119 @@
 /**
  * ====================================================================
- * GOOGLE APPS SCRIPT: SINKRONISASI REALTIME CHECKER & PACKER
+ * SINKRONISASI OTOMATIS BACKGROUND (0 INTERAKSI / TANPA MENU GSHEET)
  * SPREADSHEET "REPORT QC 2" (TAB: Rekap Lengkap) <=> FANTASTIC ORDER
+ * Mendukung: SO, Checker, Packer, & Picker
  * ====================================================================
- * 
- * CARA PASANG DI GOOGLE SPREADSHEET:
- * 1. Buka spreadsheet "REPORT QC 2" (https://docs.google.com/spreadsheets/d/1wCbPpkVM2rI_axg-sOB8n_4hmsXGOXwU4ARwaks4p8g/edit)
- * 2. Klik menu "Ekstensi" (Extensions) -> "Apps Script".
- * 3. Hapus kode bawaan jika ada (misal `myFunction`), lalu paste seluruh isi file ini.
- * 4. Klik ikon "Simpan" (Ctrl+S / Cmd+S).
- * 5. Kembali ke Google Sheet Anda, lalu REFRESH halaman (tekan F5).
- * 6. Di menu bar atas Google Sheet akan muncul menu baru:
- *    "🚀 Sinkronisasi Fantastic Order"
- * 7. Klik menu tersebut lalu pilih:
- *    - "🔄 Kirim Seluruh Data Rekap Lengkap ke Web App" -> Untuk kirim seluruh data (termasuk hari ini)
- *    - "⚙️ Aktifkan Sync Otomatis onEdit (1-2 Detik)" -> Agar setiap kali ada yang ketik nama Checker/Packer, langsung otomatis terkirim tanpa klik tombol!
  */
 
 var WEB_APP_URL = "https://fantastic-order.vercel.app/api/tidb?action=sync_checkers";
-var TARGET_SHEET_NAME = "rekap lengkap";
-
-function onOpen() {
-  var ui = SpreadsheetApp.getUi();
-  ui.createMenu("🚀 Sinkronisasi Fantastic Order")
-    .addItem("🔄 Kirim Seluruh Data Rekap Lengkap ke Web App", "pushAllCheckersToWebApp")
-    .addSeparator()
-    .addItem("⚙️ Aktifkan Sync Otomatis onEdit (1-2 Detik)", "installCheckersSyncTrigger")
-    .addToUi();
-}
 
 /**
- * 1. Pasang Trigger Otomatis onEdit (Hanya perlu dijalankan sekali saja)
+ * 1. FUNGSI SINKRONISASI OTOMATIS (Berjalan di latar belakang)
+ * Membaca tab Rekap Lengkap dan mengirimkan seluruh SO, Checker, Packer, & Picker
  */
-function installCheckersSyncTrigger() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var triggers = ScriptApp.getProjectTriggers();
-  for (var i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === "syncCheckersOnEdit") {
-      ScriptApp.deleteTrigger(triggers[i]);
-    }
-  }
-  ScriptApp.newTrigger("syncCheckersOnEdit").forSpreadsheet(ss).onEdit().create();
-  SpreadsheetApp.getUi().alert("✅ Sync otomatis aktif! Setiap nama Checker / Packer yang diketik di tab Rekap Lengkap akan langsung terkirim ke Fantastic Order secara realtime.");
-}
-
-/**
- * 2. Handler Realtime onEdit (Installable Trigger)
- */
-function syncCheckersOnEdit(e) {
+function autoSyncCheckers() {
   try {
-    if (!e || !e.range) return;
-    var range = e.range;
-    var sheet = range.getSheet();
-    var sheetName = sheet.getName().toLowerCase().trim();
-    if (!sheetName.includes("rekap")) return;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = null;
+    var sheets = ss.getSheets();
+    for (var i = 0; i < sheets.length; i++) {
+      var n = sheets[i].getName().toLowerCase().trim();
+      if (n.includes("rekap")) {
+        sheet = sheets[i];
+        break;
+      }
+    }
 
-    var startRow = range.getRow();
-    var numRows = range.getNumRows();
-    if (startRow <= 1) return; // Lewati baris header
+    if (!sheet) return;
 
+    var lastRow = sheet.getLastRow();
     var lastCol = sheet.getLastColumn();
+    if (lastRow <= 1) return;
+
+    // Ambil data (ambil 1000 baris terakhir untuk efisiensi tinggi)
+    var startRow = Math.max(2, lastRow - 999);
+    var numRows = lastRow - startRow + 1;
+
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var colMap = detectColumns(headers);
-
     if (colMap.so < 0) return;
 
     var dataRange = sheet.getRange(startRow, 1, numRows, lastCol).getValues();
     var itemsToSend = [];
 
-    for (var i = 0; i < dataRange.length; i++) {
-      var row = dataRange[i];
+    for (var r = 0; r < dataRange.length; r++) {
+      var row = dataRange[r];
       var soVal = String(row[colMap.so] || "").trim();
       var checkerVal = colMap.checker >= 0 ? String(row[colMap.checker] || "").trim() : "";
       var packerVal = colMap.packer >= 0 ? String(row[colMap.packer] || "").trim() : "";
+      var pickerVal = colMap.picker >= 0 ? String(row[colMap.picker] || "").trim() : "";
 
-      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal)) {
+      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal)) {
         itemsToSend.push({
           so: soVal,
           checker: checkerVal,
-          packer: packerVal
+          packer: packerVal,
+          picker: pickerVal
         });
       }
     }
 
     if (itemsToSend.length > 0) {
-      sendToWebApp(itemsToSend);
+      // Kirim dalam batch per 300 baris
+      for (var b = 0; b < itemsToSend.length; b += 300) {
+        var slice = itemsToSend.slice(b, b + 300);
+        UrlFetchApp.fetch(WEB_APP_URL, {
+          method: "post",
+          contentType: "application/json",
+          payload: JSON.stringify({ items: slice }),
+          muteHttpExceptions: true
+        });
+      }
+      Logger.log("Berhasil sync " + itemsToSend.length + " baris data (SO, Checker, Packer, Picker).");
     }
   } catch (err) {
-    Logger.log("Error in syncCheckersOnEdit: " + err);
+    Logger.log("Error autoSyncCheckers: " + err);
   }
 }
 
 /**
- * 3. Kirim Seluruh Data dari Tab "Rekap Lengkap" ke Web App
- */
-function pushAllCheckersToWebApp() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = null;
-  var sheets = ss.getSheets();
-  for (var i = 0; i < sheets.length; i++) {
-    var n = sheets[i].getName().toLowerCase().trim();
-    if (n === TARGET_SHEET_NAME || n.includes("rekap")) {
-      sheet = sheets[i];
-      break;
-    }
-  }
-
-  if (!sheet) {
-    SpreadsheetApp.getUi().alert("❌ Tab 'Rekap Lengkap' tidak ditemukan di spreadsheet ini.");
-    return;
-  }
-
-  var lastRow = sheet.getLastRow();
-  var lastCol = sheet.getLastColumn();
-  if (lastRow <= 1) {
-    SpreadsheetApp.getUi().alert("⚠️ Tab 'Rekap Lengkap' belum memiliki baris data.");
-    return;
-  }
-
-  var allValues = sheet.getRange(1, 1, lastRow, lastCol).getValues();
-  var headers = allValues[0];
-  var colMap = detectColumns(headers);
-
-  if (colMap.so < 0) {
-    SpreadsheetApp.getUi().alert("❌ Kolom 'No SO Selesai' tidak ditemukan pada baris header.");
-    return;
-  }
-
-  var validItems = [];
-  for (var r = 1; r < allValues.length; r++) {
-    var row = allValues[r];
-    var soVal = String(row[colMap.so] || "").trim();
-    var checkerVal = colMap.checker >= 0 ? String(row[colMap.checker] || "").trim() : "";
-    var packerVal = colMap.packer >= 0 ? String(row[colMap.packer] || "").trim() : "";
-
-    if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal)) {
-      validItems.push({
-        so: soVal,
-        checker: checkerVal,
-        packer: packerVal
-      });
-    }
-  }
-
-  if (validItems.length === 0) {
-    SpreadsheetApp.getUi().alert("⚠️ Tidak ada baris dengan SO dan Checker/Packer yang valid untuk dikirim.");
-    return;
-  }
-
-  // Kirim dalam batch per 500 baris agar ringan dan cepat
-  var BATCH_SIZE = 500;
-  var totalSent = 0;
-  for (var b = 0; b < validItems.length; b += BATCH_SIZE) {
-    var slice = validItems.slice(b, b + BATCH_SIZE);
-    var ok = sendToWebApp(slice);
-    if (ok) totalSent += slice.length;
-  }
-
-  SpreadsheetApp.getUi().alert("🎉 Berhasil menyinkronkan " + totalSent + " data Checker & Packer ke Fantastic Order!");
-}
-
-/**
- * Deteksi kolom otomatis berdasarkan nama header
+ * Deteksi kolom otomatis (Col B = SO, Col C = Checker, Col D = Packer, Col E = Picker)
  */
 function detectColumns(headers) {
-  var map = { so: -1, checker: -1, packer: -1 };
+  var map = { so: -1, checker: -1, packer: -1, picker: -1 };
   for (var i = 0; i < headers.length; i++) {
     var h = String(headers[i] || "").toLowerCase().trim();
-    if (map.so < 0 && (h.includes("so selesai") || h.includes("no so") || h.includes("sales order") || h === "so" || h.includes("order number"))) {
-      map.so = i;
-    }
-    if (map.checker < 0 && (h.includes("checker") || h.includes("nama checker") || h === "qc 1" || h === "qc1")) {
-      map.checker = i;
-    }
-    if (map.packer < 0 && (h.includes("packer") || h.includes("nama packer") || h.includes("packing") || h === "qc 2" || h === "qc2")) {
-      map.packer = i;
-    }
+    if (map.so < 0 && (h.includes("so") || h.includes("order number"))) map.so = i;
+    if (map.checker < 0 && (h.includes("checker") || h.includes("qc 1") || h === "qc1")) map.checker = i;
+    if (map.packer < 0 && (h.includes("packer") || h.includes("packing") || h.includes("qc 2") || h === "qc2")) map.packer = i;
+    if (map.picker < 0 && (h.includes("picker") || h.includes("nama picker") || h.includes("ambil"))) map.picker = i;
   }
-
-  // Fallback posisi standar jika header tidak cocok persis: Col B (1) = SO, Col C (2) = Checker, Col D (3) = Packer
+  // Fallback posisi standar: Col B (1) = SO, Col C (2) = Checker, Col D (3) = Packer, Col E (4) = Picker
   if (map.so < 0 && headers.length > 1) map.so = 1;
   if (map.checker < 0 && headers.length > 2) map.checker = 2;
   if (map.packer < 0 && headers.length > 3) map.packer = 3;
-
+  if (map.picker < 0 && headers.length > 4) map.picker = 4;
   return map;
 }
 
 /**
- * Kirim payload ke API Fantastic Order
+ * 2. PASANG JADWAL OTOMATIS TIAP 1 MENIT (Jalankan sekali saja dari tombol Run di Apps Script)
  */
-function sendToWebApp(items) {
-  try {
-    var options = {
-      method: "post",
-      contentType: "application/json",
-      payload: JSON.stringify({ items: items }),
-      muteHttpExceptions: true
-    };
-    var response = UrlFetchApp.fetch(WEB_APP_URL, options);
-    var code = response.getResponseCode();
-    if (code >= 200 && code < 300) {
-      return true;
-    } else {
-      Logger.log("Gagal sync, HTTP Code: " + code + " Body: " + response.getContentText());
-      return false;
+function setupAutoSyncTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === "autoSyncCheckers") {
+      ScriptApp.deleteTrigger(triggers[i]);
     }
-  } catch (err) {
-    Logger.log("Exception sendToWebApp: " + err);
-    return false;
   }
+  // Otomatis jalan tiap 1 menit terus menerus tanpa henti
+  ScriptApp.newTrigger("autoSyncCheckers").timeBased().everyMinutes(1).create();
+  // Dan jalan seketika saat ada edit sel
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ScriptApp.newTrigger("autoSyncCheckers").forSpreadsheet(ss).onEdit().create();
+  
+  // Eksekusi sync pertama kali
+  autoSyncCheckers();
+  Logger.log("✅ Trigger otomatis aktif setiap 1 menit dan saat edit!");
 }

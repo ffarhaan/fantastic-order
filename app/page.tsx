@@ -609,8 +609,8 @@ export default function Home() {
   const printedInvoicesRef = useRef<Set<string>>(new Set());
   const printedAtMapRef = useRef<Record<string, string>>({});
   const printedByMapRef = useRef<Record<string, string>>({});
-  const [checkerMap, setCheckerMap] = useState<Record<string, { checker: string; packer: string }>>({});
-  const checkerMapRef = useRef<Record<string, { checker: string; packer: string }>>({});
+  const [checkerMap, setCheckerMap] = useState<Record<string, { checker: string; packer: string; picker?: string }>>({});
+  const checkerMapRef = useRef<Record<string, { checker: string; packer: string; picker?: string }>>({});
 
   const getCheckerInfo = useCallback((so?: string) => {
     if (!so) return null;
@@ -2120,7 +2120,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
       if (e.key === "ArrowRight" || e.key === "l") {
         e.preventDefault();
-        setSelectedColIdx((prev) => Math.min(13, prev + 1));
+        setSelectedColIdx((prev) => Math.min(14, prev + 1));
         return;
       }
       if (e.key === "ArrowLeft" || e.key === "h") {
@@ -2184,7 +2184,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           } else if (colIdx === 11) {
             textToCopy = getCheckerInfo(currentRow.so)?.packer || "-";
             label = "Packer";
+          } else if (colIdx === 12) {
+            textToCopy = getCheckerInfo(currentRow.so)?.picker || "-";
+            label = "Picker";
           } else if (colIdx === 13) {
+            textToCopy = currentRow.printedAt || "-";
+            label = "Done Print (Waktu)";
+          } else if (colIdx === 14) {
             const grandTotal = Math.round(currentRow.totalHarga * 1.11 * 100) / 100;
             textToCopy = String(grandTotal);
             label = "Total (+PPN)";
@@ -4502,6 +4508,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   <th className="px-2.5 py-2.5 text-center">Kat</th>
                   <th className="px-2.5 py-2.5 whitespace-nowrap">Checker</th>
                   <th className="px-2.5 py-2.5 whitespace-nowrap">Packer</th>
+                  <th className="px-2.5 py-2.5 whitespace-nowrap">Picker</th>
                   <th className="px-2.5 py-2.5">Done Print (Waktu)</th>
                   <th className="px-2.5 py-2.5 text-right" title="Grand Total sudah termasuk PPN 11% (sesuai faktur fisik)">Total (+PPN)</th>
                 </tr>
@@ -4509,7 +4516,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <tbody className={`divide-y ${isDarkMode ? "divide-zinc-800/70" : "divide-zinc-200/70"}`}>
                 {loading && records.length === 0 ? (
                   <tr>
-                    <td colSpan={14} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+                    <td colSpan={15} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
                       <div className="flex flex-col items-center gap-2">
                         <span className="text-2xl animate-spin text-blue-500">🔄</span>
                         <span className="text-xs font-semibold">Memuat data faktur...</span>
@@ -4518,7 +4525,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={14} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+                    <td colSpan={15} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
                       <div className="flex flex-col items-center gap-2">
                         <span className="text-3xl">{filter === "belum" ? "🎉" : "📄"}</span>
                         <span className="text-xs font-semibold">
@@ -4820,12 +4827,36 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             )}
                           </td>
 
-                          {/* Col 12: Done Print Waktu */}
+                          {/* Col 12: Picker */}
                           <td
-                            className={`px-2.5 py-1.5 whitespace-nowrap font-mono text-[11px] ${getCellCls(12)}`}
+                            className={`px-2.5 py-1.5 whitespace-nowrap text-xs ${getCellCls(12)}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectCell(12);
+                            }}
+                          >
+                            {getCheckerInfo(g.so)?.picker ? (
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
+                                  isDarkMode
+                                    ? "bg-amber-950/60 text-amber-300 border border-amber-800/60"
+                                    : "bg-amber-100 text-amber-800 border border-amber-200"
+                                }`}
+                                title={`Picker: ${getCheckerInfo(g.so)?.picker}`}
+                              >
+                                {getCheckerInfo(g.so)?.picker}
+                              </span>
+                            ) : (
+                              <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
+                            )}
+                          </td>
+
+                          {/* Col 13: Done Print Waktu */}
+                          <td
+                            className={`px-2.5 py-1.5 whitespace-nowrap font-mono text-[11px] ${getCellCls(13)}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectCell(13);
                             }}
                           >
                             {g.allPrinted && g.printedAt ? (
@@ -4850,16 +4881,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             )}
                           </td>
 
-                          {/* Col 13: Total Harga (Grand Total include PPN 11%) */}
+                          {/* Col 14: Total Harga (Grand Total include PPN 11%) */}
                           <td
                             className={`px-2.5 py-1.5 text-right font-medium whitespace-nowrap ${
                               isDarkMode
                                 ? "text-white"
                                 : "text-black"
-                            } ${getCellCls(13)}`}
+                            } ${getCellCls(14)}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              onSelectCell(13);
+                              onSelectCell(14);
                             }}
                           >
                             <div className="font-mono font-black text-xs">
@@ -4874,7 +4905,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                         {/* Expanded Detail Rows */}
                         {isExpanded && (
                           <tr className={isDarkMode ? "bg-[#080d19] border-b border-slate-800" : "bg-slate-50/80 border-b border-slate-200"}>
-                            <td colSpan={14} className="p-3">
+                            <td colSpan={15} className="p-3">
                               <div className={`border rounded-xl p-3 shadow-xs space-y-3 ${
                                 isDarkMode ? "bg-[#0e1628] border-slate-700/70 text-slate-200 shadow-black/40" : "bg-white border-slate-200 text-slate-800"
                               }`}>
