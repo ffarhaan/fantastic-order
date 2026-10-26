@@ -109,6 +109,11 @@ export default function WeeklyReportView({
       }
     }
 
+    const seenMaiApprove = Array.from({ length: 55 }, () => new Set<string>());
+    const seenMbiApprove = Array.from({ length: 55 }, () => new Set<string>());
+    const seenMaiReject = Array.from({ length: 55 }, () => new Set<string>());
+    const seenMbiReject = Array.from({ length: 55 }, () => new Set<string>());
+
     for (let w = 1; w <= maxW; w++) {
       const bench = WEEKLY_BENCHMARKS[w] || { maiInv: 1000, mbiInv: 2000, maiApprove: 0, mbiApprove: 0, totReject: 0 };
       map[w] = {
@@ -145,18 +150,19 @@ export default function WeeklyReportView({
         const pbf = (r.pbf || "MBI").toUpperCase();
         const conf = (r.confirm || "").toLowerCase();
         const isReject = conf.includes("reject") || conf.includes("tolak") || (r.status || "").toLowerCase().includes("reject");
+        const invKey = (r.invoice_no || "").trim().toLowerCase() || `row_${r.id}`;
 
         if (pbf.includes("MAI")) {
           if (isReject) {
-            map[w].maiReject++;
+            seenMaiReject[w].add(invKey);
           } else {
-            map[w].maiApprove++;
+            seenMaiApprove[w].add(invKey);
           }
         } else {
           if (isReject) {
-            map[w].mbiReject++;
+            seenMbiReject[w].add(invKey);
           } else {
-            map[w].mbiApprove++;
+            seenMbiApprove[w].add(invKey);
           }
         }
       }
@@ -167,11 +173,16 @@ export default function WeeklyReportView({
     for (let w = 1; w <= maxW; w++) {
       const item = map[w];
       const bench = WEEKLY_BENCHMARKS[w] || { maiInv: 1000, mbiInv: 2000, maiApprove: 0, mbiApprove: 0, totReject: 0 };
-      const maiApprove = item.maiApprove > 0 ? item.maiApprove : bench.maiApprove;
-      const mbiApprove = item.mbiApprove > 0 ? item.mbiApprove : bench.mbiApprove;
+      const liveMaiApprove = seenMaiApprove[w].size;
+      const liveMbiApprove = seenMbiApprove[w].size;
+      const liveReject = seenMaiReject[w].size + seenMbiReject[w].size;
+
+      // 1 unique invoice = 1 case matching Apps Script
+      const maiApprove = liveMaiApprove > 0 ? liveMaiApprove : bench.maiApprove;
+      const mbiApprove = liveMbiApprove > 0 ? liveMbiApprove : bench.mbiApprove;
       const maiInv = item.maiInv > 0 ? item.maiInv : bench.maiInv;
       const mbiInv = item.mbiInv > 0 ? item.mbiInv : bench.mbiInv;
-      const totReject = (item.maiReject + item.mbiReject) > 0 ? (item.maiReject + item.mbiReject) : bench.totReject;
+      const totReject = liveReject > 0 ? liveReject : bench.totReject;
       const maiPct = maiInv > 0 ? (maiApprove / maiInv) * 100 : 0;
       const mbiPct = mbiInv > 0 ? (mbiApprove / mbiInv) * 100 : 0;
       const milestone = MILESTONES[w] || null;

@@ -43,20 +43,11 @@ export default function MonthlyReportView({
 
   // Calculate monthly stats from returns
   const monthlyData = useMemo(() => {
-    // Map month (1-12) -> counts
-    const counts: Record<
-      number,
-      {
-        mai_approve: number;
-        mbi_approve: number;
-        mai_reject: number;
-        mbi_reject: number;
-      }
-    > = {};
-
-    for (let m = 1; m <= 12; m++) {
-      counts[m] = { mai_approve: 0, mbi_approve: 0, mai_reject: 0, mbi_reject: 0 };
-    }
+    // Map month (1-12) -> sets of unique invoice numbers (1 invoice with multiple items = 1 shipment error case)
+    const seenMaiApprove = Array.from({ length: 13 }, () => new Set<string>());
+    const seenMbiApprove = Array.from({ length: 13 }, () => new Set<string>());
+    const seenMaiReject = Array.from({ length: 13 }, () => new Set<string>());
+    const seenMbiReject = Array.from({ length: 13 }, () => new Set<string>());
 
     for (const r of returns) {
       // Determine month
@@ -78,13 +69,14 @@ export default function MonthlyReportView({
         const conf = (r.confirm || "").toLowerCase();
         const stat = (r.status || "").toLowerCase();
         const isRej = conf.includes("reject") || conf.includes("tolak") || stat.includes("reject");
+        const invKey = (r.invoice_no || "").trim().toLowerCase() || `row_${r.id}`;
 
         if (pbf.includes("MAI")) {
-          if (isRej) counts[m].mai_reject++;
-          else counts[m].mai_approve++;
+          if (isRej) seenMaiReject[m].add(invKey);
+          else seenMaiApprove[m].add(invKey);
         } else {
-          if (isRej) counts[m].mbi_reject++;
-          else counts[m].mbi_approve++;
+          if (isRej) seenMbiReject[m].add(invKey);
+          else seenMbiApprove[m].add(invKey);
         }
       }
     }
@@ -95,26 +87,28 @@ export default function MonthlyReportView({
     const currentMonthNum = new Date().getMonth() + 1;
 
     return MONTHLY_BENCHMARKS.map((bm) => {
-      const c = counts[bm.month];
       const isCur = bm.month === currentMonthNum;
+      const liveMaiApprove = seenMaiApprove[bm.month].size;
+      const liveMbiApprove = seenMbiApprove[bm.month].size;
+      const liveMaiReject = seenMaiReject[bm.month].size;
+      const liveMbiReject = seenMbiReject[bm.month].size;
 
-      // Closed historical months preserve complete benchmarks.
-      // Current month & upcoming months dynamically increment with any new incoming complaints!
       let maiApprove = bm.mai_approve;
       let mbiApprove = bm.mbi_approve;
       let maiReject = bm.mai_reject;
       let mbiReject = bm.mbi_reject;
 
       if (bm.month > currentMonthNum) {
-        maiApprove = c.mai_approve;
-        mbiApprove = c.mbi_approve;
-        maiReject = c.mai_reject;
-        mbiReject = c.mbi_reject;
+        maiApprove = liveMaiApprove;
+        mbiApprove = liveMbiApprove;
+        maiReject = liveMaiReject;
+        mbiReject = liveMbiReject;
       } else {
-        maiApprove = Math.max(bm.mai_approve, c.mai_approve);
-        mbiApprove = Math.max(bm.mbi_approve, c.mbi_approve);
-        maiReject = Math.max(bm.mai_reject, c.mai_reject);
-        mbiReject = Math.max(bm.mbi_reject, c.mbi_reject);
+        // Distinct invoice count matches Apps Script single-case definition
+        maiApprove = liveMaiApprove > 0 ? liveMaiApprove : bm.mai_approve;
+        mbiApprove = liveMbiApprove > 0 ? liveMbiApprove : bm.mbi_approve;
+        maiReject = liveMaiReject > 0 ? liveMaiReject : bm.mai_reject;
+        mbiReject = liveMbiReject > 0 ? liveMbiReject : bm.mbi_reject;
       }
 
       const maiRate = bm.mai_inv > 0 ? (maiApprove / bm.mai_inv) * 100 : 0;
