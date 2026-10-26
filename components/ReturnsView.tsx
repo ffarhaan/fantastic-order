@@ -241,6 +241,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
   // Tab & Analytics State
   const [activeTab, setActiveTab] = useState<
+    | "list"
     | "overview"
     | "monthly"
     | "weekly"
@@ -248,8 +249,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     | "open"
     | "reject"
     | "leaderboard"
-    | "list"
-  >("monthly");
+  >("list");
   const [allReturns, setAllReturns] = useState<ShipmentReturnRecord[]>([]);
   const [personnelStats, setPersonnelStats] = useState<{
     personnel: any[];
@@ -1275,7 +1275,24 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       {/* View Switcher Tabs (Apps Script Navigation Suite) */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 dark:border-slate-800 pb-3">
         <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-slate-900 rounded-2xl border border-zinc-200 dark:border-slate-800 overflow-x-auto max-w-full">
-          {/* Tab 1: Overview */}
+          {/* Tab 1: Data Kasus (Data Utama Paling Kiri) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("list")}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "list"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <Package className="w-4 h-4 text-blue-500" />
+            <span>Data Kasus</span>
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-slate-700 leading-none inline-flex items-center justify-center text-zinc-800 dark:text-zinc-200 font-mono font-bold">
+              {total.toLocaleString("id-ID")}
+            </span>
+          </button>
+
+          {/* Tab 2: Overview */}
           <button
             type="button"
             onClick={() => setActiveTab("overview")}
@@ -1289,7 +1306,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <span>Overview</span>
           </button>
 
-          {/* Tab 2: Monthly */}
+          {/* Tab 3: Monthly */}
           <button
             type="button"
             onClick={() => setActiveTab("monthly")}
@@ -1303,7 +1320,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <span>Monthly</span>
           </button>
 
-          {/* Tab 3: Weekly */}
+          {/* Tab 4: Weekly */}
           <button
             type="button"
             onClick={() => setActiveTab("weekly")}
@@ -1317,7 +1334,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <span>Weekly</span>
           </button>
 
-          {/* Tab 4: Analisis */}
+          {/* Tab 5: Analisis */}
           <button
             type="button"
             onClick={() => setActiveTab("analisis")}
@@ -1331,7 +1348,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <span>Analisis</span>
           </button>
 
-          {/* Tab 5: In Progress */}
+          {/* Tab 6: In Progress */}
           <button
             type="button"
             onClick={() => setActiveTab("open")}
@@ -1350,7 +1367,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             )}
           </button>
 
-          {/* Tab 6: Reject Cases */}
+          {/* Tab 7: Reject Cases */}
           <button
             type="button"
             onClick={() => setActiveTab("reject")}
@@ -1369,7 +1386,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             )}
           </button>
 
-          {/* Tab 7: Personil Leaderboard */}
+          {/* Tab 8: Personil Leaderboard */}
           <button
             type="button"
             onClick={() => {
@@ -1389,23 +1406,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 {personnelStats.personnel.length}
               </span>
             ) : null}
-          </button>
-
-          {/* Tab 8: Data Kasus */}
-          <button
-            type="button"
-            onClick={() => setActiveTab("list")}
-            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === "list"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <Package className="w-4 h-4 text-blue-500" />
-            <span>Data Kasus</span>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-slate-700 leading-none inline-flex items-center justify-center text-zinc-800 dark:text-zinc-200 font-mono font-bold">
-              {total.toLocaleString("id-ID")}
-            </span>
           </button>
         </div>
 
