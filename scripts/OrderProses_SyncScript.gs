@@ -1,17 +1,43 @@
 /**
  * ====================================================================
- * SINKRONISASI OTOMATIS REAL-TIME (<1 DETIK SAAT EDIT & TIAP 1 MENIT)
- * SPREADSHEET "REPORT QC 2" (TAB: Rekap Lengkap) <=> FANTASTIC ORDER
- * Mendukung: SO, Checker, Packer, & Picker
+ * SINKRONISASI RESMI: SPREADSHEET "REPORT QC 2" (TAB: Rekap Lengkap)
+ * FANTASTIC ORDER REAL-TIME SINKRONISASI
+ * Kolom: B (No SO), C (Checker), D (Packer), E (Picker)
  * ====================================================================
  */
 
 var WEB_APP_URL = "https://fantastic-order.vercel.app/api/tidb?action=sync_checkers";
 
 /**
- * 1. SINKRONISASI INSTAN SAAT ADA EDIT (Kurang dari 1 detik!)
- * Begitu ada sel yang diketik/diisi nama Checker, Packer, atau Picker,
- * data baris tersebut langsung dikirim seketika tanpa jeda.
+ * Helper untuk memastikan sheet yang diproses HANYA "Rekap Lengkap"
+ */
+function getTargetSheet(ss) {
+  // 1. Coba cari nama persis "Rekap Lengkap"
+  var s = ss.getSheetByName("Rekap Lengkap");
+  if (s) return s;
+
+  // 2. Coba cari berdasarkan GID spesifik (gid=1198696917)
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].getSheetId() === 1198696917) {
+      return sheets[i];
+    }
+  }
+
+  // 3. Coba cari case-insensitive "rekap lengkap"
+  for (var j = 0; j < sheets.length; j++) {
+    var name = sheets[j].getName().trim().toLowerCase();
+    if (name === "rekap lengkap" || name.indexOf("rekap lengkap") !== -1) {
+      return sheets[j];
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 1. SINKRONISASI INSTAN SAAT EDIT (<1 DETIK)
+ * Berjalan seketika saat petugas mengetik/mengubah sel di tab "Rekap Lengkap"
  */
 function onEditSync(e) {
   try {
@@ -21,8 +47,14 @@ function onEditSync(e) {
     }
 
     var sheet = e.range.getSheet();
-    var sheetName = sheet.getName().toLowerCase().trim();
-    if (!sheetName.includes("rekap")) return;
+    var sheetName = sheet.getName().trim().toLowerCase();
+    var sheetId = sheet.getSheetId();
+
+    // STRICT CHECK: Hanya tab "Rekap Lengkap" yang boleh diproses!
+    var isRekapLengkap = (sheetName === "rekap lengkap" || sheetName.indexOf("rekap lengkap") !== -1 || sheetId === 1198696917);
+    if (!isRekapLengkap) {
+      return; // Tolak mentah-mentah jika tab lain
+    }
 
     var startRow = e.range.getRow();
     var numRows = e.range.getNumRows();
@@ -34,7 +66,6 @@ function onEditSync(e) {
     var lastCol = sheet.getLastColumn();
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var colMap = detectColumns(headers);
-    if (colMap.so < 0) return;
 
     var dataRange = sheet.getRange(actualStart, 1, actualNumRows, lastCol).getValues();
     var itemsToSend = [];
@@ -45,6 +76,10 @@ function onEditSync(e) {
       var checkerVal = colMap.checker >= 0 ? String(row[colMap.checker] || "").trim() : "";
       var packerVal = colMap.packer >= 0 ? String(row[colMap.packer] || "").trim() : "";
       var pickerVal = colMap.picker >= 0 ? String(row[colMap.picker] || "").trim() : "";
+
+      // Sanitasi nilai agar tidak salah ambil
+      packerVal = cleanStaffName(packerVal);
+      pickerVal = cleanStaffName(pickerVal);
 
       if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal)) {
         itemsToSend.push({
@@ -71,35 +106,29 @@ function onEditSync(e) {
 }
 
 /**
- * 2. SINKRONISASI BATCH MENYELURUH (Jaring Pengaman Otomatis)
+ * 2. SINKRONISASI BATCH (MENYELURUH SETIAP 1 MENIT)
  * Membaca tab Rekap Lengkap dan mengirimkan seluruh SO, Checker, Packer, & Picker
  */
 function autoSyncCheckers() {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = null;
-    var sheets = ss.getSheets();
-    for (var i = 0; i < sheets.length; i++) {
-      var n = sheets[i].getName().toLowerCase().trim();
-      if (n.includes("rekap")) {
-        sheet = sheets[i];
-        break;
-      }
-    }
+    var sheet = getTargetSheet(ss);
 
-    if (!sheet) return;
+    if (!sheet) {
+      Logger.log("⚠️ GAGAL: Tab 'Rekap Lengkap' tidak ditemukan di spreadsheet ini.");
+      return;
+    }
 
     var lastRow = sheet.getLastRow();
     var lastCol = sheet.getLastColumn();
     if (lastRow <= 1) return;
 
-    // Ambil data (ambil 1000 baris terakhir untuk efisiensi tinggi)
+    // Ambil 1000 baris terakhir
     var startRow = Math.max(2, lastRow - 999);
     var numRows = lastRow - startRow + 1;
 
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var colMap = detectColumns(headers);
-    if (colMap.so < 0) return;
 
     var dataRange = sheet.getRange(startRow, 1, numRows, lastCol).getValues();
     var itemsToSend = [];
@@ -110,6 +139,10 @@ function autoSyncCheckers() {
       var checkerVal = colMap.checker >= 0 ? String(row[colMap.checker] || "").trim() : "";
       var packerVal = colMap.packer >= 0 ? String(row[colMap.packer] || "").trim() : "";
       var pickerVal = colMap.picker >= 0 ? String(row[colMap.picker] || "").trim() : "";
+
+      // Sanitasi nilai
+      packerVal = cleanStaffName(packerVal);
+      pickerVal = cleanStaffName(pickerVal);
 
       if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal)) {
         itemsToSend.push({
@@ -132,7 +165,7 @@ function autoSyncCheckers() {
           muteHttpExceptions: true
         });
       }
-      Logger.log("✅ Berhasil sync batch " + itemsToSend.length + " baris data.");
+      Logger.log("✅ Berhasil sync " + itemsToSend.length + " baris dari tab '" + sheet.getName() + "'.");
     }
   } catch (err) {
     Logger.log("Error autoSyncCheckers: " + err);
@@ -140,28 +173,69 @@ function autoSyncCheckers() {
 }
 
 /**
- * Deteksi kolom otomatis (Col B = SO, Col C = Checker, Col D = Packer, Col E = Picker)
+ * Filter sanitasi nama petugas (mencegah nama pelanggan atau tanggal masuk ke kolom petugas)
+ */
+function cleanStaffName(name) {
+  if (!name) return "";
+  var s = String(name).trim();
+  var low = s.toLowerCase();
+
+  // Jika berisi indikasi tanggal, jam, atau nama pelanggan apotek, tolak!
+  if (low.indexOf("apotek") === 0 || low.indexOf("pt ") === 0 || low.indexOf("klinik") === 0) return "";
+  if (low.indexOf("00:00:00") !== -1 || low.indexOf("gmt") !== -1 || low.indexOf("wib") !== -1) return "";
+  if (/^(mon|tue|wed|thu|fri|sat|sun)\s/i.test(s)) return "";
+  if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(s)) return "";
+
+  return s;
+}
+
+/**
+ * Deteksi kolom persis pada tab "Rekap Lengkap":
+ * Kolom A (0) = Tanggal SO
+ * Kolom B (1) = No SO Selesai
+ * Kolom C (2) = Checker
+ * Kolom D (3) = Packer
+ * Kolom E (4) = Picker
  */
 function detectColumns(headers) {
   var map = { so: -1, checker: -1, packer: -1, picker: -1 };
+
   for (var i = 0; i < headers.length; i++) {
     var h = String(headers[i] || "").toLowerCase().trim();
-    if (map.so < 0 && (h.includes("so") || h.includes("order number"))) map.so = i;
-    if (map.checker < 0 && (h.includes("checker") || h.includes("qc 1") || h === "qc1")) map.checker = i;
-    if (map.packer < 0 && (h.includes("packer") || h.includes("packing") || h.includes("qc 2") || h === "qc2")) map.packer = i;
-    if (map.picker < 0 && (h.includes("picker") || h.includes("nama picker") || h.includes("ambil"))) map.picker = i;
+    // PENTING: Abaikan jika ada kata tanggal / tgl agar Kolom A "Tanggal SO" TIDAK dianggap SO!
+    if (h.indexOf("tanggal") !== -1 || h.indexOf("tgl") !== -1 || h.indexOf("date") !== -1) {
+      continue;
+    }
+
+    if (map.so < 0 && (h.indexOf("so selesai") !== -1 || h.indexOf("no so") !== -1 || h.indexOf("no. so") !== -1 || h === "so")) {
+      map.so = i;
+    }
+    if (map.checker < 0 && (h.indexOf("checker") !== -1 || h.indexOf("qc 1") !== -1 || h === "qc1")) {
+      map.checker = i;
+    }
+    if (map.packer < 0 && (h.indexOf("packer") !== -1 || h.indexOf("packing") !== -1 || h.indexOf("qc 2") !== -1 || h === "qc2")) {
+      map.packer = i;
+    }
+    if (map.picker < 0 && (h.indexOf("picker") !== -1 || h.indexOf("ambil") !== -1)) {
+      map.picker = i;
+    }
   }
-  // Fallback posisi standar: Col B (1) = SO, Col C (2) = Checker, Col D (3) = Packer, Col E (4) = Picker
-  if (map.so < 0 && headers.length > 1) map.so = 1;
-  if (map.checker < 0 && headers.length > 2) map.checker = 2;
-  if (map.packer < 0 && headers.length > 3) map.packer = 3;
-  if (map.picker < 0 && headers.length > 4) map.picker = 4;
+
+  // Posisi baku & pasti pada tab "Rekap Lengkap":
+  // Kolom B (1) = No SO Selesai
+  // Kolom C (2) = Checker
+  // Kolom D (3) = Packer
+  // Kolom E (4) = Picker
+  if (map.so < 0) map.so = 1;
+  if (map.checker < 0) map.checker = 2;
+  if (map.packer < 0) map.packer = 3;
+  if (map.picker < 0) map.picker = 4;
+
   return map;
 }
 
 /**
- * 3. PASANG TRIGGER OTOMATIS (Jalankan sekali saja dari tombol Run di Apps Script)
- * Memasang onEdit (Instan <1 detik) dan Timer 1 Menit (Jaring Pengaman)
+ * 3. PASANG TRIGGER OTOMATIS (Jalankan sekali dari tombol Run di Apps Script)
  */
 function setupAutoSyncTrigger() {
   var triggers = ScriptApp.getProjectTriggers();
@@ -172,14 +246,14 @@ function setupAutoSyncTrigger() {
     }
   }
 
-  // 1. Trigger saat edit sel: LANGSUNG jalan seketika (<1 detik) saat ada ketikan/paste baru
+  // Pasang trigger onEdit (instan <1 detik)
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   ScriptApp.newTrigger("onEditSync").forSpreadsheet(ss).onEdit().create();
 
-  // 2. Trigger waktu: Jalan tiap 1 menit sebagai jaring pengaman data formula / sinkronisasi berkala
+  // Pasang trigger waktu tiap 1 menit
   ScriptApp.newTrigger("autoSyncCheckers").timeBased().everyMinutes(1).create();
 
-  // Eksekusi sync pertama kali
+  // Jalankan sync pertama kali
   autoSyncCheckers();
-  Logger.log("🚀 Sinkronisasi instan aktif! Edit = <1 detik, Background = tiap 1 menit.");
+  Logger.log("🚀 Sinkronisasi Rekap Lengkap AKTIF! B = SO, C = Checker, D = Packer, E = Picker");
 }

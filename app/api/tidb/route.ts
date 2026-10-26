@@ -1169,9 +1169,28 @@ export async function POST(req: Request) {
       const validRows: [string, string, string | null, string | null][] = [];
       for (const item of items) {
         const so = String(item.so || item.so_number || "").trim();
-        const checker = String(item.checker || item.checker_name || "").trim();
-        const packer = String(item.packer || item.packer_name || "").trim();
-        const picker = String(item.picker || item.picker_name || "").trim();
+        let checker = String(item.checker || item.checker_name || "").trim();
+        let packer = String(item.packer || item.packer_name || "").trim();
+        let picker = String(item.picker || item.picker_name || "").trim();
+
+        // Guard against misread customer names or dates
+        if (
+          packer.toLowerCase().startsWith("apotek") ||
+          packer.toLowerCase().startsWith("pt ") ||
+          packer.toLowerCase().startsWith("klinik") ||
+          packer.includes("00:00:00") ||
+          packer.includes("GMT")
+        ) {
+          packer = "";
+        }
+        if (
+          picker.includes("00:00:00") ||
+          picker.includes("GMT") ||
+          /^(mon|tue|wed|thu|fri|sat|sun)\s/i.test(picker)
+        ) {
+          picker = "";
+        }
+
         if (!so || so === "-" || so === "#N/A" || (!checker && !packer && !picker)) continue;
 
         validRows.push([so, checker || "-", packer || null, picker || null]);
@@ -1190,8 +1209,8 @@ export async function POST(req: Request) {
            VALUES ${placeholders}
            ON DUPLICATE KEY UPDATE 
              checker_name = VALUES(checker_name),
-             packer_name = COALESCE(VALUES(packer_name), packer_name),
-             picker_name = COALESCE(VALUES(picker_name), picker_name)`,
+             packer_name = VALUES(packer_name),
+             picker_name = VALUES(picker_name)`,
           flatParams
         );
         updatedCount += chunk.length;
