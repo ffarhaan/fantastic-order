@@ -623,9 +623,21 @@ export default function Home() {
   // Real-time direct Firebase Firestore subscription (0 byte on Vercel, <100ms sync)
   useEffect(() => {
     const unsub = subscribeToCheckers((map) => {
-      setCheckerMap(map);
-      checkerMapRef.current = map;
+      setCheckerMap((prev) => ({ ...prev, ...map }));
+      checkerMapRef.current = { ...checkerMapRef.current, ...map };
     });
+
+    // Also fetch initial checkers from TiDB for 100% full database coverage
+    fetch("/api/tidb?action=get_checkers")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && d.data) {
+          setCheckerMap((prev) => ({ ...d.data, ...prev }));
+          checkerMapRef.current = { ...d.data, ...checkerMapRef.current };
+        }
+      })
+      .catch(() => {});
+
     return () => {
       unsub();
     };

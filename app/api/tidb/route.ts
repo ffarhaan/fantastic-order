@@ -1189,6 +1189,35 @@ export async function POST(req: Request) {
         updatedCount += chunk.length;
       }
 
+      // Also propagate to Firestore app_data/so_checkers_recent for instant real-time WebSocket updates (<100ms)
+      const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+      const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "fantastic-order";
+      if (apiKey && projectId && validRows.length > 0) {
+        try {
+          const recentMap: Record<string, { c: string; p: string }> = {};
+          // Take the most recent up to 500 items to avoid payload limits
+          const sliceRows = validRows.slice(-500);
+          for (const row of sliceRows) {
+            recentMap[row[0]] = { c: row[1], p: row[2] || "" };
+          }
+          await fetch(
+            `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/app_data/so_checkers_recent?key=${apiKey}&updateMask.fieldPaths=data&updateMask.fieldPaths=updatedAt`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                fields: {
+                  data: { stringValue: JSON.stringify(recentMap) },
+                  updatedAt: { stringValue: new Date().toISOString() },
+                },
+              }),
+            }
+          ).catch((e) => console.warn("[Sync Checkers] Firestore patch failed:", e));
+        } catch (e) {
+          console.warn("[Sync Checkers] Firestore sync warning:", e);
+        }
+      }
+
       return Response.json({ success: true, count: updatedCount });
     }
 
