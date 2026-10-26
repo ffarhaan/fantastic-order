@@ -39,8 +39,18 @@ import {
   Maximize2,
   Download,
   CalendarRange,
+  FileText,
+  XCircle,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import OverviewKpiView from "./returns/OverviewKpiView";
+import MonthlyReportView from "./returns/MonthlyReportView";
+import WeeklyReportView from "./returns/WeeklyReportView";
+import AnalisisView from "./returns/AnalisisView";
+import WeeklyQc2View from "./returns/WeeklyQc2View";
+import OpenCasesView from "./returns/OpenCasesView";
+import RejectCasesView from "./returns/RejectCasesView";
+import ReturSubmissionView from "./returns/ReturSubmissionView";
 
 export const COMPLAINT_REASONS = [
   "Fisik yang dikirim kurang",
@@ -218,7 +228,18 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   }, [masterCustNames, records, returns]);
 
   // Tab & Analytics State
-  const [activeTab, setActiveTab] = useState<"list" | "leaderboard" | "analytics">("list");
+  const [activeTab, setActiveTab] = useState<
+    | "overview"
+    | "monthly"
+    | "weekly"
+    | "analisis"
+    | "qc2"
+    | "open"
+    | "reject"
+    | "leaderboard"
+    | "retur"
+    | "list"
+  >("monthly");
   const [allReturns, setAllReturns] = useState<ShipmentReturnRecord[]>([]);
   const [personnelStats, setPersonnelStats] = useState<{
     personnel: any[];
@@ -231,10 +252,28 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [personnelSearchQuery, setPersonnelSearchQuery] = useState<string>("");
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
 
+  const openCasesCount = useMemo(() => {
+    const list = allReturns.length > 0 ? allReturns : returns;
+    return list.filter((r) => {
+      const st = (r.status || "").toLowerCase();
+      const conf = (r.confirm || "").toLowerCase();
+      return !st.includes("resolved") && !conf.includes("reject") && !st.includes("reject");
+    }).length;
+  }, [allReturns, returns]);
+
+  const rejectCasesCount = useMemo(() => {
+    const list = allReturns.length > 0 ? allReturns : returns;
+    return list.filter((r) => {
+      const st = (r.status || "").toLowerCase();
+      const conf = (r.confirm || "").toLowerCase();
+      return conf.includes("reject") || conf.includes("tolak") || st.includes("reject");
+    }).length;
+  }, [allReturns, returns]);
+
   // Fetch all returns for analytic tabs
   const fetchAllReturns = useCallback(async () => {
     try {
-      const res = await fetch("/api/tidb?action=returns&limit=1000");
+      const res = await fetch("/api/tidb?action=returns&limit=3000");
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setAllReturns(json.data);
@@ -1199,14 +1238,158 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {/* View Switcher Tabs (Data Kasus, Weekly & QC2, Personil, Analisis) */}
+      {/* View Switcher Tabs (Apps Script Navigation Suite) */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 dark:border-slate-800 pb-3">
-        <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-slate-900 rounded-2xl border border-zinc-200 dark:border-slate-800">
-          {/* Tab 1: Data Kasus */}
+        <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-slate-900 rounded-2xl border border-zinc-200 dark:border-slate-800 overflow-x-auto max-w-full">
+          {/* Tab 1: Overview */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("overview")}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "overview"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 text-indigo-500" />
+            <span>Overview</span>
+          </button>
+
+          {/* Tab 2: Monthly */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("monthly")}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "monthly"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <Calendar className="w-4 h-4 text-red-500" />
+            <span>Monthly</span>
+          </button>
+
+          {/* Tab 3: Weekly */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("weekly")}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "weekly"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <CalendarRange className="w-4 h-4 text-blue-500" />
+            <span>Weekly</span>
+          </button>
+
+          {/* Tab 4: Analisis */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("analisis")}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "analisis"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-purple-500" />
+            <span>Analisis</span>
+          </button>
+
+          {/* Tab 5: QC2 Impact */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("qc2")}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "qc2"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4 text-teal-500" />
+            <span>QC2 Impact</span>
+          </button>
+
+          {/* Tab 6: Open Cases */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("open")}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "open"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <Clock className="w-4 h-4 text-amber-500" />
+            <span>Open Cases</span>
+            {openCasesCount > 0 && (
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-mono font-bold">
+                {openCasesCount}
+              </span>
+            )}
+          </button>
+
+          {/* Tab 7: Reject Cases */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("reject")}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "reject"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <span className="text-xs">❌</span>
+            <span>Reject Cases</span>
+            {rejectCasesCount > 0 && (
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-mono font-bold">
+                {rejectCasesCount}
+              </span>
+            )}
+          </button>
+
+          {/* Tab 8: Personil Leaderboard */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("leaderboard");
+              fetchPersonnelStats();
+            }}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "leaderboard"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <Users className="w-4 h-4 text-amber-500" />
+            <span>Personil</span>
+            {personnelStats?.personnel?.length ? (
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-mono font-bold">
+                {personnelStats.personnel.length}
+              </span>
+            ) : null}
+          </button>
+
+          {/* Tab 9: Pengajuan Retur */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("retur")}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "retur"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <span className="text-xs">📜</span>
+            <span>Pengajuan Retur</span>
+          </button>
+
+          {/* Tab 10: Data Kasus */}
           <button
             type="button"
             onClick={() => setActiveTab("list")}
-            className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === "list"
                 ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
                 : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
@@ -1217,47 +1400,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-slate-700 leading-none inline-flex items-center justify-center text-zinc-800 dark:text-zinc-200 font-mono font-bold">
               {total.toLocaleString("id-ID")}
             </span>
-          </button>
-
-          
-
-          {/* Tab 3: Personil Leaderboard */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("leaderboard");
-              fetchPersonnelStats();
-            }}
-            className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === "leaderboard"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <Users className="w-4 h-4 text-amber-500" />
-            <span>Leaderboard Personil</span>
-            {personnelStats?.personnel?.length ? (
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-mono font-bold">
-                {personnelStats.personnel.length}
-              </span>
-            ) : null}
-          </button>
-
-          {/* Tab 4: Analisis & Root Cause */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("analytics");
-              fetchPersonnelStats();
-            }}
-            className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === "analytics"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 text-indigo-500" />
-            <span>Analisis & Root Cause</span>
           </button>
         </div>
 
@@ -1277,7 +1419,54 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         </div>
       </div>
 
-      {/* Tab 1: Daftar Retur */}
+      {/* ─── TAB: OVERVIEW ─── */}
+      {activeTab === "overview" && (
+        <OverviewKpiView returns={allReturns.length > 0 ? allReturns : returns} records={records} />
+      )}
+
+      {/* ─── TAB: MONTHLY ─── */}
+      {activeTab === "monthly" && (
+        <MonthlyReportView returns={allReturns.length > 0 ? allReturns : returns} records={records} />
+      )}
+
+      {/* ─── TAB: WEEKLY ─── */}
+      {activeTab === "weekly" && (
+        <WeeklyReportView returns={allReturns.length > 0 ? allReturns : returns} records={records} />
+      )}
+
+      {/* ─── TAB: QC2 IMPACT ─── */}
+      {activeTab === "qc2" && (
+        <WeeklyQc2View returns={allReturns.length > 0 ? allReturns : returns} records={records} />
+      )}
+
+      {/* ─── TAB: OPEN CASES ─── */}
+      {activeTab === "open" && (
+        <OpenCasesView
+          returns={allReturns.length > 0 ? allReturns : returns}
+          onRefreshParentReturns={() => {
+            fetchReturns();
+            fetchAllReturns();
+          }}
+        />
+      )}
+
+      {/* ─── TAB: REJECT CASES ─── */}
+      {activeTab === "reject" && (
+        <RejectCasesView returns={allReturns.length > 0 ? allReturns : returns} />
+      )}
+
+      {/* ─── TAB: PENGAJUAN RETUR ─── */}
+      {activeTab === "retur" && (
+        <ReturSubmissionView
+          records={records}
+          onRefreshParentReturns={() => {
+            fetchReturns();
+            fetchAllReturns();
+          }}
+        />
+      )}
+
+      {/* Tab 10: Daftar Retur (Data Kasus) */}
       {activeTab === "list" && (
         <div className="space-y-4 animate-in fade-in duration-150">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -2555,215 +2744,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         </div>
       )}
 
-      {/* ─── TAB 3: ANALISIS & ROOT CAUSE ─── */}
-      {activeTab === "analytics" && (
-        <div className="space-y-4 animate-in fade-in duration-150">
-          {/* PBF MBI & MAI Comparison Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* MBI Card */}
-            {(() => {
-              const mbiData = personnelStats?.pbfComparison?.find((p) => p.pbf === "MBI") || {
-                total: 0,
-                resolved: 0,
-                pending: 0,
-              };
-              const resRate =
-                Number(mbiData.total) > 0
-                  ? ((Number(mbiData.resolved) / Number(mbiData.total)) * 100).toFixed(1)
-                  : 0;
-              return (
-                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-900/40 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
-                      MBI (PT Medika Bina Investama)
-                    </span>
-                    <span className="text-xs font-bold text-zinc-500 dark:text-slate-400">
-                      {resRate}% Diselesaikan
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 pt-2 text-center">
-                    <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-slate-950">
-                      <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase block">
-                        Total Kasus
-                      </span>
-                      <span className="text-xl font-black text-zinc-900 dark:text-white">
-                        {Number(mbiData.total).toLocaleString("id-ID")}
-                      </span>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30">
-                      <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold uppercase block">
-                        Selesai
-                      </span>
-                      <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">
-                        {Number(mbiData.resolved).toLocaleString("id-ID")}
-                      </span>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30">
-                      <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold uppercase block">
-                        Pending
-                      </span>
-                      <span className="text-xl font-black text-amber-600 dark:text-amber-400">
-                        {Number(mbiData.pending).toLocaleString("id-ID")}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* MAI Card */}
-            {(() => {
-              const maiData = personnelStats?.pbfComparison?.find((p) => p.pbf === "MAI") || {
-                total: 0,
-                resolved: 0,
-                pending: 0,
-              };
-              const resRate =
-                Number(maiData.total) > 0
-                  ? ((Number(maiData.resolved) / Number(maiData.total)) * 100).toFixed(1)
-                  : 0;
-              return (
-                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900/40 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
-                      MAI (PT Medika Akses Investama)
-                    </span>
-                    <span className="text-xs font-bold text-zinc-500 dark:text-slate-400">
-                      {resRate}% Diselesaikan
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 pt-2 text-center">
-                    <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-slate-950">
-                      <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase block">
-                        Total Kasus
-                      </span>
-                      <span className="text-xl font-black text-zinc-900 dark:text-white">
-                        {Number(maiData.total).toLocaleString("id-ID")}
-                      </span>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30">
-                      <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold uppercase block">
-                        Selesai
-                      </span>
-                      <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">
-                        {Number(maiData.resolved).toLocaleString("id-ID")}
-                      </span>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30">
-                      <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold uppercase block">
-                        Pending
-                      </span>
-                      <span className="text-xl font-black text-amber-600 dark:text-amber-400">
-                        {Number(maiData.pending).toLocaleString("id-ID")}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* Root Causes and Return Reasons Breakdown */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Root Causes Breakdown */}
-            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-zinc-200 dark:border-slate-800 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 text-rose-500" />
-                  <h3 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-white">
-                    Penyebab Masalah (Root Cause)
-                  </h3>
-                </div>
-                <span className="text-xs font-bold text-zinc-500 dark:text-slate-400 font-mono">
-                  {totalRootCauses} Kasus
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                {(!personnelStats?.rootCauses || personnelStats.rootCauses.length === 0) ? (
-                  <p className="text-xs text-zinc-400 py-6 text-center">Belum ada data root cause.</p>
-                ) : (
-                  personnelStats.rootCauses.map((rc, idx) => {
-                    const pct = totalRootCauses > 0 ? ((Number(rc.total) / totalRootCauses) * 100).toFixed(1) : "0";
-                    return (
-                      <div key={rc.root_cause} className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-bold text-zinc-800 dark:text-slate-200 truncate max-w-[240px]">
-                            {rc.root_cause}
-                          </span>
-                          <span className="font-mono text-zinc-500 dark:text-slate-400 font-bold">
-                            {rc.total} ({pct}%)
-                          </span>
-                        </div>
-                        <div className="h-2 bg-zinc-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${
-                              idx === 0
-                                ? "bg-rose-500"
-                                : idx === 1
-                                ? "bg-amber-500"
-                                : "bg-indigo-500"
-                            }`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* Reasons Breakdown */}
-            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-zinc-200 dark:border-slate-800 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <Package className="w-4 h-4 text-amber-500" />
-                  <h3 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-white">
-                    Alasan Komplain Dilaporkan (Reasons)
-                  </h3>
-                </div>
-                <span className="text-xs font-bold text-zinc-500 dark:text-slate-400 font-mono">
-                  {totalReasons} Kasus
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                {(!personnelStats?.reasons || personnelStats.reasons.length === 0) ? (
-                  <p className="text-xs text-zinc-400 py-6 text-center">Belum ada data alasan.</p>
-                ) : (
-                  personnelStats.reasons.map((r, idx) => {
-                    const pct = totalReasons > 0 ? ((Number(r.total) / totalReasons) * 100).toFixed(1) : "0";
-                    return (
-                      <div key={r.reason} className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-bold text-zinc-800 dark:text-slate-200 truncate max-w-[240px]">
-                            {r.reason}
-                          </span>
-                          <span className="font-mono text-zinc-500 dark:text-slate-400 font-bold">
-                            {r.total} ({pct}%)
-                          </span>
-                        </div>
-                        <div className="h-2 bg-zinc-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${
-                              idx === 0
-                                ? "bg-amber-500"
-                                : idx === 1
-                                ? "bg-blue-500"
-                                : "bg-teal-500"
-                            }`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* ─── TAB: ANALISIS & ROOT CAUSE ─── */}
+      {activeTab === "analisis" && (
+        <AnalisisView returns={allReturns.length > 0 ? allReturns : returns} />
       )}
 
       {/* â”€â”€â”€ ADD NEW RETURN MODAL â”€â”€â”€ */}
