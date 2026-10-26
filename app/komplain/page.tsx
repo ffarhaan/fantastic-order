@@ -322,7 +322,7 @@ export default function KomplainPage() {
     const pbfName =
       submittedData.pbf === "MBI"
         ? "MBI (PT Medika Bina Investama)"
-        : "MAI (PT Medika Abadi Investama)";
+        : "MAI (PT Medika Akses Investama)";
 
     const itemsList = submittedData.products
       ?.map((p: any, idx: number) => {
@@ -1031,7 +1031,7 @@ ${photoStatus}
                 <div className="grid grid-cols-2 gap-2.5">
                   {[
                     { id: "MBI", label: "MBI (PT Medika Bina Investama)" },
-                    { id: "MAI", label: "MAI (PT Medika Abadi Investama)" },
+                    { id: "MAI", label: "MAI (PT Medika Akses Investama)" },
                   ].map((p) => (
                     <button
                       key={p.id}
@@ -1442,7 +1442,7 @@ ${photoStatus}
       {/* Footer */}
       <footer className="border-t border-zinc-200 dark:border-zinc-800 py-6 text-center text-xs text-zinc-500">
         <p>
-          Form Pengajuan Retur &bull; PT Medika Bina Investama &bull; PT Medika Abadi Investama
+          Form Pengajuan Retur &bull; PT Medika Bina Investama &bull; PT Medika Akses Investama
         </p>
       </footer>
     </div>

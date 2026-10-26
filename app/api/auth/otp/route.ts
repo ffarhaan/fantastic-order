@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
               <p style="font-size: 12px; color: #64748b; margin-bottom: 0;">Jika Anda tidak merasa melakukan pendaftaran akun di sistem ini, silakan abaikan email ini.</p>
               <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 12px; font-weight: 700; color: #64748b;">
                 Tim Keamanan Sistem Fantastic Order<br/>
-                <span style="font-size: 11px; font-weight: 600; color: #94a3b8; display: block; margin-top: 4px;">PT Medika Bina Investama &bull; PT Medika Abadi Investama</span>
+                <span style="font-size: 11px; font-weight: 600; color: #94a3b8; display: block; margin-top: 4px;">PT Medika Bina Investama &bull; PT Medika Akses Investama</span>
               </div>
             </div>
           `;

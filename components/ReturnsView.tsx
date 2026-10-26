@@ -2626,7 +2626,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900/40 shadow-xs space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
-                      MAI (PT Medika Abadi Investama)
+                      MAI (PT Medika Akses Investama)
                     </span>
                     <span className="text-xs font-bold text-zinc-500 dark:text-slate-400">
                       {resRate}% Diselesaikan
