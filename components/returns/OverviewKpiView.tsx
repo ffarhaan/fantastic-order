@@ -203,11 +203,11 @@ export default function OverviewKpiView({
           </div>
         </div>
 
-        {/* Card 5: OPEN CASES */}
+        {/* Card 5: IN PROGRESS */}
         <div className="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs p-3.5 flex flex-col justify-between">
           <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500" />
           <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase">
-            OPEN CASES
+            IN PROGRESS
           </div>
           <div className="my-1.5">
             <span className="text-2xl font-black text-amber-500 dark:text-amber-400 font-mono">

@@ -1331,7 +1331,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <span>Analisis</span>
           </button>
 
-          {/* Tab 5: Open Cases */}
+          {/* Tab 5: In Progress */}
           <button
             type="button"
             onClick={() => setActiveTab("open")}
@@ -1342,7 +1342,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             }`}
           >
             <Clock className="w-4 h-4 text-amber-500" />
-            <span>Open Cases</span>
+            <span>In Progress</span>
             {openCasesCount > 0 && (
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-mono font-bold">
                 {openCasesCount}
@@ -1547,10 +1547,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               </div>
             </div>
 
-            {/* Card 5: OPEN CASES */}
+            {/* Card 5: IN PROGRESS */}
             <div
               onClick={() => {
-                setStatusFilter(statusFilter === "Pending" ? "ALL" : "Pending");
+                setStatusFilter(statusFilter === "In Progress" || statusFilter === "Pending" ? "ALL" : "In Progress");
                 setPage(0);
               }}
               className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
@@ -1558,11 +1558,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/20 dark:bg-amber-950/20"
                   : "border-slate-200 dark:border-slate-800 hover:border-amber-300 dark:hover:border-amber-800"
               }`}
-              title="Klik untuk filter kasus Menunggu Tindak Lanjut"
+              title="Klik untuk filter kasus In Progress (Sedang Diproses)"
             >
               <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500" />
               <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase">
-                OPEN CASES
+                IN PROGRESS
               </div>
               <div className="my-1.5">
                 <span className="text-2xl font-black text-amber-500 dark:text-amber-400 font-mono">
