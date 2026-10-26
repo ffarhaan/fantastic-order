@@ -255,7 +255,47 @@ Dokumen ini secara permanen mengunci prinsip efisiensi kuota dan kompresi data u
 
 ---
 
-### 5. KLAUSUL INTEGRITAS MUTLAK (INVIOLABILITY CLAUSE)
+### 6. ARSITEKTUR INTEGRASI QC (CHECKER, PACKER, & PICKER) DARI GOOGLE SHEET (LOCKED TOTAL)
+
+Aturan ini mengunci secara mutlak integrasi data petugas gudang (Checker, Packer, dan Picker) antara Spreadsheet Google dan Aplikasi Fantastic Order:
+
+1. **Sumber Data Tunggal & Kunci Tab Mutlak**:
+   - Sumber resmi: Google Spreadsheet `REPORT QC 2` (URL ID: `1wCbPpkVM2rI_axg-sOB8n_4hmsXGOXwU4ARwaks4p8g`).
+   - Tab resmi: HANYA tab **`Rekap Lengkap`** (GID spesifik: `1198696917`).
+   - Seluruh tab lain (termasuk tab dengan nama parsial "Rekap", "Order Proses", "Data", dll.) **DILARANG KERAS** dibaca atau diproses.
+
+2. **Pemetaan Kolom Baku & Paten (Fixed Column Mapping)**:
+   - **Kolom A**: `Tanggal SO` $\rightarrow$ Wajib diabaikan dan DILARANG dibaca sebagai nomor SO.
+   - **Kolom B**: `No SO Selesai` $\rightarrow$ Nomor Sales Order (`so_number`).
+   - **Kolom C**: `Checker` $\rightarrow$ Nama petugas Checker (`checker_name`).
+   - **Kolom D**: `Packer` $\rightarrow$ Nama petugas Packer (`packer_name`).
+   - **Kolom E**: `Picker` $\rightarrow$ Nama petugas Picker (`picker_name`).
+   - Kolom F s/d I: Rincian SKU, Qty, Kategori, Koli $\rightarrow$ Tidak boleh menggeser atau mempengaruhi kolom B, C, D, dan E.
+
+3. **Aturan Kekosongan Nama (Empty / Blank Rule - LOCKED TOTAL)**:
+   - **JIKA TIDAK ADA NAMA, WAJIB DIKOSONGKAN**: Jika nama Checker, Packer, atau Picker tidak diisi di Google Sheet (berupa sel kosong, tanda strip `-`, `#N/A`, atau spasi):
+     - Sistem **WAJIB MENYIMPANNYA SEBAGAI `NULL` / KOSONG**.
+     - Di tampilan tabel aplikasi **WAJIB TAMPIL SEBAGAI TANDA STRIP KOSONG (`-`)**.
+   - **LARANGAN KERAS MENEBAK ATAU MENGAMBIL DATA TETANGGA**:
+     - DILARANG KERAS mengambil nama pelanggan/apotek untuk mengisi Packer atau Picker.
+     - DILARANG KERAS mengambil tanggal/waktu untuk mengisi Packer atau Picker.
+     - DILARANG KERAS mengisi nama fiktif/asumsi. Jika belum ada yang mengerjakan, kolom tersebut HARUS kosong (`-`).
+
+4. **Filter Sanitasi Berlapis Anti-Bocor (Multi-Layer Sanitization Guard - LOCKED)**:
+   - Berlaku di 3 lapisan: (1) Google Apps Script, (2) Backend API TiDB (`/api/tidb`), dan (3) Frontend Web App (`app/page.tsx` & `lib/firestoreService.ts`).
+   - Setiap nilai pada Packer atau Picker yang terdeteksi:
+     - Diawali `Apotek`, `PT `, `Klinik`, `Rumah Sakit`, `Toko`, dll.
+     - Mengandung format jam/tanggal: `00:00:00`, `GMT`, `WIB`, hari (`Mon`, `Tue`, `Wed`, dll), atau pola tanggal (`DD/MM/YYYY`).
+     - **WAJIB OTOMATIS DIGUGURKAN / DIKOSONGKAN MENJADI NULL / EMPTY STRING**.
+
+5. **Otoritas Data & Eliminasi Cache Kotor (TiDB Authority & Anti-Pollution Cache)**:
+   - Database TiDB tabel `so_checkers` adalah satu-satunya otoritas kebenaran data (*Single Source of Truth*).
+   - LocalStorage browser dan Firebase Firestore dilarang mendominasi atau menimpa data TiDB dengan data kotor/usang.
+   - Aplikasi secara otomatis mendeteksi dan membersihkan cache localStorage jika terindikasi menyimpan data bocor.
+
+---
+
+### 7. KLAUSUL INTEGRITAS MUTLAK (INVIOLABILITY CLAUSE)
 
 > **DILARANG MERUBAH LOGIKA DASAR PADA PERMINTAAN FITUR BARU APAPUN:**
 > Setiap penambahan fitur, perubahan tampilan, atau optimasi di masa mendatang **WAJIB** tunduk pada dokumen `LOCKED_RULES.md` ini dan **TIDAK BOLEH** merusak atau mengubah:
@@ -268,5 +308,6 @@ Dokumen ini secara permanen mengunci prinsip efisiensi kuota dan kompresi data u
 > 7. Arsitektur performa kilat `baseGroups` dan eliminasi loading palsu
 > 8. Sistem hak akses role pengguna dan proteksi stranger
 > 9. Arsitektur efisiensi ekstrim (Chunking, Data Pruning, dan Zero-Read Client Filtering)
-> 10. Arsitektur Hybrid Dual-Sync (TiDB Authoritative + Firebase Realtime Broadcast).
+> 10. Arsitektur Hybrid Dual-Sync (TiDB Authoritative + Firebase Realtime Broadcast)
+> 11. Integrasi QC Checker, Packer, & Picker: Tab Rekap Lengkap, aturan wajib kosong jika tanpa nama, dan sanitasi mutlak anti-bocor.
 
