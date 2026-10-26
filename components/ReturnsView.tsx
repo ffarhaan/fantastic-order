@@ -245,11 +245,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     | "monthly"
     | "weekly"
     | "analisis"
-    | "qc2"
     | "open"
     | "reject"
     | "leaderboard"
-    | "retur"
     | "list"
   >("monthly");
   const [allReturns, setAllReturns] = useState<ShipmentReturnRecord[]>([]);
@@ -1333,21 +1331,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <span>Analisis</span>
           </button>
 
-          {/* Tab 5: QC2 Impact */}
-          <button
-            type="button"
-            onClick={() => setActiveTab("qc2")}
-            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === "qc2"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <ShieldAlert className="w-4 h-4 text-teal-500" />
-            <span>QC2 Impact</span>
-          </button>
-
-          {/* Tab 6: Open Cases */}
+          {/* Tab 5: Open Cases */}
           <button
             type="button"
             onClick={() => setActiveTab("open")}
@@ -1366,7 +1350,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             )}
           </button>
 
-          {/* Tab 7: Reject Cases */}
+          {/* Tab 6: Reject Cases */}
           <button
             type="button"
             onClick={() => setActiveTab("reject")}
@@ -1385,7 +1369,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             )}
           </button>
 
-          {/* Tab 8: Personil Leaderboard */}
+          {/* Tab 7: Personil Leaderboard */}
           <button
             type="button"
             onClick={() => {
@@ -1407,21 +1391,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             ) : null}
           </button>
 
-          {/* Tab 9: Pengajuan Retur */}
-          <button
-            type="button"
-            onClick={() => setActiveTab("retur")}
-            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === "retur"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <span className="text-xs">📜</span>
-            <span>Pengajuan Retur</span>
-          </button>
-
-          {/* Tab 10: Data Kasus */}
+          {/* Tab 8: Data Kasus */}
           <button
             type="button"
             onClick={() => setActiveTab("list")}
@@ -1470,11 +1440,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         <WeeklyReportView returns={allReturns.length > 0 ? allReturns : returns} records={records} />
       )}
 
-      {/* ─── TAB: QC2 IMPACT ─── */}
-      {activeTab === "qc2" && (
-        <WeeklyQc2View returns={allReturns.length > 0 ? allReturns : returns} records={records} />
-      )}
-
       {/* ─── TAB: OPEN CASES ─── */}
       {activeTab === "open" && (
         <OpenCasesView
@@ -1491,18 +1456,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         <RejectCasesView returns={allReturns.length > 0 ? allReturns : returns} />
       )}
 
-      {/* ─── TAB: PENGAJUAN RETUR ─── */}
-      {activeTab === "retur" && (
-        <ReturSubmissionView
-          records={records}
-          onRefreshParentReturns={() => {
-            fetchReturns();
-            fetchAllReturns();
-          }}
-        />
-      )}
-
-      {/* Tab 10: Daftar Retur (Data Kasus) */}
+      {/* Tab 8: Daftar Retur (Data Kasus) */}
       {activeTab === "list" && (
         <div className="space-y-4 animate-in fade-in duration-150">
           {/* Top 6 Metric Cards matching Apps Script layout */}
