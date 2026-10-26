@@ -1,6 +1,6 @@
 /**
  * ====================================================================
- * SINKRONISASI OTOMATIS BACKGROUND (0 INTERAKSI / TANPA MENU GSHEET)
+ * SINKRONISASI OTOMATIS REAL-TIME (<1 DETIK SAAT EDIT & TIAP 1 MENIT)
  * SPREADSHEET "REPORT QC 2" (TAB: Rekap Lengkap) <=> FANTASTIC ORDER
  * Mendukung: SO, Checker, Packer, & Picker
  * ====================================================================
@@ -9,7 +9,69 @@
 var WEB_APP_URL = "https://fantastic-order.vercel.app/api/tidb?action=sync_checkers";
 
 /**
- * 1. FUNGSI SINKRONISASI OTOMATIS (Berjalan di latar belakang)
+ * 1. SINKRONISASI INSTAN SAAT ADA EDIT (Kurang dari 1 detik!)
+ * Begitu ada sel yang diketik/diisi nama Checker, Packer, atau Picker,
+ * data baris tersebut langsung dikirim seketika tanpa jeda.
+ */
+function onEditSync(e) {
+  try {
+    if (!e || !e.range) {
+      autoSyncCheckers();
+      return;
+    }
+
+    var sheet = e.range.getSheet();
+    var sheetName = sheet.getName().toLowerCase().trim();
+    if (!sheetName.includes("rekap")) return;
+
+    var startRow = e.range.getRow();
+    var numRows = e.range.getNumRows();
+    if (startRow + numRows - 1 <= 1) return;
+
+    var actualStart = Math.max(2, startRow);
+    var actualNumRows = (startRow + numRows - 1) - actualStart + 1;
+
+    var lastCol = sheet.getLastColumn();
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var colMap = detectColumns(headers);
+    if (colMap.so < 0) return;
+
+    var dataRange = sheet.getRange(actualStart, 1, actualNumRows, lastCol).getValues();
+    var itemsToSend = [];
+
+    for (var r = 0; r < dataRange.length; r++) {
+      var row = dataRange[r];
+      var soVal = String(row[colMap.so] || "").trim();
+      var checkerVal = colMap.checker >= 0 ? String(row[colMap.checker] || "").trim() : "";
+      var packerVal = colMap.packer >= 0 ? String(row[colMap.packer] || "").trim() : "";
+      var pickerVal = colMap.picker >= 0 ? String(row[colMap.picker] || "").trim() : "";
+
+      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal)) {
+        itemsToSend.push({
+          so: soVal,
+          checker: checkerVal,
+          packer: packerVal,
+          picker: pickerVal
+        });
+      }
+    }
+
+    if (itemsToSend.length > 0) {
+      UrlFetchApp.fetch(WEB_APP_URL, {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify({ items: itemsToSend }),
+        muteHttpExceptions: true
+      });
+      Logger.log("⚡ Instant sync on edit: " + itemsToSend.length + " baris terkirim.");
+    }
+  } catch (err) {
+    Logger.log("Error onEditSync: " + err);
+  }
+}
+
+/**
+ * 2. SINKRONISASI BATCH MENYELURUH (Jaring Pengaman Otomatis)
  * Membaca tab Rekap Lengkap dan mengirimkan seluruh SO, Checker, Packer, & Picker
  */
 function autoSyncCheckers() {
@@ -70,7 +132,7 @@ function autoSyncCheckers() {
           muteHttpExceptions: true
         });
       }
-      Logger.log("Berhasil sync " + itemsToSend.length + " baris data (SO, Checker, Packer, Picker).");
+      Logger.log("✅ Berhasil sync batch " + itemsToSend.length + " baris data.");
     }
   } catch (err) {
     Logger.log("Error autoSyncCheckers: " + err);
@@ -98,22 +160,26 @@ function detectColumns(headers) {
 }
 
 /**
- * 2. PASANG JADWAL OTOMATIS TIAP 1 MENIT (Jalankan sekali saja dari tombol Run di Apps Script)
+ * 3. PASANG TRIGGER OTOMATIS (Jalankan sekali saja dari tombol Run di Apps Script)
+ * Memasang onEdit (Instan <1 detik) dan Timer 1 Menit (Jaring Pengaman)
  */
 function setupAutoSyncTrigger() {
   var triggers = ScriptApp.getProjectTriggers();
   for (var i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === "autoSyncCheckers") {
+    var fn = triggers[i].getHandlerFunction();
+    if (fn === "autoSyncCheckers" || fn === "onEditSync") {
       ScriptApp.deleteTrigger(triggers[i]);
     }
   }
-  // Otomatis jalan tiap 1 menit terus menerus tanpa henti
-  ScriptApp.newTrigger("autoSyncCheckers").timeBased().everyMinutes(1).create();
-  // Dan jalan seketika saat ada edit sel
+
+  // 1. Trigger saat edit sel: LANGSUNG jalan seketika (<1 detik) saat ada ketikan/paste baru
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  ScriptApp.newTrigger("autoSyncCheckers").forSpreadsheet(ss).onEdit().create();
-  
+  ScriptApp.newTrigger("onEditSync").forSpreadsheet(ss).onEdit().create();
+
+  // 2. Trigger waktu: Jalan tiap 1 menit sebagai jaring pengaman data formula / sinkronisasi berkala
+  ScriptApp.newTrigger("autoSyncCheckers").timeBased().everyMinutes(1).create();
+
   // Eksekusi sync pertama kali
   autoSyncCheckers();
-  Logger.log("✅ Trigger otomatis aktif setiap 1 menit dan saat edit!");
+  Logger.log("🚀 Sinkronisasi instan aktif! Edit = <1 detik, Background = tiap 1 menit.");
 }
