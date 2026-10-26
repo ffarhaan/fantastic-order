@@ -2114,6 +2114,31 @@ export async function POST(req: Request) {
         });
       }
 
+      // Automatically persist to activity_logs
+      try {
+        const actorName = body.user_name || body.submitted_by || "Form Komplain / Pelanggan";
+        const actorEmail = body.user_email || "";
+        const custName = customer_name || items[0]?.customer_name || "-";
+        const invNo = invoice_no || items[0]?.invoice_no || "-";
+        const summaryDetails = `Input shipment error (${items.length} item) untuk apotek ${custName} (Faktur #${invNo})`;
+
+        await conn.execute(
+          `INSERT INTO activity_logs (user_name, user_email, action_type, module, target_id, details, metadata)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            actorName,
+            actorEmail,
+            "CREATE_RETURN",
+            "SHIPMENT_ERROR",
+            String(invNo || custName),
+            summaryDetails,
+            JSON.stringify({ count: items.length, ids: insertedIds, invoice_no: invNo, customer_name: custName }),
+          ]
+        );
+      } catch (logErr) {
+        console.warn("Failed to write activity_log in create_return:", logErr);
+      }
+
       return Response.json({ success: true, count: items.length, insertedIds });
     }
 
@@ -2228,6 +2253,31 @@ export async function POST(req: Request) {
         rootCause: root_cause ?? existingRow?.root_cause,
       });
 
+      // Automatically persist to activity_logs
+      try {
+        const actorName = body.user_name || "Admin";
+        const actorEmail = body.user_email || "";
+        const isResolved = status === "Resolved";
+        const actType = isResolved ? "RESOLVE_RETURN" : "UPDATE_RETURN";
+        const actDetails = `${isResolved ? "Menyelesaikan (Resolve)" : "Mengubah"} komplain #${id} (Faktur #${invoice_no || existingRow?.invoice_no || "-"})`;
+
+        await conn.execute(
+          `INSERT INTO activity_logs (user_name, user_email, action_type, module, target_id, details, metadata)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            actorName,
+            actorEmail,
+            actType,
+            "SHIPMENT_ERROR",
+            String(id),
+            actDetails,
+            JSON.stringify({ id, invoice_no: invoice_no || existingRow?.invoice_no, status, action: returnAction }),
+          ]
+        );
+      } catch (logErr) {
+        console.warn("Failed to write activity_log in update_return:", logErr);
+      }
+
       return Response.json({ success: true });
     }
 
@@ -2247,6 +2297,27 @@ export async function POST(req: Request) {
       } catch (e) {}
 
       await conn.execute("DELETE FROM shipment_returns WHERE id = ?", [id]);
+
+      // Automatically persist to activity_logs
+      try {
+        const actorName = body?.user_name || "Admin";
+        const actorEmail = body?.user_email || "";
+        await conn.execute(
+          `INSERT INTO activity_logs (user_name, user_email, action_type, module, target_id, details, metadata)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            actorName,
+            actorEmail,
+            "DELETE_RETURN",
+            "SHIPMENT_ERROR",
+            String(id),
+            `Menghapus komplain #${id} (Faktur #${targetInvoice || "-"})`,
+            JSON.stringify({ id, invoice_no: targetInvoice, product: targetProduct }),
+          ]
+        );
+      } catch (logErr) {
+        console.warn("Failed to write activity_log in delete_return:", logErr);
+      }
 
       if (targetInvoice) {
         forwardToGSheetWebhook(conn, {

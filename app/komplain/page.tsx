@@ -519,6 +519,8 @@ ${photoStatus}
       root_cause: "", // Kosong: diisi oleh tim internal
       photo_url: photoBase64 || null,
       products: processedProducts,
+      user_name: headerData.customer_name.trim() ? `${headerData.customer_name.trim()} (Form Komplain Publik)` : "Form Komplain Publik",
+      submitted_by: headerData.customer_name.trim() || "Form Komplain Publik",
     };
 
     setIsSubmitting(true);

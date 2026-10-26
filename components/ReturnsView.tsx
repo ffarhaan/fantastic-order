@@ -650,7 +650,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       const res = await fetch(`/api/tidb?action=delete_return&id=${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({
+          id,
+          user_name: currentUser?.name || "Admin",
+          user_email: currentUser?.email || "",
+        }),
       });
       const data = await res.json().catch(() => ({ success: false, error: "Gagal membaca respon server" }));
 
@@ -738,6 +742,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         id: selectedReturn.id,
         ...editForm,
         resolved_date: resolvedDate,
+        user_name: currentUser?.name || "Admin",
+        user_email: currentUser?.email || "",
       };
 
       // 1. Update TiDB Cloud Database
@@ -803,7 +809,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       const res = await fetch("/api/tidb?action=create_return", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newForm),
+        body: JSON.stringify({
+          ...newForm,
+          user_name: currentUser?.name || "Admin",
+          user_email: currentUser?.email || "",
+        }),
       });
       const data = await res.json();
 
