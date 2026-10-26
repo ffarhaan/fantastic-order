@@ -10,6 +10,9 @@ import {
   subscribeToUserProfiles,
   isSuperAdminUser,
   StaffAccountProfile,
+  StaffPermissions,
+  SUPER_ADMIN_PERMISSIONS,
+  DEFAULT_STAFF_PERMISSIONS,
 } from "@/lib/firestoreService";
 import Link from "next/link";
 import {
@@ -40,6 +43,7 @@ export interface AppUser {
   role: "admin" | "readonly";
   systemRole?: "super_admin" | "warehouse_manager" | "staff" | "viewer";
   warehouseIds?: string;
+  permissions?: StaffPermissions;
 }
 
 interface LoginModalProps {
@@ -249,6 +253,7 @@ export default function LoginModal({
           onLogin({
             name: cleanFull || cleanUser,
             role: "admin",
+            permissions: SUPER_ADMIN_PERMISSIONS,
           });
         }, 800);
         return;
@@ -366,6 +371,7 @@ export default function LoginModal({
         onLogin({
           name: regFullName.trim() || regUsername.trim(),
           role: "admin",
+          permissions: DEFAULT_STAFF_PERMISSIONS,
         });
       }, 1000);
     } catch (err) {

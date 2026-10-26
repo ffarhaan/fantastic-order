@@ -1482,11 +1482,36 @@ export async function changeUserPassword(
 
 const USER_PROFILES_DOC = "user_profiles";
 
+export interface StaffPermissions {
+  can_edit_faktur: boolean;         // Mengubah status cetak & kelola Daftar Faktur
+  can_edit_shipment_error: boolean; // Mengubah, menambah, dan menyelesaikan Shipment Error
+  can_edit_customers: boolean;      // Mengubah Master Customer & berkas legalitas
+  can_edit_products: boolean;       // Mengubah Master Produk & Apotek
+  can_delete_data: boolean;         // Menghapus data tiket komplain / pelanggan
+}
+
+export const DEFAULT_STAFF_PERMISSIONS: StaffPermissions = {
+  can_edit_faktur: true,
+  can_edit_shipment_error: false,
+  can_edit_customers: false,
+  can_edit_products: false,
+  can_delete_data: false,
+};
+
+export const SUPER_ADMIN_PERMISSIONS: StaffPermissions = {
+  can_edit_faktur: true,
+  can_edit_shipment_error: true,
+  can_edit_customers: true,
+  can_edit_products: true,
+  can_delete_data: true,
+};
+
 export interface StaffAccountProfile {
   username: string;
   displayName: string;
   email: string;
   role: "admin" | "readonly";
+  permissions?: StaffPermissions;
   verified: boolean;
   approvalStatus: "pending" | "approved" | "rejected";
   updatedAt: string;
@@ -1536,6 +1561,19 @@ export function subscribeToUserProfiles(
             : "approved";
         const updatedAt = String(val.updatedAt || "");
 
+        const isSuper = isSuperAdminUser(username) || isSuperAdminUser(email);
+        const perms: StaffPermissions = isSuper
+          ? SUPER_ADMIN_PERMISSIONS
+          : val.permissions
+          ? {
+              can_edit_faktur: Boolean(val.permissions.can_edit_faktur ?? true),
+              can_edit_shipment_error: Boolean(val.permissions.can_edit_shipment_error ?? false),
+              can_edit_customers: Boolean(val.permissions.can_edit_customers ?? false),
+              can_edit_products: Boolean(val.permissions.can_edit_products ?? false),
+              can_delete_data: Boolean(val.permissions.can_delete_data ?? false),
+            }
+          : { ...DEFAULT_STAFF_PERMISSIONS };
+
         const existing = byUsername.get(username);
         if (!existing || updatedAt >= existing.updatedAt) {
           byUsername.set(username, {
@@ -1543,6 +1581,7 @@ export function subscribeToUserProfiles(
             displayName,
             email,
             role,
+            permissions: perms,
             verified: Boolean(val.verified),
             approvalStatus,
             updatedAt,
@@ -1643,6 +1682,50 @@ export async function updateStaffApprovalStatus(
 }
 
 /**
+ * Update staff permissions (Only by Farhan / Super Admin)
+ */
+export async function updateStaffPermissions(
+  username: string,
+  permissions: StaffPermissions
+): Promise<{ success: boolean; message: string }> {
+  const cleanU = String(username || "").trim().toLowerCase();
+  const nowIso = new Date().toISOString();
+  try {
+    const profRef = doc(db, APP_DATA_COLLECTION, USER_PROFILES_DOC);
+    const snap = await getDoc(profRef);
+    const data = (snap.exists() ? snap.data() : {}) as Record<string, any>;
+
+    const targetKey = Object.keys(data).find(
+      (k) => k.toLowerCase() === cleanU || String(data[k]?.displayName || "").toLowerCase() === cleanU
+    );
+
+    if (!targetKey || !data[targetKey]) {
+      return { success: false, message: `Akun ${username} tidak ditemukan.` };
+    }
+
+    const currentProfile = data[targetKey];
+    const updated = {
+      ...currentProfile,
+      permissions,
+      updatedAt: nowIso,
+    };
+
+    const payload: Record<string, any> = {
+      [targetKey]: updated,
+    };
+    if (currentProfile.displayName && currentProfile.displayName !== targetKey) {
+      payload[currentProfile.displayName] = updated;
+    }
+
+    await setDoc(profRef, payload, { merge: true });
+    return { success: true, message: `Hak akses akun ${currentProfile.displayName || username} berhasil diperbarui!` };
+  } catch (err: any) {
+    console.error("Error updating permissions:", err);
+    return { success: false, message: err?.message || "Gagal memperbarui hak akses akun." };
+  }
+}
+
+/**
  * Mark staff account as OTP-verified after they input the 6-digit OTP sent upon Admin ACC
  */
 export async function markAccountOtpVerified(
@@ -1695,7 +1778,7 @@ export async function authenticateUser(
   inputPass: string
 ): Promise<{
   success: boolean;
-  user?: { name: string; role: "admin" | "readonly" };
+  user?: { name: string; email?: string; role: "admin" | "readonly"; permissions?: StaffPermissions };
   requiresOtp?: boolean;
   pendingProfile?: { username: string; displayName: string; email: string };
   message?: string;
@@ -1797,11 +1880,18 @@ export async function authenticateUser(
       }
     }
 
+    const isSuper = isSuperAdminUser(matchedUsername) || isSuperAdminUser(displayName);
+    const permissions: StaffPermissions = isSuper
+      ? SUPER_ADMIN_PERMISSIONS
+      : matchedProfile?.permissions || { ...DEFAULT_STAFF_PERMISSIONS };
+
     return {
       success: true,
       user: {
         name: displayName,
+        email: matchedProfile?.email || "",
         role,
+        permissions,
       },
     };
   } catch (err) {

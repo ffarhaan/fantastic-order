@@ -1,5 +1,6 @@
 import { getTiDBClient } from "@/lib/tidb";
 import zlib from "zlib";
+import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -12,18 +13,37 @@ function compressedJsonResponse(
   const jsonStr = JSON.stringify(data);
   const acceptEncoding = req.headers.get("accept-encoding") || "";
   const url = new URL(req.url);
-  const isNoCache = req.headers.get("cache-control") === "no-cache" || url.searchParams.get("fresh") === "true";
+  const isNoCache =
+    req.method !== "GET" ||
+    req.headers.get("cache-control") === "no-cache" ||
+    url.searchParams.get("fresh") === "true";
 
-  // Always serve live, real-time data with zero CDN staleness
-  const defaultCacheControl = "no-store, no-cache, must-revalidate";
+  const etag = `"${crypto.createHash("md5").update(jsonStr).digest("hex")}"`;
+
+  const defaultCacheControl = isNoCache
+    ? "no-store, no-cache, must-revalidate"
+    : "public, max-age=0, must-revalidate";
+
+  const defaultCdnCache = isNoCache
+    ? "no-store"
+    : "public, s-maxage=15, stale-while-revalidate=60";
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "Cache-Control": customHeaders["Cache-Control"] || defaultCacheControl,
-    "CDN-Cache-Control": "no-store",
-    "Vercel-CDN-Cache-Control": "no-store",
+    "CDN-Cache-Control": customHeaders["CDN-Cache-Control"] || defaultCdnCache,
+    "Vercel-CDN-Cache-Control": customHeaders["Vercel-CDN-Cache-Control"] || defaultCdnCache,
+    "ETag": etag,
     ...customHeaders,
   };
+
+  // If client/CDN sent If-None-Match and it matches our payload hash, return 304 with 0 bytes body!
+  if (!isNoCache && req.headers.get("if-none-match") === etag) {
+    return new Response(null, {
+      status: 304,
+      headers,
+    });
+  }
 
   if (acceptEncoding.includes("gzip")) {
     const compressed = zlib.gzipSync(Buffer.from(jsonStr), { level: 6 });
@@ -149,6 +169,53 @@ export async function GET(req: Request) {
     const conn = getTiDBClient();
 
     // ==========================================
+    // ACTIVITY LOGS AUDIT TRAIL (TiDB Cloud)
+    // ==========================================
+    if (action === "activity_logs") {
+      const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "50", 10)));
+      const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10));
+      const mod = (searchParams.get("module") || "").trim();
+      const user = (searchParams.get("user") || "").trim();
+      const q = (searchParams.get("search") || "").trim();
+
+      let whereClause = "WHERE 1=1";
+      const params: (string | number)[] = [];
+
+      if (mod && mod !== "ALL") {
+        whereClause += " AND module = ?";
+        params.push(mod);
+      }
+      if (user && user !== "ALL") {
+        whereClause += " AND user_name = ?";
+        params.push(user);
+      }
+      if (q) {
+        whereClause += " AND (details LIKE ? OR user_name LIKE ? OR target_id LIKE ?)";
+        params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+      }
+
+      const countRes = (await conn.execute(`SELECT COUNT(*) as total FROM activity_logs ${whereClause}`, params)) as any[];
+      const total = Number(countRes[0]?.total || 0);
+
+      const rows = await conn.execute(
+        `SELECT id, user_name, user_email, action_type, module, target_id, details, metadata, created_at 
+         FROM activity_logs 
+         ${whereClause} 
+         ORDER BY id DESC 
+         LIMIT ? OFFSET ?`,
+        [...params, limit, offset]
+      );
+
+      return compressedJsonResponse(req, {
+        success: true,
+        total,
+        data: rows,
+        limit,
+        offset,
+      });
+    }
+
+    // ==========================================
     // DATABASE TRANSPARENCY & STATS (TiDB Cloud)
     // ==========================================
     if (action === "db_stats") {
@@ -250,7 +317,10 @@ export async function GET(req: Request) {
       return compressedJsonResponse(
         req, 
         { success: true, data: map },
-        { "Cache-Control": "no-store, no-cache, must-revalidate" }
+        {
+          "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        }
       );
     }
 
@@ -546,7 +616,14 @@ export async function GET(req: Request) {
           limit,
           offset,
         },
-        { "Cache-Control": "no-store, no-cache, must-revalidate" }
+        {
+          "CDN-Cache-Control": limit >= 1000
+            ? "public, s-maxage=30, stale-while-revalidate=120"
+            : "public, s-maxage=15, stale-while-revalidate=60",
+          "Vercel-CDN-Cache-Control": limit >= 1000
+            ? "public, s-maxage=30, stale-while-revalidate=120"
+            : "public, s-maxage=15, stale-while-revalidate=60",
+        }
       );
     }
 
@@ -628,7 +705,10 @@ export async function GET(req: Request) {
       return compressedJsonResponse(
         req,
         { success: true, count: allKeys.length, keys: allKeys },
-        { "Cache-Control": "no-store, no-cache, must-revalidate" }
+        {
+          "CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        }
       );
     }
 
@@ -1214,6 +1294,29 @@ export async function POST(req: Request) {
       body = {};
     }
     const action = searchParams.get("action") || body?.action;
+
+    // 0. Log Activity (Audit Trail)
+    if (action === "log_activity") {
+      const userName = String(body?.user_name || body?.userName || "User").trim();
+      const userEmail = String(body?.user_email || body?.userEmail || "").trim();
+      const actionType = String(body?.action_type || body?.actionType || "GENERAL").trim();
+      const moduleName = String(body?.module || "SYSTEM").trim();
+      const targetId = String(body?.target_id || body?.targetId || "").trim();
+      const details = String(body?.details || "").trim();
+      const metadata = body?.metadata ? JSON.stringify(body.metadata) : null;
+
+      if (!details) {
+        return Response.json({ success: false, error: "Missing log details" }, { status: 400 });
+      }
+
+      const res = await conn.execute(
+        `INSERT INTO activity_logs (user_name, user_email, action_type, module, target_id, details, metadata)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [userName, userEmail, actionType, moduleName, targetId, details, metadata]
+      );
+
+      return Response.json({ success: true, logId: (res as any)?.insertId });
+    }
 
     // 0. Sync checkers from Google Sheets
     if (action === "sync_checkers") {

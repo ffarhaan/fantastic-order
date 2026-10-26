@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { CustomerRecord, ShipmentReturnRecord } from "@/lib/types";
-import { broadcastRealtimeSignal, subscribeToRealtimeSignal } from "@/lib/firestoreService";
+import { broadcastRealtimeSignal, subscribeToRealtimeSignal, isSuperAdminUser } from "@/lib/firestoreService";
+import { AppUser } from "@/components/LoginModal";
+import { recordActivityLog } from "@/lib/activityLogger";
 import {
   Building2,
   Search,
@@ -153,9 +155,14 @@ export function parseToDateInputValue(val: any): string {
 
 interface CustomersViewProps {
   onSelectCustomerForFilter?: (name: string) => void;
+  currentUser?: AppUser | null;
 }
 
-export default function CustomersView({ onSelectCustomerForFilter }: CustomersViewProps) {
+export default function CustomersView({ onSelectCustomerForFilter, currentUser }: CustomersViewProps) {
+  const isSuper = isSuperAdminUser(currentUser?.name) || isSuperAdminUser(currentUser?.email);
+  const canEditCustomers = isSuper || Boolean(currentUser?.permissions?.can_edit_customers);
+  const canDeleteCustomers = isSuper || Boolean(currentUser?.permissions?.can_delete_data);
+
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -391,6 +398,10 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
 
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEditCustomers) {
+      alert("Akses Ditolak: Akun Anda tidak memiliki hak akses mengubah Master Pelanggan.");
+      return;
+    }
     if (!editForm || !editForm.id) return;
     if (!editForm.name || !editForm.name.trim()) {
       alert("Nama Customer / Apotek wajib diisi.");
@@ -419,6 +430,13 @@ export default function CustomersView({ onSelectCustomerForFilter }: CustomersVi
         setToastMsg(`✓ Data customer "${editForm.name}" berhasil diperbarui.`);
         setTimeout(() => setToastMsg(null), 3500);
         broadcastRealtimeSignal("customers");
+        await recordActivityLog({
+          action_type: "UPDATE_CUSTOMER",
+          module: "CUSTOMERS",
+          target_id: String(editForm.id || editForm.name),
+          details: `Mengubah data pelanggan: ${editForm.name}`,
+          metadata: { id: editForm.id, name: editForm.name },
+        });
       } else {
         alert(`Gagal menyimpan perubahan: ${data.error || "Terjadi kesalahan pada database"}`);
       }

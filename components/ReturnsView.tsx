@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { ShipmentReturnRecord, FakturRecord } from "@/lib/types";
-import { broadcastRealtimeSignal, subscribeToRealtimeSignal } from "@/lib/firestoreService";
+import { broadcastRealtimeSignal, subscribeToRealtimeSignal, isSuperAdminUser } from "@/lib/firestoreService";
+import { AppUser } from "@/components/LoginModal";
+import { recordActivityLog } from "@/lib/activityLogger";
 import {
   AlertCircle,
   CheckCircle2,
@@ -121,10 +123,15 @@ interface ReturnsViewProps {
   onSelectCustomer?: (customerName: string) => void;
   onSelectInvoice?: (invoiceNo: string) => void;
   records?: FakturRecord[];
+  currentUser?: AppUser | null;
 }
 
-export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records }: ReturnsViewProps) {
+export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records, currentUser }: ReturnsViewProps) {
   const [returns, setReturns] = useState<ShipmentReturnRecord[]>([]);
+
+  const isSuper = isSuperAdminUser(currentUser?.name) || isSuperAdminUser(currentUser?.email);
+  const canEditReturns = isSuper || Boolean(currentUser?.permissions?.can_edit_shipment_error);
+  const canDeleteReturns = isSuper || Boolean(currentUser?.permissions?.can_delete_data);
 
   // Build map of invoice_no -> orderDate from daftar Faktur
   const invoiceDateMap = useMemo(() => {
@@ -281,9 +288,12 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   }, [allReturns, returns]);
 
   // Fetch all returns for analytic tabs
-  const fetchAllReturns = useCallback(async () => {
+  const fetchAllReturns = useCallback(async (forceFresh = false) => {
     try {
-      const res = await fetch("/api/tidb?action=returns&limit=5000");
+      const url = forceFresh
+        ? "/api/tidb?action=returns&limit=5000&fresh=true"
+        : "/api/tidb?action=returns&limit=5000";
+      const res = await fetch(url);
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setAllReturns(json.data);
@@ -565,8 +575,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   }, [search]);
 
   const limit = 50;
+  const lastFocusFetchRef = useRef<number>(Date.now());
 
-  const fetchReturns = useCallback(async (silent = false) => {
+  const fetchReturns = useCallback(async (silent = false, forceFresh = false) => {
     if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -574,6 +585,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         limit: String(limit),
         offset: String(page * limit),
       });
+      if (forceFresh) params.set("fresh", "true");
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       if (pbfFilter !== "ALL") params.set("pbf", pbfFilter);
@@ -600,15 +612,22 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     fetchReturns();
     fetchAllReturns();
     const unsubRealtime = subscribeToRealtimeSignal("returns", () => {
-      fetchReturns(true);
-      fetchAllReturns();
+      fetchReturns(true, true);
+      fetchAllReturns(true);
       fetchPersonnelStats();
     });
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       fetchReturns(true);
-    }, 30000);
-    const onFocus = () => fetchReturns(true);
+    }, 45000);
+    const onFocus = () => {
+      const now = Date.now();
+      // Throttle focus refetch to at most once per 60 seconds to save Origin bandwidth
+      if (now - lastFocusFetchRef.current > 60000) {
+        lastFocusFetchRef.current = now;
+        fetchReturns(true);
+      }
+    };
     window.addEventListener("focus", onFocus);
     return () => {
       unsubRealtime();
@@ -618,6 +637,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   }, [fetchReturns, fetchAllReturns, fetchPersonnelStats]);
 
   const handleDeleteReturn = async (id: number, invoiceNo: string) => {
+    if (!canDeleteReturns) {
+      alert("Akses Ditolak: Akun Anda tidak memiliki hak akses untuk menghapus data. Hubungi Farhan (Super Admin).");
+      return;
+    }
     if (!confirm(`Hapus tiket komplain untuk faktur "${invoiceNo || id}"?\n\nData akan dihapus permanen dari sistem Fantastic Order.`)) {
       return;
     }
@@ -636,8 +659,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         if (selectedReturn?.id === id) {
           setSelectedReturn(null);
         }
-        fetchReturns(true);
+        fetchReturns(true, true);
+        fetchAllReturns(true);
         broadcastRealtimeSignal("returns");
+        await recordActivityLog({
+          action_type: "DELETE_RETURN",
+          module: "SHIPMENT_ERROR",
+          target_id: String(id),
+          details: `Menghapus tiket komplain #${id} untuk faktur ${invoiceNo || "-"}`,
+          metadata: { id, invoice_no: invoiceNo },
+        });
       } else {
         alert("Gagal menghapus data: " + (data.error || "Unknown error"));
       }
@@ -649,6 +680,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   };
 
   const handleUpdateStatus = async (id: number, newStatus: string) => {
+    if (!canEditReturns) {
+      alert("Akses Ditolak: Akun Anda tidak memiliki hak akses mengubah Shipment Error.");
+      return;
+    }
     setIsUpdating(true);
     try {
       const res = await fetch("/api/tidb?action=update_return", {
@@ -668,8 +703,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         if (selectedReturn?.id === id) {
           setSelectedReturn((prev) => (prev ? { ...prev, status: newStatus } : null));
         }
-        fetchReturns();
+        fetchReturns(true, true);
+        fetchAllReturns(true);
         broadcastRealtimeSignal("returns");
+        await recordActivityLog({
+          action_type: newStatus === "Resolved" ? "RESOLVE_RETURN" : "UPDATE_RETURN",
+          module: "SHIPMENT_ERROR",
+          target_id: String(id),
+          details: `Mengubah status komplain #${id} menjadi ${newStatus}`,
+          metadata: { id, status: newStatus },
+        });
       }
     } catch (err) {
       alert("Gagal memperbarui status komplain.");
@@ -680,6 +723,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
   const handleSaveEdit = async () => {
     if (!selectedReturn) return;
+    if (!canEditReturns) {
+      alert("Akses Ditolak: Akun Anda tidak memiliki hak akses mengubah Shipment Error.");
+      return;
+    }
     setIsUpdating(true);
     try {
       const isResolved = editForm.status === "Resolved";
@@ -714,8 +761,23 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           )
         );
         setSelectedReturn(null);
-        fetchReturns();
+        fetchReturns(true, true);
+        fetchAllReturns(true);
         broadcastRealtimeSignal("returns");
+        await recordActivityLog({
+          action_type: isResolved ? "RESOLVE_RETURN" : "UPDATE_RETURN",
+          module: "SHIPMENT_ERROR",
+          target_id: String(selectedReturn.id),
+          details: `${isResolved ? "Menyelesaikan (Resolve)" : "Mengubah"} komplain faktur #${selectedReturn.invoice_no || selectedReturn.id} (${selectedReturn.customer_name || ""})`,
+          metadata: {
+            id: selectedReturn.id,
+            invoice_no: selectedReturn.invoice_no,
+            customer_name: selectedReturn.customer_name,
+            status: editForm.status,
+            action: editForm.action,
+            note: editForm.note,
+          },
+        });
       } else {
         alert("Gagal update data: " + (data.error || "Unknown error"));
       }
@@ -728,6 +790,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
   const handleCreateReturn = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEditReturns) {
+      alert("Akses Ditolak: Akun Anda tidak memiliki hak akses untuk menambah komplain baru.");
+      return;
+    }
     if (!newForm.customer_name || !newForm.product_name) {
       alert("Mohon isi Nama Apotek dan Nama Produk!");
       return;
@@ -762,8 +828,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           root_cause: "",
           note: "",
         });
-        fetchReturns();
+        fetchReturns(false, true);
+        fetchAllReturns(true);
         broadcastRealtimeSignal("returns");
+        await recordActivityLog({
+          action_type: "CREATE_RETURN",
+          module: "SHIPMENT_ERROR",
+          target_id: String(newForm.invoice_no || newForm.customer_name),
+          details: `Menambahkan komplain baru untuk apotek ${newForm.customer_name} (faktur #${newForm.invoice_no || "-"})`,
+          metadata: { ...newForm },
+        });
       } else {
         alert("Gagal menambahkan komplain: " + data.error);
       }
@@ -892,6 +966,12 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* Form Edit Ringkas & Lengkap (3 Bagian Rapi) */}
       <div className="space-y-3 text-xs">
+        {!canEditReturns && (
+          <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-500 text-xs font-semibold flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>Mode Hanya Lihat: Akun Anda tidak memiliki hak akses mengubah modul Shipment Error. Hubungi Farhan (Super Admin) untuk meminta akses.</span>
+          </div>
+        )}
         {/* Bagian 1: Data Faktur & Merchant */}
         <div className="bg-zinc-50 dark:bg-slate-950/80 p-2.5 sm:p-3 rounded-lg border border-zinc-200 dark:border-slate-800 space-y-2">
           <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-400 block">
@@ -1194,16 +1274,18 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
         <div className="flex items-center gap-2">
           {/* Delete Return Button */}
-          <button
-            type="button"
-            onClick={() => handleDeleteReturn(r.id, r.invoice_no)}
-            disabled={isUpdating}
-            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 rounded-xl text-xs font-bold border border-red-300 dark:border-red-800 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            title="Hapus komplain ini dari database"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Hapus</span>
-          </button>
+          {canDeleteReturns && (
+            <button
+              type="button"
+              onClick={() => handleDeleteReturn(r.id, r.invoice_no)}
+              disabled={isUpdating}
+              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 rounded-xl text-xs font-bold border border-red-300 dark:border-red-800 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Hapus komplain ini dari database"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Hapus</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -1213,19 +1295,25 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             Tutup
           </button>
 
-          <button
-            type="button"
-            onClick={handleSaveEdit}
-            disabled={isUpdating}
-            className="px-4 py-1.5 bg-black hover:bg-zinc-800 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50"
-          >
-            {isUpdating ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <CheckCircle2 className="w-3.5 h-3.5" />
-            )}
-            <span>{isUpdating ? "Menyimpan..." : "Simpan Perubahan"}</span>
-          </button>
+          {canEditReturns ? (
+            <button
+              type="button"
+              onClick={handleSaveEdit}
+              disabled={isUpdating}
+              className="px-4 py-1.5 bg-black hover:bg-zinc-800 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50 cursor-pointer"
+            >
+              {isUpdating ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-3.5 h-3.5" />
+              )}
+              <span>{isUpdating ? "Menyimpan..." : "Simpan Perubahan"}</span>
+            </button>
+          ) : (
+            <span className="px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-500 text-xs font-bold">
+              🔒 Read-Only
+            </span>
+          )}
 
           {onSelectCustomer && (
             <button
@@ -1413,8 +1501,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           <button
             type="button"
             onClick={() => {
-              fetchReturns();
-              fetchAllReturns();
+              fetchReturns(false, true);
+              fetchAllReturns(true);
               fetchPersonnelStats();
             }}
             className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-zinc-200 dark:border-slate-800 text-zinc-600 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-xs"
@@ -1445,8 +1533,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         <OpenCasesView
           returns={allReturns.length > 0 ? allReturns : returns}
           onRefreshParentReturns={() => {
-            fetchReturns();
-            fetchAllReturns();
+            fetchReturns(true, true);
+            fetchAllReturns(true);
           }}
         />
       )}
@@ -1860,7 +1948,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
           <button
             type="button"
-            onClick={() => fetchReturns()}
+            onClick={() => {
+              fetchReturns(false, true);
+              fetchAllReturns(true);
+            }}
             disabled={loading}
             className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition-all active:scale-95 shadow-sm"
             title="Refresh Data"

@@ -44,6 +44,8 @@ import ExportExcelModal from "@/components/ExportExcelModal";
 import ReturnsView from "@/components/ReturnsView";
 import CustomersView from "@/components/CustomersView";
 import DatabaseStatsModal from "@/components/DatabaseStatsModal";
+import ActivityLogModal from "@/components/ActivityLogModal";
+import { recordActivityLog } from "@/lib/activityLogger";
 import {
   LayoutDashboard,
   ReceiptText,
@@ -431,6 +433,7 @@ export default function Home() {
   const [allUserProfiles, setAllUserProfiles] = useState<StaffAccountProfile[]>([]);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [showActivityLogModal, setShowActivityLogModal] = useState(false);
 
   const onlineUsers = useMemo(() => {
     if (allUserProfiles.length === 0) return rawOnlineUsers;
@@ -472,6 +475,16 @@ export default function Home() {
             }
           } catch {}
           setShowLoginModal(true);
+        } else {
+          // Keep permissions in sync in real-time
+          const matchingProfile = list.find(
+            (p) =>
+              p.username.trim().toLowerCase() === cleanActive ||
+              p.displayName.trim().toLowerCase() === cleanActive
+          );
+          if (matchingProfile && matchingProfile.permissions) {
+            setCurrentUser((prev) => (prev ? { ...prev, permissions: matchingProfile.permissions } : prev));
+          }
         }
       }
     });
@@ -3865,9 +3878,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             }} 
             onSelectCustomer={(c) => { setSearch(c); setMainView("workspace"); }} 
             records={records}
+            currentUser={currentUser}
           />
         ) : mainView === "customers" ? (
-          <CustomersView onSelectCustomerForFilter={(c) => { setSearch(c); setMainView("workspace"); }} />
+          <CustomersView 
+            onSelectCustomerForFilter={(c) => { setSearch(c); setMainView("workspace"); }} 
+            currentUser={currentUser}
+          />
         ) : mainView === "dashboard" ? (
           <div className="space-y-3 animate-in fade-in duration-200">
             {/* PRATINJAU DATA TERPILIH HERO BANNER (From user's image) */}
