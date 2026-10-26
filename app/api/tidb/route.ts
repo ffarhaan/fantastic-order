@@ -448,6 +448,14 @@ export async function GET(req: Request) {
         whereClause += " AND (month = ? OR report_date LIKE ? OR invoice_date LIKE ?)";
         params.push(mNum, `%-${mStr}-%`, `%-${mStr}-%`);
       }
+      const weekParam = (searchParams.get("week") || "").trim();
+      if (weekParam && weekParam !== "ALL") {
+        const wNum = Number(weekParam.replace(/[^0-9]/g, ""));
+        if (!isNaN(wNum) && wNum > 0) {
+          whereClause += " AND week = ?";
+          params.push(wNum);
+        }
+      }
 
       const countSql = `SELECT COUNT(*) as total FROM shipment_returns ${whereClause}`;
       const [countResult] = (await conn.execute(countSql, params)) as Array<{ total: number }>;
@@ -467,7 +475,7 @@ export async function GET(req: Request) {
           WHERE no_faktur != '' AND no_faktur IS NOT NULL
           GROUP BY no_faktur
         ) fa ON sr.invoice_no = fa.no_faktur
-        ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|person|batch_no|root_cause|note|status|pbf|category|month|report_date|invoice_date)\b/g, 'sr.$1')}
+        ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|person|batch_no|root_cause|note|status|pbf|category|month|week|report_date|invoice_date)\b/g, 'sr.$1')}
         ORDER BY CASE WHEN sr.report_date IS NOT NULL AND sr.report_date != '' THEN sr.report_date ELSE '1970-01-01' END DESC, sr.id DESC 
         LIMIT ? OFFSET ?
       `;
@@ -743,14 +751,23 @@ export async function GET(req: Request) {
     // ==========================================
     if (action === "personnel_stats") {
       const monthParam = (searchParams.get("month") || "").trim();
-      let monthCondition = "";
+      const weekParam = (searchParams.get("week") || "").trim();
+      let filterCondition = "";
       const statsParams: (string | number)[] = [];
 
       if (monthParam && monthParam !== "ALL") {
         const mNum = Number(monthParam);
         const mStr = String(mNum).padStart(2, '0');
-        monthCondition = " AND (month = ? OR report_date LIKE ? OR invoice_date LIKE ?)";
+        filterCondition += " AND (month = ? OR report_date LIKE ? OR invoice_date LIKE ?)";
         statsParams.push(mNum, `%-${mStr}-%`, `%-${mStr}-%`);
+      }
+
+      if (weekParam && weekParam !== "ALL") {
+        const wNum = Number(weekParam.replace(/[^0-9]/g, ""));
+        if (!isNaN(wNum) && wNum > 0) {
+          filterCondition += " AND week = ?";
+          statsParams.push(wNum);
+        }
       }
 
       const rawReturns = (await conn.execute(`
@@ -759,7 +776,7 @@ export async function GET(req: Request) {
         WHERE person != '' 
           AND person IS NOT NULL 
           AND UPPER(TRIM(person)) NOT IN ('REJECT', '-', '#N/A', 'ADMIN', 'NONE', 'NULL')
-          ${monthCondition}
+          ${filterCondition}
       `, statsParams)) as any[];
 
       const personMap = new Map<string, {
@@ -830,7 +847,7 @@ export async function GET(req: Request) {
           COUNT(*) as total
         FROM shipment_returns
         WHERE root_cause != '' AND root_cause IS NOT NULL AND UPPER(TRIM(root_cause)) NOT IN ('-', '#N/A', 'NONE', 'NULL')
-          ${monthCondition}
+          ${filterCondition}
         GROUP BY root_cause
         ORDER BY total DESC
         LIMIT 20;
@@ -842,7 +859,7 @@ export async function GET(req: Request) {
           COUNT(*) as total
         FROM shipment_returns
         WHERE reason != '' AND reason IS NOT NULL AND UPPER(TRIM(reason)) NOT IN ('-', '#N/A', 'NONE', 'NULL')
-          ${monthCondition}
+          ${filterCondition}
         GROUP BY reason
         ORDER BY total DESC
         LIMIT 20;
@@ -856,7 +873,7 @@ export async function GET(req: Request) {
           SUM(CASE WHEN status NOT LIKE '%Resolved%' THEN 1 ELSE 0 END) as pending
         FROM shipment_returns
         WHERE pbf IN ('MBI', 'MAI')
-          ${monthCondition}
+          ${filterCondition}
         GROUP BY pbf;
       `, statsParams)) as any[];
 
@@ -867,6 +884,7 @@ export async function GET(req: Request) {
         reasons,
         pbfComparison,
         selectedMonth: monthParam || "ALL",
+        selectedWeek: weekParam || "ALL",
       });
     }
 

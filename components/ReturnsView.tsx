@@ -135,6 +135,22 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [pbfFilter, setPbfFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [monthFilter, setMonthFilter] = useState("ALL");
+  const [weekFilter, setWeekFilter] = useState("ALL");
+
+  const currentWeekNumber = useMemo(() => {
+    const now = new Date();
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+    return Math.max(1, Math.floor((now.getTime() - startOfYear.getTime()) / 604800000) + 1);
+  }, []);
+
+  const availableWeeks = useMemo(() => {
+    const maxW = Math.max(43, currentWeekNumber);
+    const list: number[] = [];
+    for (let w = maxW; w >= 1; w--) {
+      list.push(w);
+    }
+    return list;
+  }, [currentWeekNumber]);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState({ totalAll: 0, totalResolved: 0, totalPending: 0 });
@@ -354,13 +370,13 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   };
 
-  const fetchPersonnelStats = useCallback(async (selectedMonth = monthFilter) => {
+  const fetchPersonnelStats = useCallback(async (selectedMonth = monthFilter, selectedWeek = weekFilter) => {
     setLoadingStats(true);
     try {
-      const url = selectedMonth && selectedMonth !== "ALL"
-        ? `/api/tidb?action=personnel_stats&month=${encodeURIComponent(selectedMonth)}`
-        : `/api/tidb?action=personnel_stats`;
-      const res = await fetch(url);
+      const q = new URLSearchParams({ action: "personnel_stats" });
+      if (selectedMonth && selectedMonth !== "ALL") q.set("month", selectedMonth);
+      if (selectedWeek && selectedWeek !== "ALL") q.set("week", selectedWeek);
+      const res = await fetch(`/api/tidb?${q.toString()}`);
       const json = await res.json();
       if (json.success) {
         setPersonnelStats({
@@ -375,7 +391,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     } finally {
       setLoadingStats(false);
     }
-  }, [monthFilter]);
+  }, [monthFilter, weekFilter]);
 
   useEffect(() => {
     fetchPersonnelStats();
@@ -499,6 +515,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       if (pbfFilter !== "ALL") params.set("pbf", pbfFilter);
       if (categoryFilter !== "ALL") params.set("category", categoryFilter);
       if (monthFilter !== "ALL") params.set("month", monthFilter);
+      if (weekFilter !== "ALL") params.set("week", weekFilter);
 
       const res = await fetch(`/api/tidb?${params.toString()}`);
       const data = await res.json();
@@ -512,7 +529,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [debouncedSearch, statusFilter, pbfFilter, categoryFilter, monthFilter, page]);
+  }, [debouncedSearch, statusFilter, pbfFilter, categoryFilter, monthFilter, weekFilter, page]);
 
   // Real-time Firestore cross-browser signal + polling when tab is visible
   useEffect(() => {
@@ -1516,7 +1533,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 const m = e.target.value;
                 setMonthFilter(m);
                 setPage(0);
-                fetchPersonnelStats(m);
+                fetchPersonnelStats(m, weekFilter);
               }}
               className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
             >
@@ -1531,6 +1548,31 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               <option value="3">Maret 2026</option>
               <option value="2">Februari 2026</option>
               <option value="1">Januari 2026</option>
+            </select>
+          </div>
+
+          {/* Week Filter */}
+          <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-slate-700/60 rounded-xl px-2.5 py-1">
+            <CalendarRange className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+            <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-medium">Week:</span>
+            <select
+              value={weekFilter}
+              onChange={(e) => {
+                const w = e.target.value;
+                setWeekFilter(w);
+                setPage(0);
+                fetchPersonnelStats(monthFilter, w);
+              }}
+              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
+            >
+              <option value="ALL">Semua Week (W1 - W{Math.max(43, currentWeekNumber)})</option>
+              <option value={String(currentWeekNumber)}>Week Sekarang (W{currentWeekNumber})</option>
+              <option disabled>──────────</option>
+              {availableWeeks.map((w) => (
+                <option key={w} value={String(w)}>
+                  W{w} {w === currentWeekNumber ? "(Minggu Ini)" : ""}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -1605,6 +1647,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     >
                       {r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"}
                     </span>
+                    {r.week ? (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/60">
+                        W{r.week}
+                      </span>
+                    ) : null}
 
                     {r.invoice_no && r.invoice_no !== "#N/A" ? (
                       <button
@@ -1785,15 +1832,30 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                         }`}
                       >
                         <td className="py-2.5 px-3">
-                          <span
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
-                              r.pbf === "MAI"
-                                ? "bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30"
-                                : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
-                            }`}
-                          >
-                            {r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"}
-                          </span>
+                          <div className="flex items-center gap-1">
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                                r.pbf === "MAI"
+                                  ? "bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30"
+                                  : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
+                              }`}
+                            >
+                              {r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"}
+                            </span>
+                            {r.week ? (
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/60 cursor-pointer hover:bg-emerald-200"
+                                title={`Klik untuk filter ke Week ${r.week}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setWeekFilter(String(r.week));
+                                  setPage(0);
+                                }}
+                              >
+                                W{r.week}
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
 
                         <td className="py-2.5 px-4 font-bold text-black dark:text-slate-100">
@@ -2290,7 +2352,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   onChange={(e) => {
                     const m = e.target.value;
                     setMonthFilter(m);
-                    fetchPersonnelStats(m);
+                    fetchPersonnelStats(m, weekFilter);
                   }}
                   className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white focus:outline-none cursor-pointer pr-1"
                 >
@@ -2305,6 +2367,30 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   <option value="3">Maret 2026</option>
                   <option value="2">Februari 2026</option>
                   <option value="1">Januari 2026</option>
+                </select>
+              </div>
+
+              {/* Filter Week Leaderboard */}
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-zinc-100 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
+                <CalendarRange className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase tracking-wider">Week:</span>
+                <select
+                  value={weekFilter}
+                  onChange={(e) => {
+                    const w = e.target.value;
+                    setWeekFilter(w);
+                    fetchPersonnelStats(monthFilter, w);
+                  }}
+                  className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="ALL">Semua Week (W1 - W{Math.max(43, currentWeekNumber)})</option>
+                  <option value={String(currentWeekNumber)}>Week Sekarang (W{currentWeekNumber})</option>
+                  <option disabled>──────────</option>
+                  {availableWeeks.map((w) => (
+                    <option key={w} value={String(w)}>
+                      W{w} {w === currentWeekNumber ? "(Minggu Ini)" : ""}
+                    </option>
+                  ))}
                 </select>
               </div>
 
