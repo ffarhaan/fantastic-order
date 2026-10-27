@@ -405,25 +405,25 @@ export default function Home() {
 
   // User Authentication & Role State (Secure Password Protection)
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const currentUserRef = useRef<AppUser | null>(null);
   useEffect(() => {
-    if (mainView === "dashboard") {
-      fetch("/api/tidb?action=returns&limit=1")
-        .then((r) => r.json())
-        .then((d) => {
-          if (d.success && d.stats) {
-            setReturnsOverviewStats({
-              totalAll: d.stats.totalAll || 0,
-              totalResolved: d.stats.totalResolved || 0,
-              totalPending: d.stats.totalPending || 0,
-              totalMbi: d.stats.totalMbi || 0,
-              totalMai: d.stats.totalMai || 0,
-            });
-          }
-        })
-        .catch(() => {});
-    }
-  }, [mainView]);
+    if (!currentUser || mainView !== "dashboard") return;
+    fetch("/api/tidb?action=returns&limit=1")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && d.stats) {
+          setReturnsOverviewStats({
+            totalAll: d.stats.totalAll || 0,
+            totalResolved: d.stats.totalResolved || 0,
+            totalPending: d.stats.totalPending || 0,
+            totalMbi: d.stats.totalMbi || 0,
+            totalMai: d.stats.totalMai || 0,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [mainView, currentUser]);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
@@ -497,11 +497,12 @@ export default function Home() {
 
   // Subscribe to real-time online presence
   useEffect(() => {
+    if (!currentUser) return;
     const unsub = subscribeToOnlinePresence((users) => {
       setRawOnlineUsers(users);
     });
     return () => unsub();
-  }, []);
+  }, [currentUser]);
 
   // Heartbeat reporter for current user
   useEffect(() => {
@@ -534,6 +535,7 @@ export default function Home() {
             currentUserRef.current = u;
             setShowLoginModal(false);
             setMainView("dashboard");
+            setIsAuthReady(true);
             return;
           }
         }
@@ -541,6 +543,7 @@ export default function Home() {
     } catch {}
     setCurrentUser(null);
     setShowLoginModal(true);
+    setIsAuthReady(true);
   }, []);
 
   const handleLogin = (user: AppUser) => {
@@ -953,6 +956,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
   // 1. Instant 0ms Load from Local IndexedDB Cache, then Zero-Bandwidth Smart Delta Sync
   useEffect(() => {
+    if (!currentUser) return;
     let isMounted = true;
 
     async function initData() {
@@ -1141,10 +1145,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [currentUser]);
 
   // Real-time Firestore Subscription (Walkie-Talkie for Print Signals & Overrides)
   useEffect(() => {
+    if (!currentUser) return;
     const unsubscribe = subscribeToFakturs(
       (docs, prog, printState, overrides, uploadNotif, reason, prodOverrides) => {
         if (isUploadingRef.current) return;
@@ -1420,7 +1425,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       unsubTiDBSignal();
       unsubResetSignal();
     };
-  }, []);
+  }, [currentUser]);
 
   const handleManualRefresh = useCallback(async () => {
     setLoading(true);
@@ -3026,6 +3031,27 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     }
     setShowExportModal(true);
   };
+
+  // Fast-Path Auth Gate: Do not mount 2,200+ DOM table nodes or process 50k records when user is not logged in!
+  if (!isAuthReady) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center font-sans ${isDarkMode ? "bg-[#0b0c13]" : "bg-zinc-100"}`} />
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center font-sans ${isDarkMode ? "bg-[#0b0c13]" : "bg-zinc-100"}`}>
+        <LoginModal
+          isOpen={true}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
+          currentUser={null}
+          isDarkMode={isDarkMode}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen flex font-sans ${

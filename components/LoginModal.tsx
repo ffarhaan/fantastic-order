@@ -55,15 +55,7 @@ interface LoginModalProps {
   isDarkMode: boolean;
 }
 
-export default function LoginModal({
-  isOpen,
-  onClose,
-  onLogin,
-  currentUser,
-}: LoginModalProps) {
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
-
-  // Live Clock state for left panel
+const LiveClock = React.memo(function LiveClock() {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
     setNow(new Date());
@@ -72,6 +64,44 @@ export default function LoginModal({
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const formattedTime = now
+    ? now.toLocaleTimeString("id-ID", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : "--:--:--";
+
+  const formattedDate = now
+    ? now.toLocaleDateString("id-ID", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : "Memuat tanggal...";
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400">
+        <Calendar className="w-3.5 h-3.5 text-blue-400" />
+        <span>{formattedDate}</span>
+      </div>
+      <div className="text-2xl font-mono font-black text-white tracking-wider mt-1">
+        {formattedTime} <span className="text-xs font-sans font-bold text-zinc-500">WIB</span>
+      </div>
+    </div>
+  );
+});
+
+export default function LoginModal({
+  isOpen,
+  onClose,
+  onLogin,
+  currentUser,
+}: LoginModalProps) {
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
 
   // Login form state
   const [identifier, setIdentifier] = useState("");
@@ -101,11 +131,12 @@ export default function LoginModal({
   // it transitions immediately to the "otp" input screen
   const [allProfiles, setAllProfiles] = useState<StaffAccountProfile[]>([]);
   useEffect(() => {
+    if (regStep !== "waiting_acc") return;
     const unsub = subscribeToUserProfiles((list) => {
       setAllProfiles(list);
     });
     return () => unsub();
-  }, []);
+  }, [regStep]);
 
   useEffect(() => {
     if (regStep === "waiting_acc" && regUsername) {
@@ -384,26 +415,9 @@ export default function LoginModal({
 
   if (!isOpen) return null;
 
-  const formattedTime = now
-    ? now.toLocaleTimeString("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-    : "--:--:--";
-
-  const formattedDate = now
-    ? now.toLocaleDateString("id-ID", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
-    : "Memuat tanggal...";
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/90 backdrop-blur-xl animate-in fade-in duration-200 overflow-y-auto">
-      <div className="relative w-full max-w-4xl bg-[#0b0c13] text-zinc-100 rounded-3xl border border-zinc-800 shadow-2xl overflow-hidden flex flex-col md:flex-row my-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/90 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
+      <div className="relative w-full max-w-4xl bg-[#0b0c13] text-zinc-100 rounded-3xl border border-zinc-800 shadow-2xl overflow-hidden flex flex-col md:flex-row my-auto will-change-transform">
         
         {/* Optional Close Button if user is already authenticated */}
         {currentUser && onClose && (
@@ -422,8 +436,8 @@ export default function LoginModal({
         {/* ========================================================= */}
         <div className="md:w-1/2 p-6 sm:p-8 md:p-10 bg-gradient-to-br from-[#0c0e1a] via-[#080913] to-[#04050a] border-b md:border-b-0 md:border-r border-zinc-800/80 flex flex-col justify-between relative overflow-hidden">
           {/* Ambient decorative glowing orbs */}
-          <div className="absolute -top-20 -left-20 w-64 h-64 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -top-20 -left-20 w-64 h-64 bg-blue-600/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-indigo-600/10 rounded-full blur-2xl pointer-events-none" />
 
           <div className="relative z-10 my-auto py-2">
             <span className="inline-block text-xs font-extrabold uppercase tracking-[0.2em] text-blue-400 mb-2">
@@ -441,16 +455,8 @@ export default function LoginModal({
 
           {/* Live Clock & Server Status Card */}
           <div className="relative z-10 pt-6 mt-6 border-t border-zinc-800/60">
-            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 backdrop-blur-xs flex items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400">
-                  <Calendar className="w-3.5 h-3.5 text-blue-400" />
-                  <span>{formattedDate}</span>
-                </div>
-                <div className="text-2xl font-mono font-black text-white tracking-wider mt-1">
-                  {formattedTime} <span className="text-xs font-sans font-bold text-zinc-500">WIB</span>
-                </div>
-              </div>
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between gap-4">
+              <LiveClock />
 
               <div className="flex flex-col items-end gap-1">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
