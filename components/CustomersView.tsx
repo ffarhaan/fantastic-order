@@ -508,7 +508,10 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       if (hasDocsFilter) params.set("has_docs", "true");
 
-      const res = await fetch(`/api/tidb?${params.toString()}`);
+      const res = await fetch(`/api/tidb?${params.toString()}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
       const data = await res.json();
       if (data.success) {
         setCustomers(data.data || []);
@@ -543,7 +546,10 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     setCustomerDocs([]);
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/tidb?action=customer_detail&id=${encodeURIComponent(cust.id)}&name=${encodeURIComponent(cust.name)}`);
+      const res = await fetch(`/api/tidb?action=customer_detail&id=${encodeURIComponent(cust.id)}&name=${encodeURIComponent(cust.name)}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
       const data = await res.json();
       if (data.success) {
         setCustomerReturns(data.returns || []);
