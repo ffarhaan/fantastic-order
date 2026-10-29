@@ -68,6 +68,8 @@ import {
   Moon,
   Key,
   Shield,
+  Columns,
+  Pin,
   UploadCloud,
   RefreshCw,
   Menu,
@@ -316,6 +318,67 @@ export default function Home() {
   const [showChangelogModal, setShowChangelogModal] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+
+  // Spreadsheet / Excel Freeze & Column Visibility state
+  const [freezeColLevel, setFreezeColLevel] = useState<"none" | "1" | "2" | "3">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("inv_freeze_level") as any) || "2";
+    }
+    return "2";
+  });
+  const [hiddenCols, setHiddenCols] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("inv_hidden_cols");
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [showColMenu, setShowColMenu] = useState(false);
+
+  const toggleColumnVisibility = (colId: string) => {
+    setHiddenCols((prev) => {
+      const next = prev.includes(colId) ? prev.filter((c) => c !== colId) : [...prev, colId];
+      if (typeof window !== "undefined") {
+        localStorage.setItem("inv_hidden_cols", JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  const isColVisible = (colId: string) => !hiddenCols.includes(colId);
+
+  const handleSetFreezeLevel = (lvl: "none" | "1" | "2" | "3") => {
+    setFreezeColLevel(lvl);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("inv_freeze_level", lvl);
+    }
+  };
+
+  const getFreezeOffsets = () => {
+    const p0 = 0; // # (w: 32px)
+    const p1 = 32; // Print (w: 48px)
+    let curr = 80; // 32 + 48
+
+    const soOffset = curr;
+    if (isColVisible("no_so")) curr += 115;
+
+    const invOffset = curr;
+    if (isColVisible("no_inv")) curr += 125;
+
+    const katProdukOffset = curr;
+    if (isColVisible("kat_produk")) curr += 95;
+
+    const jenisOffset = curr;
+    if (isColVisible("jenis")) curr += 85;
+
+    const custOffset = curr;
+
+    return { p0, p1, soOffset, invOffset, katProdukOffset, jenisOffset, custOffset };
+  };
   // Theme state & persistence
   const [isDarkMode, setIsDarkMode] = useState(true);
 
@@ -4648,6 +4711,110 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           </select>
         </div>
 
+        {/* Spreadsheet Controls: Freeze & Column Visibility */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            {/* Freeze Dropdown */}
+            <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2.5 py-1.5 shadow-2xs">
+              <Pin className="w-3.5 h-3.5 text-blue-500" />
+              <span className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400">Freeze Kolom:</span>
+              <select
+                value={freezeColLevel}
+                onChange={(e) => handleSetFreezeLevel(e.target.value as any)}
+                className="bg-transparent text-[11px] font-bold text-zinc-800 dark:text-zinc-200 outline-none cursor-pointer"
+              >
+                <option value="none">Tidak Ada Freeze</option>
+                <option value="1">Freeze Print (# & Tombol)</option>
+                <option value="2">Freeze No SO & No Invoice (Rekomendasi)</option>
+                <option value="3">Freeze sampai Pelanggan</option>
+              </select>
+            </div>
+
+            {/* Column Visibility Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowColMenu(!showColMenu)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer shadow-2xs ${
+                  showColMenu
+                    ? "bg-blue-50 border-blue-400 text-blue-700 dark:bg-blue-950/40 dark:border-blue-700 dark:text-blue-300"
+                    : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300"
+                }`}
+              >
+                <Columns className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Pilih Kolom</span>
+                {hiddenCols.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-black">
+                    -{hiddenCols.length}
+                  </span>
+                )}
+              </button>
+
+              {showColMenu && (
+                <div
+                  className="absolute left-0 mt-1 w-64 bg-white dark:bg-[#0e131f] border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl z-50 p-2.5 space-y-1 text-xs"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between pb-1.5 border-b border-zinc-100 dark:border-zinc-800 text-[11px] font-bold text-zinc-500">
+                    <span>Tampilkan / Sembunyikan</span>
+                    {hiddenCols.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHiddenCols([]);
+                          localStorage.removeItem("inv_hidden_cols");
+                        }}
+                        className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                      >
+                        Reset Semua
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-64 overflow-y-auto space-y-1 pt-1">
+                    {[
+                      { id: "no_so", label: "No. SO" },
+                      { id: "no_inv", label: "No. Invoice" },
+                      { id: "kat_produk", label: "Kategori Produk" },
+                      { id: "jenis", label: "Jenis & Entitas" },
+                      { id: "pelanggan", label: "Pelanggan" },
+                      { id: "tgl_faktur", label: "Tgl Faktur (Tx)" },
+                      { id: "tgl_order", label: "Tgl Order (SO)" },
+                      { id: "kat", label: "Kategori (1P/2P/3P)" },
+                      { id: "checker", label: "Checker" },
+                      { id: "packer", label: "Packer" },
+                      { id: "picker", label: "Picker" },
+                      { id: "waktu_print", label: "Done Print (Waktu)" },
+                      { id: "total", label: "Total Nilai (+PPN)" },
+                    ].map((col) => {
+                      const checked = isColVisible(col.id);
+                      return (
+                        <label
+                          key={col.id}
+                          className="flex items-center gap-2 px-2 py-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800/60 cursor-pointer select-none text-[11px]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleColumnVisibility(col.id)}
+                            className="rounded border-zinc-300 text-blue-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span className={checked ? "font-semibold text-zinc-900 dark:text-zinc-200" : "text-zinc-400 line-through"}>
+                            {col.label}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+            Geser horizontal untuk melihat kolom lainnya
+          </div>
+        </div>
+
         {/* ===================================================================== */}
         {/* 🔒 LOCKED COMPONENT: DAFTAR FAKTUR 14-COLUMN TABLE (LOCKED_RULES.md) */}
         {/* Struktur 14 kolom (termasuk Checker & Packer) dan navigasi di-LOCK. */}
@@ -4656,60 +4823,221 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           isDarkMode ? "bg-[#09090b] border-zinc-800" : "bg-white border-zinc-300"
         }`}>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className={`border-b font-bold text-[11px] tracking-wider uppercase transition-colors ${
-                  isDarkMode
-                    ? "bg-zinc-950 border-zinc-800 text-zinc-400"
-                    : "bg-zinc-100 border-b-2 border-zinc-300 text-black font-black"
-                }`}>
-                  <th className="px-2 py-2.5 w-7 text-center">#</th>
-                  <th className="px-2 py-2.5 w-12 text-center">Print</th>
-                  <th className="px-2.5 py-2.5">No SO</th>
-                  <th className="px-2.5 py-2.5">No Invoice</th>
-                  <th className="px-2.5 py-2.5">Kat Produk</th>
-                  <th className="px-2.5 py-2.5 text-center">Jenis</th>
-                  <th className="px-2.5 py-2.5">Pelanggan</th>
-                  <th className="px-2.5 py-2.5 text-center" title="Tanggal Faktur / Invoice Date (Transaction Date)">Tgl Faktur</th>
-                  <th className="px-2.5 py-2.5 text-center" title="Tanggal Sales Order Masuk (Order Date)">Tgl Order</th>
-                  <th className="px-2.5 py-2.5 text-center">Kat</th>
-                  <th className="px-2.5 py-2.5 whitespace-nowrap">Checker</th>
-                  <th className="px-2.5 py-2.5 whitespace-nowrap">Packer</th>
-                  <th className="px-2.5 py-2.5 whitespace-nowrap">Picker</th>
-                  <th className="px-2.5 py-2.5">Done Print (Waktu)</th>
-                  <th className="px-2.5 py-2.5 text-right" title="Grand Total sudah termasuk PPN 11% (sesuai faktur fisik)">Total (+PPN)</th>
-                </tr>
-              </thead>
-              <tbody className={`divide-y ${isDarkMode ? "divide-zinc-800/70" : "divide-zinc-200/70"}`}>
-                {loading && records.length === 0 ? (
-                  <tr>
-                    <td colSpan={15} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
-                      <div className="flex flex-col items-center gap-2">
-                        <span className="text-2xl animate-spin text-blue-500">🔄</span>
-                        <span className="text-xs font-semibold">Memuat data faktur...</span>
-                      </div>
-                    </td>
-                  </tr>
-                ) : filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={15} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
-                      <div className="flex flex-col items-center gap-2">
-                        <span className="text-3xl">{filter === "belum" ? "🎉" : "📄"}</span>
-                        <span className="text-xs font-semibold">
-                          {filter === "belum"
-                            ? "Semua faktur sudah dicetak (tidak ada yang belum)."
-                            : filter === "sudah"
-                            ? "Belum ada faktur yang dicetak."
-                            : filter === "double"
-                            ? "Tidak ada faktur dengan nomor SO ganda."
-                            : filter === "retur"
-                            ? "Tidak ada transaksi retur."
-                            : "Tidak ada faktur yang sesuai filter."}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
+            {(() => {
+              const visibleColCount =
+                2 +
+                (isColVisible("no_so") ? 1 : 0) +
+                (isColVisible("no_inv") ? 1 : 0) +
+                (isColVisible("kat_produk") ? 1 : 0) +
+                (isColVisible("jenis") ? 1 : 0) +
+                (isColVisible("pelanggan") ? 1 : 0) +
+                (isColVisible("tgl_faktur") ? 1 : 0) +
+                (isColVisible("tgl_order") ? 1 : 0) +
+                (isColVisible("kat") ? 1 : 0) +
+                (isColVisible("checker") ? 1 : 0) +
+                (isColVisible("packer") ? 1 : 0) +
+                (isColVisible("picker") ? 1 : 0) +
+                (isColVisible("waktu_print") ? 1 : 0) +
+                (isColVisible("total") ? 1 : 0);
+              const freezeOffsets = getFreezeOffsets();
+
+              return (
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className={`border-b font-bold text-[11px] tracking-wider uppercase transition-colors ${
+                      isDarkMode
+                        ? "bg-zinc-950 border-zinc-800 text-zinc-400"
+                        : "bg-zinc-100 border-b-2 border-zinc-300 text-black font-black"
+                    }`}>
+                      {/* Col 0: Expand (#) */}
+                      <th
+                        className={`px-2 py-2.5 w-8 min-w-[32px] text-center border-r border-zinc-200 dark:border-zinc-800 ${
+                          freezeColLevel !== "none"
+                            ? "sticky left-0 z-30 bg-zinc-100 dark:bg-zinc-950"
+                            : ""
+                        }`}
+                      >
+                        #
+                      </th>
+
+                      {/* Col 1: Print */}
+                      <th
+                        className={`px-2 py-2.5 w-12 min-w-[48px] text-center ${
+                          freezeColLevel === "1"
+                            ? "sticky left-[32px] z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
+                            : freezeColLevel !== "none"
+                            ? "sticky left-[32px] z-30 bg-zinc-100 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800"
+                            : "border-r border-zinc-200 dark:border-zinc-800"
+                        }`}
+                      >
+                        Print
+                      </th>
+
+                      {/* Col 2: No SO */}
+                      {isColVisible("no_so") && (
+                        <th
+                          style={freezeColLevel === "2" || freezeColLevel === "3" ? { left: `${freezeOffsets.soOffset}px` } : undefined}
+                          className={`px-2.5 py-2.5 min-w-[115px] whitespace-nowrap ${
+                            (freezeColLevel === "2" && !isColVisible("no_inv"))
+                              ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
+                              : freezeColLevel === "2" || freezeColLevel === "3"
+                              ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800"
+                              : "border-r border-zinc-200 dark:border-zinc-800"
+                          }`}
+                        >
+                          No SO
+                        </th>
+                      )}
+
+                      {/* Col 3: No Invoice */}
+                      {isColVisible("no_inv") && (
+                        <th
+                          style={freezeColLevel === "2" || freezeColLevel === "3" ? { left: `${freezeOffsets.invOffset}px` } : undefined}
+                          className={`px-2.5 py-2.5 min-w-[125px] whitespace-nowrap ${
+                            freezeColLevel === "2"
+                              ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
+                              : freezeColLevel === "3"
+                              ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800"
+                              : "border-r border-zinc-200 dark:border-zinc-800"
+                          }`}
+                        >
+                          No Invoice
+                        </th>
+                      )}
+
+                      {/* Col 4: Kat Produk */}
+                      {isColVisible("kat_produk") && (
+                        <th
+                          style={freezeColLevel === "3" ? { left: `${freezeOffsets.katProdukOffset}px` } : undefined}
+                          className={`px-2.5 py-2.5 min-w-[95px] whitespace-nowrap ${
+                            freezeColLevel === "3" && !isColVisible("jenis") && !isColVisible("pelanggan")
+                              ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
+                              : freezeColLevel === "3"
+                              ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800"
+                              : "border-r border-zinc-200 dark:border-zinc-800"
+                          }`}
+                        >
+                          Kat Produk
+                        </th>
+                      )}
+
+                      {/* Col 5: Jenis */}
+                      {isColVisible("jenis") && (
+                        <th
+                          style={freezeColLevel === "3" ? { left: `${freezeOffsets.jenisOffset}px` } : undefined}
+                          className={`px-2.5 py-2.5 text-center min-w-[85px] whitespace-nowrap ${
+                            freezeColLevel === "3" && !isColVisible("pelanggan")
+                              ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
+                              : freezeColLevel === "3"
+                              ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800"
+                              : "border-r border-zinc-200 dark:border-zinc-800"
+                          }`}
+                        >
+                          Jenis
+                        </th>
+                      )}
+
+                      {/* Col 6: Pelanggan */}
+                      {isColVisible("pelanggan") && (
+                        <th
+                          style={freezeColLevel === "3" ? { left: `${freezeOffsets.custOffset}px` } : undefined}
+                          className={`px-2.5 py-2.5 min-w-[180px] max-w-[280px] ${
+                            freezeColLevel === "3"
+                              ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
+                              : "border-r border-zinc-200 dark:border-zinc-800"
+                          }`}
+                        >
+                          Pelanggan
+                        </th>
+                      )}
+
+                      {/* Col 7: Tgl Faktur */}
+                      {isColVisible("tgl_faktur") && (
+                        <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Tanggal Faktur / Invoice Date (Transaction Date)">
+                          Tgl Faktur
+                        </th>
+                      )}
+
+                      {/* Col 8: Tgl Order */}
+                      {isColVisible("tgl_order") && (
+                        <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Tanggal Sales Order Masuk (Order Date)">
+                          Tgl Order
+                        </th>
+                      )}
+
+                      {/* Col 9: Kat */}
+                      {isColVisible("kat") && (
+                        <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                          Kat
+                        </th>
+                      )}
+
+                      {/* Col 10: Checker */}
+                      {isColVisible("checker") && (
+                        <th className="px-2.5 py-2.5 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                          Checker
+                        </th>
+                      )}
+
+                      {/* Col 11: Packer */}
+                      {isColVisible("packer") && (
+                        <th className="px-2.5 py-2.5 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                          Packer
+                        </th>
+                      )}
+
+                      {/* Col 12: Picker */}
+                      {isColVisible("picker") && (
+                        <th className="px-2.5 py-2.5 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                          Picker
+                        </th>
+                      )}
+
+                      {/* Col 13: Done Print (Waktu) */}
+                      {isColVisible("waktu_print") && (
+                        <th className="px-2.5 py-2.5 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                          Done Print (Waktu)
+                        </th>
+                      )}
+
+                      {/* Col 14: Total (+PPN) */}
+                      {isColVisible("total") && (
+                        <th className="px-2.5 py-2.5 text-right whitespace-nowrap" title="Grand Total sudah termasuk PPN 11% (sesuai faktur fisik)">
+                          Total (+PPN)
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className={`divide-y ${isDarkMode ? "divide-zinc-800/70" : "divide-zinc-200/70"}`}>
+                    {loading && records.length === 0 ? (
+                      <tr>
+                        <td colSpan={visibleColCount} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+                          <div className="flex flex-col items-center gap-2">
+                            <span className="text-2xl animate-spin text-blue-500">🔄</span>
+                            <span className="text-xs font-semibold">Memuat data faktur...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : filtered.length === 0 ? (
+                      <tr>
+                        <td colSpan={visibleColCount} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
+                          <div className="flex flex-col items-center gap-2">
+                            <span className="text-3xl">{filter === "belum" ? "🎉" : "📄"}</span>
+                            <span className="text-xs font-semibold">
+                              {filter === "belum"
+                                ? "Semua faktur sudah dicetak (tidak ada yang belum)."
+                                : filter === "sudah"
+                                ? "Belum ada faktur yang dicetak."
+                                : filter === "double"
+                                ? "Tidak ada faktur dengan nomor SO ganda."
+                                : filter === "retur"
+                                ? "Tidak ada transaksi retur."
+                                : "Tidak ada faktur yang sesuai filter."}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
                   pageData.map((g, rowIdx) => {
                     const isExpanded = expandedInvoices.has(g.key);
                     const isRowSelected = selectedRowIndex === rowIdx;
@@ -4733,11 +5061,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             setSelectedRowIndex(rowIdx);
                             toggleExpand(g.key);
                           }}
-                          className={`cursor-pointer transition-colors ${
+                          className={`cursor-pointer transition-colors group ${
                             isRowSelected
                               ? (isDarkMode
-                                  ? "bg-zinc-800/90 border-l-4 border-l-blue-500 text-white font-semibold"
-                                  : "bg-blue-50/90 border-l-4 border-l-blue-600 text-blue-950 font-bold")
+                                  ? "bg-zinc-800 border-l-4 border-l-blue-500 text-white font-semibold"
+                                  : "bg-blue-100 border-l-4 border-l-blue-600 text-blue-950 font-bold")
                               : g.isDoubleInv
                               ? (isDarkMode ? "bg-rose-950/20 hover:bg-rose-950/30" : "bg-rose-50/40 hover:bg-rose-100/40")
                               : (isDarkMode ? "bg-[#09090b] hover:bg-zinc-900/60" : "bg-white hover:bg-blue-50/40")
@@ -4745,9 +5073,19 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                         >
                           {/* Col 0: Expand */}
                           <td
-                            className={`px-2 py-1.5 text-center text-[10px] font-bold ${
+                            className={`px-2 py-1.5 text-center text-[10px] font-bold border-r border-zinc-200 dark:border-zinc-800 ${
                               isDarkMode ? "text-zinc-400 hover:text-white" : "text-zinc-400 hover:text-zinc-800"
-                            } ${getCellCls(0)}`}
+                            } ${getCellCls(0)} ${
+                              freezeColLevel !== "none"
+                                ? `sticky left-0 z-20 ${
+                                    isRowSelected
+                                      ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
+                                      : g.isDoubleInv
+                                      ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
+                                      : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
+                                  }`
+                                : ""
+                            }`}
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectCell(0);
@@ -4759,7 +5097,25 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                           {/* Col 1: Print Checkbox */}
                           <td
-                            className={`px-2 py-1.5 text-center ${getCellCls(1)}`}
+                            className={`px-2 py-1.5 text-center ${getCellCls(1)} ${
+                              freezeColLevel === "1"
+                                ? `sticky left-[32px] z-20 border-r-2 border-r-blue-500 shadow-md ${
+                                    isRowSelected
+                                      ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
+                                      : g.isDoubleInv
+                                      ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
+                                      : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
+                                  }`
+                                : freezeColLevel !== "none"
+                                ? `sticky left-[32px] z-20 border-r border-zinc-200 dark:border-zinc-800 ${
+                                    isRowSelected
+                                      ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
+                                      : g.isDoubleInv
+                                      ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
+                                      : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
+                                  }`
+                                : "border-r border-zinc-200 dark:border-zinc-800"
+                            }`}
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectCell(1);
@@ -4793,286 +5149,399 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           </td>
 
                           {/* Col 2: No SO */}
-                          <td
-                            className={`px-2.5 py-1.5 font-mono font-bold text-xs whitespace-nowrap ${
-                              isDarkMode ? "text-zinc-100" : "text-black"
-                            } ${getCellCls(2)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(2);
-                            }}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span>{g.so}</span>
-                              {g.isDoubleInv && (
-                                <span className="text-amber-500 font-bold" title="Double Invoice Detected">⚠</span>
-                              )}
-                            </div>
-                          </td>
+                          {isColVisible("no_so") && (
+                            <td
+                              style={freezeColLevel === "2" || freezeColLevel === "3" ? { left: `${freezeOffsets.soOffset}px` } : undefined}
+                              className={`px-2.5 py-1.5 font-mono font-bold text-xs whitespace-nowrap ${
+                                isDarkMode ? "text-zinc-100" : "text-black"
+                              } ${getCellCls(2)} ${
+                                freezeColLevel === "2" && !isColVisible("no_inv")
+                                  ? `sticky z-20 border-r-2 border-r-blue-500 shadow-md ${
+                                      isRowSelected
+                                        ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
+                                        : g.isDoubleInv
+                                        ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
+                                        : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
+                                    }`
+                                  : freezeColLevel === "2" || freezeColLevel === "3"
+                                  ? `sticky z-20 border-r border-zinc-200 dark:border-zinc-800 ${
+                                      isRowSelected
+                                        ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
+                                        : g.isDoubleInv
+                                        ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
+                                        : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
+                                    }`
+                                  : "border-r border-zinc-200 dark:border-zinc-800"
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(2);
+                              }}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span>{g.so}</span>
+                                {g.isDoubleInv && (
+                                  <span className="text-amber-500 font-bold" title="Double Invoice Detected">⚠</span>
+                                )}
+                              </div>
+                            </td>
+                          )}
 
                           {/* Col 3: No Invoice */}
-                          <td
-                            className={`px-2.5 py-1.5 font-mono font-black text-xs whitespace-nowrap ${
-                              isDarkMode ? "text-blue-400" : "text-blue-600"
-                            } ${getCellCls(3)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(3);
-                            }}
-                          >
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span>{g.invoiceNumber}</span>
-                              {g.isRetur && (
-                                <span
-                                  className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase border ${
-                                    isDarkMode
-                                      ? "bg-rose-950/80 text-rose-300 border-rose-800"
-                                      : "bg-rose-50 text-rose-700 border-rose-200"
-                                  }`}
-                                  title="Faktur Retur / Credit Memo (Nilai Minus)"
-                                >
-                                  RETUR
-                                </span>
-                              )}
-                            </div>
-                          </td>
-
-                          {/* Col 4: Kat Produk */}
-                          <td
-                            className={`px-2 py-1.5 whitespace-nowrap ${getCellCls(4)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(4);
-                            }}
-                          >
-                            <span
-                              className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${
-                                isDarkMode
-                                  ? "bg-zinc-800 text-zinc-300 border-zinc-700"
-                                  : "bg-zinc-100 text-zinc-700 border-zinc-200"
+                          {isColVisible("no_inv") && (
+                            <td
+                              style={freezeColLevel === "2" || freezeColLevel === "3" ? { left: `${freezeOffsets.invOffset}px` } : undefined}
+                              className={`px-2.5 py-1.5 font-mono font-black text-xs whitespace-nowrap ${
+                                isDarkMode ? "text-blue-400" : "text-blue-600"
+                              } ${getCellCls(3)} ${
+                                freezeColLevel === "2"
+                                  ? `sticky z-20 border-r-2 border-r-blue-500 shadow-md ${
+                                      isRowSelected
+                                        ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
+                                        : g.isDoubleInv
+                                        ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
+                                        : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
+                                    }`
+                                  : freezeColLevel === "3"
+                                  ? `sticky z-20 border-r border-zinc-200 dark:border-zinc-800 ${
+                                      isRowSelected
+                                        ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
+                                        : g.isDoubleInv
+                                        ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
+                                        : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
+                                    }`
+                                  : "border-r border-zinc-200 dark:border-zinc-800"
                               }`}
-                            >
-                              {g.kategoriProduk}
-                            </span>
-                          </td>
-
-                          {/* Col 5: Jenis & Gudang */}
-                          <td
-                            className={`px-2 py-1.5 text-center whitespace-nowrap ${getCellCls(5)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(5);
-                            }}
-                          >
-                            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-black border ${
-                              g.jenisTransaksi === "ORA"
-                                ? (isDarkMode ? "bg-purple-950/50 text-purple-300 border-purple-800/40" : "bg-purple-50 text-purple-700 border-purple-200")
-                                : (isDarkMode ? "bg-zinc-800 text-zinc-300 border-zinc-700" : "bg-zinc-100 text-zinc-700 border-zinc-200")
-                            }`}>
-                              {g.jenisTransaksi} · {g.entity || "MBI"}
-                            </span>
-                          </td>
-
-                          {/* Col 6: Pelanggan */}
-                          <td
-                            className={`px-2.5 py-1.5 max-w-[200px] lg:max-w-xs truncate font-bold text-xs ${
-                              isDarkMode ? "text-zinc-200" : "text-black"
-                            } ${getCellCls(6)}`}
-                            title={g.customerName}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(6);
-                            }}
-                          >
-                            {g.customerName}
-                          </td>
-
-                          {/* Col 7: Tgl Faktur (Transaction Date) */}
-                          <td
-                            className={`px-2 py-1.5 text-center whitespace-nowrap font-mono text-[11px] font-medium ${
-                              isDarkMode ? "text-zinc-300" : "text-zinc-700"
-                            } ${getCellCls(7)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(7);
-                            }}
-                          >
-                            {g.transactionDate && g.transactionDate !== "-" ? g.transactionDate : g.orderDate}
-                          </td>
-
-                          {/* Col 8: Tgl Order (Order Date / SO) */}
-                          <td
-                            className={`px-2 py-1.5 text-center whitespace-nowrap font-mono text-[11px] font-medium ${
-                              isDarkMode ? "text-zinc-500" : "text-zinc-500"
-                            } ${getCellCls(8)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(8);
-                            }}
-                          >
-                            {g.orderDate && g.orderDate !== "-" ? g.orderDate : "-"}
-                          </td>
-
-                          {/* Col 9: Kat (Editable Dropdown) */}
-                          <td
-                            className={`px-2 py-1.5 text-center whitespace-nowrap ${getCellCls(9)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(9);
-                            }}
-                          >
-                            <select
-                              value={g.kategori}
-                              disabled={currentUser?.role === "readonly"}
-                              onChange={(e) => {
-                                handleUpdateCategory(g.invoiceKey, e.target.value as "1P" | "2P" | "3P", g.customerName);
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(3);
                               }}
-                              className={`px-1.5 py-0.5 rounded text-xs font-bold border cursor-pointer ${
-                                currentUser?.role === "readonly" ? "cursor-not-allowed opacity-70" : ""
-                              } ${
-                                isDarkMode
-                                  ? "bg-zinc-800 text-zinc-100 border-zinc-700 hover:border-zinc-500"
-                                  : "bg-white text-zinc-900 border-zinc-200 hover:border-zinc-300 shadow-2xs"
-                              }`}
-                              title={
-                                currentUser?.role === "readonly"
-                                  ? "Akses Stranger (Hanya Lihat)"
-                                  : "Klik untuk ubah Kategori (1P / 2P / 3P)"
-                              }
                             >
-                              <option value="1P">1P</option>
-                              <option value="2P">2P</option>
-                              <option value="3P">3P</option>
-                            </select>
-                          </td>
-
-                          {/* Col 10: Checker */}
-                          <td
-                            className={`px-2.5 py-1.5 whitespace-nowrap text-xs ${getCellCls(10)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(10);
-                            }}
-                          >
-                            {getCheckerInfo(g.so)?.checker ? (
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
-                                  isDarkMode
-                                    ? "bg-purple-950/60 text-purple-300 border border-purple-800/60"
-                                    : "bg-purple-100 text-purple-800 border border-purple-200"
-                                }`}
-                                title={`Checker: ${getCheckerInfo(g.so)?.checker}`}
-                              >
-                                {getCheckerInfo(g.so)?.checker}
-                              </span>
-                            ) : (
-                              <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
-                            )}
-                          </td>
-
-                          {/* Col 11: Packer */}
-                          <td
-                            className={`px-2.5 py-1.5 whitespace-nowrap text-xs ${getCellCls(11)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(11);
-                            }}
-                          >
-                            {getCheckerInfo(g.so)?.packer ? (
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
-                                  isDarkMode
-                                    ? "bg-blue-950/60 text-blue-300 border border-blue-800/60"
-                                    : "bg-blue-100 text-blue-800 border border-blue-200"
-                                }`}
-                                title={`Packer: ${getCheckerInfo(g.so)?.packer}`}
-                              >
-                                {getCheckerInfo(g.so)?.packer}
-                              </span>
-                            ) : (
-                              <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
-                            )}
-                          </td>
-
-                          {/* Col 12: Picker */}
-                          <td
-                            className={`px-2.5 py-1.5 whitespace-nowrap text-xs ${getCellCls(12)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(12);
-                            }}
-                          >
-                            {getCheckerInfo(g.so)?.picker ? (
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
-                                  isDarkMode
-                                    ? "bg-amber-950/60 text-amber-300 border border-amber-800/60"
-                                    : "bg-amber-100 text-amber-800 border border-amber-200"
-                                }`}
-                                title={`Picker: ${getCheckerInfo(g.so)?.picker}`}
-                              >
-                                {getCheckerInfo(g.so)?.picker}
-                              </span>
-                            ) : (
-                              <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
-                            )}
-                          </td>
-
-                          {/* Col 13: Done Print Waktu */}
-                          <td
-                            className={`px-2.5 py-1.5 whitespace-nowrap font-mono text-[11px] ${getCellCls(13)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(13);
-                            }}
-                          >
-                            {g.allPrinted && g.printedAt ? (
-                              <div className="flex flex-col gap-0.5">
-                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded border font-semibold text-[11px] ${
-                                  isDarkMode
-                                    ? "text-emerald-400 bg-emerald-950/40 border-emerald-800/40"
-                                    : "text-emerald-700 bg-emerald-50 border-emerald-200"
-                                }`}>
-                                  ⏱ {formatPrintTime(g.printedAt)}
-                                </span>
-                                {g.printedBy && (
-                                  <span className={`text-[9px] font-sans font-medium px-0.5 ${
-                                    isDarkMode ? "text-zinc-500" : "text-zinc-500"
-                                  }`}>
-                                    oleh: <strong>{String(g.printedBy)}</strong>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span>{g.invoiceNumber}</span>
+                                {g.isRetur && (
+                                  <span
+                                    className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase border ${
+                                      isDarkMode
+                                        ? "bg-rose-950/80 text-rose-300 border-rose-800"
+                                        : "bg-rose-50 text-rose-700 border-rose-200"
+                                    }`}
+                                    title="Faktur Retur / Credit Memo (Nilai Minus)"
+                                  >
+                                    RETUR
                                   </span>
                                 )}
                               </div>
-                            ) : (
-                              <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
-                            )}
-                          </td>
+                            </td>
+                          )}
+
+                          {/* Col 4: Kat Produk */}
+                          {isColVisible("kat_produk") && (
+                            <td
+                              style={freezeColLevel === "3" ? { left: `${freezeOffsets.katProdukOffset}px` } : undefined}
+                              className={`px-2 py-1.5 whitespace-nowrap ${getCellCls(4)} ${
+                                freezeColLevel === "3" && !isColVisible("jenis") && !isColVisible("pelanggan")
+                                  ? `sticky z-20 border-r-2 border-r-blue-500 shadow-md ${
+                                      isRowSelected
+                                        ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
+                                        : g.isDoubleInv
+                                        ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
+                                        : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
+                                    }`
+                                  : freezeColLevel === "3"
+                                  ? `sticky z-20 border-r border-zinc-200 dark:border-zinc-800 ${
+                                      isRowSelected
+                                        ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
+                                        : g.isDoubleInv
+                                        ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
+                                        : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
+                                    }`
+                                  : "border-r border-zinc-200 dark:border-zinc-800"
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(4);
+                              }}
+                            >
+                              <span
+                                className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                                  isDarkMode
+                                    ? "bg-zinc-800 text-zinc-300 border-zinc-700"
+                                    : "bg-zinc-100 text-zinc-700 border-zinc-200"
+                                }`}
+                              >
+                                {g.kategoriProduk}
+                              </span>
+                            </td>
+                          )}
+
+                          {/* Col 5: Jenis & Gudang */}
+                          {isColVisible("jenis") && (
+                            <td
+                              style={freezeColLevel === "3" ? { left: `${freezeOffsets.jenisOffset}px` } : undefined}
+                              className={`px-2.5 py-1.5 text-center whitespace-nowrap ${getCellCls(5)} ${
+                                freezeColLevel === "3" && !isColVisible("pelanggan")
+                                  ? `sticky z-20 border-r-2 border-r-blue-500 shadow-md ${
+                                      isRowSelected
+                                        ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
+                                        : g.isDoubleInv
+                                        ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
+                                        : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
+                                    }`
+                                  : freezeColLevel === "3"
+                                  ? `sticky z-20 border-r border-zinc-200 dark:border-zinc-800 ${
+                                      isRowSelected
+                                        ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
+                                        : g.isDoubleInv
+                                        ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
+                                        : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
+                                    }`
+                                  : "border-r border-zinc-200 dark:border-zinc-800"
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(5);
+                              }}
+                            >
+                              <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-black border ${
+                                g.jenisTransaksi === "ORA"
+                                  ? (isDarkMode ? "bg-purple-950/50 text-purple-300 border-purple-800/40" : "bg-purple-50 text-purple-700 border-purple-200")
+                                  : (isDarkMode ? "bg-zinc-800 text-zinc-300 border-zinc-700" : "bg-zinc-100 text-zinc-700 border-zinc-200")
+                              }`}>
+                                {g.jenisTransaksi} · {g.entity || "MBI"}
+                              </span>
+                            </td>
+                          )}
+
+                          {/* Col 6: Pelanggan (Wrap text, NO cut-off) */}
+                          {isColVisible("pelanggan") && (
+                            <td
+                              style={freezeColLevel === "3" ? { left: `${freezeOffsets.custOffset}px` } : undefined}
+                              className={`px-2.5 py-1.5 min-w-[180px] max-w-[280px] font-bold text-xs whitespace-normal break-words leading-tight ${
+                                isDarkMode ? "text-zinc-200" : "text-black"
+                              } ${getCellCls(6)} ${
+                                freezeColLevel === "3"
+                                  ? `sticky z-20 border-r-2 border-r-blue-500 shadow-md ${
+                                      isRowSelected
+                                        ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
+                                        : g.isDoubleInv
+                                        ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
+                                        : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
+                                    }`
+                                  : "border-r border-zinc-200 dark:border-zinc-800"
+                              }`}
+                              title={g.customerName}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(6);
+                              }}
+                            >
+                              {g.customerName}
+                            </td>
+                          )}
+
+                          {/* Col 7: Tgl Faktur */}
+                          {isColVisible("tgl_faktur") && (
+                            <td
+                              className={`px-2 py-1.5 text-center whitespace-nowrap font-mono text-[11px] font-medium border-r border-zinc-200 dark:border-zinc-800 ${
+                                isDarkMode ? "text-zinc-300" : "text-zinc-700"
+                              } ${getCellCls(7)}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(7);
+                              }}
+                            >
+                              {g.transactionDate && g.transactionDate !== "-" ? g.transactionDate : g.orderDate}
+                            </td>
+                          )}
+
+                          {/* Col 8: Tgl Order */}
+                          {isColVisible("tgl_order") && (
+                            <td
+                              className={`px-2 py-1.5 text-center whitespace-nowrap font-mono text-[11px] font-medium border-r border-zinc-200 dark:border-zinc-800 ${
+                                isDarkMode ? "text-zinc-500" : "text-zinc-500"
+                              } ${getCellCls(8)}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(8);
+                              }}
+                            >
+                              {g.orderDate && g.orderDate !== "-" ? g.orderDate : "-"}
+                            </td>
+                          )}
+
+                          {/* Col 9: Kat */}
+                          {isColVisible("kat") && (
+                            <td
+                              className={`px-2 py-1.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(9)}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(9);
+                              }}
+                            >
+                              <select
+                                value={g.kategori}
+                                disabled={currentUser?.role === "readonly"}
+                                onChange={(e) => {
+                                  handleUpdateCategory(g.invoiceKey, e.target.value as "1P" | "2P" | "3P", g.customerName);
+                                }}
+                                className={`px-1.5 py-0.5 rounded text-xs font-bold border cursor-pointer ${
+                                  currentUser?.role === "readonly" ? "cursor-not-allowed opacity-70" : ""
+                                } ${
+                                  isDarkMode
+                                    ? "bg-zinc-800 text-zinc-100 border-zinc-700 hover:border-zinc-500"
+                                    : "bg-white text-zinc-900 border-zinc-200 hover:border-zinc-300 shadow-2xs"
+                                }`}
+                                title={
+                                  currentUser?.role === "readonly"
+                                    ? "Akses Stranger (Hanya Lihat)"
+                                    : "Klik untuk ubah Kategori (1P / 2P / 3P)"
+                                }
+                              >
+                                <option value="1P">1P</option>
+                                <option value="2P">2P</option>
+                                <option value="3P">3P</option>
+                              </select>
+                            </td>
+                          )}
+
+                          {/* Col 10: Checker */}
+                          {isColVisible("checker") && (
+                            <td
+                              className={`px-2.5 py-1.5 whitespace-nowrap text-xs border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(10)}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(10);
+                              }}
+                            >
+                              {getCheckerInfo(g.so)?.checker ? (
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
+                                    isDarkMode
+                                      ? "bg-purple-950/60 text-purple-300 border border-purple-800/60"
+                                      : "bg-purple-100 text-purple-800 border border-purple-200"
+                                  }`}
+                                  title={`Checker: ${getCheckerInfo(g.so)?.checker}`}
+                                >
+                                  {getCheckerInfo(g.so)?.checker}
+                                </span>
+                              ) : (
+                                <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
+                              )}
+                            </td>
+                          )}
+
+                          {/* Col 11: Packer */}
+                          {isColVisible("packer") && (
+                            <td
+                              className={`px-2.5 py-1.5 whitespace-nowrap text-xs border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(11)}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(11);
+                              }}
+                            >
+                              {getCheckerInfo(g.so)?.packer ? (
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
+                                    isDarkMode
+                                      ? "bg-blue-950/60 text-blue-300 border border-blue-800/60"
+                                      : "bg-blue-100 text-blue-800 border border-blue-200"
+                                  }`}
+                                  title={`Packer: ${getCheckerInfo(g.so)?.packer}`}
+                                >
+                                  {getCheckerInfo(g.so)?.packer}
+                                </span>
+                              ) : (
+                                <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
+                              )}
+                            </td>
+                          )}
+
+                          {/* Col 12: Picker */}
+                          {isColVisible("picker") && (
+                            <td
+                              className={`px-2.5 py-1.5 whitespace-nowrap text-xs border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(12)}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(12);
+                              }}
+                            >
+                              {getCheckerInfo(g.so)?.picker ? (
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
+                                    isDarkMode
+                                      ? "bg-amber-950/60 text-amber-300 border border-amber-800/60"
+                                      : "bg-amber-100 text-amber-800 border border-amber-200"
+                                  }`}
+                                  title={`Picker: ${getCheckerInfo(g.so)?.picker}`}
+                                >
+                                  {getCheckerInfo(g.so)?.picker}
+                                </span>
+                              ) : (
+                                <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
+                              )}
+                            </td>
+                          )}
+
+                          {/* Col 13: Done Print Waktu */}
+                          {isColVisible("waktu_print") && (
+                            <td
+                              className={`px-2.5 py-1.5 whitespace-nowrap font-mono text-[11px] border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(13)}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(13);
+                              }}
+                            >
+                              {g.allPrinted && g.printedAt ? (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded border font-semibold text-[11px] ${
+                                    isDarkMode
+                                      ? "text-emerald-400 bg-emerald-950/40 border-emerald-800/40"
+                                      : "text-emerald-700 bg-emerald-50 border-emerald-200"
+                                  }`}>
+                                    ⏱ {formatPrintTime(g.printedAt)}
+                                  </span>
+                                  {g.printedBy && (
+                                    <span className={`text-[9px] font-sans font-medium px-0.5 ${
+                                      isDarkMode ? "text-zinc-500" : "text-zinc-500"
+                                    }`}>
+                                      oleh: <strong>{String(g.printedBy)}</strong>
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
+                              )}
+                            </td>
+                          )}
 
                           {/* Col 14: Total Harga (Grand Total include PPN 11%) */}
-                          <td
-                            className={`px-2.5 py-1.5 text-right font-medium whitespace-nowrap ${
-                              isDarkMode
-                                ? "text-white"
-                                : "text-black"
-                            } ${getCellCls(14)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectCell(14);
-                            }}
-                          >
-                            <div className="font-mono font-black text-xs">
-                              {formatRupiah(Math.round(g.totalHarga * 1.11 * 100) / 100)}
-                            </div>
-                            <div className={`text-[9px] font-mono font-medium ${isDarkMode ? "text-zinc-500" : "text-zinc-500"}`}>
-                              DPP: {formatRupiah(Math.round(g.totalHarga * 100) / 100)}
-                            </div>
-                          </td>
+                          {isColVisible("total") && (
+                            <td
+                              className={`px-2.5 py-1.5 text-right font-medium whitespace-nowrap ${
+                                isDarkMode
+                                  ? "text-white"
+                                  : "text-black"
+                              } ${getCellCls(14)}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectCell(14);
+                              }}
+                            >
+                              <div className="font-mono font-black text-xs">
+                                {formatRupiah(Math.round(g.totalHarga * 1.11 * 100) / 100)}
+                              </div>
+                              <div className={`text-[9px] font-mono font-medium ${isDarkMode ? "text-zinc-500" : "text-zinc-500"}`}>
+                                DPP: {formatRupiah(Math.round(g.totalHarga * 100) / 100)}
+                              </div>
+                            </td>
+                          )}
                         </tr>
 
                         {/* Expanded Detail Rows */}
                         {isExpanded && (
                           <tr className={isDarkMode ? "bg-[#080d19] border-b border-slate-800" : "bg-slate-50/80 border-b border-slate-200"}>
-                            <td colSpan={15} className="p-3">
+                            <td colSpan={visibleColCount} className="p-3">
                               <div className={`border rounded-xl p-3 shadow-xs space-y-3 ${
                                 isDarkMode ? "bg-[#0e1628] border-slate-700/70 text-slate-200 shadow-black/40" : "bg-white border-slate-200 text-slate-800"
                               }`}>
@@ -5215,7 +5684,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 )}
               </tbody>
             </table>
-          </div>
+          );
+        })()}
+      </div>
 
           {/* Pagination Footer */}
           {totalPages > 1 && (

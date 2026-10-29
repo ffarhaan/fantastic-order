@@ -37,6 +37,8 @@ import {
   Trash2,
   FolderOpen,
   Image as ImageIcon,
+  Columns,
+  Pin,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -189,6 +191,45 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
   const [isImporting, setIsImporting] = useState(false);
   const [zipProgress, setZipProgress] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // ─── Spreadsheet Freeze & Column Visibility States ───
+  const [freezeColLevel, setFreezeColLevel] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("cust_freeze_level") || "3";
+    }
+    return "3";
+  });
+  const [hiddenCols, setHiddenCols] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("cust_hidden_cols");
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [showColMenu, setShowColMenu] = useState(false);
+
+  const handleFreezeChange = (level: string) => {
+    setFreezeColLevel(level);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("cust_freeze_level", level);
+    }
+  };
+
+  const handleToggleCol = (colId: string) => {
+    setHiddenCols((prev) => {
+      const next = prev.includes(colId) ? prev.filter((id) => id !== colId) : [...prev, colId];
+      if (typeof window !== "undefined") {
+        localStorage.setItem("cust_hidden_cols", JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  const isColVisible = (colId: string) => !hiddenCols.includes(colId);
 
   const loadCustomerDocs = async (custId: string, custName: string) => {
     setDetailLoading(true);
@@ -825,6 +866,89 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
             <span>{hasDocsFilter ? "✓ Sudah Ada Dokumen" : "Filter Ada Dokumen"}</span>
           </button>
 
+          {/* ─── Spreadsheet Freeze Selector ─── */}
+          <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-zinc-700/60 rounded-xl px-2.5 py-1">
+            <Pin className="w-3.5 h-3.5 text-blue-500" />
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium">Freeze:</span>
+            <select
+              value={freezeColLevel}
+              onChange={(e) => handleFreezeChange(e.target.value)}
+              className="bg-transparent border-none text-xs font-bold text-blue-600 dark:text-blue-400 focus:outline-none cursor-pointer pr-1"
+              title="Kunci kolom di sisi kiri seperti Excel/Google Sheets"
+            >
+              <option value="none">Bebas (Tanpa Freeze)</option>
+              <option value="1">1. Kolom ID</option>
+              <option value="2">2. ID + Oracle</option>
+              <option value="3">3. Sampai Nama Apotek</option>
+            </select>
+          </div>
+
+          {/* ─── Column Visibility Dropdown Toggle ─── */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowColMenu((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                showColMenu || hiddenCols.length > 0
+                  ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800"
+                  : "bg-zinc-50 dark:bg-[#070b13] text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700/60 hover:bg-zinc-100"
+              }`}
+              title="Atur kolom yang ingin ditampilkan / disembunyikan"
+            >
+              <Columns className="w-3.5 h-3.5 text-blue-500" />
+              <span>Kolom {hiddenCols.length > 0 ? `(${9 - hiddenCols.length}/9)` : ""}</span>
+            </button>
+
+            {showColMenu && (
+              <div className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl bg-white dark:bg-[#0c1222] border border-zinc-200 dark:border-zinc-700 shadow-xl p-3 text-xs space-y-2 animate-in fade-in zoom-in-95 duration-100">
+                <div className="flex items-center justify-between pb-1.5 border-b border-zinc-200 dark:border-zinc-800 font-bold text-zinc-800 dark:text-zinc-200">
+                  <span>Pilih Kolom Tampil</span>
+                  {hiddenCols.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHiddenCols([]);
+                        if (typeof window !== "undefined") localStorage.removeItem("cust_hidden_cols");
+                      }}
+                      className="text-[10px] text-blue-600 hover:underline cursor-pointer"
+                    >
+                      Reset Semua
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {[
+                    { id: "id", label: "ID Customer" },
+                    { id: "oracle", label: "ID Oracle" },
+                    { id: "name", label: "Nama Apotek", locked: true },
+                    { id: "status", label: "Status Merchant" },
+                    { id: "address", label: "Alamat Default" },
+                    { id: "apj", label: "Nama APJ" },
+                    { id: "sia", label: "SIA Expired" },
+                    { id: "sipa", label: "SIPA Expired" },
+                    { id: "category", label: "Kategori (1P/2P/REG)" },
+                  ].map((col) => (
+                    <label
+                      key={col.id}
+                      className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={col.locked || isColVisible(col.id)}
+                        disabled={col.locked}
+                        onChange={() => !col.locked && handleToggleCol(col.id)}
+                        className="accent-blue-600 rounded cursor-pointer w-3.5 h-3.5"
+                      />
+                      <span className={col.locked ? "font-bold text-blue-600 dark:text-blue-400" : ""}>
+                        {col.label} {col.locked ? "(Wajib)" : ""}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Refresh Button */}
           <button
             type="button"
@@ -843,20 +967,105 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
         <div className="overflow-x-auto w-full">
           <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
             <thead>
-              <tr className="bg-zinc-50 dark:bg-[#070b14] border-b border-zinc-200 dark:border-zinc-800 text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                <th className="py-3 px-3.5 w-24 min-w-[85px] whitespace-nowrap">ID</th>
-                <th className="py-3 px-3 w-32 min-w-[115px] whitespace-nowrap">ID Oracle</th>
-                <th className="py-3 px-4 min-w-[240px]">Nama Apotek / Merchant</th>
-                <th className="py-3 px-3 w-28 min-w-[100px] text-center whitespace-nowrap">Status</th>
-                <th className="py-3 px-4 min-w-[260px]">Alamat Default</th>
-                <th className="py-3 px-3 min-w-[150px]">Nama APJ</th>
-                <th className="py-3 px-3 w-32 min-w-[120px] whitespace-nowrap" title="Masa Berlaku SIA (Surat Izin Apotek)">SIA Expired</th>
-                <th className="py-3 px-3 w-32 min-w-[120px] whitespace-nowrap" title="Masa Berlaku SIPA (Surat Izin Praktik Apoteker)">SIPA Expired</th>
-                <th className="py-3 px-3 w-24 min-w-[85px] text-center whitespace-nowrap">Kategori</th>
-                <th className="py-3 px-3 w-28 min-w-[105px] text-center whitespace-nowrap">Aksi</th>
+              <tr className="bg-zinc-100 dark:bg-[#070b14] border-b-2 border-zinc-300 dark:border-zinc-800 text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider select-none">
+                {/* ID */}
+                {isColVisible("id") && (
+                  <th
+                    className={`py-3 px-3.5 w-24 min-w-[96px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
+                      freezeColLevel === "1"
+                        ? "sticky left-0 z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
+                        : freezeColLevel === "2" || freezeColLevel === "3"
+                        ? "sticky left-0 z-30 bg-zinc-100 dark:bg-[#070b14]"
+                        : ""
+                    }`}
+                  >
+                    ID
+                  </th>
+                )}
+
+                {/* ID Oracle */}
+                {isColVisible("oracle") && (
+                  <th
+                    className={`py-3 px-3 w-32 min-w-[128px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
+                      freezeColLevel === "2"
+                        ? "sticky left-[96px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
+                        : freezeColLevel === "3"
+                        ? "sticky left-[96px] z-30 bg-zinc-100 dark:bg-[#070b14]"
+                        : ""
+                    }`}
+                  >
+                    ID Oracle
+                  </th>
+                )}
+
+                {/* Nama Apotek (Locked Always Visible) */}
+                <th
+                  className={`py-3 px-4 min-w-[260px] border-r border-zinc-200 dark:border-zinc-800 ${
+                    freezeColLevel === "3"
+                      ? `sticky z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md ${
+                          isColVisible("id") && isColVisible("oracle")
+                            ? "left-[224px]"
+                            : isColVisible("id")
+                            ? "left-[96px]"
+                            : isColVisible("oracle")
+                            ? "left-[128px]"
+                            : "left-0"
+                        }`
+                      : ""
+                  }`}
+                >
+                  Nama Apotek / Merchant
+                </th>
+
+                {/* Status */}
+                {isColVisible("status") && (
+                  <th className="py-3 px-3 w-28 min-w-[100px] text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                    Status
+                  </th>
+                )}
+
+                {/* Alamat Default */}
+                {isColVisible("address") && (
+                  <th className="py-3 px-4 min-w-[320px] border-r border-zinc-200 dark:border-zinc-800">
+                    Alamat Default
+                  </th>
+                )}
+
+                {/* Nama APJ */}
+                {isColVisible("apj") && (
+                  <th className="py-3 px-3.5 min-w-[180px] border-r border-zinc-200 dark:border-zinc-800">
+                    Nama APJ
+                  </th>
+                )}
+
+                {/* SIA Expired */}
+                {isColVisible("sia") && (
+                  <th className="py-3 px-3 w-32 min-w-[120px] whitespace-nowrap text-center border-r border-zinc-200 dark:border-zinc-800" title="Masa Berlaku SIA (Surat Izin Apotek)">
+                    SIA Expired
+                  </th>
+                )}
+
+                {/* SIPA Expired */}
+                {isColVisible("sipa") && (
+                  <th className="py-3 px-3 w-32 min-w-[120px] whitespace-nowrap text-center border-r border-zinc-200 dark:border-zinc-800" title="Masa Berlaku SIPA (Surat Izin Praktik Apoteker)">
+                    SIPA Expired
+                  </th>
+                )}
+
+                {/* Kategori */}
+                {isColVisible("category") && (
+                  <th className="py-3 px-3 w-24 min-w-[85px] text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                    Kategori
+                  </th>
+                )}
+
+                {/* Aksi (Sticky Right) */}
+                <th className="py-3 px-3 w-28 min-w-[105px] text-center whitespace-nowrap sticky right-0 z-20 bg-zinc-100 dark:bg-[#070b14] border-l border-zinc-200 dark:border-zinc-800 shadow-[-3px_0_6px_rgba(0,0,0,0.06)]">
+                  Aksi
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-200/80 dark:divide-zinc-800/50">
+            <tbody className="divide-y divide-zinc-200/80 dark:divide-zinc-800/50 bg-white dark:bg-[#0a0f1c]">
               {loading && customers.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="py-16 text-center text-slate-400">
@@ -902,26 +1111,60 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                       className={`group transition-all cursor-pointer ${
                         isSelected
                           ? "bg-blue-50/90 dark:bg-slate-800/70 border-l-4 border-blue-600 dark:border-indigo-500"
-                          : "hover:bg-blue-50/50 dark:hover:bg-slate-800/30 border-l-4 border-transparent"
+                          : "hover:bg-blue-50/60 dark:hover:bg-slate-800/40 border-l-4 border-transparent"
                       }`}
                     >
                       {/* ID */}
-                      <td className="py-2.5 px-3.5 font-mono text-zinc-600 dark:text-slate-400 text-[11px] font-semibold whitespace-nowrap group-hover:text-blue-600 dark:group-hover:text-indigo-400 transition-colors">
-                        {c.id}
-                      </td>
+                      {isColVisible("id") && (
+                        <td
+                          className={`py-2.5 px-3.5 font-mono text-zinc-700 dark:text-slate-300 text-[11px] font-bold whitespace-nowrap group-hover:text-blue-600 dark:group-hover:text-indigo-400 transition-colors border-r border-zinc-200 dark:border-zinc-800 ${
+                            freezeColLevel === "1"
+                              ? "sticky left-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
+                              : freezeColLevel === "2" || freezeColLevel === "3"
+                              ? "sticky left-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800"
+                              : ""
+                          }`}
+                        >
+                          {c.id}
+                        </td>
+                      )}
 
                       {/* ID Oracle */}
-                      <td className="py-2.5 px-3 whitespace-nowrap">
-                        <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-indigo-500/10 text-blue-700 dark:text-indigo-300 border border-blue-200 dark:border-indigo-500/20 whitespace-nowrap inline-block">
-                          {c.customer_id_oracle || "-"}
-                        </span>
-                      </td>
+                      {isColVisible("oracle") && (
+                        <td
+                          className={`py-2.5 px-3 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
+                            freezeColLevel === "2"
+                              ? "sticky left-[96px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
+                              : freezeColLevel === "3"
+                              ? "sticky left-[96px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800"
+                              : ""
+                          }`}
+                        >
+                          <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-indigo-500/10 text-blue-700 dark:text-indigo-300 border border-blue-200 dark:border-indigo-500/20 whitespace-nowrap inline-block">
+                            {c.customer_id_oracle || "-"}
+                          </span>
+                        </td>
+                      )}
 
-                      {/* Nama Apotek */}
-                      <td className="py-2.5 px-4 font-bold max-w-[280px]">
-                        <div className="flex items-center gap-1.5">
+                      {/* Nama Apotek (Locked Always Visible) */}
+                      <td
+                        className={`py-2.5 px-4 font-bold border-r border-zinc-200 dark:border-zinc-800 ${
+                          freezeColLevel === "3"
+                            ? `sticky z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md ${
+                                isColVisible("id") && isColVisible("oracle")
+                                  ? "left-[224px]"
+                                  : isColVisible("id")
+                                  ? "left-[96px]"
+                                  : isColVisible("oracle")
+                                  ? "left-[128px]"
+                                  : "left-0"
+                              }`
+                            : ""
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1.5">
                           <span
-                            className="truncate block text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors"
+                            className="text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors"
                             title={c.name}
                           >
                             {c.name || "-"}
@@ -939,64 +1182,78 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                       </td>
 
                       {/* Status */}
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            c.status_merchant === "ACTIVE"
-                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
-                              : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
-                          }`}
-                        >
+                      {isColVisible("status") && (
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
                           <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              c.status_merchant === "ACTIVE" ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              c.status_merchant === "ACTIVE"
+                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                                : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
                             }`}
-                          />
-                          {c.status_merchant || "-"}
-                        </span>
-                      </td>
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                c.status_merchant === "ACTIVE" ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
+                              }`}
+                            />
+                            {c.status_merchant || "-"}
+                          </span>
+                        </td>
+                      )}
 
-                      {/* Alamat */}
-                      <td className="py-2.5 px-4 max-w-[260px] text-zinc-600 dark:text-slate-300">
-                        <span className="truncate block text-zinc-600 dark:text-slate-400 group-hover:text-zinc-900 dark:group-hover:text-slate-200 transition-colors" title={c.address}>
-                          {c.address || "-"}
-                        </span>
-                      </td>
+                      {/* Alamat (Full Wrap Text - No Cutoff) */}
+                      {isColVisible("address") && (
+                        <td className="py-2.5 px-4 min-w-[280px] max-w-[420px] border-r border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-slate-300">
+                          <div className="leading-relaxed text-xs break-words whitespace-normal text-zinc-700 dark:text-slate-300 group-hover:text-zinc-900 dark:group-hover:text-slate-100 transition-colors" title={c.address}>
+                            {c.address || "-"}
+                          </div>
+                        </td>
+                      )}
 
-                      {/* Nama APJ */}
-                      <td className="py-2.5 px-3 text-zinc-800 dark:text-slate-300 truncate max-w-[140px] font-medium" title={c.apj_name}>
-                        {c.apj_name || "-"}
-                      </td>
+                      {/* Nama APJ (Full Wrap Text - No Cutoff) */}
+                      {isColVisible("apj") && (
+                        <td className="py-2.5 px-3.5 min-w-[170px] max-w-[240px] border-r border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-slate-200 font-medium">
+                          <div className="leading-snug break-words whitespace-normal" title={c.apj_name}>
+                            {c.apj_name || "-"}
+                          </div>
+                        </td>
+                      )}
 
                       {/* SIA Expired */}
-                      <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-800 dark:text-cyan-300 whitespace-nowrap font-medium">
-                        {formatIndonesianDate(c.sia_expired)}
-                      </td>
+                      {isColVisible("sia") && (
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-800 dark:text-cyan-300 whitespace-nowrap text-center font-medium border-r border-zinc-200 dark:border-zinc-800">
+                          {formatIndonesianDate(c.sia_expired)}
+                        </td>
+                      )}
 
                       {/* SIPA Expired */}
-                      <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-800 dark:text-indigo-300 whitespace-nowrap font-medium">
-                        {formatIndonesianDate(c.sipa_expired)}
-                      </td>
+                      {isColVisible("sipa") && (
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-800 dark:text-indigo-300 whitespace-nowrap text-center font-medium border-r border-zinc-200 dark:border-zinc-800">
+                          {formatIndonesianDate(c.sipa_expired)}
+                        </td>
+                      )}
 
                       {/* Kategori */}
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        <span
-                          className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
-                            c.category === "1P"
-                              ? "bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/40"
-                              : c.category === "2P"
-                              ? "bg-cyan-100 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/40"
-                              : c.category === "3P"
-                              ? "bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40"
-                              : "bg-zinc-100 text-zinc-600 border border-zinc-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
-                          }`}
-                        >
-                          {c.category || "REG"}
-                        </span>
-                      </td>
+                      {isColVisible("category") && (
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                              c.category === "1P"
+                                ? "bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/40"
+                                : c.category === "2P"
+                                ? "bg-cyan-100 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/40"
+                                : c.category === "3P"
+                                ? "bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40"
+                                : "bg-zinc-100 text-zinc-600 border border-zinc-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                            }`}
+                          >
+                            {c.category || "REG"}
+                          </span>
+                        </td>
+                      )}
 
-                      {/* Action Buttons: Edit + Dokumen (di sebelah kanan Edit) */}
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                      {/* Action Buttons: Edit + Dokumen (Sticky Right) */}
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap sticky right-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-l border-zinc-200 dark:border-zinc-800 shadow-[-3px_0_6px_rgba(0,0,0,0.06)]">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"

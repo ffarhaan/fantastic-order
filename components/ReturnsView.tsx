@@ -43,6 +43,8 @@ import {
   CalendarRange,
   FileText,
   XCircle,
+  Columns,
+  Pin,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import OverviewKpiView from "./returns/OverviewKpiView";
@@ -185,6 +187,45 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   }, [currentWeekNumber]);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
+
+  // ─── Spreadsheet Freeze & Column Visibility States ───
+  const [freezeColLevel, setFreezeColLevel] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("ret_freeze_level") || "3";
+    }
+    return "3";
+  });
+  const [hiddenCols, setHiddenCols] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("ret_hidden_cols");
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [showColMenu, setShowColMenu] = useState(false);
+
+  const handleFreezeChange = (level: string) => {
+    setFreezeColLevel(level);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("ret_freeze_level", level);
+    }
+  };
+
+  const handleToggleCol = (colId: string) => {
+    setHiddenCols((prev) => {
+      const next = prev.includes(colId) ? prev.filter((id) => id !== colId) : [...prev, colId];
+      if (typeof window !== "undefined") {
+        localStorage.setItem("ret_hidden_cols", JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  const isColVisible = (colId: string) => !hiddenCols.includes(colId);
   const [stats, setStats] = useState({
     totalAll: 0,
     totalResolved: 0,
@@ -1956,6 +1997,93 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             </select>
           </div>
 
+          {/* ─── Spreadsheet Freeze Selector ─── */}
+          <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-slate-700/60 rounded-xl px-2.5 py-1">
+            <Pin className="w-3.5 h-3.5 text-blue-500" />
+            <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-medium">Freeze:</span>
+            <select
+              value={freezeColLevel}
+              onChange={(e) => handleFreezeChange(e.target.value)}
+              className="bg-transparent border-none text-xs font-bold text-blue-600 dark:text-blue-400 focus:outline-none cursor-pointer pr-1"
+              title="Kunci kolom di sisi kiri seperti Excel/Google Sheets"
+            >
+              <option value="none">Bebas (Tanpa Freeze)</option>
+              <option value="1">1. Kolom PBF</option>
+              <option value="2">2. PBF + Apotek</option>
+              <option value="3">3. Sampai No. Faktur</option>
+            </select>
+          </div>
+
+          {/* ─── Column Visibility Dropdown Toggle ─── */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowColMenu((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                showColMenu || hiddenCols.length > 0
+                  ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800"
+                  : "bg-zinc-50 dark:bg-[#070b13] text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-700/60 hover:bg-zinc-100"
+              }`}
+              title="Atur kolom yang ingin ditampilkan / disembunyikan"
+            >
+              <Columns className="w-3.5 h-3.5 text-blue-500" />
+              <span>Kolom {hiddenCols.length > 0 ? `(${13 - hiddenCols.length}/13)` : ""}</span>
+            </button>
+
+            {showColMenu && (
+              <div className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl bg-white dark:bg-[#0c1222] border border-zinc-200 dark:border-zinc-700 shadow-xl p-3 text-xs space-y-2 animate-in fade-in zoom-in-95 duration-100">
+                <div className="flex items-center justify-between pb-1.5 border-b border-zinc-200 dark:border-zinc-800 font-bold text-zinc-800 dark:text-zinc-200">
+                  <span>Pilih Kolom Tampil</span>
+                  {hiddenCols.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHiddenCols([]);
+                        if (typeof window !== "undefined") localStorage.removeItem("ret_hidden_cols");
+                      }}
+                      className="text-[10px] text-blue-600 hover:underline cursor-pointer"
+                    >
+                      Reset Semua
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {[
+                    { id: "pbf", label: "PBF & Week" },
+                    { id: "apotek", label: "Nama Apotek", locked: true },
+                    { id: "no_faktur", label: "No. Faktur" },
+                    { id: "status", label: "Status Tiket" },
+                    { id: "tgl_faktur", label: "Tgl Faktur" },
+                    { id: "tgl_lapor", label: "Tgl Lapor" },
+                    { id: "no_so", label: "No. SO" },
+                    { id: "produk", label: "Nama Produk & Qty" },
+                    { id: "alasan", label: "Alasan (Reason)" },
+                    { id: "tgl_selesai", label: "Tgl Selesai" },
+                    { id: "days_today", label: "Days Today" },
+                    { id: "days_close", label: "Days Until Close" },
+                    { id: "tindakan", label: "Tindakan" },
+                  ].map((col) => (
+                    <label
+                      key={col.id}
+                      className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={col.locked || isColVisible(col.id)}
+                        disabled={col.locked}
+                        onChange={() => !col.locked && handleToggleCol(col.id)}
+                        className="accent-blue-600 rounded cursor-pointer w-3.5 h-3.5"
+                      />
+                      <span className={col.locked ? "font-bold text-blue-600 dark:text-blue-400" : ""}>
+                        {col.label} {col.locked ? "(Wajib)" : ""}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
             onClick={() => {
@@ -2145,26 +2273,133 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       {/* ─── Enterprise Returns Table (Desktop & Tablet) ─── */}
       <div className="hidden md:block rounded-2xl border border-zinc-300 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
+          <table className="w-full text-left text-xs border-collapse min-w-[1250px]">
             <thead>
-              <tr className="bg-zinc-100 dark:bg-[#070b14] border-b-2 border-zinc-300 dark:border-zinc-800 text-[11px] font-black text-black dark:text-slate-400 uppercase tracking-wider">
-                <th className="py-2.5 px-3 w-16">PBF</th>
-                <th className="py-2.5 px-4">Nama Apotek</th>
-                <th className="py-2.5 px-3">No. Faktur</th>
-                <th className="py-2.5 px-3 text-center">Status</th>
-                <th className="py-2.5 px-3">Tgl Faktur</th>
-                <th className="py-2.5 px-3 whitespace-nowrap">Tgl Lapor</th>
-                <th className="py-2.5 px-3">No. SO</th>
-                <th className="py-2.5 px-4">Nama Produk & Qty</th>
-                <th className="py-2.5 px-4">Alasan (Reason)</th>
-                <th className="py-2.5 px-3 text-center">Tgl Selesai</th>
-                <th className="py-2.5 px-2.5 text-center whitespace-nowrap" title="Days until Today (Hari sejak lapor)">Days Today</th>
-                <th className="py-2.5 px-2.5 text-center whitespace-nowrap" title="Days until close (#N/A jika belum selesai)">Days Until Close</th>
-                <th className="py-2.5 px-3">Tindakan</th>
-                <th className="py-2.5 px-3 text-center">Aksi</th>
+              <tr className="bg-zinc-100 dark:bg-[#070b14] border-b-2 border-zinc-300 dark:border-zinc-800 text-[11px] font-black text-black dark:text-slate-400 uppercase tracking-wider select-none">
+                {/* PBF */}
+                {isColVisible("pbf") && (
+                  <th
+                    className={`py-2.5 px-3 w-20 min-w-[80px] border-r border-zinc-200 dark:border-zinc-800 ${
+                      freezeColLevel === "1"
+                        ? "sticky left-0 z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
+                        : freezeColLevel === "2" || freezeColLevel === "3"
+                        ? "sticky left-0 z-30 bg-zinc-100 dark:bg-[#070b14]"
+                        : ""
+                    }`}
+                  >
+                    PBF
+                  </th>
+                )}
+
+                {/* Nama Apotek (Locked Always Visible) */}
+                <th
+                  className={`py-2.5 px-4 min-w-[240px] border-r border-zinc-200 dark:border-zinc-800 ${
+                    freezeColLevel === "2"
+                      ? `sticky z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md ${
+                          isColVisible("pbf") ? "left-[80px]" : "left-0"
+                        }`
+                      : freezeColLevel === "3"
+                      ? `sticky z-30 bg-zinc-100 dark:bg-[#070b14] ${
+                          isColVisible("pbf") ? "left-[80px]" : "left-0"
+                        }`
+                      : ""
+                  }`}
+                >
+                  Nama Apotek
+                </th>
+
+                {/* No. Faktur */}
+                {isColVisible("no_faktur") && (
+                  <th
+                    className={`py-2.5 px-3 w-32 min-w-[120px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
+                      freezeColLevel === "3"
+                        ? `sticky z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md ${
+                            isColVisible("pbf") ? "left-[320px]" : "left-[240px]"
+                          }`
+                        : ""
+                    }`}
+                  >
+                    No. Faktur
+                  </th>
+                )}
+
+                {/* Status */}
+                {isColVisible("status") && (
+                  <th className="py-2.5 px-3 text-center w-28 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                    Status
+                  </th>
+                )}
+
+                {/* Tgl Faktur */}
+                {isColVisible("tgl_faktur") && (
+                  <th className="py-2.5 px-3 w-28 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                    Tgl Faktur
+                  </th>
+                )}
+
+                {/* Tgl Lapor */}
+                {isColVisible("tgl_lapor") && (
+                  <th className="py-2.5 px-3 whitespace-nowrap w-28 border-r border-zinc-200 dark:border-zinc-800">
+                    Tgl Lapor
+                  </th>
+                )}
+
+                {/* No. SO */}
+                {isColVisible("no_so") && (
+                  <th className="py-2.5 px-3 w-28 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                    No. SO
+                  </th>
+                )}
+
+                {/* Nama Produk & Qty */}
+                {isColVisible("produk") && (
+                  <th className="py-2.5 px-4 min-w-[240px] border-r border-zinc-200 dark:border-zinc-800">
+                    Nama Produk & Qty
+                  </th>
+                )}
+
+                {/* Alasan (Reason) */}
+                {isColVisible("alasan") && (
+                  <th className="py-2.5 px-4 min-w-[240px] border-r border-zinc-200 dark:border-zinc-800">
+                    Alasan (Reason)
+                  </th>
+                )}
+
+                {/* Tgl Selesai */}
+                {isColVisible("tgl_selesai") && (
+                  <th className="py-2.5 px-3 text-center w-28 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                    Tgl Selesai
+                  </th>
+                )}
+
+                {/* Days Today */}
+                {isColVisible("days_today") && (
+                  <th className="py-2.5 px-2.5 text-center whitespace-nowrap w-20 border-r border-zinc-200 dark:border-zinc-800" title="Days until Today (Hari sejak lapor)">
+                    Days Today
+                  </th>
+                )}
+
+                {/* Days Until Close */}
+                {isColVisible("days_close") && (
+                  <th className="py-2.5 px-2.5 text-center whitespace-nowrap w-24 border-r border-zinc-200 dark:border-zinc-800" title="Days until close (#N/A jika belum selesai)">
+                    Days Close
+                  </th>
+                )}
+
+                {/* Tindakan */}
+                {isColVisible("tindakan") && (
+                  <th className="py-2.5 px-3 min-w-[160px] border-r border-zinc-200 dark:border-zinc-800">
+                    Tindakan
+                  </th>
+                )}
+
+                {/* Aksi (Sticky Right) */}
+                <th className="py-2.5 px-3 text-center w-28 whitespace-nowrap sticky right-0 z-20 bg-zinc-100 dark:bg-[#070b14] border-l border-zinc-200 dark:border-zinc-800 shadow-[-3px_0_6px_rgba(0,0,0,0.06)]">
+                  Aksi
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-200/80 dark:divide-slate-800/50">
+            <tbody className="divide-y divide-zinc-200/80 dark:divide-slate-800/50 bg-white dark:bg-[#0a0f1c]">
               {loading && returns.length === 0 ? (
                 <tr>
                   <td colSpan={14} className="py-16 text-center text-zinc-400">
@@ -2190,42 +2425,66 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     <Fragment key={r.id}>
                       <tr
                         onClick={() => setSelectedReturn((prev) => (prev?.id === r.id ? null : r))}
-                        className={`group hover:bg-zinc-100 dark:hover:bg-slate-800/30 transition-colors cursor-pointer ${
+                        className={`group hover:bg-zinc-100/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer ${
                           isExpanded
                             ? "bg-indigo-50/70 dark:bg-slate-800/60 font-semibold border-l-4 border-l-indigo-600 dark:border-l-indigo-500"
                             : ""
                         }`}
                       >
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-1">
-                            <span
-                              className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
-                                r.pbf === "MAI"
-                                  ? "bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30"
-                                  : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
-                              }`}
-                            >
-                              {r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"}
-                            </span>
-                            {r.week ? (
+                        {/* PBF */}
+                        {isColVisible("pbf") && (
+                          <td
+                            className={`py-2.5 px-3 border-r border-zinc-200 dark:border-zinc-800 ${
+                              freezeColLevel === "1"
+                                ? "sticky left-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50/70 dark:group-hover:bg-slate-800/60 border-r-2 border-r-blue-500 shadow-md"
+                                : freezeColLevel === "2" || freezeColLevel === "3"
+                                ? "sticky left-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50/70 dark:group-hover:bg-slate-800/60"
+                                : ""
+                            }`}
+                          >
+                            <div className="flex items-center gap-1">
                               <span
-                                className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/60 cursor-pointer hover:bg-emerald-200"
-                                title={`Klik untuk filter ke Week ${r.week}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setWeekFilter(String(r.week));
-                                  setPage(0);
-                                }}
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                                  r.pbf === "MAI"
+                                    ? "bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30"
+                                    : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
+                                }`}
                               >
-                                W{r.week}
+                                {r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"}
                               </span>
-                            ) : null}
-                          </div>
-                        </td>
+                              {r.week ? (
+                                <span
+                                  className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/60 cursor-pointer hover:bg-emerald-200"
+                                  title={`Klik untuk filter ke Week ${r.week}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setWeekFilter(String(r.week));
+                                    setPage(0);
+                                  }}
+                                >
+                                  W{r.week}
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                        )}
 
-                        <td className="py-2.5 px-4 font-bold text-black dark:text-slate-100">
+                        {/* Nama Apotek (Locked Always Visible) */}
+                        <td
+                          className={`py-2.5 px-4 font-bold text-black dark:text-slate-100 border-r border-zinc-200 dark:border-zinc-800 ${
+                            freezeColLevel === "2"
+                              ? `sticky z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50/70 dark:group-hover:bg-slate-800/60 border-r-2 border-r-blue-500 shadow-md ${
+                                  isColVisible("pbf") ? "left-[80px]" : "left-0"
+                                }`
+                              : freezeColLevel === "3"
+                              ? `sticky z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50/70 dark:group-hover:bg-slate-800/60 ${
+                                  isColVisible("pbf") ? "left-[80px]" : "left-0"
+                                }`
+                              : ""
+                          }`}
+                        >
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="truncate max-w-[200px]" title={r.customer_name}>
+                            <span className="whitespace-normal break-words leading-snug" title={r.customer_name}>
                               {r.customer_name && r.customer_name !== "#N/A" ? r.customer_name : "-"}
                             </span>
                             {r.category && r.category !== "#N/A" && (
@@ -2244,169 +2503,209 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                           </div>
                         </td>
 
-                        <td className="py-2.5 px-3 font-mono text-[11px]">
-                          {r.invoice_no && r.invoice_no !== "#N/A" ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (onSelectInvoice) onSelectInvoice(r.invoice_no);
-                              }}
-                              className="font-bold text-blue-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-                              title="Buka Faktur Terkait"
-                            >
-                              <span>{r.invoice_no}</span>
-                              <ExternalLink className="w-2.5 h-2.5" />
-                            </button>
-                          ) : (
-                            <span className="text-zinc-400 dark:text-slate-600">-</span>
-                          )}
-                        </td>
-
-                        {/* Status Tiket (Langsung di samping No Faktur) */}
-                        <td className="py-2.5 px-3 text-center">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                              isResolved
-                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30"
-                                : isPending
-                                ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
-                                : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/30"
+                        {/* No. Faktur */}
+                        {isColVisible("no_faktur") && (
+                          <td
+                            className={`py-2.5 px-3 font-mono text-[11px] border-r border-zinc-200 dark:border-zinc-800 ${
+                              freezeColLevel === "3"
+                                ? `sticky z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50/70 dark:group-hover:bg-slate-800/60 border-r-2 border-r-blue-500 shadow-md ${
+                                    isColVisible("pbf") ? "left-[320px]" : "left-[240px]"
+                                  }`
+                                : ""
                             }`}
                           >
-                            {isResolved ? (
-                              <CheckCircle2 className="w-2.5 h-2.5" />
+                            {r.invoice_no && r.invoice_no !== "#N/A" ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (onSelectInvoice) onSelectInvoice(r.invoice_no);
+                                }}
+                                className="font-bold text-blue-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                                title="Buka Faktur Terkait"
+                              >
+                                <span>{r.invoice_no}</span>
+                                <ExternalLink className="w-2.5 h-2.5" />
+                              </button>
                             ) : (
-                              <Clock className="w-2.5 h-2.5" />
+                              <span className="text-zinc-400 dark:text-slate-600">-</span>
                             )}
-                            <span>{r.status || "Pending"}</span>
-                          </span>
-                        </td>
+                          </td>
+                        )}
 
-                        <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap text-zinc-700 dark:text-slate-300">
-                          {getInvoiceDate(r) ? (
-                            <span className="inline-flex items-center gap-1 font-semibold" title="Tanggal Faktur (dari daftar faktur)">
-                              <Calendar className="w-3 h-3 text-zinc-400 shrink-0" />
-                              <span>{formatDate(getInvoiceDate(r))}</span>
+                        {/* Status Tiket (Langsung di samping No Faktur) */}
+                        {isColVisible("status") && (
+                          <td className="py-2.5 px-3 text-center border-r border-zinc-200 dark:border-zinc-800">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                isResolved
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30"
+                                  : isPending
+                                  ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
+                                  : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/30"
+                              }`}
+                            >
+                              {isResolved ? (
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                              ) : (
+                                <Clock className="w-2.5 h-2.5" />
+                              )}
+                              <span>{r.status || "Pending"}</span>
                             </span>
-                          ) : (
-                            <span className="text-zinc-400 dark:text-slate-600">-</span>
-                          )}
-                        </td>
+                          </td>
+                        )}
+
+                        {/* Tgl Faktur */}
+                        {isColVisible("tgl_faktur") && (
+                          <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap text-zinc-700 dark:text-slate-300 border-r border-zinc-200 dark:border-zinc-800">
+                            {getInvoiceDate(r) ? (
+                              <span className="inline-flex items-center gap-1 font-semibold" title="Tanggal Faktur (dari daftar faktur)">
+                                <Calendar className="w-3 h-3 text-zinc-400 shrink-0" />
+                                <span>{formatDate(getInvoiceDate(r))}</span>
+                              </span>
+                            ) : (
+                              <span className="text-zinc-400 dark:text-slate-600">-</span>
+                            )}
+                          </td>
+                        )}
 
                         {/* Tgl Lapor / Report Date */}
-                        <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap text-zinc-700 dark:text-slate-300">
-                          {r.report_date && r.report_date !== "#N/A" ? (
-                            <span className="inline-flex items-center gap-1 font-semibold text-rose-700 dark:text-rose-400" title="Tanggal Dilaporkan">
-                              <Calendar className="w-3 h-3 text-rose-500 shrink-0" />
-                              <span>{formatDate(r.report_date)}</span>
-                            </span>
-                          ) : r.created_at ? (
-                            <span className="inline-flex items-center gap-1 font-medium text-zinc-500 dark:text-slate-400" title="Tanggal Dibuat di Sistem">
-                              <Calendar className="w-3 h-3 text-zinc-400 shrink-0" />
-                              <span>{formatDate(r.created_at.split(" ")[0])}</span>
-                            </span>
-                          ) : (
-                            <span className="text-zinc-400 dark:text-slate-600">-</span>
-                          )}
-                        </td>
-
-                        <td className="py-2.5 px-3 font-mono text-zinc-600 dark:text-slate-400 text-[11px]">
-                          {r.so_no && r.so_no !== "#N/A" ? r.so_no : "-"}
-                        </td>
-
-                        <td className="py-2.5 px-4 max-w-[220px]">
-                          <p className="truncate font-bold text-black dark:text-slate-200" title={r.product_name}>
-                            {r.product_name && r.product_name !== "#N/A" ? r.product_name : "-"}
-                          </p>
-                          <p className="text-[10px] text-zinc-600 dark:text-slate-400">
-                            Qty: <strong className="text-black dark:text-slate-200">{r.qty || 1}</strong>
-                            {r.batch_no && r.batch_no !== "#N/A" && ` • Batch: ${r.batch_no}`}
-                          </p>
-                          {r.photo_url && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPreviewPhotoUrl(r.photo_url || null);
-                              }}
-                              className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-300 border border-violet-200 dark:border-violet-700 hover:scale-105 transition-all shadow-xs cursor-pointer"
-                              title="Lihat foto bukti kerusakan dari apotek"
-                            >
-                              <Camera className="w-3 h-3 text-violet-600 dark:text-violet-400" />
-                              <span>Foto Bukti</span>
-                            </button>
-                          )}
-                        </td>
-
-                        <td className="py-2.5 px-4 max-w-[190px]">
-                          <span className="truncate block text-zinc-800 dark:text-slate-300 font-semibold" title={r.reason}>
-                            {r.reason && r.reason !== "#N/A" ? r.reason : "-"}
-                          </span>
-                          {r.root_cause && r.root_cause !== "#N/A" && (
-                            <span className="text-[10px] text-zinc-500 dark:text-slate-500 truncate block">
-                              Penyebab: {r.root_cause}
-                            </span>
-                          )}
-                          {r.person && r.person !== "#N/A" && (
-                            <span className="text-[10px] text-rose-700 dark:text-rose-400 font-bold truncate block">
-                              Pelaku: {r.person}
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="py-2.5 px-3 text-center font-mono text-[11px] whitespace-nowrap">
-                          {r.resolved_date && r.resolved_date !== "#N/A" ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60" title="Tanggal Penyelesaian Tiket">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                              <span>{formatDate(r.resolved_date)}</span>
-                            </span>
-                          ) : isResolved ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold text-[10px]">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                              <span>Selesai</span>
-                            </span>
-                          ) : (
-                            <span className="text-zinc-400 dark:text-slate-600 italic text-[10px]">-</span>
-                          )}
-                        </td>
-
-                        <td className="py-2.5 px-2.5 text-center font-mono text-[11px] whitespace-nowrap">
-                          {(() => {
-                            const d = calculateDaysUntilToday(r.report_date);
-                            return d === "-" ? (
-                              <span className="text-zinc-400 dark:text-slate-600">-</span>
-                            ) : (
-                              <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-zinc-100 dark:bg-slate-800 text-zinc-700 dark:text-slate-300 border border-zinc-200 dark:border-slate-700">
-                                {d} hr
+                        {isColVisible("tgl_lapor") && (
+                          <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap text-zinc-700 dark:text-slate-300 border-r border-zinc-200 dark:border-zinc-800">
+                            {r.report_date && r.report_date !== "#N/A" ? (
+                              <span className="inline-flex items-center gap-1 font-semibold text-rose-700 dark:text-rose-400" title="Tanggal Dilaporkan">
+                                <Calendar className="w-3 h-3 text-rose-500 shrink-0" />
+                                <span>{formatDate(r.report_date)}</span>
                               </span>
-                            );
-                          })()}
-                        </td>
+                            ) : r.created_at ? (
+                              <span className="inline-flex items-center gap-1 font-medium text-zinc-500 dark:text-slate-400" title="Tanggal Dibuat di Sistem">
+                                <Calendar className="w-3 h-3 text-zinc-400 shrink-0" />
+                                <span>{formatDate(r.created_at.split(" ")[0])}</span>
+                              </span>
+                            ) : (
+                              <span className="text-zinc-400 dark:text-slate-600">-</span>
+                            )}
+                          </td>
+                        )}
 
-                        <td className="py-2.5 px-2.5 text-center font-mono text-[11px] whitespace-nowrap">
-                          {(() => {
-                            const d = calculateDaysUntilClose(r.report_date, r.resolved_date, r.status);
-                            if (d === "#N/A") {
-                              return (
-                                <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60" title="Belum Selesai / Close">
-                                  #N/A
+                        {/* No. SO */}
+                        {isColVisible("no_so") && (
+                          <td className="py-2.5 px-3 font-mono text-zinc-600 dark:text-slate-400 text-[11px] border-r border-zinc-200 dark:border-zinc-800">
+                            {r.so_no && r.so_no !== "#N/A" ? r.so_no : "-"}
+                          </td>
+                        )}
+
+                        {/* Nama Produk & Qty (No Cutoff) */}
+                        {isColVisible("produk") && (
+                          <td className="py-2.5 px-4 min-w-[220px] max-w-[340px] border-r border-zinc-200 dark:border-zinc-800">
+                            <p className="font-bold text-black dark:text-slate-200 whitespace-normal break-words leading-snug" title={r.product_name}>
+                              {r.product_name && r.product_name !== "#N/A" ? r.product_name : "-"}
+                            </p>
+                            <p className="text-[10px] text-zinc-600 dark:text-slate-400 mt-0.5">
+                              Qty: <strong className="text-black dark:text-slate-200">{r.qty || 1}</strong>
+                              {r.batch_no && r.batch_no !== "#N/A" && ` • Batch: ${r.batch_no}`}
+                            </p>
+                            {r.photo_url && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPreviewPhotoUrl(r.photo_url || null);
+                                }}
+                                className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-300 border border-violet-200 dark:border-violet-700 hover:scale-105 transition-all shadow-xs cursor-pointer"
+                                title="Lihat foto bukti kerusakan dari apotek"
+                              >
+                                <Camera className="w-3 h-3 text-violet-600 dark:text-violet-400" />
+                                <span>Foto Bukti</span>
+                              </button>
+                            )}
+                          </td>
+                        )}
+
+                        {/* Alasan (Reason) (No Cutoff) */}
+                        {isColVisible("alasan") && (
+                          <td className="py-2.5 px-4 min-w-[200px] max-w-[300px] border-r border-zinc-200 dark:border-zinc-800">
+                            <span className="block text-zinc-800 dark:text-slate-300 font-semibold whitespace-normal break-words leading-relaxed" title={r.reason}>
+                              {r.reason && r.reason !== "#N/A" ? r.reason : "-"}
+                            </span>
+                            {r.root_cause && r.root_cause !== "#N/A" && (
+                              <span className="text-[10px] text-zinc-500 dark:text-slate-500 block mt-0.5 whitespace-normal break-words">
+                                Penyebab: {r.root_cause}
+                              </span>
+                            )}
+                            {r.person && r.person !== "#N/A" && (
+                              <span className="text-[10px] text-rose-700 dark:text-rose-400 font-bold block mt-0.5">
+                                Pelaku: {r.person}
+                              </span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* Tgl Selesai */}
+                        {isColVisible("tgl_selesai") && (
+                          <td className="py-2.5 px-3 text-center font-mono text-[11px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                            {r.resolved_date && r.resolved_date !== "#N/A" ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60" title="Tanggal Penyelesaian Tiket">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                                <span>{formatDate(r.resolved_date)}</span>
+                              </span>
+                            ) : isResolved ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold text-[10px]">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                <span>Selesai</span>
+                              </span>
+                            ) : (
+                              <span className="text-zinc-400 dark:text-slate-600 italic text-[10px]">-</span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* Days Today */}
+                        {isColVisible("days_today") && (
+                          <td className="py-2.5 px-2.5 text-center font-mono text-[11px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                            {(() => {
+                              const d = calculateDaysUntilToday(r.report_date);
+                              return d === "-" ? (
+                                <span className="text-zinc-400 dark:text-slate-600">-</span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-zinc-100 dark:bg-slate-800 text-zinc-700 dark:text-slate-300 border border-zinc-200 dark:border-slate-700">
+                                  {d} hr
                                 </span>
                               );
-                            }
-                            return (
-                              <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60" title={`Selesai dalam ${d} hari`}>
-                                {d} hr
-                              </span>
-                            );
-                          })()}
-                        </td>
+                            })()}
+                          </td>
+                        )}
 
-                        <td className="py-2.5 px-3 text-zinc-800 dark:text-slate-300 max-w-[130px] truncate font-medium">
-                          {r.action && r.action !== "#N/A" ? r.action : "-"}
-                        </td>
+                        {/* Days Until Close */}
+                        {isColVisible("days_close") && (
+                          <td className="py-2.5 px-2.5 text-center font-mono text-[11px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                            {(() => {
+                              const d = calculateDaysUntilClose(r.report_date, r.resolved_date, r.status);
+                              if (d === "#N/A") {
+                                return (
+                                  <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60" title="Belum Selesai / Close">
+                                    #N/A
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60" title={`Selesai dalam ${d} hari`}>
+                                  {d} hr
+                                </span>
+                              );
+                            })()}
+                          </td>
+                        )}
 
-                        <td className="py-2.5 px-3 text-center">
+                        {/* Tindakan */}
+                        {isColVisible("tindakan") && (
+                          <td className="py-2.5 px-3 text-zinc-800 dark:text-slate-300 min-w-[150px] max-w-[240px] font-medium border-r border-zinc-200 dark:border-zinc-800 whitespace-normal break-words leading-snug">
+                            {r.action && r.action !== "#N/A" ? r.action : "-"}
+                          </td>
+                        )}
+
+                        {/* Aksi (Sticky Right) */}
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap sticky right-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50/70 dark:group-hover:bg-slate-800/60 border-l border-zinc-200 dark:border-zinc-800 shadow-[-3px_0_6px_rgba(0,0,0,0.06)]">
                           <button
                             type="button"
                             onClick={(e) => {
