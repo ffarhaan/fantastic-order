@@ -293,6 +293,22 @@ Aturan ini mengunci secara mutlak integrasi data petugas gudang (Checker, Packer
    - LocalStorage browser dan Firebase Firestore dilarang mendominasi atau menimpa data TiDB dengan data kotor/usang.
    - Aplikasi secara otomatis mendeteksi dan membersihkan cache localStorage jika terindikasi menyimpan data bocor.
 
+6. **Pemisahan Sumber Data Murni & Proteksi Data Upload (Upload Data Sovereignty - LOCKED MUTLAK)**:
+   - **Data Utama Faktur (100% Hak File Excel Upload)**:
+     - Nomor SO, Nomor Faktur, **Nama Apotek / Pelanggan**, Tanggal Order, Kategori Produk (Farma/Alkes), PBF (MAI/MBI), Kategori Apotek (1P/2P/3P), dan Nominal Harga **WAJIB 100% MURNI BERSUMBER DARI FILE EXCEL YANG DIUNGGAH OPERATOR**.
+     - Google Sheet DILARANG KERAS menimpa, mengganti, atau merusak data utama faktur maupun Nama Apotek.
+   - **Data Google Sheet QC (HANYA 3 Atribut Tambahan)**:
+     - Google Sheet QC secara eksklusif HANYA memasok: **Nama Checker**, **Nama Packer**, dan **Nama Picker**.
+
+7. **Pencocokan Cerdas Kolom B Multi-Identifier & Normalisasi '0' vs 'O' (Smart Multi-Key Matcher - LOCKED)**:
+   - Karena di lapangan petugas gudang pada Kolom B Google Sheet terkadang menginput No Faktur / DOO (contoh: `OY99DY-3580`) alih-alih No SO murni (contoh: `33184`), serta sering tertukar mengetik huruf `O` dan angka `0`:
+   - Fungsi pencocokan `getCheckerInfo` WAJIB memeriksa secara berlapis:
+     1. Pencocokan langsung via Nomor SO (`so_number`).
+     2. Pencocokan langsung via Nomor Faktur (`invoice_number` / `invoice_key`).
+     3. Normalisasi ekuivalen huruf besar `O` dan digit angka `0` (contoh: `OY99DY` $\leftrightarrow$ `0Y99DY`).
+     4. Pencocokan suffix faktur (contoh: `-3580`).
+   - Dengan sistem pencocokan ini, nama Checker, Packer, dan Picker akan selalu ditemukan dan ditampilkan di tabel Fantastic Order tanpa merubah data No SO atau Nama Apotek asli yang diupload.
+
 ---
 
 ### 7. KLAUSUL INTEGRITAS MUTLAK (INVIOLABILITY CLAUSE)
@@ -310,4 +326,5 @@ Aturan ini mengunci secara mutlak integrasi data petugas gudang (Checker, Packer
 > 9. Arsitektur efisiensi ekstrim (Chunking, Data Pruning, dan Zero-Read Client Filtering)
 > 10. Arsitektur Hybrid Dual-Sync (TiDB Authoritative + Firebase Realtime Broadcast)
 > 11. Integrasi QC Checker, Packer, & Picker: Tab Rekap Lengkap, aturan wajib kosong jika tanpa nama, dan sanitasi mutlak anti-bocor.
+> 12. Proteksi Kedaulatan Data Upload: Nomor SO, Nomor Faktur, dan Nama Apotek 100% dari file Excel yang diunggah, Google Sheet hanya memasok Checker, Packer, dan Picker via Smart Multi-Key Matcher.
 
