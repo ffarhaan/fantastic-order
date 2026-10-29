@@ -430,6 +430,46 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
         setToastMsg(`✓ Data customer "${editForm.name}" berhasil diperbarui.`);
         setTimeout(() => setToastMsg(null), 3500);
         broadcastRealtimeSignal("customers");
+
+        // Instant Browser-to-Google-Sheet push (< 1 second sync!)
+        try {
+          const webhookUrl = "https://script.google.com/a/macros/mhealth.tech/s/AKfycbwYoimkMgydFDUtgAUuSp1t3oLyaaVPSuG83fyohiqiI4_HggNCy_WT31mvgLA2dM18xw/exec";
+          const payloadStr = JSON.stringify({
+            action: "update_row",
+            customer: editForm,
+          });
+
+          let iframe = document.getElementById("gsheet_sync_iframe") as HTMLIFrameElement;
+          if (!iframe) {
+            iframe = document.createElement("iframe");
+            iframe.id = "gsheet_sync_iframe";
+            iframe.name = "gsheet_sync_iframe";
+            iframe.style.display = "none";
+            document.body.appendChild(iframe);
+          }
+
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = webhookUrl;
+          form.target = "gsheet_sync_iframe";
+
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "data";
+          input.value = payloadStr;
+          form.appendChild(input);
+
+          document.body.appendChild(form);
+          form.submit();
+          setTimeout(() => form.remove(), 1000);
+
+          // Image Beacon GET fallback
+          const img = new Image();
+          img.src = `${webhookUrl}?data=${encodeURIComponent(payloadStr)}&_t=${Date.now()}`;
+        } catch (e) {
+          console.warn("Direct browser sheet sync error:", e);
+        }
+
         await recordActivityLog({
           action_type: "UPDATE_CUSTOMER",
           module: "CUSTOMERS",
@@ -514,8 +554,15 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
         headers: { "Cache-Control": "no-cache" },
       });
       const data = await res.json();
-      if (data.success) {
-        setCustomers(data.data || []);
+      if (data.success && Array.isArray(data.data)) {
+        setCustomers((prev) => {
+          if (prev.length !== data.data.length) return data.data;
+          const hasDiff = data.data.some((item: any, idx: number) => {
+            const p = prev[idx];
+            return !p || p.id !== item.id || p.status_merchant !== item.status_merchant || p.name !== item.name;
+          });
+          return hasDiff ? data.data : prev;
+        });
         setTotal(data.total || 0);
       }
     } catch (err) {
@@ -570,7 +617,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     fetchCustomers();
   }, [fetchCustomers]);
 
-  // Realtime subscription + window focus + 4-second polling
+  // Realtime subscription + window focus + 1-second polling (SUB-SECOND SYNC)
   useEffect(() => {
     const unsubRealtime = subscribeToRealtimeSignal("customers", () => {
       fetchCustomersRef.current(true, true);
@@ -587,12 +634,12 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     };
     window.addEventListener("focus", onFocus);
 
-    // Light silent poll every 4s while user is viewing the page
+    // Ultra-fast silent poll every 1s while user is viewing the page
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
         fetchCustomersRef.current(true, true);
       }
-    }, 4000);
+    }, 1000);
 
     return () => {
       unsubRealtime();

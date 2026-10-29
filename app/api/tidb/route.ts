@@ -157,13 +157,6 @@ async function getCustomerWebhookUrl(conn: any): Promise<string> {
 async function saveCustomerWebhookUrl(conn: any, url: string): Promise<void> {
   if (!url) return;
   try {
-    await conn.execute(`
-      CREATE TABLE IF NOT EXISTS app_settings (
-        key_name VARCHAR(64) PRIMARY KEY,
-        value_text TEXT,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    `);
     await conn.execute(
       `INSERT INTO app_settings (key_name, value_text) VALUES ('customer_webhook_url', ?)
        ON DUPLICATE KEY UPDATE value_text = VALUES(value_text)`,

@@ -155,9 +155,6 @@ function syncOnEdit(e) {
       payload: JSON.stringify(payload),
       muteHttpExceptions: true
     });
-
-    // Sekaligus cek apakah ada pending update dari Web App
-    autoSyncPendingCustomers();
   } catch (err) {
     Logger.log("syncOnEdit error: " + err);
   }
