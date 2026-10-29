@@ -705,19 +705,53 @@ export default function Home() {
   const [checkerMap, setCheckerMap] = useState<Record<string, { checker: string; packer: string; picker?: string }>>({});
   const checkerMapRef = useRef<Record<string, { checker: string; packer: string; picker?: string }>>({});
 
-  const getCheckerInfo = useCallback((so?: string) => {
-    if (!so) return null;
-    const raw = String(so).trim();
-    const noSpace = raw.replace(/\s+/g, "");
-    const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-
-    let entry = checkerMap[raw] || checkerMap[noSpace] || checkerMap[alpha] || null;
-
-    // Robust suffix matching: if SO is "OY99DY-2666", check "2666"
-    if (!entry && raw.includes("-")) {
-      const suffix = raw.split("-").pop()?.trim();
-      if (suffix && checkerMap[suffix]) entry = checkerMap[suffix];
+  const getCheckerInfo = useCallback((so?: string, invoiceNo?: string | string[], invoiceKey?: string) => {
+    const rawCandidates: string[] = [];
+    if (so) rawCandidates.push(String(so).trim());
+    if (invoiceNo) {
+      if (Array.isArray(invoiceNo)) {
+        invoiceNo.forEach((inv) => inv && rawCandidates.push(String(inv).trim()));
+      } else {
+        rawCandidates.push(String(invoiceNo).trim());
+      }
     }
+    if (invoiceKey) rawCandidates.push(String(invoiceKey).trim());
+
+    if (rawCandidates.length === 0) return null;
+
+    let entry = null;
+
+    for (const raw of rawCandidates) {
+      if (!raw || raw === "-") continue;
+      const noSpace = raw.replace(/\s+/g, "");
+      const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+
+      // 1. Direct match
+      entry = checkerMap[raw] || checkerMap[noSpace] || checkerMap[alpha];
+      if (entry) break;
+
+      // 2. 0 <-> O variations (handling '0Y99DY-3580' vs 'OY99DY-3580')
+      const oVar1 = raw.replace(/^0/i, "O");
+      const oVar2 = raw.replace(/^O/i, "0");
+      const oVarAll1 = raw.replace(/0/g, "O");
+      const oVarAll2 = raw.replace(/O/gi, "0");
+
+      entry = checkerMap[oVar1] || checkerMap[oVar2] || checkerMap[oVarAll1] || checkerMap[oVarAll2] ||
+              checkerMap[oVar1.replace(/\s+/g, "")] || checkerMap[oVar2.replace(/\s+/g, "")];
+      if (entry) break;
+
+      // 3. Suffix matching (e.g. "OY99DY-3580" or "3LORXL-0740" -> "3580", "0740", "740")
+      if (raw.includes("-")) {
+        const parts = raw.split("-");
+        const suffix = parts[parts.length - 1]?.trim();
+        if (suffix) {
+          const strippedSuffix = suffix.replace(/^0+/, "");
+          entry = checkerMap[suffix] || (strippedSuffix ? checkerMap[strippedSuffix] : null);
+          if (entry) break;
+        }
+      }
+    }
+
     if (!entry) return null;
 
     let p = entry.packer;
@@ -2340,13 +2374,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             textToCopy = currentRow.orderDate && currentRow.orderDate !== "-" ? currentRow.orderDate : "-";
             label = "Tgl Order";
           } else if (colIdx === 10) {
-            textToCopy = getCheckerInfo(currentRow.so)?.checker || "-";
+            textToCopy = getCheckerInfo(currentRow.so, currentRow.invoiceNumber, currentRow.invoiceKey)?.checker || "-";
             label = "Checker";
           } else if (colIdx === 11) {
-            textToCopy = getCheckerInfo(currentRow.so)?.packer || "-";
+            textToCopy = getCheckerInfo(currentRow.so, currentRow.invoiceNumber, currentRow.invoiceKey)?.packer || "-";
             label = "Packer";
           } else if (colIdx === 12) {
-            textToCopy = getCheckerInfo(currentRow.so)?.picker || "-";
+            textToCopy = getCheckerInfo(currentRow.so, currentRow.invoiceNumber, currentRow.invoiceKey)?.picker || "-";
             label = "Picker";
           } else if (colIdx === 13) {
             textToCopy = currentRow.printedAt || "-";
@@ -5406,82 +5440,89 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           )}
 
                           {/* Col 10: Checker */}
-                          {isColVisible("checker") && (
-                            <td
-                              className={`px-2.5 py-1.5 whitespace-nowrap text-xs border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(10)}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectCell(10);
-                              }}
-                            >
-                              {getCheckerInfo(g.so)?.checker ? (
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
-                                    isDarkMode
-                                      ? "bg-purple-950/60 text-purple-300 border border-purple-800/60"
-                                      : "bg-purple-100 text-purple-800 border border-purple-200"
-                                  }`}
-                                  title={`Checker: ${getCheckerInfo(g.so)?.checker}`}
-                                >
-                                  {getCheckerInfo(g.so)?.checker}
-                                </span>
-                              ) : (
-                                <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
-                              )}
-                            </td>
-                          )}
+                          {(() => {
+                            const cInfo = getCheckerInfo(g.so, g.invoiceNumber, g.invoiceKey);
+                            return (
+                              <>
+                                {isColVisible("checker") && (
+                                  <td
+                                    className={`px-2.5 py-1.5 whitespace-nowrap text-xs border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(10)}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onSelectCell(10);
+                                    }}
+                                  >
+                                    {cInfo?.checker ? (
+                                      <span
+                                        className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
+                                          isDarkMode
+                                            ? "bg-purple-950/60 text-purple-300 border border-purple-800/60"
+                                            : "bg-purple-100 text-purple-800 border border-purple-200"
+                                        }`}
+                                        title={`Checker: ${cInfo?.checker}`}
+                                      >
+                                        {cInfo?.checker}
+                                      </span>
+                                    ) : (
+                                      <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
+                                    )}
+                                  </td>
+                                )}
 
-                          {/* Col 11: Packer */}
-                          {isColVisible("packer") && (
-                            <td
-                              className={`px-2.5 py-1.5 whitespace-nowrap text-xs border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(11)}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectCell(11);
-                              }}
-                            >
-                              {getCheckerInfo(g.so)?.packer ? (
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
-                                    isDarkMode
-                                      ? "bg-blue-950/60 text-blue-300 border border-blue-800/60"
-                                      : "bg-blue-100 text-blue-800 border border-blue-200"
-                                  }`}
-                                  title={`Packer: ${getCheckerInfo(g.so)?.packer}`}
-                                >
-                                  {getCheckerInfo(g.so)?.packer}
-                                </span>
-                              ) : (
-                                <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
-                              )}
-                            </td>
-                          )}
+                                {/* Col 11: Packer */}
+                                {isColVisible("packer") && (
+                                  <td
+                                    className={`px-2.5 py-1.5 whitespace-nowrap text-xs border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(11)}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onSelectCell(11);
+                                    }}
+                                  >
+                                    {cInfo?.packer ? (
+                                      <span
+                                        className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
+                                          isDarkMode
+                                            ? "bg-blue-950/60 text-blue-300 border border-blue-800/60"
+                                            : "bg-blue-100 text-blue-800 border border-blue-200"
+                                        }`}
+                                        title={`Packer: ${cInfo?.packer}`}
+                                      >
+                                        {cInfo?.packer}
+                                      </span>
+                                    ) : (
+                                      <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
+                                    )}
+                                  </td>
+                                )}
 
-                          {/* Col 12: Picker */}
-                          {isColVisible("picker") && (
-                            <td
-                              className={`px-2.5 py-1.5 whitespace-nowrap text-xs border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(12)}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectCell(12);
-                              }}
-                            >
-                              {getCheckerInfo(g.so)?.picker ? (
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
-                                    isDarkMode
-                                      ? "bg-amber-950/60 text-amber-300 border border-amber-800/60"
-                                      : "bg-amber-100 text-amber-800 border border-amber-200"
-                                  }`}
-                                  title={`Picker: ${getCheckerInfo(g.so)?.picker}`}
-                                >
-                                  {getCheckerInfo(g.so)?.picker}
-                                </span>
-                              ) : (
-                                <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
-                              )}
-                            </td>
-                          )}
+                                {/* Col 12: Picker */}
+                                {isColVisible("picker") && (
+                                  <td
+                                    className={`px-2.5 py-1.5 whitespace-nowrap text-xs border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(12)}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onSelectCell(12);
+                                    }}
+                                  >
+                                    {cInfo?.picker ? (
+                                      <span
+                                        className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] truncate max-w-[150px] ${
+                                          isDarkMode
+                                            ? "bg-amber-950/60 text-amber-300 border border-amber-800/60"
+                                            : "bg-amber-100 text-amber-800 border border-amber-200"
+                                        }`}
+                                        title={`Picker: ${cInfo?.picker}`}
+                                      >
+                                        {cInfo?.picker}
+                                      </span>
+                                    ) : (
+                                      <span className={isDarkMode ? "text-zinc-600 font-bold" : "text-zinc-300 font-bold"}>-</span>
+                                    )}
+                                  </td>
+                                )}
+                              </>
+                            );
+                          })()}
 
                           {/* Col 13: Done Print Waktu */}
                           {isColVisible("waktu_print") && (
