@@ -2131,6 +2131,27 @@ export async function POST(req: Request) {
         ]
       );
 
+      // Automatically persist to activity_logs for Google Sheet sync
+      if (id && id !== "PING") {
+        try {
+          await conn.execute(
+            `INSERT INTO activity_logs (user_name, user_email, action_type, module, target_id, details, metadata)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+              "Google Sheet Sync",
+              "sheet-sync@mhealth.tech",
+              "SYNC_CUSTOMER_GSHEET",
+              "CUSTOMERS",
+              id,
+              `Sinkronisasi otomatis dari Google Sheet: ${name} (${id})`,
+              JSON.stringify({ id, name, status_merchant: item.status_merchant || item.status || "ACTIVE" }),
+            ]
+          );
+        } catch (logErr) {
+          console.warn("Failed to record activity log for sheet sync:", logErr);
+        }
+      }
+
       // Realtime trigger to all connected browser Web Apps!
       await broadcastSignalFromApi("customers");
 
@@ -2659,6 +2680,29 @@ export async function POST(req: Request) {
         action: "update_row",
         customer: body,
       });
+
+      // Automatically persist to activity_logs for Web App update
+      if (id) {
+        try {
+          const actorName = body.user_name || "Admin Web";
+          const actorEmail = body.user_email || "";
+          await conn.execute(
+            `INSERT INTO activity_logs (user_name, user_email, action_type, module, target_id, details, metadata)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+              actorName,
+              actorEmail,
+              "UPDATE_CUSTOMER",
+              "CUSTOMERS",
+              id,
+              `Memperbarui data customer ${name || id}`,
+              JSON.stringify({ id, name, status_merchant: body.status_merchant }),
+            ]
+          );
+        } catch (logErr) {
+          console.warn("Failed to record activity log for update customer:", logErr);
+        }
+      }
 
       // Realtime trigger to all connected browser Web Apps!
       await broadcastSignalFromApi("customers");
