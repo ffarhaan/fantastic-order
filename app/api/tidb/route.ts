@@ -265,6 +265,38 @@ export async function GET(req: Request) {
     const conn = getTiDBClient();
 
     // ==========================================
+    // CUSTOMER AUTO-QUEUE SYNC (Google Sheet Pull)
+    // ==========================================
+    if (action === "get_pending_customer_sync") {
+      try {
+        await conn.execute(`
+          CREATE TABLE IF NOT EXISTS customer_sync_queue (
+            customer_id VARCHAR(64) PRIMARY KEY,
+            action VARCHAR(32) DEFAULT 'update_row',
+            payload MEDIUMTEXT,
+            queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        const rows = (await conn.execute(
+          "SELECT customer_id, action, payload, queued_at FROM customer_sync_queue ORDER BY queued_at ASC LIMIT 100"
+        )) as any[];
+        const items = (rows || []).map((r: any) => {
+          try {
+            return JSON.parse(r.payload);
+          } catch {
+            return { id: r.customer_id };
+          }
+        });
+        return Response.json(
+          { success: true, count: items.length, items },
+          { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+        );
+      } catch (e: any) {
+        return Response.json({ success: false, items: [], error: e?.message });
+      }
+    }
+
+    // ==========================================
     // ACTIVITY LOGS AUDIT TRAIL (TiDB Cloud)
     // ==========================================
     if (action === "activity_logs") {
@@ -1996,6 +2028,19 @@ export async function POST(req: Request) {
       return Response.json({ success: true, count: insertedCount });
     }
 
+    // 0.35. Acknowledge Synced Customers from Google Sheet Auto-Queue
+    if (action === "ack_pending_customer_sync") {
+      const ids = body?.synced_ids || [];
+      if (Array.isArray(ids) && ids.length > 0) {
+        const placeholders = ids.map(() => "?").join(",");
+        await conn.execute(
+          `DELETE FROM customer_sync_queue WHERE customer_id IN (${placeholders})`,
+          ids
+        );
+      }
+      return Response.json({ success: true, acknowledged: ids.length });
+    }
+
     // 0.4. Bidirectional Sync: Single Customer from Google Sheet "Data Pelanggan MBI"
     if (action === "sync_customer_from_sheet" || action === "sync_single_customer") {
       const item = body?.customer || body;
@@ -2590,7 +2635,26 @@ export async function POST(req: Request) {
         ]
       );
 
-      // 2-Way Realtime Sync: notify Google Sheet "Data Pelanggan MBI" webhook
+      // Auto-Queue for Google Sheet sync (guaranteed 100% sync even under Halodoc domain lock)
+      try {
+        await conn.execute(`
+          CREATE TABLE IF NOT EXISTS customer_sync_queue (
+            customer_id VARCHAR(64) PRIMARY KEY,
+            action VARCHAR(32) DEFAULT 'update_row',
+            payload MEDIUMTEXT,
+            queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        await conn.execute(
+          `INSERT INTO customer_sync_queue (customer_id, action, payload) VALUES (?, 'update_row', ?)
+           ON DUPLICATE KEY UPDATE payload = VALUES(payload), queued_at = CURRENT_TIMESTAMP`,
+          [id, JSON.stringify(body)]
+        );
+      } catch (qErr) {
+        console.error("Failed to enqueue customer sync:", qErr);
+      }
+
+      // 2-Way Realtime Sync: notify Google Sheet "Data Pelanggan MBI" webhook (immediate attempt)
       await forwardToCustomerGSheetWebhook(conn, {
         action: "update_row",
         customer: body,

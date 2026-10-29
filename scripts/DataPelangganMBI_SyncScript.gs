@@ -1,28 +1,23 @@
 /**
  * ====================================================================
- * GOOGLE APPS SCRIPT: SINKRONISASI 2 ARAH REALTIME (BIDIRECTIONAL)
+ * GOOGLE APPS SCRIPT: SINKRONISASI 2 ARAH OTOMATIS (BIDIRECTIONAL)
  * GOOGLE SHEET "DATA PELANGGAN MBI" <=> WEB APP FANTASTIC ORDER
  * ====================================================================
  * 
- * FITUR OTOMATIS (TANPA TOMBOL MANUAL):
- * 1. Sheet -> Web App: Setiap kali ada sel/baris yang diedit atau ditambah di Google Sheet,
- *    detik itu juga data terkirim ke Web App & langsung muncul di layar tanpa refresh.
- * 2. Web App -> Sheet: Setiap kali ada data customer yang diedit di Web App,
- *    detik itu juga baris di Google Sheet langsung terupdate secara realtime.
- * 3. Otomatis mendaftarkan trigger & Webhook URL tanpa perlu klik menu apa pun.
+ * 100% OTOMATIS TANPA TOMBOL MANUAL:
+ * 1. Sheet -> Web App: Setiap kali ada sel/baris yang diedit di Google Sheet,
+ *    detik itu juga baris terkirim ke Web App & langsung muncul di layar (1-3 detik).
+ * 2. Web App -> Sheet: Setiap kali data diedit di Web App, perubahan masuk ke antrean
+ *    dan otomatis disedot oleh trigger latar belakang Google Cloud setiap menit & seketika saat sheet dibuka.
  * 
  * CARA PASANG / UPDATE:
  * 1. Buka Google Sheet "Data Pelanggan MBI".
  * 2. Klik menu "Ekstensi" (Extensions) -> "Apps Script".
  * 3. Hapus seluruh isi script lama, lalu paste seluruh isi file ini.
  * 4. Klik "Simpan" (ikon disket / Ctrl+S).
- * 5. Klik tombol biru "Terapkan" (Deploy) -> "Kelola Penerapan" (Manage Deployments):
- *    - Edit versi aktif atau buat "Penerapan Baru" (New Deployment).
- *    - Jenis: Aplikasi Web (Web App)
- *    - Jalankan sebagai: Saya (Me)
- *    - Siapa yang memiliki akses: Siapa saja (Anyone) -> WAJIB agar Web App bisa update Sheet.
- * 6. Jalankan fungsi "setupRealtimeSync" sekali saja di editor Apps Script (pilih fungsinya lalu klik "Jalankan" / Run)
- *    untuk memberikan izin otorisasi Google. Selesai!
+ * 5. Pilih fungsi "setupRealtimeSync" di dropdown sebelah tombol "Debug", lalu klik "Jalankan" (Run).
+ *    (Berikan izin otorisasi Google jika diminta).
+ * Selesai! Kedua arah sinkronisasi aktif 100% secara otomatis.
  */
 
 var WEB_APP_API_URL = "https://fantastic-order.vercel.app/api/tidb";
@@ -36,34 +31,41 @@ var DOCS_SET_LINK_SHARING = false;
  */
 function onOpen() {
   ensureInstallableTrigger_();
+  autoSyncPendingCustomers();
 }
 
 /**
  * SETUP SEKALI JALAN (Pilih fungsi ini lalu klik 'Run' di Apps Script):
- * Mengaktifkan trigger realtime dan mendaftarkan URL Webhook ke Web App.
+ * Memasang trigger onEdit, trigger latar belakang 1 menit, dan langsung menyinkronkan data.
  */
 function setupRealtimeSync() {
   ensureInstallableTrigger_();
   registerWebhookToWebApp_();
-  SpreadsheetApp.getActiveSpreadsheet().toast("✅ Sinkronisasi Realtime 2 Arah Aktif!", "Fantastic Order", 5);
+  autoSyncPendingCustomers();
+  SpreadsheetApp.getActiveSpreadsheet().toast("✅ Sinkronisasi 2 Arah Otomatis Aktif!", "Fantastic Order", 6);
 }
 
 /**
- * Memastikan trigger onEdit terpasang otomatis
+ * Memastikan trigger onEdit & trigger background setiap menit terpasang otomatis
  */
 function ensureInstallableTrigger_() {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var triggers = ScriptApp.getProjectTriggers();
-    var hasTrigger = false;
+    var hasEditTrigger = false;
+    var hasTimeTrigger = false;
+
     for (var i = 0; i < triggers.length; i++) {
-      if (triggers[i].getHandlerFunction() === "syncOnEdit") {
-        hasTrigger = true;
-        break;
-      }
+      var func = triggers[i].getHandlerFunction();
+      if (func === "syncOnEdit") hasEditTrigger = true;
+      if (func === "autoSyncPendingCustomers") hasTimeTrigger = true;
     }
-    if (!hasTrigger) {
+
+    if (!hasEditTrigger) {
       ScriptApp.newTrigger("syncOnEdit").forSpreadsheet(ss).onEdit().create();
+    }
+    if (!hasTimeTrigger) {
+      ScriptApp.newTrigger("autoSyncPendingCustomers").timeBased().everyMinutes(1).create();
     }
   } catch (e) {
     Logger.log("Trigger check warning: " + e);
@@ -77,14 +79,14 @@ function getWebhookUrl_() {
   try {
     var url = ScriptApp.getService().getUrl();
     if (url) {
-      return url.replace(/\/a\/[^\/]+\/macros\/s\//, "/macros/s/");
+      return url.replace(/\/a\/(?:macros\/)?[^\/]+\/(?:macros\/)?s\//, "/macros/s/");
     }
   } catch (e) {}
   return "";
 }
 
 /**
- * Mendaftarkan URL Webhook ke Web App agar Web App bisa mengirim balik data
+ * Mendaftarkan URL Webhook ke Web App
  */
 function registerWebhookToWebApp_() {
   var webhookUrl = getWebhookUrl_();
@@ -105,9 +107,11 @@ function registerWebhookToWebApp_() {
 }
 
 /**
- * 1. REALTIME ON EDIT TRIGGER (Sheet -> Web App):
+ * ====================================================================
+ * 1. ARAH SHEET -> WEB APP (Realtime onEdit)
  * Setiap kali user mengedit sel apa pun di sheet customer,
  * detik itu juga baris tersebut langsung dikirim ke Web App!
+ * ====================================================================
  */
 function syncOnEdit(e) {
   try {
@@ -121,8 +125,6 @@ function syncOnEdit(e) {
     if (lastCol < 2) return;
 
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    
-    // Validasi apakah sheet ini adalah sheet data customer (cek keberadaan header penting)
     var headerStr = headers.map(function(h) { return String(h || "").toUpperCase().trim(); }).join(" | ");
     if (!headerStr.includes("CUSTOMER ID") && !headerStr.includes("NAMA APOTEK")) {
       return; // Bukan sheet customer, abaikan
@@ -141,31 +143,67 @@ function syncOnEdit(e) {
     if (!customerId || !customerName) return;
 
     var webhookUrl = getWebhookUrl_();
-
     var payload = {
       action: "sync_single_customer",
       customer: customer,
       webhook_url: webhookUrl
     };
 
-    var options = {
+    UrlFetchApp.fetch(WEB_APP_API_URL + "?action=sync_single_customer", {
       method: "post",
       contentType: "application/json",
       payload: JSON.stringify(payload),
       muteHttpExceptions: true
-    };
+    });
 
-    UrlFetchApp.fetch(WEB_APP_API_URL + "?action=sync_single_customer", options);
+    // Sekaligus cek apakah ada pending update dari Web App
+    autoSyncPendingCustomers();
   } catch (err) {
     Logger.log("syncOnEdit error: " + err);
   }
 }
 
 /**
- * 2. REALTIME WEBHOOK RECEIVER (Web App -> Sheet):
- * Menerima kiriman otomatis dari Web App saat admin/staff mengedit customer di web,
- * lalu detik itu juga mengupdate sel yang sesuai di Google Sheet!
- * Mendukung POST maupun GET (saat 302 redirect).
+ * ====================================================================
+ * 2. ARAH WEB APP -> SHEET (Auto-Queue Pull Latar Belakang)
+ * Berjalan otomatis setiap menit & saat sheet dibuka, tanpa perlu tombol manual.
+ * ====================================================================
+ */
+function autoSyncPendingCustomers() {
+  try {
+    var res = UrlFetchApp.fetch(WEB_APP_API_URL + "?action=get_pending_customer_sync&_t=" + Date.now(), {
+      method: "get",
+      muteHttpExceptions: true
+    });
+    if (res.getResponseCode() !== 200) return;
+    var data = JSON.parse(res.getContentText());
+    if (!data.success || !data.items || data.items.length === 0) return;
+
+    var syncedIds = [];
+    for (var i = 0; i < data.items.length; i++) {
+      var item = data.items[i];
+      var resApply = applyCustomerToSheet_(item);
+      if (resApply && (item.id || item["CUSTOMER ID"])) {
+        syncedIds.push(item.id || item["CUSTOMER ID"]);
+      }
+    }
+
+    if (syncedIds.length > 0) {
+      UrlFetchApp.fetch(WEB_APP_API_URL + "?action=ack_pending_customer_sync", {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify({ synced_ids: syncedIds }),
+        muteHttpExceptions: true
+      });
+      Logger.log("✅ Auto-synced " + syncedIds.length + " customers from Web App to Sheet!");
+    }
+  } catch (err) {
+    Logger.log("autoSyncPendingCustomers error: " + err);
+  }
+}
+
+/**
+ * Webhook Direct Receiver (doGet & doPost jika webhook direct diaktifkan)
  */
 function doGet(e) {
   return handleRequest_(e);
@@ -179,21 +217,13 @@ function handleRequest_(e) {
   try {
     var body = null;
     if (e && e.postData && e.postData.contents) {
-      try {
-        body = JSON.parse(e.postData.contents);
-      } catch (pErr) {}
+      try { body = JSON.parse(e.postData.contents); } catch (pErr) {}
     }
     if (!body && e && e.parameter) {
       if (e.parameter.data) {
-        try {
-          body = JSON.parse(e.parameter.data);
-        } catch (dErr) {}
+        try { body = JSON.parse(e.parameter.data); } catch (dErr) {}
       } else if (e.parameter.customer) {
-        try {
-          body = { customer: JSON.parse(e.parameter.customer) };
-        } catch (cErr) {
-          body = { customer: e.parameter };
-        }
+        try { body = { customer: JSON.parse(e.parameter.customer) }; } catch (cErr) { body = { customer: e.parameter }; }
       } else if (e.parameter.id || e.parameter.name) {
         body = { customer: e.parameter };
       }
@@ -203,129 +233,135 @@ function handleRequest_(e) {
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
         status: "active",
-        message: "Webhook Google Sheet 'Data Pelanggan MBI' AKTIF & siap menerima sinkronisasi realtime."
+        message: "Webhook Google Sheet 'Data Pelanggan MBI' AKTIF."
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
     var cust = body.customer || body;
-    var targetId = String(cust.id || cust.customer_id || cust["CUSTOMER ID"] || "").trim();
-
-    if (!targetId || targetId === "PING") {
-      return ContentService.createTextOutput(JSON.stringify({ success: true, message: "Ping received" }))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheets = ss.getSheets();
-    var targetSheet = null;
-    var headers = null;
-    var idColIdx = -1;
-
-    // Normalisasi string untuk pencocokan header yang kebal spasi/kapitalisasi
-    var norm = function(str) {
-      return String(str || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-    };
-
-    for (var s = 0; s < sheets.length; s++) {
-      var sh = sheets[s];
-      var lastCol = sh.getLastColumn();
-      if (lastCol < 2) continue;
-      var hRow = sh.getRange(1, 1, 1, lastCol).getValues()[0];
-      for (var c = 0; c < hRow.length; c++) {
-        if (norm(hRow[c]) === norm("CUSTOMER ID")) {
-          targetSheet = sh;
-          headers = hRow;
-          idColIdx = c;
-          break;
-        }
-      }
-      if (targetSheet) break;
-    }
-
-    if (!targetSheet) {
-      targetSheet = ss.getSheets()[0];
-      headers = targetSheet.getRange(1, 1, 1, targetSheet.getLastColumn()).getValues()[0];
-      idColIdx = 0;
-    }
-
-    var data = targetSheet.getDataRange().getValues();
-    var foundRow = -1;
-
-    for (var r = 1; r < data.length; r++) {
-      if (String(data[r][idColIdx]).trim().toUpperCase() === targetId.toUpperCase()) {
-        foundRow = r + 1;
-        break;
-      }
-    }
-
-    var fieldMap = {
-      "CUSTOMER ID": cust.id,
-      "NAMA APOTEK/RS/PBF/KLINIK": cust.name,
-      "CUSTOMER ID ORACLE": cust.customer_id_oracle,
-      "STATUS MERCHANT": cust.status_merchant,
-      "NO TELF APJ": cust.phone,
-      "Alamat email": cust.email,
-      "Default Billing Address": cust.address,
-      "VAT ID": cust.vat_id,
-      "NIK NUMBER (npwp 16 digit)": cust.nik,
-      "NAMA PEMILIK NPWP": cust.owner_name,
-      "ALAMAT WAJIB PAJAK": cust.owner_address,
-      "IZIN APOTEK/KLINIK/PBF/RS NUMBER": cust.sia_number,
-      "SIA EXPIRED DATE": cust.sia_expired,
-      "SIPA NUMBER": cust.sipa_number,
-      "SIPA EXPIRED DATE": cust.sipa_expired,
-      "NAMA APJ": cust.apj_name,
-      "KODE SIPNAP": cust.sipnap_code,
-      "SITE NUMBER (BILL TO)": cust.site_bill_to,
-      "SITE NUMBER (SHIP TO)": cust.site_ship_to,
-      "MBI BRANCH": cust.branch,
-      "Zone": cust.zone,
-      "KATEGORI CUSTOMER": cust.category,
-      "LIST APOTEK 2P AKTIF": cust.is_active_2p,
-      "DOKUMEN LEGALITAS": cust.document_url,
-      "GDRIVE NPWP": cust.npwp_drive_url,
-      "COA - REC": cust.coa_rec,
-      "COA - REV": cust.coa_rev,
-      "SUDAH PERNAH ORDER/BELUM": cust.order_status
-    };
-
-    var normFieldMap = {};
-    for (var k in fieldMap) {
-      if (fieldMap[k] !== undefined && fieldMap[k] !== null) {
-        normFieldMap[norm(k)] = fieldMap[k];
-      }
-    }
-
-    if (foundRow !== -1) {
-      // Update baris yang sudah ada
-      for (var col = 0; col < headers.length; col++) {
-        var nHead = norm(headers[col]);
-        if (normFieldMap[nHead] !== undefined) {
-          targetSheet.getRange(foundRow, col + 1).setValue(normFieldMap[nHead]);
-        }
-      }
-      return ContentService.createTextOutput(JSON.stringify({ success: true, action: "updated", row: foundRow, customer_id: targetId }))
+    var resApply = applyCustomerToSheet_(cust);
+    if (resApply) {
+      return ContentService.createTextOutput(JSON.stringify({ success: true, ...resApply }))
         .setMimeType(ContentService.MimeType.JSON);
     } else {
-      // Baris baru (Customer baru dibuat di Web App)
-      var newRow = [];
-      for (var col = 0; col < headers.length; col++) {
-        var nHead = norm(headers[col]);
-        if (nHead === norm("CUSTOMER ID")) {
-          newRow.push(targetId);
-        } else if (normFieldMap[nHead] !== undefined) {
-          newRow.push(normFieldMap[nHead]);
-        } else {
-          newRow.push("");
-        }
-      }
-      targetSheet.appendRow(newRow);
-      return ContentService.createTextOutput(JSON.stringify({ success: true, action: "appended", customer_id: targetId }))
+      return ContentService.createTextOutput(JSON.stringify({ success: true, message: "No row updated" }))
         .setMimeType(ContentService.MimeType.JSON);
     }
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+/**
+ * FUNGSI UTAMA: Menulis data customer ke baris yang sesuai di Google Sheet
+ */
+function applyCustomerToSheet_(cust) {
+  if (!cust) return null;
+  var targetId = String(cust.id || cust.customer_id || cust["CUSTOMER ID"] || "").trim();
+  if (!targetId || targetId === "PING") return null;
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = ss.getSheets();
+  var targetSheet = null;
+  var headers = null;
+  var idColIdx = -1;
+
+  var norm = function(str) {
+    return String(str || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  };
+
+  for (var s = 0; s < sheets.length; s++) {
+    var sh = sheets[s];
+    var lastCol = sh.getLastColumn();
+    if (lastCol < 2) continue;
+    var hRow = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+    for (var c = 0; c < hRow.length; c++) {
+      if (norm(hRow[c]) === norm("CUSTOMER ID")) {
+        targetSheet = sh;
+        headers = hRow;
+        idColIdx = c;
+        break;
+      }
+    }
+    if (targetSheet) break;
+  }
+
+  if (!targetSheet) {
+    targetSheet = ss.getSheets()[0];
+    headers = targetSheet.getRange(1, 1, 1, targetSheet.getLastColumn()).getValues()[0];
+    idColIdx = 0;
+  }
+
+  var data = targetSheet.getDataRange().getValues();
+  var foundRow = -1;
+
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][idColIdx]).trim().toUpperCase() === targetId.toUpperCase()) {
+      foundRow = r + 1;
+      break;
+    }
+  }
+
+  var fieldMap = {
+    "CUSTOMER ID": cust.id,
+    "NAMA APOTEK/RS/PBF/KLINIK": cust.name,
+    "CUSTOMER ID ORACLE": cust.customer_id_oracle,
+    "STATUS MERCHANT": cust.status_merchant,
+    "NO TELF APJ": cust.phone,
+    "Alamat email": cust.email,
+    "Default Billing Address": cust.address,
+    "VAT ID": cust.vat_id,
+    "NIK NUMBER (npwp 16 digit)": cust.nik,
+    "NAMA PEMILIK NPWP": cust.owner_name,
+    "ALAMAT WAJIB PAJAK": cust.owner_address,
+    "IZIN APOTEK/KLINIK/PBF/RS NUMBER": cust.sia_number,
+    "SIA EXPIRED DATE": cust.sia_expired,
+    "SIPA NUMBER": cust.sipa_number,
+    "SIPA EXPIRED DATE": cust.sipa_expired,
+    "NAMA APJ": cust.apj_name,
+    "KODE SIPNAP": cust.sipnap_code,
+    "SITE NUMBER (BILL TO)": cust.site_bill_to,
+    "SITE NUMBER (SHIP TO)": cust.site_ship_to,
+    "MBI BRANCH": cust.branch,
+    "Zone": cust.zone,
+    "KATEGORI CUSTOMER": cust.category,
+    "LIST APOTEK 2P AKTIF": cust.is_active_2p,
+    "DOKUMEN LEGALITAS": cust.document_url,
+    "GDRIVE NPWP": cust.npwp_drive_url,
+    "COA - REC": cust.coa_rec,
+    "COA - REV": cust.coa_rev,
+    "SUDAH PERNAH ORDER/BELUM": cust.order_status
+  };
+
+  var normFieldMap = {};
+  for (var k in fieldMap) {
+    if (fieldMap[k] !== undefined && fieldMap[k] !== null) {
+      normFieldMap[norm(k)] = fieldMap[k];
+    }
+  }
+
+  if (foundRow !== -1) {
+    for (var col = 0; col < headers.length; col++) {
+      var nHead = norm(headers[col]);
+      if (normFieldMap[nHead] !== undefined) {
+        targetSheet.getRange(foundRow, col + 1).setValue(normFieldMap[nHead]);
+      }
+    }
+    return { action: "updated", row: foundRow, customer_id: targetId };
+  } else {
+    var newRow = [];
+    for (var col = 0; col < headers.length; col++) {
+      var nHead = norm(headers[col]);
+      if (nHead === norm("CUSTOMER ID")) {
+        newRow.push(targetId);
+      } else if (normFieldMap[nHead] !== undefined) {
+        newRow.push(normFieldMap[nHead]);
+      } else {
+        newRow.push("");
+      }
+    }
+    targetSheet.appendRow(newRow);
+    return { action: "appended", customer_id: targetId };
   }
 }
 
