@@ -174,26 +174,43 @@ async function saveCustomerWebhookUrl(conn: any, url: string): Promise<void> {
   }
 }
 
-function forwardToCustomerGSheetWebhook(conn: any, payload: any) {
-  getCustomerWebhookUrl(conn).then((webhookUrl) => {
+async function forwardToCustomerGSheetWebhook(conn: any, payload: any): Promise<void> {
+  try {
+    const webhookUrl = await getCustomerWebhookUrl(conn);
     if (!webhookUrl) return;
     const cleanUrl = webhookUrl.replace(/\/a\/[^\/]+\/macros\/s\//, "/macros/s/");
-    fetch(cleanUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then(async (res) => {
-        console.log(`[Customer GSheet Webhook] Status: ${res.status}`);
-        if (!res.ok) {
-          const errText = await res.text().catch(() => "");
-          console.error(`[Customer GSheet Webhook Error] Status ${res.status}: ${errText.slice(0, 300)}`);
-        }
-      })
-      .catch((err) => {
-        console.error("Customer GSheet webhook background error:", err);
+    const jsonStr = JSON.stringify(payload);
+    const targetUrl = cleanUrl.includes("?")
+      ? `${cleanUrl}&data=${encodeURIComponent(jsonStr)}`
+      : `${cleanUrl}?data=${encodeURIComponent(jsonStr)}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    try {
+      const res = await fetch(targetUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: jsonStr,
+        redirect: "follow",
+        signal: controller.signal,
       });
-  });
+      console.log(`[Customer GSheet Webhook] Status: ${res.status}`);
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        console.warn(`[Customer GSheet Webhook Warning] Status ${res.status}: ${errText.slice(0, 200)}, retrying with GET...`);
+        await fetch(targetUrl, {
+          method: "GET",
+          redirect: "follow",
+          signal: controller.signal,
+        }).catch(() => {});
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  } catch (err) {
+    console.error("Customer GSheet webhook error:", err);
+  }
 }
 
 async function broadcastSignalFromApi(channel: "customers" | "returns" | "fakturs") {
@@ -2574,7 +2591,7 @@ export async function POST(req: Request) {
       );
 
       // 2-Way Realtime Sync: notify Google Sheet "Data Pelanggan MBI" webhook
-      forwardToCustomerGSheetWebhook(conn, {
+      await forwardToCustomerGSheetWebhook(conn, {
         action: "update_row",
         customer: body,
       });

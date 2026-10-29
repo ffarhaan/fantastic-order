@@ -165,15 +165,48 @@ function syncOnEdit(e) {
  * 2. REALTIME WEBHOOK RECEIVER (Web App -> Sheet):
  * Menerima kiriman otomatis dari Web App saat admin/staff mengedit customer di web,
  * lalu detik itu juga mengupdate sel yang sesuai di Google Sheet!
+ * Mendukung POST maupun GET (saat 302 redirect).
  */
+function doGet(e) {
+  return handleRequest_(e);
+}
+
 function doPost(e) {
+  return handleRequest_(e);
+}
+
+function handleRequest_(e) {
   try {
-    if (!e || !e.postData || !e.postData.contents) {
-      return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Empty request" }))
-        .setMimeType(ContentService.MimeType.JSON);
+    var body = null;
+    if (e && e.postData && e.postData.contents) {
+      try {
+        body = JSON.parse(e.postData.contents);
+      } catch (pErr) {}
+    }
+    if (!body && e && e.parameter) {
+      if (e.parameter.data) {
+        try {
+          body = JSON.parse(e.parameter.data);
+        } catch (dErr) {}
+      } else if (e.parameter.customer) {
+        try {
+          body = { customer: JSON.parse(e.parameter.customer) };
+        } catch (cErr) {
+          body = { customer: e.parameter };
+        }
+      } else if (e.parameter.id || e.parameter.name) {
+        body = { customer: e.parameter };
+      }
     }
 
-    var body = JSON.parse(e.postData.contents);
+    if (!body) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        status: "active",
+        message: "Webhook Google Sheet 'Data Pelanggan MBI' AKTIF & siap menerima sinkronisasi realtime."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     var cust = body.customer || body;
     var targetId = String(cust.id || cust.customer_id || cust["CUSTOMER ID"] || "").trim();
 
@@ -188,14 +221,18 @@ function doPost(e) {
     var headers = null;
     var idColIdx = -1;
 
-    // Cari sheet yang memiliki kolom "CUSTOMER ID"
+    // Normalisasi string untuk pencocokan header yang kebal spasi/kapitalisasi
+    var norm = function(str) {
+      return String(str || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    };
+
     for (var s = 0; s < sheets.length; s++) {
       var sh = sheets[s];
       var lastCol = sh.getLastColumn();
       if (lastCol < 2) continue;
       var hRow = sh.getRange(1, 1, 1, lastCol).getValues()[0];
       for (var c = 0; c < hRow.length; c++) {
-        if (String(hRow[c]).trim().toUpperCase() === "CUSTOMER ID") {
+        if (norm(hRow[c]) === norm("CUSTOMER ID")) {
           targetSheet = sh;
           headers = hRow;
           idColIdx = c;
@@ -221,8 +258,8 @@ function doPost(e) {
       }
     }
 
-    // Pemetaan nama kolom di Google Sheet <=> properti di Web App
     var fieldMap = {
+      "CUSTOMER ID": cust.id,
       "NAMA APOTEK/RS/PBF/KLINIK": cust.name,
       "CUSTOMER ID ORACLE": cust.customer_id_oracle,
       "STATUS MERCHANT": cust.status_merchant,
@@ -252,31 +289,38 @@ function doPost(e) {
       "SUDAH PERNAH ORDER/BELUM": cust.order_status
     };
 
+    var normFieldMap = {};
+    for (var k in fieldMap) {
+      if (fieldMap[k] !== undefined && fieldMap[k] !== null) {
+        normFieldMap[norm(k)] = fieldMap[k];
+      }
+    }
+
     if (foundRow !== -1) {
       // Update baris yang sudah ada
       for (var col = 0; col < headers.length; col++) {
-        var headerName = String(headers[col]).trim();
-        if (fieldMap[headerName] !== undefined && fieldMap[headerName] !== null) {
-          targetSheet.getRange(foundRow, col + 1).setValue(fieldMap[headerName]);
+        var nHead = norm(headers[col]);
+        if (normFieldMap[nHead] !== undefined) {
+          targetSheet.getRange(foundRow, col + 1).setValue(normFieldMap[nHead]);
         }
       }
-      return ContentService.createTextOutput(JSON.stringify({ success: true, action: "updated", row: foundRow }))
+      return ContentService.createTextOutput(JSON.stringify({ success: true, action: "updated", row: foundRow, customer_id: targetId }))
         .setMimeType(ContentService.MimeType.JSON);
     } else {
       // Baris baru (Customer baru dibuat di Web App)
       var newRow = [];
       for (var col = 0; col < headers.length; col++) {
-        var headerName = String(headers[col]).trim();
-        if (headerName === "CUSTOMER ID") {
+        var nHead = norm(headers[col]);
+        if (nHead === norm("CUSTOMER ID")) {
           newRow.push(targetId);
-        } else if (fieldMap[headerName] !== undefined && fieldMap[headerName] !== null) {
-          newRow.push(fieldMap[headerName]);
+        } else if (normFieldMap[nHead] !== undefined) {
+          newRow.push(normFieldMap[nHead]);
         } else {
           newRow.push("");
         }
       }
       targetSheet.appendRow(newRow);
-      return ContentService.createTextOutput(JSON.stringify({ success: true, action: "appended" }))
+      return ContentService.createTextOutput(JSON.stringify({ success: true, action: "appended", customer_id: targetId }))
         .setMimeType(ContentService.MimeType.JSON);
     }
   } catch (err) {

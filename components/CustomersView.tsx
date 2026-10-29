@@ -494,13 +494,14 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     return () => clearTimeout(timer);
   }, [search]);
 
-  const fetchCustomers = useCallback(async (forceFresh = false) => {
-    setLoading(true);
+  const fetchCustomers = useCallback(async (forceFresh = false, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({
         action: "customers",
         limit: String(limit),
         offset: String(page * limit),
+        _t: String(Date.now()),
       });
       if (forceFresh) params.set("fresh", "true");
       if (debouncedSearch) params.set("search", debouncedSearch);
@@ -520,33 +521,19 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     } catch (err) {
       console.error("Failed to fetch customers:", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [debouncedSearch, categoryFilter, statusFilter, hasDocsFilter, page]);
 
-  const selectedCustRef = useRef<CustomerRecord | null>(null);
-  useEffect(() => {
-    selectedCustRef.current = selectedCust;
-  }, [selectedCust]);
-
-  useEffect(() => {
-    fetchCustomers();
-    const unsubRealtime = subscribeToRealtimeSignal("customers", () => {
-      fetchCustomers(true);
-      if (selectedCustRef.current) {
-        handleOpenDetail(selectedCustRef.current);
-      }
-    });
-    return () => unsubRealtime();
-  }, [fetchCustomers]);
-
   // Fetch full details + returns + fakturs when customer clicked
-  const handleOpenDetail = async (cust: CustomerRecord) => {
+  const handleOpenDetail = useCallback(async (cust: CustomerRecord, silent = false) => {
     setSelectedCust(cust);
-    setCustomerDocs([]);
-    setDetailLoading(true);
+    if (!silent) {
+      setCustomerDocs([]);
+      setDetailLoading(true);
+    }
     try {
-      const res = await fetch(`/api/tidb?action=customer_detail&id=${encodeURIComponent(cust.id)}&name=${encodeURIComponent(cust.name)}`, {
+      const res = await fetch(`/api/tidb?action=customer_detail&id=${encodeURIComponent(cust.id)}&name=${encodeURIComponent(cust.name)}&_t=${Date.now()}`, {
         cache: "no-store",
         headers: { "Cache-Control": "no-cache" },
       });
@@ -559,9 +546,60 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     } catch (err) {
       console.error("Failed to load customer detail:", err);
     } finally {
-      setDetailLoading(false);
+      if (!silent) setDetailLoading(false);
     }
-  };
+  }, []);
+
+  const selectedCustRef = useRef<CustomerRecord | null>(null);
+  useEffect(() => {
+    selectedCustRef.current = selectedCust;
+  }, [selectedCust]);
+
+  const fetchCustomersRef = useRef(fetchCustomers);
+  useEffect(() => {
+    fetchCustomersRef.current = fetchCustomers;
+  }, [fetchCustomers]);
+
+  const handleOpenDetailRef = useRef(handleOpenDetail);
+  useEffect(() => {
+    handleOpenDetailRef.current = handleOpenDetail;
+  }, [handleOpenDetail]);
+
+  // Filter/search change fetch
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
+
+  // Realtime subscription + window focus + 4-second polling
+  useEffect(() => {
+    const unsubRealtime = subscribeToRealtimeSignal("customers", () => {
+      fetchCustomersRef.current(true, true);
+      if (selectedCustRef.current) {
+        handleOpenDetailRef.current(selectedCustRef.current, true);
+      }
+    });
+
+    const onFocus = () => {
+      fetchCustomersRef.current(true, true);
+      if (selectedCustRef.current) {
+        handleOpenDetailRef.current(selectedCustRef.current, true);
+      }
+    };
+    window.addEventListener("focus", onFocus);
+
+    // Light silent poll every 4s while user is viewing the page
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchCustomersRef.current(true, true);
+      }
+    }, 4000);
+
+    return () => {
+      unsubRealtime();
+      window.removeEventListener("focus", onFocus);
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleExportExcel = () => {
     if (customers.length === 0) return;
