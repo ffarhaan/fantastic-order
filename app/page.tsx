@@ -39,6 +39,7 @@ import MasterApotekModal from "@/components/MasterApotekModal";
 import MasterProductModal from "@/components/MasterProductModal";
 import LoginModal, { AppUser } from "@/components/LoginModal";
 import AccountApprovalModal from "@/components/AccountApprovalModal";
+import UserProfileModal from "@/components/UserProfileModal";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import ExportExcelModal from "@/components/ExportExcelModal";
 import ReturnsView from "@/components/ReturnsView";
@@ -67,6 +68,7 @@ import {
   Sun,
   Moon,
   Key,
+  KeyRound,
   Shield,
   Columns,
   Pin,
@@ -489,6 +491,7 @@ export default function Home() {
   }, [mainView, currentUser]);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [showUserProfileModal, setShowUserProfileModal] = useState(false);
 
   // Real-time Online Users Presence (strictly filtered to approved accounts only)
   const [rawOnlineUsers, setRawOnlineUsers] = useState<ActiveUserPresence[]>([]);
@@ -3205,9 +3208,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             <div className="flex flex-col items-center py-1">
               <button
                 type="button"
-                onClick={() => setShowLoginModal(true)}
+                onClick={() => setShowUserProfileModal(true)}
                 className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shadow-sm hover:scale-105 transition cursor-pointer"
-                title={`${currentUser?.name || "User"}${currentUser?.role === "readonly" ? " (Viewer)" : ""}`}
+                title={`${currentUser?.name || "User"}${currentUser?.role === "readonly" ? " (Viewer)" : ""} - Klik untuk lihat Akun & Password`}
               >
                 {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "S"}
               </button>
@@ -3218,10 +3221,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <div className="flex items-center justify-between gap-1">
                 <button
                   type="button"
-                  onClick={() => setShowLoginModal(true)}
+                  onClick={() => setShowUserProfileModal(true)}
                   className={`flex-1 min-w-0 flex items-center justify-between p-1.5 rounded-lg transition text-left cursor-pointer ${
                     isDarkMode ? "hover:bg-zinc-900" : "hover:bg-zinc-100"
                   }`}
+                  title="Klik untuk melihat Akun & Password Anda"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-sm">
@@ -3343,6 +3347,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
               <div className={`w-8 h-px my-1 ${isDarkMode ? "bg-zinc-800" : "bg-zinc-200"}`} />
 
+              <button
+                type="button"
+                onClick={() => { setShowUserProfileModal(true); setMobileSidebarOpen(false); }}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer relative ${
+                  isDarkMode ? "text-indigo-400 hover:bg-zinc-800/60" : "text-indigo-600 hover:bg-zinc-100"
+                }`}
+                title="Akun & Password Saya"
+              >
+                <KeyRound className="w-4 h-4" />
+              </button>
+
               {isSuperAdminUser(currentUser?.name) && (
                 <button
                   type="button"
@@ -3350,7 +3365,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer relative ${
                     isDarkMode ? "text-amber-400 hover:bg-zinc-800/60" : "text-amber-600 hover:bg-zinc-100"
                   }`}
-                  title="Kelola & ACC Akun Baru"
+                  title="Kelola Semua Akun & Password Staf (Owner)"
                 >
                   <Shield className="w-4 h-4" />
                   {pendingApprovalCount > 0 && (
@@ -3482,6 +3497,26 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 <span>Master Produk (Farma/Alkes)</span>
               </button>
 
+              {/* Menu Profil & Password Akun Saya (Untuk Semua Pengguna) */}
+              <button
+                type="button"
+                onClick={() => { setShowUserProfileModal(true); setMobileSidebarOpen(false); }}
+                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                  isDarkMode
+                    ? "text-zinc-400 hover:text-indigo-300 hover:bg-zinc-900/60"
+                    : "text-zinc-600 hover:text-indigo-600 hover:bg-zinc-100"
+                }`}
+                title="Lihat username dan password akun Anda"
+              >
+                <div className="flex items-center gap-2.5">
+                  <KeyRound className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <span>Akun &amp; Password Saya</span>
+                </div>
+                <span className="text-[10px] font-mono text-zinc-500">
+                  @{currentUser?.name?.toLowerCase()}
+                </span>
+              </button>
+
               {isSuperAdminUser(currentUser?.name) && (
                 <button
                   type="button"
@@ -3490,17 +3525,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     pendingApprovalCount > 0
                       ? "bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 font-semibold"
                       : isDarkMode
-                      ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
-                      : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                      ? "text-amber-400 hover:text-amber-300 hover:bg-zinc-900/60"
+                      : "text-amber-600 hover:text-amber-700 hover:bg-zinc-100"
                   }`}
+                  title="Kelola semua akun, hak akses & password staf tim"
                 >
                   <div className="flex items-center gap-2.5">
                     <Shield className={`w-4 h-4 ${pendingApprovalCount > 0 ? "text-amber-400" : "text-amber-500"}`} />
-                    <span>Kelola &amp; ACC Akun</span>
+                    <span className="font-bold">Semua Akun &amp; Password</span>
                   </div>
-                  {pendingApprovalCount > 0 && (
+                  {pendingApprovalCount > 0 ? (
                     <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-black animate-pulse">
                       {pendingApprovalCount}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 font-mono font-bold">
+                      Owner
                     </span>
                   )}
                 </button>
@@ -5800,6 +5840,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           onClose={() => setShowApprovalModal(false)}
           allProfiles={allUserProfiles}
           isDarkMode={isDarkMode}
+        />
+      )}
+      {showUserProfileModal && currentUser && (
+        <UserProfileModal
+          isOpen={showUserProfileModal}
+          onClose={() => setShowUserProfileModal(false)}
+          currentUser={currentUser}
+          isDarkMode={isDarkMode}
+          onOpenApprovalModal={() => setShowApprovalModal(true)}
+          onLogout={handleLogout}
         />
       )}
       {showChangePasswordModal && currentUser && currentUser.role !== "readonly" && (

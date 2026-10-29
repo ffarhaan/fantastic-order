@@ -1472,11 +1472,87 @@ export async function changeUserPassword(
       return { success: false, message: "Password lama salah!" };
     }
 
-    await setDoc(credRef, { [userName]: newPass.trim() }, { merge: true });
+    const cleanU = userName.trim();
+    const updateObj: Record<string, string> = { [cleanU]: newPass.trim() };
+    await setDoc(credRef, updateObj, { merge: true });
     return { success: true, message: `Password untuk ${userName} berhasil diperbarui!` };
   } catch (err) {
     console.error("Failed to update password:", err);
     return { success: false, message: "Gagal menyimpan password ke database cloud." };
+  }
+}
+
+/**
+ * Real-time subscription to user credentials (used by Super Admin to view all credentials & staff to view their own)
+ */
+export function subscribeToUserCredentials(
+  onUpdate: (creds: Record<string, string>) => void
+): Unsubscribe {
+  const credRef = doc(db, APP_DATA_COLLECTION, USER_CREDENTIALS_DOC);
+  return onSnapshot(
+    credRef,
+    (snap) => {
+      if (!snap.exists()) {
+        onUpdate({});
+        return;
+      }
+      const data = (snap.data() as Record<string, string>) || {};
+      onUpdate(data);
+    },
+    (err) => {
+      console.warn("Failed to subscribe to user credentials:", err);
+    }
+  );
+}
+
+/**
+ * Fetch password for a specific user (by username or display name)
+ */
+export async function getUserPassword(userName: string, displayName?: string): Promise<string> {
+  if (!userName && !displayName) return "123";
+  try {
+    const credRef = doc(db, APP_DATA_COLLECTION, USER_CREDENTIALS_DOC);
+    const snap = await getDoc(credRef);
+    if (snap.exists()) {
+      const data = snap.data() as Record<string, string>;
+      const cleanU = String(userName || "").trim().toLowerCase();
+      const cleanD = String(displayName || "").trim().toLowerCase();
+      for (const [k, v] of Object.entries(data)) {
+        const cleanK = k.toLowerCase();
+        if (cleanK === cleanU || (cleanD && cleanK === cleanD)) {
+          return String(v);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Error getting user password:", e);
+  }
+  return "123";
+}
+
+/**
+ * Super Admin (Farhan) can directly set/override any user's password
+ */
+export async function adminSetUserPassword(
+  userName: string,
+  newPass: string,
+  displayName?: string
+): Promise<{ success: boolean; message: string }> {
+  if (!newPass || newPass.trim().length < 3) {
+    return { success: false, message: "Password minimal 3 karakter." };
+  }
+  try {
+    const credRef = doc(db, APP_DATA_COLLECTION, USER_CREDENTIALS_DOC);
+    const cleanU = userName.trim();
+    const updateObj: Record<string, string> = { [cleanU]: newPass.trim() };
+    if (displayName && displayName.trim() !== cleanU) {
+      updateObj[displayName.trim()] = newPass.trim();
+    }
+    await setDoc(credRef, updateObj, { merge: true });
+    return { success: true, message: `Password untuk ${cleanU} berhasil diperbarui!` };
+  } catch (err) {
+    console.error("Failed to adminSetUserPassword:", err);
+    return { success: false, message: "Gagal menyimpan password baru ke database cloud." };
   }
 }
 
