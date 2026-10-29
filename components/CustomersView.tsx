@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { CustomerRecord, ShipmentReturnRecord } from "@/lib/types";
 import { broadcastRealtimeSignal, subscribeToRealtimeSignal, isSuperAdminUser } from "@/lib/firestoreService";
 import { AppUser } from "@/components/LoginModal";
@@ -494,7 +494,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     return () => clearTimeout(timer);
   }, [search]);
 
-  const fetchCustomers = useCallback(async () => {
+  const fetchCustomers = useCallback(async (forceFresh = false) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -502,6 +502,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
         limit: String(limit),
         offset: String(page * limit),
       });
+      if (forceFresh) params.set("fresh", "true");
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (categoryFilter !== "ALL") params.set("category", categoryFilter);
       if (statusFilter !== "ALL") params.set("status", statusFilter);
@@ -520,10 +521,18 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     }
   }, [debouncedSearch, categoryFilter, statusFilter, hasDocsFilter, page]);
 
+  const selectedCustRef = useRef<CustomerRecord | null>(null);
+  useEffect(() => {
+    selectedCustRef.current = selectedCust;
+  }, [selectedCust]);
+
   useEffect(() => {
     fetchCustomers();
     const unsubRealtime = subscribeToRealtimeSignal("customers", () => {
-      fetchCustomers();
+      fetchCustomers(true);
+      if (selectedCustRef.current) {
+        handleOpenDetail(selectedCustRef.current);
+      }
     });
     return () => unsubRealtime();
   }, [fetchCustomers]);
@@ -728,7 +737,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
           {/* Refresh Button */}
           <button
             type="button"
-            onClick={fetchCustomers}
+            onClick={() => fetchCustomers(true)}
             disabled={loading}
             className="p-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700/80 transition-all active:scale-95 shadow-xs cursor-pointer"
             title="Refresh Data dari TiDB"

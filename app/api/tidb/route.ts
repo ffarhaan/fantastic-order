@@ -140,6 +140,85 @@ async function saveWebhookUrl(conn: any, url: string): Promise<void> {
   }
 }
 
+async function getCustomerWebhookUrl(conn: any): Promise<string> {
+  if (process.env.GSHEET_CUSTOMER_WEBHOOK_URL) {
+    return process.env.GSHEET_CUSTOMER_WEBHOOK_URL;
+  }
+  try {
+    const rows = (await conn.execute(
+      "SELECT value_text FROM app_settings WHERE key_name = 'customer_webhook_url' LIMIT 1"
+    )) as any[];
+    return rows?.[0]?.value_text || "";
+  } catch {
+    return "";
+  }
+}
+
+async function saveCustomerWebhookUrl(conn: any, url: string): Promise<void> {
+  if (!url) return;
+  try {
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key_name VARCHAR(64) PRIMARY KEY,
+        value_text TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    await conn.execute(
+      `INSERT INTO app_settings (key_name, value_text) VALUES ('customer_webhook_url', ?)
+       ON DUPLICATE KEY UPDATE value_text = VALUES(value_text)`,
+      [url]
+    );
+  } catch (e) {
+    console.error("Failed to save customer webhook URL:", e);
+  }
+}
+
+function forwardToCustomerGSheetWebhook(conn: any, payload: any) {
+  getCustomerWebhookUrl(conn).then((webhookUrl) => {
+    if (!webhookUrl) return;
+    const cleanUrl = webhookUrl.replace(/\/a\/[^\/]+\/macros\/s\//, "/macros/s/");
+    fetch(cleanUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(async (res) => {
+        console.log(`[Customer GSheet Webhook] Status: ${res.status}`);
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "");
+          console.error(`[Customer GSheet Webhook Error] Status ${res.status}: ${errText.slice(0, 300)}`);
+        }
+      })
+      .catch((err) => {
+        console.error("Customer GSheet webhook background error:", err);
+      });
+  });
+}
+
+async function broadcastSignalFromApi(channel: "customers" | "returns" | "fakturs") {
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "fantastic-order";
+  if (!apiKey || !projectId) return;
+  try {
+    await fetch(
+      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/app_data/realtime_signals?key=${apiKey}&updateMask.fieldPaths=${channel}&updateMask.fieldPaths=updatedAt`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            [channel]: { integerValue: String(Date.now()) },
+            updatedAt: { stringValue: new Date().toISOString() },
+          },
+        }),
+      }
+    ).catch(() => {});
+  } catch (e) {
+    console.warn(`[broadcastSignalFromApi(${channel})]:`, e);
+  }
+}
+
 function forwardToGSheetWebhook(conn: any, payload: any) {
   getWebhookUrl(conn).then((webhookUrl) => {
     if (!webhookUrl) return;
@@ -1897,6 +1976,11 @@ export async function POST(req: Request) {
       const id = String(item.id || item.customer_id || item["CUSTOMER ID"] || "").trim();
       const name = String(item.name || item.nama_apotek || item["NAMA APOTEK/RS/PBF/KLINIK"] || "").trim();
 
+      const webhookUrl = body?.webhook_url || body?.webhookUrl || item?.webhook_url || searchParams.get("webhook_url") || "";
+      if (webhookUrl) {
+        await saveCustomerWebhookUrl(conn, webhookUrl);
+      }
+
       if (!id || !name) {
         return Response.json({ success: false, error: "Missing customer id or name" }, { status: 400 });
       }
@@ -1975,6 +2059,9 @@ export async function POST(req: Request) {
           item.order_status || item["SUDAH PERNAH ORDER/BELUM"] || item.orderStatus || null,
         ]
       );
+
+      // Realtime trigger to all connected browser Web Apps!
+      await broadcastSignalFromApi("customers");
 
       return Response.json({ success: true, id, message: "Customer synced successfully from Google Sheet" });
     }
@@ -2477,18 +2564,14 @@ export async function POST(req: Request) {
         ]
       );
 
-      // 2-Way Sync: notify Google Sheet "Data Pelanggan MBI" webhook if configured
-      const gsheetWebhookUrl = process.env.GSHEET_CUSTOMER_WEBHOOK_URL;
-      if (gsheetWebhookUrl) {
-        fetch(gsheetWebhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "update_row",
-            customer: body,
-          }),
-        }).catch((err) => console.warn("[GSheet Customer Sync Warning]:", err.message));
-      }
+      // 2-Way Realtime Sync: notify Google Sheet "Data Pelanggan MBI" webhook
+      forwardToCustomerGSheetWebhook(conn, {
+        action: "update_row",
+        customer: body,
+      });
+
+      // Realtime trigger to all connected browser Web Apps!
+      await broadcastSignalFromApi("customers");
 
       return Response.json({ success: true });
     }
