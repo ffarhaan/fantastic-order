@@ -1807,20 +1807,27 @@ export async function authenticateUser(
     let role: "admin" | "readonly" = "admin";
     let matchedProfile: any = null;
 
-    // Check if identifier matches any username or email in profiles
-    for (const [uKey, prof] of Object.entries(profiles)) {
-      if (!prof || typeof prof !== "object") continue;
-      if (
+    // Check if identifier matches any username or email in profiles (prefer approved accounts over rejected)
+    const matchingEntries = Object.entries(profiles).filter(([uKey, prof]) => {
+      if (!prof || typeof prof !== "object") return false;
+      return (
         uKey.toLowerCase() === cleanId ||
         String(prof.username || "").toLowerCase() === cleanId ||
         String(prof.email || "").toLowerCase() === cleanId
-      ) {
-        matchedUsername = String(prof.username || uKey).toLowerCase();
-        displayName = prof.displayName || prof.username || uKey;
-        role = prof.role === "readonly" ? "readonly" : "admin";
-        matchedProfile = prof;
-        break;
-      }
+      );
+    });
+
+    if (matchingEntries.length > 0) {
+      // Sort matching candidates so "approved" profile takes priority over "rejected" or "pending"
+      matchingEntries.sort((a, b) => {
+        const score = (p: any) => (p?.approvalStatus === "approved" ? 2 : p?.approvalStatus === "pending" ? 1 : 0);
+        return score(b[1]) - score(a[1]);
+      });
+      const [uKey, prof] = matchingEntries[0];
+      matchedUsername = String(prof.username || uKey).toLowerCase();
+      displayName = prof.displayName || prof.username || uKey;
+      role = prof.role === "readonly" ? "readonly" : "admin";
+      matchedProfile = prof;
     }
 
     // Check password
