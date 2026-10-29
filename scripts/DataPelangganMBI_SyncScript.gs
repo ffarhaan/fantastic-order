@@ -325,6 +325,7 @@ function applyCustomerToSheet_(cust) {
     "MBI BRANCH": cust.branch,
     "Zone": cust.zone,
     "KATEGORI CUSTOMER": cust.category,
+    "BRANCH NAME HALODOC FOR PHARMA": cust.halodoc_pharma,
     "LIST APOTEK 2P AKTIF": cust.is_active_2p,
     "DOKUMEN LEGALITAS": cust.document_url,
     "GDRIVE NPWP": cust.npwp_drive_url,
