@@ -751,12 +751,16 @@ export async function GET(req: Request) {
           offset,
         },
         {
-          "CDN-Cache-Control": limit >= 1000
-            ? "public, s-maxage=30, stale-while-revalidate=120"
-            : "public, s-maxage=15, stale-while-revalidate=60",
-          "Vercel-CDN-Cache-Control": limit >= 1000
-            ? "public, s-maxage=30, stale-while-revalidate=120"
-            : "public, s-maxage=15, stale-while-revalidate=60",
+          "CDN-Cache-Control": limit <= 5
+            ? "public, s-maxage=300, stale-while-revalidate=600"
+            : limit >= 1000
+            ? "public, s-maxage=60, stale-while-revalidate=180"
+            : "public, s-maxage=30, stale-while-revalidate=60",
+          "Vercel-CDN-Cache-Control": limit <= 5
+            ? "public, s-maxage=300, stale-while-revalidate=600"
+            : limit >= 1000
+            ? "public, s-maxage=60, stale-while-revalidate=180"
+            : "public, s-maxage=30, stale-while-revalidate=60",
         }
       );
     }
