@@ -787,6 +787,7 @@ export default function Home() {
   // Real-time direct Firebase Firestore subscription (0 byte on Vercel, <100ms sync)
   useEffect(() => {
     // Immediate wipe of poisoned cache from user browser
+    // 1. Initial quick load from localStorage for 0ms startup
     if (typeof window !== "undefined") {
       try {
         const cached = localStorage.getItem("fantastic_so_checkers_cache");
@@ -796,21 +797,30 @@ export default function Home() {
       } catch {}
     }
 
+    // 2. Real-time WebSocket listener from Firebase (0 Byte on Vercel Origin!)
     const unsub = subscribeToCheckers((map) => {
       setCheckerMap((prev) => ({ ...prev, ...map }));
       checkerMapRef.current = { ...checkerMapRef.current, ...map };
     });
 
-    // Also fetch initial checkers from TiDB for 100% full database coverage (TiDB wins)
-    fetch("/api/tidb?action=get_checkers")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success && d.data) {
-          setCheckerMap((prev) => ({ ...prev, ...d.data }));
-          checkerMapRef.current = { ...checkerMapRef.current, ...d.data };
-        }
-      })
-      .catch(() => {});
+    // 3. ZERO-ORIGIN-DRAIN: Only fetch from TiDB if browser cache is completely empty on very first visit!
+    try {
+      const hasLocalCheckers = typeof window !== "undefined" && Boolean(localStorage.getItem("fantastic_so_checkers_cache"));
+      if (!hasLocalCheckers) {
+        fetch("/api/tidb?action=get_checkers")
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success && d.data) {
+              setCheckerMap((prev) => ({ ...prev, ...d.data }));
+              checkerMapRef.current = { ...checkerMapRef.current, ...d.data };
+              try {
+                localStorage.setItem("fantastic_so_checkers_cache", JSON.stringify(d.data));
+              } catch {}
+            }
+          })
+          .catch(() => {});
+      }
+    } catch {}
 
     return () => {
       unsub();

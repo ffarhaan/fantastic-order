@@ -439,8 +439,9 @@ export async function GET(req: Request) {
         req, 
         { success: true, data: map },
         {
-          "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+          "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+          "CDN-Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
         }
       );
     }
