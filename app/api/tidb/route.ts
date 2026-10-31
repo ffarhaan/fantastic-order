@@ -506,6 +506,8 @@ export async function GET(req: Request) {
       `;
       const rows = await conn.execute(dataSql, [...params, limit, offset]);
 
+      const isKomplainSuggestion = activeOnly && limit <= 200 && !search && !category && !status;
+
       return compressedJsonResponse(
         req,
         {
@@ -516,9 +518,15 @@ export async function GET(req: Request) {
           offset,
         },
         {
-          "Cache-Control": "no-store, no-cache, must-revalidate",
-          "CDN-Cache-Control": "no-store",
-          "Vercel-CDN-Cache-Control": "no-store",
+          "Cache-Control": isKomplainSuggestion
+            ? "public, max-age=3600, stale-while-revalidate=86400"
+            : "no-store, no-cache, must-revalidate",
+          "CDN-Cache-Control": isKomplainSuggestion
+            ? "public, s-maxage=86400, stale-while-revalidate=604800"
+            : "no-store",
+          "Vercel-CDN-Cache-Control": isKomplainSuggestion
+            ? "public, s-maxage=86400, stale-while-revalidate=604800"
+            : "no-store",
         }
       );
     }
@@ -870,8 +878,8 @@ export async function GET(req: Request) {
           maxUpdated,
         },
         {
-          "CDN-Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
+          "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
         }
       );
     }
