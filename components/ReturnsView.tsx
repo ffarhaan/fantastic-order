@@ -648,7 +648,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   }, [debouncedSearch, statusFilter, pbfFilter, categoryFilter, monthFilter, weekFilter, page]);
 
-  // Real-time Firestore cross-browser signal + polling when tab is visible
+  // Real-time Firestore cross-browser signal (0 Byte on Vercel Origin, WebSocket Push)
   useEffect(() => {
     fetchReturns();
     fetchAllReturns();
@@ -657,14 +657,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       fetchAllReturns(true);
       fetchPersonnelStats();
     });
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      fetchReturns(true);
-    }, 45000);
+    // ZERO-ORIGIN-DRAIN: Removed polling interval. Realtime updates are delivered instantly via Firebase push signal!
     const onFocus = () => {
       const now = Date.now();
-      // Throttle focus refetch to at most once per 60 seconds to save Origin bandwidth
-      if (now - lastFocusFetchRef.current > 60000) {
+      // Throttle focus refetch to at most once per 5 minutes to prevent origin leakage
+      if (now - lastFocusFetchRef.current > 300000) {
         lastFocusFetchRef.current = now;
         fetchReturns(true);
       }
@@ -672,7 +669,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     window.addEventListener("focus", onFocus);
     return () => {
       unsubRealtime();
-      clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
   }, [fetchReturns, fetchAllReturns, fetchPersonnelStats]);

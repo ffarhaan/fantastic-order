@@ -675,17 +675,11 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     };
     window.addEventListener("focus", onFocus);
 
-    // Ultra-fast silent poll every 1s while user is viewing the page
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        fetchCustomersRef.current(true, true);
-      }
-    }, 1000);
-
+    // ZERO-ORIGIN-DRAIN: Rely 100% on Firebase realtime signal (unsubRealtime) instead of polling every 1s!
+    // Polling every 1s was draining 10-20 MB Origin Transfer per active tab.
     return () => {
       unsubRealtime();
       window.removeEventListener("focus", onFocus);
-      clearInterval(interval);
     };
   }, []);
 
