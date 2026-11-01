@@ -629,9 +629,9 @@ export async function GET(req: Request) {
           documents,
         },
         {
-          "Cache-Control": "no-store, no-cache, must-revalidate",
-          "CDN-Cache-Control": "no-store",
-          "Vercel-CDN-Cache-Control": "no-store",
+          "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
+          "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
         }
       );
     }
@@ -796,7 +796,11 @@ export async function GET(req: Request) {
       return compressedJsonResponse(
         req,
         { success: true, map },
-        { "Cache-Control": "no-store, no-cache, must-revalidate" }
+        {
+          "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
+          "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        }
       );
     }
 
@@ -820,7 +824,11 @@ export async function GET(req: Request) {
       return compressedJsonResponse(
         req,
         { success: true, count: rows.length, data: rows },
-        { "Cache-Control": "no-store, no-cache, must-revalidate" }
+        {
+          "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
+          "CDN-Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
+        }
       );
     }
 

@@ -621,10 +621,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
       setDetailLoading(true);
     }
     try {
-      const res = await fetch(`/api/tidb?action=customer_detail&id=${encodeURIComponent(cust.id)}&name=${encodeURIComponent(cust.name)}&_t=${Date.now()}`, {
-        cache: "no-store",
-        headers: { "Cache-Control": "no-cache" },
-      });
+      const res = await fetch(`/api/tidb?action=customer_detail&id=${encodeURIComponent(cust.id)}&name=${encodeURIComponent(cust.name)}`);
       const data = await res.json();
       if (data.success) {
         setCustomerReturns(data.returns || []);
