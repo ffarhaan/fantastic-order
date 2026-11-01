@@ -581,14 +581,22 @@ export default function Home() {
     return () => unsub();
   }, [currentUser]);
 
-  // Heartbeat reporter for current user
+  // Heartbeat reporter for current user (Optimized to 90s interval with visibility guard to save 80% Firestore quota)
   useEffect(() => {
     if (!currentUser) return;
     updateUserPresence(currentUser, deviceIdRef.current);
 
     const timer = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       updateUserPresence(currentUser, deviceIdRef.current);
-    }, 20000);
+    }, 90000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        updateUserPresence(currentUser, deviceIdRef.current);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
 
     const handleUnload = () => {
       removeUserPresence(deviceIdRef.current);
@@ -597,6 +605,7 @@ export default function Home() {
 
     return () => {
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("beforeunload", handleUnload);
     };
   }, [currentUser]);
@@ -2498,6 +2507,45 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           isUploadingRef.current = false;
           setLoading(false);
           return;
+        }
+
+        // DATE WINDOW GUARD (Pencegahan File Lampau / Tertukar Bulan di Awal Bulan)
+        const nowDate = new Date();
+        const currentYear = nowDate.getFullYear();
+        const currentMonth = nowDate.getMonth() + 1; // 1-12
+        let pastMonthCount = 0;
+        let currentMonthCount = 0;
+
+        for (const r of parsed) {
+          const dStr = r.orderDate || r.transactionDate;
+          if (!dStr || dStr === "-" || dStr === "#N/A") continue;
+          let m = 0, y = 0;
+          if (/^\d{4}-\d{2}-\d{2}/.test(dStr)) {
+            y = parseInt(dStr.slice(0, 4), 10);
+            m = parseInt(dStr.slice(5, 7), 10);
+          } else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(dStr)) {
+            const parts = dStr.split(/[\/\-]/);
+            m = parseInt(parts[1], 10);
+            y = parseInt(parts[2], 10);
+          }
+          if (m && y) {
+            if (y === currentYear && m === currentMonth) {
+              currentMonthCount++;
+            } else if (y < currentYear || (y === currentYear && m < currentMonth)) {
+              pastMonthCount++;
+            }
+          }
+        }
+
+        if (pastMonthCount > 0 && currentMonthCount === 0 && nowDate.getDate() > 3) {
+          const confirmPast = window.confirm(
+            `⚠️ PERINGATAN TANGGAL FILE:\nFile "${fileNames.join(", ")}" yang Anda unggah berisi ${pastMonthCount} transaksi dari bulan lampau, bukan bulan berjalan (${currentMonth}/${currentYear}).\n\nApakah Anda yakin ingin tetap memproses file ini?`
+          );
+          if (!confirmPast) {
+            isUploadingRef.current = false;
+            setLoading(false);
+            return;
+          }
         }
 
         const importedAt = new Date().toISOString();

@@ -231,25 +231,9 @@ async function broadcastSignalFromApi(channel: "customers" | "returns" | "faktur
 }
 
 function forwardToGSheetWebhook(conn: any, payload: any) {
-  getWebhookUrl(conn).then((webhookUrl) => {
-    if (!webhookUrl) return;
-    const cleanUrl = webhookUrl.replace(/\/a\/[^\/]+\/macros\/s\//, "/macros/s/");
-    fetch(cleanUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then(async (res) => {
-        console.log(`[GSheet Webhook] Status: ${res.status}`);
-        if (!res.ok) {
-          const errText = await res.text().catch(() => "");
-          console.error(`[GSheet Webhook Error] Status ${res.status}: ${errText.slice(0, 300)}`);
-        }
-      })
-      .catch((err) => {
-        console.error("GSheet webhook background error:", err);
-      });
-  }).catch(() => {});
+  // Integrasi Google Sheet Shipment Error telah diputuskan agar aplikasi Fantastic Order 100% mandiri,
+  // kebal dari latensi webhook, dan bebas dari limit eksekusi Google Apps Script.
+  return;
 }
 
 export async function GET(req: Request) {

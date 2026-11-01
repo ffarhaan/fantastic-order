@@ -1393,7 +1393,7 @@ export function subscribeToOnlinePresence(
       }
       const data = snap.data() as Record<string, Partial<ActiveUserPresence>>;
       const now = Date.now();
-      const cutoff = 60000; // active within the last 60 seconds
+      const cutoff = 180000; // active within the last 3 minutes (180s) to conserve Firestore operations
 
       // Filter active entries and deduplicate by user name (keep latest active)
       const userMap = new Map<string, ActiveUserPresence>();

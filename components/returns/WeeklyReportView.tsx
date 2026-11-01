@@ -74,6 +74,27 @@ const WEEKLY_BENCHMARKS: Record<number, { maiInv: number; mbiInv: number; maiApp
   43: { maiInv: 1026, mbiInv: 2479, maiApprove: 0, mbiApprove: 28, totReject: 1 },
 };
 
+// Calculate week number strictly from date
+function parseDateWeek(dateStr: string | null | undefined): number | null {
+  if (!dateStr || dateStr === "-" || dateStr === "#N/A") return null;
+  try {
+    let d: Date | null = null;
+    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+      d = new Date(dateStr);
+    } else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(dateStr)) {
+      const parts = dateStr.split(/[\/\-]/);
+      d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+    } else {
+      d = new Date(dateStr);
+    }
+    if (d && !isNaN(d.getTime())) {
+      const soy = new Date(d.getFullYear(), 0, 1);
+      return Math.max(1, Math.min(52, Math.floor((d.getTime() - soy.getTime()) / 604800000) + 1));
+    }
+  } catch {}
+  return null;
+}
+
 export default function WeeklyReportView({
   returns = [],
   records = [],
@@ -103,9 +124,35 @@ export default function WeeklyReportView({
     let maxW = Math.max(43, currentWeekNumber);
 
     for (const r of returns) {
-      if (r.week) {
+      const dStr = r.report_date || r.invoice_date || r.created_at;
+      const wFromDate = parseDateWeek(dStr);
+      if (wFromDate && wFromDate > maxW && wFromDate <= 52) {
+        maxW = wFromDate;
+      } else if (r.week) {
         const wNum = Number(String(r.week).replace(/\D/g, ""));
         if (wNum > maxW && wNum <= 52) maxW = wNum;
+      }
+    }
+
+    // Tally actual unique invoices from database records
+    const seenMaiInvoices = Array.from({ length: 55 }, () => new Set<string>());
+    const seenMbiInvoices = Array.from({ length: 55 }, () => new Set<string>());
+
+    for (const rec of records) {
+      const anyRec = rec as any;
+      const dateVal = rec.orderDate || rec.transactionDate || anyRec.order_date || anyRec.transaction_date;
+      const w = parseDateWeek(dateVal);
+      if (w && w >= 1 && w <= 52) {
+        if (w > maxW) maxW = w;
+        const pbfStr = (anyRec.pbf || anyRec.sourceFile || anyRec.entity || rec.invoiceNumber || anyRec.key || "MBI").toUpperCase();
+        const invNo = String(rec.invoiceNumber || anyRec.key || anyRec.no_faktur || anyRec.id || "").trim();
+        if (invNo) {
+          if (pbfStr.includes("MAI")) {
+            seenMaiInvoices[w].add(invNo);
+          } else {
+            seenMbiInvoices[w].add(invNo);
+          }
+        }
       }
     }
 
@@ -115,7 +162,7 @@ export default function WeeklyReportView({
     const seenMbiReject = Array.from({ length: 55 }, () => new Set<string>());
 
     for (let w = 1; w <= maxW; w++) {
-      const bench = WEEKLY_BENCHMARKS[w] || { maiInv: 1000, mbiInv: 2000, maiApprove: 0, mbiApprove: 0, totReject: 0 };
+      const bench = WEEKLY_BENCHMARKS[w] || { maiInv: 0, mbiInv: 0, maiApprove: 0, mbiApprove: 0, totReject: 0 };
       map[w] = {
         week: w,
         maiApprove: 0,
@@ -128,22 +175,17 @@ export default function WeeklyReportView({
       };
     }
 
-    // Tally returns
+    // Tally returns strictly by calendar report_date
     for (const r of returns) {
-      let w = 1;
-      if (r.week) {
-        w = Number(String(r.week).replace(/\D/g, "")) || 1;
-      } else {
-        const dStr = r.report_date || r.invoice_date || r.created_at;
-        if (dStr) {
-          const d = new Date(dStr);
-          if (!isNaN(d.getTime())) {
-            const soy = new Date(d.getFullYear(), 0, 1);
-            w = Math.max(1, Math.min(52, Math.floor((d.getTime() - soy.getTime()) / 604800000) + 1));
-          }
-        }
+      let w: number | null = null;
+      const dStr = r.report_date || r.invoice_date || r.created_at;
+      if (dStr) {
+        w = parseDateWeek(dStr);
       }
-      if (w < 1 || w > 52) continue;
+      if (!w && r.week) {
+        w = Number(String(r.week).replace(/\D/g, "")) || null;
+      }
+      if (!w || w < 1 || w > 52) continue;
 
       if (map[w]) {
         map[w].cases.push(r);
@@ -172,16 +214,21 @@ export default function WeeklyReportView({
     const list = [];
     for (let w = 1; w <= maxW; w++) {
       const item = map[w];
-      const bench = WEEKLY_BENCHMARKS[w] || { maiInv: 1000, mbiInv: 2000, maiApprove: 0, mbiApprove: 0, totReject: 0 };
+      const bench = WEEKLY_BENCHMARKS[w] || { maiInv: 0, mbiInv: 0, maiApprove: 0, mbiApprove: 0, totReject: 0 };
       const liveMaiApprove = seenMaiApprove[w].size;
       const liveMbiApprove = seenMbiApprove[w].size;
       const liveReject = seenMaiReject[w].size + seenMbiReject[w].size;
+      const liveMaiInv = seenMaiInvoices[w].size;
+      const liveMbiInv = seenMbiInvoices[w].size;
 
       // 1 unique invoice = 1 case matching Apps Script
       const maiApprove = liveMaiApprove > 0 ? liveMaiApprove : bench.maiApprove;
       const mbiApprove = liveMbiApprove > 0 ? liveMbiApprove : bench.mbiApprove;
-      const maiInv = item.maiInv > 0 ? item.maiInv : bench.maiInv;
-      const mbiInv = item.mbiInv > 0 ? item.mbiInv : bench.mbiInv;
+
+      // If database has live invoices for this week, use live count; otherwise fallback to historical benchmark
+      const maiInv = liveMaiInv > 0 ? liveMaiInv : (bench.maiInv || 0);
+      const mbiInv = liveMbiInv > 0 ? liveMbiInv : (bench.mbiInv || 0);
+
       const totReject = liveReject > 0 ? liveReject : bench.totReject;
       const maiPct = maiInv > 0 ? (maiApprove / maiInv) * 100 : 0;
       const mbiPct = mbiInv > 0 ? (mbiApprove / mbiInv) * 100 : 0;
@@ -201,7 +248,7 @@ export default function WeeklyReportView({
     }
 
     return list;
-  }, [returns]);
+  }, [returns, records]);
 
   // Filtered rows for table & chart
   const displayedWeeks = useMemo(() => {

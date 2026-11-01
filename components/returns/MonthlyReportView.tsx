@@ -37,11 +37,12 @@ export const MONTHLY_BENCHMARKS = [
 
 export default function MonthlyReportView({
   returns = [],
+  records = [],
   onSelectMonth,
 }: MonthlyReportViewProps) {
   const [selectedPbfFilter, setSelectedPbfFilter] = useState<"ALL" | "MBI" | "MAI">("ALL");
 
-  // Calculate monthly stats from returns
+  // Calculate monthly stats from returns and live records
   const monthlyData = useMemo(() => {
     // Map month (1-12) -> sets of unique invoice numbers (1 invoice with multiple items = 1 shipment error case)
     const seenMaiApprove = Array.from({ length: 13 }, () => new Set<string>());
@@ -56,9 +57,16 @@ export default function MonthlyReportView({
         const dateStr = r.report_date || r.invoice_date || r.created_at;
         if (dateStr) {
           try {
-            const d = new Date(dateStr);
-            if (!isNaN(d.getTime())) {
-              m = d.getMonth() + 1;
+            if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+              m = parseInt(dateStr.slice(5, 7), 10);
+            } else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(dateStr)) {
+              const parts = dateStr.split(/[\/\-]/);
+              m = parseInt(parts[1], 10);
+            } else {
+              const d = new Date(dateStr);
+              if (!isNaN(d.getTime())) {
+                m = d.getMonth() + 1;
+              }
             }
           } catch {}
         }
@@ -81,6 +89,37 @@ export default function MonthlyReportView({
       }
     }
 
+    // Tally actual unique invoices from database records by month
+    const seenMaiInvoicesByMonth = Array.from({ length: 13 }, () => new Set<string>());
+    const seenMbiInvoicesByMonth = Array.from({ length: 13 }, () => new Set<string>());
+
+    for (const rec of records) {
+      const anyRec = rec as any;
+      const dateVal = rec.orderDate || rec.transactionDate || anyRec.order_date || anyRec.transaction_date;
+      if (!dateVal || dateVal === "-" || dateVal === "#N/A") continue;
+      let m = 0;
+      if (/^\d{4}-\d{2}-\d{2}/.test(dateVal)) {
+        m = parseInt(dateVal.slice(5, 7), 10);
+      } else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(dateVal)) {
+        const parts = dateVal.split(/[\/\-]/);
+        m = parseInt(parts[1], 10);
+      } else {
+        const d = new Date(dateVal);
+        if (!isNaN(d.getTime())) m = d.getMonth() + 1;
+      }
+      if (m >= 1 && m <= 12) {
+        const pbfStr = (anyRec.pbf || anyRec.sourceFile || anyRec.entity || rec.invoiceNumber || anyRec.key || "MBI").toUpperCase();
+        const invNo = String(rec.invoiceNumber || anyRec.key || anyRec.no_faktur || anyRec.id || "").trim();
+        if (invNo) {
+          if (pbfStr.includes("MAI")) {
+            seenMaiInvoicesByMonth[m].add(invNo);
+          } else {
+            seenMbiInvoicesByMonth[m].add(invNo);
+          }
+        }
+      }
+    }
+
     // Build list of months with rate & trend
     let prevMaiRate: number | null = null;
     let prevMbiRate: number | null = null;
@@ -92,6 +131,8 @@ export default function MonthlyReportView({
       const liveMbiApprove = seenMbiApprove[bm.month].size;
       const liveMaiReject = seenMaiReject[bm.month].size;
       const liveMbiReject = seenMbiReject[bm.month].size;
+      const liveMaiInv = seenMaiInvoicesByMonth[bm.month].size;
+      const liveMbiInv = seenMbiInvoicesByMonth[bm.month].size;
 
       let maiApprove = bm.mai_approve;
       let mbiApprove = bm.mbi_approve;
@@ -111,8 +152,12 @@ export default function MonthlyReportView({
         mbiReject = liveMbiReject > 0 ? liveMbiReject : bm.mbi_reject;
       }
 
-      const maiRate = bm.mai_inv > 0 ? (maiApprove / bm.mai_inv) * 100 : 0;
-      const mbiRate = bm.mbi_inv > 0 ? (mbiApprove / bm.mbi_inv) * 100 : 0;
+      // For current month (e.g. November) or any month where we have live invoices, use live count
+      const maiInv = liveMaiInv > 0 ? liveMaiInv : (isCur ? liveMaiInv : bm.mai_inv);
+      const mbiInv = liveMbiInv > 0 ? liveMbiInv : (isCur ? liveMbiInv : bm.mbi_inv);
+
+      const maiRate = maiInv > 0 ? (maiApprove / maiInv) * 100 : 0;
+      const mbiRate = mbiInv > 0 ? (mbiApprove / mbiInv) * 100 : 0;
 
       const maiTrend = prevMaiRate !== null ? maiRate - prevMaiRate : null;
       const mbiTrend = prevMbiRate !== null ? mbiRate - prevMbiRate : null;
@@ -122,6 +167,8 @@ export default function MonthlyReportView({
 
       return {
         ...bm,
+        mai_inv: maiInv,
+        mbi_inv: mbiInv,
         isCurrent: isCur,
         mai_approve: maiApprove,
         mbi_approve: mbiApprove,
@@ -133,7 +180,7 @@ export default function MonthlyReportView({
         mbi_trend: mbiTrend !== null ? Number(mbiTrend.toFixed(2)) : null,
       };
     });
-  }, [returns]);
+  }, [returns, records]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
