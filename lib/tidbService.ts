@@ -10,6 +10,7 @@
 
 import { FirestoreFakturDoc } from "./types";
 import { broadcastRealtimeSignal } from "./firestoreService";
+import { calculateDominantCategory } from "./parser";
 
 export async function syncFaktursToTiDB(fakturs: FirestoreFakturDoc[]): Promise<void> {
   if (!fakturs || fakturs.length === 0) return;
@@ -23,7 +24,7 @@ export async function syncFaktursToTiDB(fakturs: FirestoreFakturDoc[]): Promise<
       transaction_date: f.transaction_date || f.extra?.transaction_date || f.order_date || "-",
       jenis_transaksi: f.jenis_transaksi || f.extra?.jenis_transaksi || "DOO",
       kategori: f.kategori || f.extra?.kategori || "3P",
-      kategori_produk: (f.extra?.items && f.extra.items[0]?.kategori_produk) || "FARMA",
+      kategori_produk: (f.extra?.kategori_produk as string) || calculateDominantCategory(f.extra?.items || []),
       status_cetak: Boolean(f.status_cetak),
       printed_at: f.printed_at || null,
       printed_by: f.printed_by || null,

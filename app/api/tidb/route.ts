@@ -1,4 +1,5 @@
 import { getTiDBClient } from "@/lib/tidb";
+import { calculateDominantCategory } from "@/lib/parser";
 import zlib from "zlib";
 import crypto from "crypto";
 
@@ -2742,7 +2743,12 @@ export async function POST(req: Request) {
           const txDate = String(item.transaction_date || item.transactionDate || oDate || "-").trim();
           const jenis = String(item.jenis_transaksi || item.jenisTransaksi || "DOO").trim();
           const kat = String(item.kategori || "3P").trim();
-          const katProd = String(item.kategori_produk || item.kategoriProduk || "FARMA").trim();
+          let katProd = String(item.kategori_produk || item.kategoriProduk || "").trim();
+          if (Array.isArray(item.items) && item.items.length > 0) {
+            katProd = calculateDominantCategory(item.items);
+          } else if (!katProd) {
+            katProd = "FARMA";
+          }
           const isPrinted = item.status_cetak ? 1 : 0;
           const pAt = item.printed_at || null;
           const pBy = item.printed_by || null;

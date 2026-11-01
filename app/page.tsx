@@ -10,6 +10,7 @@ import {
   getProductCategory,
   getPrekursorOOTClassification,
   normalize,
+  calculateDominantCategory,
 } from "@/lib/parser";
 import { FakturRecord, FirestoreFakturDoc, InvoiceProgression, FakturGroup, UploadNotification, ActiveUserPresence } from "@/lib/types";
 import {
@@ -203,7 +204,16 @@ function dbRowsToFakturRecords(
         const it = items[idx];
         const itemCode = String(it.item_code || "");
         const itemDesc = String(it.item_description || "");
-        const katProd = getProductCategory(itemCode, itemDesc, productOverrides) || (it.kategori_produk as string) || "FARMA";
+        let katProd = String(it.kategori_produk || "").trim().toUpperCase();
+        if (productOverrides && Object.keys(productOverrides).length > 0) {
+          const normDesc = itemDesc ? normalize(itemDesc) : "";
+          if (productOverrides[itemCode] || (normDesc && productOverrides[normDesc]) || productOverrides[itemDesc]) {
+            katProd = getProductCategory(itemCode, itemDesc, productOverrides);
+          }
+        }
+        if (!katProd) {
+          katProd = getProductCategory(itemCode, itemDesc, productOverrides) || "FARMA";
+        }
         const klasObat =
           katProd === "PREKURSOR"
             ? "Prekursor"
@@ -257,6 +267,7 @@ function dbRowsToFakturRecords(
         lotNumber: "-",
         totalHarga: docAmount,
         kategori,
+        kategoriProduk: (r.kategori_produk as string) || (extra.kategori_produk as string) || "FARMA",
         entity,
         isDoubleInv: false,
         isRetur: docAmount < 0 || cleanInv.toUpperCase().includes("RETUR") || String(extra.jenis_transaksi || "").toUpperCase().includes("RETUR"),
@@ -1816,7 +1827,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       if (r.isDoubleInv) g.isDoubleInv = true;
       if (r.isRetur || r.totalHarga < 0) g.isRetur = true;
 
-      const kat = (getProductCategory(r.itemCode, r.itemDescription, productOverrides) || r.kategoriProduk || "FARMA").toUpperCase();
+      let kat = (r.kategoriProduk || "FARMA").toUpperCase();
+      if (productOverrides && Object.keys(productOverrides).length > 0) {
+        const normDesc = r.itemDescription ? normalize(r.itemDescription) : "";
+        if (productOverrides[r.itemCode] || (normDesc && productOverrides[normDesc]) || productOverrides[r.itemDescription]) {
+          kat = getProductCategory(r.itemCode, r.itemDescription, productOverrides).toUpperCase();
+        }
+      }
       if (kat === "PREKURSOR" || r.klasifikasiObat === "Prekursor") g.hasPrekursor = true;
       if (kat === "OOT" || r.klasifikasiObat === "OOT") g.hasOOT = true;
       if (kat === "CCP") g.hasCCP = true;
@@ -1827,29 +1844,18 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     for (const g of map.values()) {
       if (g.totalHarga < 0) g.isRetur = true;
 
-      // Calculate DOMINANT Category across all items in this invoice
-      const katCounts: Record<string, number> = {};
-      for (const item of g.items) {
-        const k = (getProductCategory(item.itemCode, item.itemDescription, productOverrides) || item.kategoriProduk || "FARMA").toUpperCase();
-        katCounts[k] = (katCounts[k] || 0) + 1;
-      }
-
-      let dominantKat = "FARMA";
-      let maxCount = -1;
-      const priorityOrder = ["CCP", "PREKURSOR", "OOT", "FARMA", "ALKES"];
-      for (const [k, count] of Object.entries(katCounts)) {
-        if (count > maxCount) {
-          maxCount = count;
-          dominantKat = k;
-        } else if (count === maxCount) {
-          const currIdx = priorityOrder.indexOf(dominantKat);
-          const newIdx = priorityOrder.indexOf(k);
-          if (newIdx !== -1 && (currIdx === -1 || newIdx < currIdx)) {
-            dominantKat = k;
+      // Calculate DOMINANT Category across all items in this invoice (LOCKED_RULES.md E.3)
+      const resolvedItems = g.items.map((item) => {
+        let k = (item.kategoriProduk || "FARMA").toUpperCase();
+        if (productOverrides && Object.keys(productOverrides).length > 0) {
+          const normDesc = item.itemDescription ? normalize(item.itemDescription) : "";
+          if (productOverrides[item.itemCode] || (normDesc && productOverrides[normDesc]) || productOverrides[item.itemDescription]) {
+            k = getProductCategory(item.itemCode, item.itemDescription, productOverrides).toUpperCase();
           }
         }
-      }
-      g.kategoriProduk = dominantKat;
+        return { kategoriProduk: k };
+      });
+      g.kategoriProduk = calculateDominantCategory(resolvedItems);
 
       // Precompute lowercase search string for blazing fast instant search
       const itemText = g.items.map((i) => `${i.itemCode} ${i.itemDescription}`).join(" ");
@@ -2840,7 +2846,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const hasItemInfo = (r.itemCode && r.itemCode !== "-") || (r.itemDescription && r.itemDescription !== "-");
           if (hasItemInfo) {
             if (!Array.isArray(entry.extra.items)) entry.extra.items = [];
-            const katProd = getProductCategory(r.itemCode, r.itemDescription, productOverridesRef.current) || r.kategoriProduk || "FARMA";
+            let katProd = r.kategoriProduk || "";
+            if (productOverridesRef.current && Object.keys(productOverridesRef.current).length > 0) {
+              const normDesc = r.itemDescription ? normalize(r.itemDescription) : "";
+              if (productOverridesRef.current[r.itemCode] || (normDesc && productOverridesRef.current[normDesc]) || productOverridesRef.current[r.itemDescription]) {
+                katProd = getProductCategory(r.itemCode, r.itemDescription, productOverridesRef.current);
+              }
+            }
+            if (!katProd) {
+              katProd = getProductCategory(r.itemCode, r.itemDescription, productOverridesRef.current) || "FARMA";
+            }
             entry.extra.items.push({
               item_code: r.itemCode || "-",
               item_description: r.itemDescription || "-",
@@ -2863,30 +2878,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
         }
 
-        // Calculate DOMINANT Category for each invoice document
+        // Calculate DOMINANT Category for each invoice document (LOCKED_RULES.md E.3)
         for (const entry of invMap.values()) {
           if (entry.extra && Array.isArray(entry.extra.items) && entry.extra.items.length > 0) {
-            const katCounts: Record<string, number> = {};
-            for (const it of entry.extra.items) {
-              const k = (it.kategori_produk || "FARMA").toUpperCase();
-              katCounts[k] = (katCounts[k] || 0) + 1;
-            }
-            let dominantKat = "FARMA";
-            let maxCount = -1;
-            const priorityOrder = ["CCP", "PREKURSOR", "OOT", "FARMA", "ALKES"];
-            for (const [k, count] of Object.entries(katCounts)) {
-              if (count > maxCount) {
-                maxCount = count;
-                dominantKat = k;
-              } else if (count === maxCount) {
-                const currIdx = priorityOrder.indexOf(dominantKat);
-                const newIdx = priorityOrder.indexOf(k);
-                if (newIdx !== -1 && (currIdx === -1 || newIdx < currIdx)) {
-                  dominantKat = k;
-                }
-              }
-            }
+            const dominantKat = calculateDominantCategory(entry.extra.items);
             entry.extra.kategori_produk = dominantKat;
+            (entry as any).kategori_produk = dominantKat;
           }
         }
 

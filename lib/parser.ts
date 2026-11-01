@@ -196,15 +196,56 @@ export function getProductCategory(
     }
 
     const s = " " + String(itemDescription).toUpperCase() + " ";
-    if (/\b(TABLET|TAB\b|KAPSUL|CAPSUL|CAP\b|SIRUP|SYRUP|DROP|INJEKSI|INJ\b|CREAM|KRIM|SALEP|OINTMENT|SUSPENSI|EMULSI|SUSP\b|LARUTAN|INFUS\b|PULVIS|SACHET)\b/.test(s)) {
+    if (/\b(TABLET|TAB\b|KAPSUL|CAPSUL|CAP\b|KAPLET|PIL\b|SIRUP|SYRUP|DROP|DROPS|INJEKSI|INJ\b|CREAM|KRIM|SALEP|OINTMENT|SUSPENSI|EMULSI|SUSP\b|LARUTAN|INFUS\b|PULVIS|SACHET|GEL\b|LOTION|OBAT|VITAMIN|SUPLEMEN)\b/.test(s)) {
       return "FARMA";
     }
-    if (/\b(ALCOHOL|ALKOHOL|KASA|SPUIT|SYRINGE|JARUM|UNDERPAD|MASKER|INFUSION\s+SET|IV\s+CATHETER|HANDSCOON|GLOVES|TEST\s+PACK|URINE\s+BAG|THERMOMETER|TENSIMETER|SURGICAL|COTTON\s+BALL|KAPAS\s+PEMBALUT|SAFETY\s+BOX|ABOCATH|WINGS\s+NEEDLE|SURGICAL\s+TAPE|DERMAFIX|HYPAFIX|MICROPORE)\b/.test(s)) {
+    if (/\b(ALCOHOL|ALKOHOL|KASA|SPUIT|SYRINGE|JARUM|UNDERPAD|MASKER|INFUSION\s+SET|IV\s+CATHETER|HANDSCOON|GLOVES|TEST\s+PACK|URINE\s+BAG|THERMOMETER|TENSIMETER|SURGICAL|COTTON\s+BALL|KAPAS\s+PEMBALUT|SAFETY\s+BOX|ABOCATH|WINGS\s+NEEDLE|SURGICAL\s+TAPE|DERMAFIX|HYPAFIX|MICROPORE|KONDOM|LUBRICANT|LUBE\b|PLESTER|PATCH|TES\s+KEHAMILAN|RAPID\s+TEST|SWAB\b|LANCET|LANCETS|NEBULIZER|SUCTION|CATHETER|STETOSKOP|CORONG|URINAL|POPOK|DIAPER|HOT\s*\/?\s*COLD\s*PACK|ICE\s*BAG)\b/.test(s)) {
       return "ALKES";
     }
   }
 
   return "FARMA";
+}
+
+/**
+ * ATURAN BAKU KATEGORI PRODUK DOMINAN (Dominant Category Majority Rule - LOCKED_RULES.md E.3):
+ * - Kategori produk pada faktur dihitung berdasarkan kategori terbanyak dari seluruh item obat/barang:
+ *   - Mayoritas FARMA -> FARMA
+ *   - Mayoritas ALKES -> ALKES
+ *   - Begitu juga CCP, PREKURSOR, OOT.
+ * - DILARANG menghakimi sepihak mencap faktur sebagai ALKES hanya karena ada 1 item alkes di antara obat-obatan farma.
+ * - Prioritas Tie-Breaker: CCP > PREKURSOR > OOT > FARMA > ALKES.
+ */
+export function calculateDominantCategory(
+  items: Array<{ kategori_produk?: string; kategoriProduk?: string; [key: string]: unknown }>
+): string {
+  if (!items || items.length === 0) return "FARMA";
+
+  const katCounts: Record<string, number> = {};
+  for (const it of items) {
+    const raw = String(it.kategori_produk || it.kategoriProduk || "FARMA").trim().toUpperCase();
+    const k = raw || "FARMA";
+    katCounts[k] = (katCounts[k] || 0) + 1;
+  }
+
+  const priorityOrder = ["CCP", "PREKURSOR", "OOT", "FARMA", "ALKES"];
+  let dominantKat = "FARMA";
+  let maxCount = -1;
+
+  for (const [k, count] of Object.entries(katCounts)) {
+    if (count > maxCount) {
+      maxCount = count;
+      dominantKat = k;
+    } else if (count === maxCount) {
+      const currIdx = priorityOrder.indexOf(dominantKat);
+      const newIdx = priorityOrder.indexOf(k);
+      if (newIdx !== -1 && (currIdx === -1 || newIdx < currIdx)) {
+        dominantKat = k;
+      }
+    }
+  }
+
+  return dominantKat;
 }
 
 /**
