@@ -1321,42 +1321,9 @@ export async function GET(req: Request) {
       const cursor = (searchParams.get("cursor") || "").trim();
       const hasOffset = searchParams.has("offset");
       const offset = Number(searchParams.get("offset") || 0);
-      const mode = (searchParams.get("mode") || "").trim(); // "active" or default
-      const period = (searchParams.get("period") || "").trim(); // e.g. "2026-10", "10/2026"
-
-      let whereClause = "WHERE invoice_key NOT LIKE 'TEST-%'";
-      const filterParams: (string | number)[] = [];
-
-      if (mode === "active") {
-        const nowDate = new Date();
-        const curM = String(nowDate.getMonth() + 1).padStart(2, "0");
-        const curY = String(nowDate.getFullYear());
-        const moPattern = `%/${curM}/${curY}`;
-        whereClause += " AND (status_cetak = 0 OR order_date LIKE ? OR transaction_date LIKE ?)";
-        filterParams.push(moPattern, moPattern);
-      } else if (period && period !== "all") {
-        let pClean = period;
-        if (/^\d{4}-\d{2}$/.test(period)) {
-          const [y, m] = period.split("-");
-          pClean = `%/${m}/${y}`;
-        } else if (!pClean.startsWith("%")) {
-          pClean = `%${pClean}%`;
-        }
-        whereClause += " AND (order_date LIKE ? OR transaction_date LIKE ?)";
-        filterParams.push(pClean, pClean);
-      }
 
       const rows = (await conn.execute(
-        mode === "active" || (period && period !== "all")
-          ? `SELECT 
-              invoice_key, no_faktur, no_sales_order, customer_name,
-              order_date, transaction_date, jenis_transaksi, kategori,
-              kategori_produk, status_cetak, printed_at, printed_by,
-              total_harga, items_json
-            FROM fakturs_archive 
-            ${whereClause}
-            ORDER BY updated_at DESC LIMIT ? OFFSET ?;`
-          : hasOffset
+        hasOffset
           ? `SELECT 
               invoice_key, no_faktur, no_sales_order, customer_name,
               order_date, transaction_date, jenis_transaksi, kategori,
@@ -1373,11 +1340,7 @@ export async function GET(req: Request) {
             FROM fakturs_archive 
             WHERE invoice_key > ? AND invoice_key NOT LIKE 'TEST-%'
             ORDER BY invoice_key ASC LIMIT ?;`,
-        mode === "active" || (period && period !== "all")
-          ? [...filterParams, limit, offset]
-          : hasOffset
-          ? [limit, offset]
-          : [cursor, limit]
+        hasOffset ? [limit, offset] : [cursor, limit]
       )) as Array<{
         invoice_key: string;
         no_faktur: string;
@@ -1395,10 +1358,9 @@ export async function GET(req: Request) {
         items_json: string | null;
       }>;
 
-      const countQuery = mode === "active" || (period && period !== "all")
-        ? `SELECT COUNT(*) as total_count, UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive ${whereClause};`
-        : "SELECT COUNT(*) as total_count, UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';";
-      const resultMeta = (await conn.execute(countQuery, mode === "active" || (period && period !== "all") ? filterParams : [])) as Array<{ total_count: number | string; max_updated: number | null }>;
+      const resultMeta = (await conn.execute(
+        "SELECT COUNT(*) as total_count, UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
+      )) as Array<{ total_count: number | string; max_updated: number | null }>;
       const totalCount = Number(resultMeta[0]?.total_count || 0);
       const maxUpdated = Number(resultMeta[0]?.max_updated || 0);
 

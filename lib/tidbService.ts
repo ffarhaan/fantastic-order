@@ -253,30 +253,18 @@ export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreF
   }
 }
 
-export interface FetchFaktursOptions {
-  activeOnly?: boolean;
-  period?: string; // e.g. "2026-10", "2026-09", "all"
-}
-
 let activeFetchFaktursPromise: Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> | null = null;
 
-export async function fetchFaktursFromTiDB(
-  options: FetchFaktursOptions = { activeOnly: true }
-): Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> {
-  const modeParam = options.activeOnly && (!options.period || options.period === "active") ? "&mode=active" : "";
-  const periodParam = options.period && options.period !== "all" && options.period !== "active" ? `&period=${encodeURIComponent(options.period)}` : "";
-
-  // If a request with identical options is already running, avoid redundant requests
-  const cacheKey = `${modeParam}::${periodParam}`;
-  if (activeFetchFaktursPromise && !options.period) {
+export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> {
+  if (activeFetchFaktursPromise) {
     return activeFetchFaktursPromise;
   }
 
-  const fetchPromise = (async () => {
+  activeFetchFaktursPromise = (async () => {
     try {
       const PAGE_SIZE = 3500;
       // Step 1: Fetch Page 0 (gets docs + exact totalCount in ~200ms)
-      const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=0${modeParam}${periodParam}`);
+      const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=0`);
       if (!firstRes.ok) return null;
       const firstData = await firstRes.json();
       if (!firstData.success || !Array.isArray(firstData.fakturs)) return null;
@@ -295,7 +283,7 @@ export async function fetchFaktursFromTiDB(
         const remainingResults = await Promise.all(
           remainingOffsets.map(async (offset) => {
             try {
-              const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=${offset}${modeParam}${periodParam}`);
+              const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=${offset}`);
               if (!res.ok) return [];
               const data = await res.json();
               if (data.success && Array.isArray(data.fakturs)) {
@@ -327,17 +315,11 @@ export async function fetchFaktursFromTiDB(
       console.warn("[TiDB Read] Fetch failed safely:", err);
       return null;
     } finally {
-      if (!options.period) {
-        activeFetchFaktursPromise = null;
-      }
+      activeFetchFaktursPromise = null;
     }
   })();
 
-  if (!options.period) {
-    activeFetchFaktursPromise = fetchPromise;
-  }
-
-  return fetchPromise;
+  return activeFetchFaktursPromise;
 }
 
 // -------------------------------------------------------------
