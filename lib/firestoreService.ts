@@ -34,7 +34,7 @@ const globalChunksMap = new Map<string, FirestoreFakturDoc[]>();
 const globalPartitionMap = new Map<string, { printedKeys: string[]; printedAtMap: Record<string, string>; printedByMap?: Record<string, string> }>();
 let globalLegacyPrintState: PrintState | null = null;
 let globalMetadata: { chunkIds: string[]; invoiceProgression?: InvoiceProgression } | null = null;
-let globalCategoryOverrides: Record<string, "1P" | "2P" | "3P"> = {};
+let globalCategoryOverrides: Record<string, "1P" | "2P" | "3P" | "DK" | "LK" | string> = {};
 let globalProductCategoryOverrides: Record<string, string> = {};
 
 // Background debounced chunk persistence to prevent heavy write locks and UI freeze
@@ -252,7 +252,7 @@ export function subscribeToFakturs(
     fakturs: FirestoreFakturDoc[],
     progression: InvoiceProgression | null,
     printState?: PrintState | null,
-    categoryOverrides?: Record<string, "1P" | "2P" | "3P"> | null,
+    categoryOverrides?: Record<string, "1P" | "2P" | "3P" | "DK" | "LK" | string> | null,
     uploadNotification?: UploadNotification | null,
     reason?: SubscribeChangeReason,
     productCategoryOverrides?: Record<string, string> | null
@@ -261,7 +261,7 @@ export function subscribeToFakturs(
 ): Unsubscribe {
   let currentProgression: InvoiceProgression | null = globalMetadata?.invoiceProgression || null;
   const currentChunksMap = new Map<string, FirestoreFakturDoc[]>(globalChunksMap);
-  let currentCategoryOverrides: Record<string, "1P" | "2P" | "3P"> = { ...globalCategoryOverrides };
+  let currentCategoryOverrides: Record<string, "1P" | "2P" | "3P" | "DK" | "LK" | string> = { ...globalCategoryOverrides };
   let currentProductCategoryOverrides: Record<string, string> = { ...globalProductCategoryOverrides };
   let currentUploadNotification: UploadNotification | null = null;
 
@@ -458,7 +458,7 @@ export function subscribeToFakturs(
     doc(db, APP_DATA_COLLECTION, CATEGORY_OVERRIDES_DOC),
     (snap) => {
       if (snap.exists()) {
-        currentCategoryOverrides = (snap.data() || {}) as Record<string, "1P" | "2P" | "3P">;
+        currentCategoryOverrides = (snap.data() || {}) as Record<string, "1P" | "2P" | "3P" | "DK" | "LK" | string>;
         globalCategoryOverrides = { ...currentCategoryOverrides };
       }
       if (hasEmittedInitialPayload) {
@@ -635,7 +635,7 @@ export async function getExistingFakturs(): Promise<{
   docs: FirestoreFakturDoc[];
   progression: InvoiceProgression | null;
   printState: PrintState | null;
-  categoryOverrides: Record<string, "1P" | "2P" | "3P">;
+  categoryOverrides: Record<string, "1P" | "2P" | "3P" | "DK" | "LK" | string>;
   productCategoryOverrides: Record<string, string>;
 }> {
   const [, metaSnap, legacyPrintSnap, partitionsSnap, overrideSnap, prodOverrideSnap] = await Promise.all([
@@ -648,7 +648,7 @@ export async function getExistingFakturs(): Promise<{
   ]);
 
   const categoryOverrides = (overrideSnap && overrideSnap.exists()
-    ? (overrideSnap.data() as Record<string, "1P" | "2P" | "3P">)
+    ? (overrideSnap.data() as Record<string, "1P" | "2P" | "3P" | "DK" | "LK" | string>)
     : {}) || {};
 
   const productCategoryOverrides = (prodOverrideSnap && prodOverrideSnap.exists()
@@ -1147,7 +1147,7 @@ export async function updateFaktursPrintStatusBatch(
  */
 export async function updateFakturCategory(
   invoiceKey: string,
-  newKategori: "1P" | "2P" | "3P",
+  newKategori: "1P" | "2P" | "3P" | "DK" | "LK" | string,
   customerName?: string
 ): Promise<void> {
   const cleanInv = invoiceKey.replace(/-1P$/i, "");

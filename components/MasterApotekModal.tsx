@@ -26,7 +26,7 @@ export default function MasterApotekModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  categoryOverrides?: Record<string, "1P" | "2P" | "3P">;
+  categoryOverrides?: Record<string, "1P" | "2P" | "3P" | "DK" | "LK" | string>;
   isDarkMode?: boolean;
   initialWarehouse?: "MBI" | "MAI";
 }) {

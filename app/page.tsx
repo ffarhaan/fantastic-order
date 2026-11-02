@@ -89,7 +89,7 @@ import {
 } from "lucide-react";
 
 type Filter = "belum" | "sudah" | "all" | "double" | "retur";
-type KatFilter = "all" | "1P" | "2P" | "3P";
+type KatFilter = "all" | "1P" | "2P" | "3P" | "DK" | "LK";
 type JenisFilter = "all" | "ORA" | "DOO";
 type KlasFilter = "all" | "prekursor" | "oot" | "ccp" | "alkes" | "farma";
 
@@ -434,6 +434,32 @@ export default function Home() {
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
+  // Zoom / Scale state & persistence (100% | 85% | 80%)
+  const [appZoom, setAppZoom] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("fantastic_app_zoom");
+        if (saved) {
+          const parsed = parseFloat(saved);
+          if (!isNaN(parsed) && parsed >= 0.7 && parsed <= 1.2) return parsed;
+        }
+      } catch {}
+    }
+    return 1;
+  });
+
+  const handleToggleZoom = () => {
+    setAppZoom((prev) => {
+      const next = prev === 1 ? 0.85 : prev === 0.85 ? 0.8 : 1;
+      try {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("fantastic_app_zoom", String(next));
+        }
+      } catch {}
+      return next;
+    });
+  };
+
   // Sidebar Resizable & Collapsible State (TiDB Cloud style)
   const [sidebarWidth, setSidebarWidth] = useState<number>(205);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
@@ -730,8 +756,8 @@ export default function Home() {
 
   const [selectedRowIndex, setSelectedRowIndex] = useState(0);
   const [selectedColIdx, setSelectedColIdx] = useState(3); // Default to No Invoice column
-  const [categoryOverrides, setCategoryOverrides] = useState<Record<string, "1P" | "2P" | "3P">>({});
-  const categoryOverridesRef = useRef<Record<string, "1P" | "2P" | "3P">>({});
+  const [categoryOverrides, setCategoryOverrides] = useState<Record<string, "1P" | "2P" | "3P" | "DK" | "LK" | string>>({});
+  const categoryOverridesRef = useRef<Record<string, "1P" | "2P" | "3P" | "DK" | "LK" | string>>({});
   const [productOverrides, setProductOverrides] = useState<Record<string, string>>({});
   const productOverridesRef = useRef<Record<string, string>>({});
   const printedInvoicesRef = useRef<Set<string>>(new Set());
@@ -1001,7 +1027,7 @@ export default function Home() {
 
 
   const handleUpdateCategory = useCallback(
-    async (invoiceKey: string, newKat: "1P" | "2P" | "3P", customerName?: string) => {
+    async (invoiceKey: string, newKat: "1P" | "2P" | "3P" | "DK" | "LK" | string, customerName?: string) => {
       if (currentUserRef.current?.role === "readonly") {
         showToast("⚠️ Akses Stranger: Anda hanya memiliki izin melihat data (Read Only).");
         return;
@@ -2884,7 +2910,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             categoryOverridesRef.current[normCust] ||
             categoryOverridesRef.current[rawCust] ||
             categoryOverridesRef.current[cleanInv] ||
-            (prevInfo && (prevInfo.extra?.kategori as ("1P" | "2P" | "3P") | undefined));
+            (prevInfo && (prevInfo.extra?.kategori as ("1P" | "2P" | "3P" | "DK" | "LK" | string) | undefined));
 
           const targetEntity = (r.entity as "MAI" | "MBI") || currentWh;
           const defaultKat = isOra ? "1P" : categorize("DOO", r.customerName, undefined, undefined, undefined, targetEntity);
@@ -3299,7 +3325,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   }
 
   return (
-    <div className={`min-h-screen flex font-sans ${
+    <div 
+      style={appZoom !== 1 ? ({ zoom: appZoom } as React.CSSProperties) : undefined}
+      className={`min-h-screen flex font-sans ${
       isDarkMode ? "dark bg-black text-zinc-100 selection:bg-blue-600/30" : "bg-zinc-50 text-zinc-900 selection:bg-blue-600/20"
     }`}>
       {/* Toast Notification */}
@@ -5056,10 +5084,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 : "bg-white border-zinc-300 text-black hover:border-black"
             }`}
           >
-            <option value="all">Semua Kategori (1P/2P/3P)</option>
+            <option value="all">Semua Kategori (1P/2P/3P/DK/LK)</option>
             <option value="1P">1P</option>
             <option value="2P">2P</option>
             <option value="3P">3P</option>
+            <option value="DK">DK (Dalam Kota)</option>
+            <option value="LK">LK (Luar Kota)</option>
           </select>
 
           {/* Jenis Transaksi Filter */}
@@ -5814,12 +5844,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                 title={
                                   currentUser?.role === "readonly"
                                     ? "Akses Stranger (Hanya Lihat)"
-                                    : "Klik untuk ubah Kategori (1P / 2P / 3P)"
+                                    : "Klik untuk ubah Kategori (1P / 2P / 3P / DK / LK)"
                                 }
                               >
                                 <option value="1P">1P</option>
                                 <option value="2P">2P</option>
                                 <option value="3P">3P</option>
+                                <option value="DK">DK</option>
+                                <option value="LK">LK</option>
                               </select>
                             </td>
                           )}

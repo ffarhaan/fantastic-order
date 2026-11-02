@@ -295,7 +295,7 @@ export function categorize(
   shipToSite?: string,
   billToSite?: string,
   entity?: "MBI" | "MAI"
-): "1P" | "2P" | "3P" {
+): "1P" | "2P" | "3P" | "DK" | "LK" | string {
   const cust = String(customerName || "").trim();
   const upper = cust.toUpperCase();
   const rawJenis = String(jenisTransaksi || "").toUpperCase();
