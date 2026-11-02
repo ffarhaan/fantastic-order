@@ -221,47 +221,142 @@ export default function HowToUseModal({
           {/* TAB 2: DAFTAR FAKTUR */}
           {activeTab === "workspace" && (
             <div className="space-y-4 animate-in fade-in duration-150">
+              {/* Highlight Box: DOO vs ORA & Strict Key Isolation */}
+              <div className={`p-4 rounded-xl border shadow-sm ${
+                isDark ? "bg-[#142038] border-slate-700" : "bg-white border-blue-200 shadow-blue-50/50"
+              }`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rose-500 text-white">
+                    LOCKED RULES #1
+                  </span>
+                  <h3 className={`font-extrabold text-sm flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
+                    <ReceiptText className="w-4 h-4 text-blue-500" />
+                    Pemisahan Mutlak DOO vs ORA (Strict Key Isolation)
+                  </h3>
+                </div>
+                <p className={`text-xs font-medium leading-relaxed mb-3 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                  Sistem Fantastic Order menerapkan <strong>aturan baku permanen</strong> yang membedakan transaksi reguler (DOO) dan transaksi konsorsium (ORA):
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                  <div className={`p-3 rounded-xl border ${
+                    isDark ? "bg-[#0e1628] border-slate-800" : "bg-slate-50 border-slate-200"
+                  }`}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-blue-500">1. Transaksi DOO (Direct Order)</span>
+                      <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded">
+                        Contoh: 16180
+                      </span>
+                    </div>
+                    <p className={`text-[11px] leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                      <strong>Apa itu DOO?</strong> Faktur pesanan reguler untuk jaringan apotek umum &amp; swasta (Halomedika, Medika Prima, SBS, Pasti Hemat, K24, Kimia Farma, dll). Nomor invoice disimpan murni tanpa akhiran (contoh: <code>16180</code>).
+                    </p>
+                  </div>
+
+                  <div className={`p-3 rounded-xl border ${
+                    isDark ? "bg-[#0e1628] border-slate-800" : "bg-slate-200/80 border-slate-300"
+                  }`}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-purple-500">2. Transaksi ORA (Konsorsium Helios)</span>
+                      <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 rounded">
+                        Contoh: 16180-1P
+                      </span>
+                    </div>
+                    <p className={`text-[11px] leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                      <strong>Apa itu ORA?</strong> Transaksi jaringan konsorsium Helios (PT Helios Alchemist Kesehatan, IHC, awalan HAK, kode 1001, CA-900001). Di sistem, nomor faktur ORA <strong>WAJIB memiliki akhiran <code>-1P</code></strong> (contoh: <code>16180-1P</code>).
+                    </p>
+                  </div>
+                </div>
+
+                {/* Kenapa bisa sama & Bagaimana sistem membaca */}
+                <div className={`p-3.5 rounded-xl border text-xs leading-relaxed ${
+                  isDark ? "bg-amber-950/20 border-amber-800/60 text-amber-200" : "bg-amber-50/80 border-amber-200 text-amber-950"
+                }`}>
+                  <h4 className="font-extrabold text-xs mb-1.5 flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                    ❓ Kenapa Ada Nomor Invoice yang Sama Persis &amp; Bagaimana Sistem Membacanya?
+                  </h4>
+                  <p className="mb-2">
+                    Oracle menerbitkan nomor urut transaksi dari channel yang berbeda, sehingga <strong>nomor invoice DOO dan ORA bisa kebetulan sama persis (misal sama-sama 16180)</strong>. Namun keduanya adalah <strong>2 lembar berkas fisik faktur yang berbeda total</strong>.
+                  </p>
+                  <div className={`p-2.5 rounded-lg border text-[11px] space-y-1.5 font-medium ${
+                    isDark ? "bg-[#0b1220] border-amber-900/60" : "bg-white border-amber-200"
+                  }`}>
+                    <div className="font-bold text-amber-700 dark:text-amber-300">
+                      🛡️ Sistem kami mengunci (LOCKED) mekanisme ini agar TIDAK TERJADI:
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 pl-1">
+                      <li>
+                        <strong>Mencegah Salah Cetak (Cross-Check Collision):</strong> Jika operator mencentang <em>Done Print</em> pada DOO <code>16180</code>, faktur ORA <code>16180-1P</code> <strong>TIDAK AKAN IKUT TERCETAK</strong>. Status cetak keduanya 100% independen.
+                      </li>
+                      <li>
+                        <strong>Mencegah Salah Kirim / Salah Ambil di Gudang:</strong> Operator gudang langsung tahu barang berlabel <code>-1P</code> adalah packingan khusus cabang Helios/ORA, bukan DOO biasa.
+                      </li>
+                      <li>
+                        <strong>Mencegah Data Tertimpa (Anti-Downgrade / Non-Destructive):</strong> Saat file export harian diupload, No SO dan daftar rincian obat ORA dari file <code>XXCUST</code> tidak akan terhapus atau tertimpa oleh tanda strip (<code>-</code>).
+                      </li>
+                      <li>
+                        <strong>Mencegah Faktur Baru Otomatis Tercentang (Anti-Stale Print Guard):</strong> Faktur baru dijamin 100% berstatus <em>Belum Terprint</em> dan tidak akan tercentang karena stempel cetak lampau.
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Aturan Produk Dominan & Prioritas 1P/2P/3P */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                <div className={`p-4 rounded-xl border shadow-xs ${
+                  isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
+                }`}>
+                  <h4 className={`font-bold text-xs flex items-center gap-2 mb-2 ${isDark ? "text-emerald-400" : "text-emerald-700"}`}>
+                    <Pill className="w-4 h-4" />
+                    Aturan Kategori Mayoritas Produk (Dominant Rule)
+                  </h4>
+                  <p className={`text-[11px] leading-relaxed mb-2 ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                    Kategori header faktur (<strong>FARMA, ALKES, CCP, PREKURSOR, OOT</strong>) dihitung berdasarkan <strong>mayoritas item obat terbanyak</strong>:
+                  </p>
+                  <div className={`p-2.5 rounded-lg border text-[11px] ${
+                    isDark ? "bg-[#0e1628] border-slate-800" : "bg-slate-50 border-slate-200"
+                  }`}>
+                    Jika faktur memuat 15 obat Farma dan 1 alkohol (Alkes), sistem mencapnya sebagai <strong className="text-emerald-600 dark:text-emerald-400">FARMA</strong> (bukan Alkes sepihak). Urutan pemutus imbang: <code>CCP &gt; PREKURSOR &gt; OOT &gt; FARMA &gt; ALKES</code>.
+                  </div>
+                </div>
+
+                <div className={`p-4 rounded-xl border shadow-xs ${
+                  isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
+                }`}>
+                  <h4 className={`font-bold text-xs flex items-center gap-2 mb-2 ${isDark ? "text-blue-400" : "text-blue-700"}`}>
+                    <Layers className="w-4 h-4" />
+                    Kategori Prioritas 1P, 2P, dan 3P
+                  </h4>
+                  <ul className={`text-[11px] space-y-1.5 ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                    <li>
+                      <strong className="text-rose-500 font-bold">1P (Prioritas Utama):</strong> ORA (Helios) &amp; Apotek Inti (Halomedika, Medika Prima, SBS, Pasti Hemat, Medika Akses).
+                    </li>
+                    <li>
+                      <strong className="text-amber-500 font-bold">2P (Prioritas Menengah):</strong> Apotek prioritas 2 berdasarkan daftar resmi master site ID.
+                    </li>
+                    <li>
+                      <strong className="text-slate-500 font-bold">3P (Reguler):</strong> Seluruh apotek langganan reguler lainnya.
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Fitur Meja Kerja Faktur */}
               <div className={`p-4 rounded-xl border shadow-xs ${
                 isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
               }`}>
-                <h3 className={`font-extrabold text-sm mb-2.5 flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
-                  <ReceiptText className="w-4 h-4 text-blue-500" />
-                  Fitur Inti Meja Kerja Daftar Faktur
-                </h3>
-                <ul className="space-y-2.5 text-xs">
-                  <li className={`flex items-start gap-2.5 p-2 rounded-lg border ${
-                    isDark ? "bg-[#0e1628] border-slate-800 text-slate-200" : "bg-slate-50 border-slate-100 text-slate-700"
-                  }`}>
-                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
-                    <span className="leading-relaxed">
-                      <strong className={isDark ? "text-white" : "text-slate-900"}>Filter Cepat (Top Bar 9 Metrik):</strong> Klik kotak <em>Belum Terprint</em>, <em>FARMA</em>, <em>ALKES</em>, <em>PREKURSOR</em>, <em>OOT</em>, <em>CCP</em>, <em>Double SO</em>, atau <em>Retur</em> untuk memfilter tabel dalam 1 kali klik.
-                    </span>
-                  </li>
-                  <li className={`flex items-start gap-2.5 p-2 rounded-lg border ${
-                    isDark ? "bg-[#0e1628] border-slate-800 text-slate-200" : "bg-slate-50 border-slate-100 text-slate-700"
-                  }`}>
-                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
-                    <span className="leading-relaxed">
-                      <strong className={isDark ? "text-white" : "text-slate-900"}>Basis Tanggal Dinamis:</strong> Anda bisa memilih basis tanggal antara <strong>Tanggal Transaksi</strong> (kapan barang diproses) atau <strong>Tanggal Order / Faktur</strong> via dropdown filter tanggal.
-                    </span>
-                  </li>
-                  <li className={`flex items-start gap-2.5 p-2 rounded-lg border ${
-                    isDark ? "bg-[#0e1628] border-slate-800 text-slate-200" : "bg-slate-50 border-slate-100 text-slate-700"
-                  }`}>
-                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
-                    <span className="leading-relaxed">
-                      <strong className={isDark ? "text-white" : "text-slate-900"}>Cari Serbaguna:</strong> Ketik nomor invoice, nomor SO, nama apotek, nama obat/item, atau nama checker di kotak pencarian.
-                    </span>
-                  </li>
-                  <li className={`flex items-start gap-2.5 p-2 rounded-lg border ${
-                    isDark ? "bg-[#0e1628] border-slate-800 text-slate-200" : "bg-slate-50 border-slate-100 text-slate-700"
-                  }`}>
-                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">4</span>
-                    <span className="leading-relaxed">
-                      <strong className={isDark ? "text-white" : "text-slate-900"}>Done Print &amp; Batal Cetak:</strong> Klik tombol hijau <em>Done Print</em> saat faktur sudah keluar dari printer. Jika ada kesalahan, klik ikon batal cetak (hanya staf yang memiliki hak akses).
-                    </span>
-                  </li>
-                </ul>
+                <h4 className={`font-bold text-xs mb-2.5 ${isDark ? "text-white" : "text-slate-900"}`}>
+                  Fitur Tambahan di Meja Kerja Faktur:
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div className={`p-2.5 rounded-lg border ${isDark ? "bg-[#0e1628] border-slate-800" : "bg-slate-50 border-slate-200"}`}>
+                    <strong className={isDark ? "text-white" : "text-slate-900"}>Top Bar Filter 9 Metrik:</strong> Klik kartu Belum Terprint, Farma, Alkes, CCP, Prekursor, OOT, Retur, atau Double SO untuk memfilter seketika.
+                  </div>
+                  <div className={`p-2.5 rounded-lg border ${isDark ? "bg-[#0e1628] border-slate-800" : "bg-slate-50 border-slate-200"}`}>
+                    <strong className={isDark ? "text-white" : "text-slate-900"}>Basis Tanggal Fleksibel:</strong> Pilih antara <em>Tanggal Transaksi</em> (waktu gudang) atau <em>Tanggal Order/Faktur</em> via filter tanggal.
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -269,6 +364,7 @@ export default function HowToUseModal({
           {/* TAB 3: SHIPMENT ERROR */}
           {activeTab === "returns" && (
             <div className="space-y-4 animate-in fade-in duration-150">
+              {/* Header Box */}
               <div className={`p-4 rounded-xl border ${
                 isDark
                   ? "bg-amber-950/30 border-amber-800/80 text-amber-200"
@@ -276,25 +372,105 @@ export default function HowToUseModal({
               }`}>
                 <h3 className={`font-extrabold text-sm mb-1 flex items-center gap-2 ${isDark ? "text-amber-300" : "text-amber-900"}`}>
                   <RotateCcw className="w-4 h-4 text-amber-500" />
-                  Alur &amp; Fitur Khusus Shipment Error
+                  Overview Modul Shipment Error &amp; Logistik Retur
                 </h3>
                 <p className={`text-xs font-medium leading-relaxed ${isDark ? "text-amber-200/90" : "text-amber-900"}`}>
-                  Modul ini digunakan untuk memantau selisih pengiriman, barang rusak, fisik kurang, dan proses retur barang logistik.
+                  Modul ini memantau seluruh kendala distribusi barang fisik (selisih koli, barang rusak, fisik kurang, salah kirim, ED dekat) dan mengukur KPI performa logistik gudang MBI &amp; MAI secara real-time.
                 </p>
               </div>
 
-              <div className="space-y-3">
+              {/* Rumus Error Rate & KPI */}
+              <div className={`p-4 rounded-xl border shadow-xs ${
+                isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
+              }`}>
+                <h4 className={`font-extrabold text-xs mb-2 flex items-center gap-2 ${isDark ? "text-rose-400" : "text-rose-700"}`}>
+                  <span>📊</span>
+                  Formula Error Rate &amp; Pengukuran KPI Logistik
+                </h4>
+                <p className={`text-xs leading-relaxed mb-3 ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                  Angka <strong>Error Rate (%)</strong> yang tampil di kartu metrik atas dihitung secara akurat berdasarkan rasio kasus kesalahan yang telah diverifikasi (Approve Only) terhadap total faktur yang terbit pada periode tersebut:
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                  <div className={`p-3 rounded-xl border font-mono text-xs ${
+                    isDark ? "bg-[#0e1628] border-slate-800 text-slate-200" : "bg-slate-50 border-slate-200 text-slate-800"
+                  }`}>
+                    <div className="font-bold text-[11px] text-blue-500 font-sans mb-1">Rumus Error Rate Gudang:</div>
+                    <div className="p-2 rounded bg-white dark:bg-[#080d17] border border-slate-200 dark:border-slate-800 text-center font-bold text-rose-600 dark:text-rose-400">
+                      Error Rate (%) = (Kasus Disetujui ÷ Benchmark Total Faktur) × 100%
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1 font-sans">
+                      *Benchmark: Standar total faktur bulanan resmi (contoh: MBI ~8.000–10.000 faktur/bulan, MAI ~5.000–6.500 faktur/bulan).
+                    </div>
+                  </div>
+
+                  <div className={`p-3 rounded-xl border font-mono text-xs ${
+                    isDark ? "bg-[#0e1628] border-slate-800 text-slate-200" : "bg-slate-50 border-slate-200 text-slate-800"
+                  }`}>
+                    <div className="font-bold text-[11px] text-emerald-500 font-sans mb-1">Rumus Resolution Rate:</div>
+                    <div className="p-2 rounded bg-white dark:bg-[#080d17] border border-slate-200 dark:border-slate-800 text-center font-bold text-emerald-600 dark:text-emerald-400">
+                      Resolution Rate (%) = (Kasus Resolved ÷ Total Kasus Approved) × 100%
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1 font-sans">
+                      Mengukur kecepatan tim menyelesaikan komplain hingga nota retur atau penggantian barang selesai.
+                    </div>
+                  </div>
+                </div>
+
+                <div className={`p-2.5 rounded-lg border text-[11px] flex items-center gap-2 ${
+                  isDark ? "bg-blue-950/40 border-blue-800 text-blue-300" : "bg-blue-50 border-blue-200 text-blue-800"
+                }`}>
+                  <span className="font-bold">🎯 Target KPI Logistik:</span>
+                  <span>Error Rate ideal di bawah <strong>1,00%</strong> per bulan. Jika angka naik, tim checker dan pengemasan wajib melakukan investigasi double-check.</span>
+                </div>
+              </div>
+
+              {/* Status Siklus Kasus */}
+              <div className={`p-4 rounded-xl border shadow-xs ${
+                isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
+              }`}>
+                <h4 className={`font-bold text-xs mb-2.5 ${isDark ? "text-white" : "text-slate-900"}`}>
+                  Siklus Status Kasus Shipment Error:
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
+                  <div className={`p-2.5 rounded-lg border ${
+                    isDark ? "bg-amber-950/30 border-amber-800/80 text-amber-300" : "bg-amber-50 border-amber-200 text-amber-800"
+                  }`}>
+                    <strong className="block font-bold">1. Pending</strong>
+                    <span className="text-[11px]">Laporan baru masuk dari sales/apotek, menunggu verifikasi admin gudang.</span>
+                  </div>
+                  <div className={`p-2.5 rounded-lg border ${
+                    isDark ? "bg-blue-950/30 border-blue-800/80 text-blue-300" : "bg-blue-50 border-blue-200 text-blue-800"
+                  }`}>
+                    <strong className="block font-bold">2. In Progress</strong>
+                    <span className="text-[11px]">Sedang diinvestigasi fisik di gudang / proses penarikan barang ekspedisi.</span>
+                  </div>
+                  <div className={`p-2.5 rounded-lg border ${
+                    isDark ? "bg-emerald-950/30 border-emerald-800/80 text-emerald-300" : "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  }`}>
+                    <strong className="block font-bold">3. Resolved</strong>
+                    <span className="text-[11px]">Selesai: Barang pengganti sudah dikirim atau Nota Retur resmi telah diterbitkan.</span>
+                  </div>
+                  <div className={`p-2.5 rounded-lg border ${
+                    isDark ? "bg-rose-950/30 border-rose-800/80 text-rose-300" : "bg-rose-50 border-rose-200 text-rose-800"
+                  }`}>
+                    <strong className="block font-bold">4. Reject</strong>
+                    <span className="text-[11px]">Ditolak: Klaim tidak valid setelah pengecekan rekaman CCTV atau data ekspedisi.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Fitur Khusus */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className={`p-3.5 rounded-xl border shadow-xs ${
                   isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
                 }`}>
                   <h4 className={`font-bold text-xs flex items-center gap-1.5 mb-1.5 ${isDark ? "text-blue-300" : "text-blue-700"}`}>
                     <ExternalLink className="w-4 h-4" />
-                    Loncat ke Faktur Tanpa Loading (Keep-Alive)
+                    Loncat ke Faktur (Keep-Alive)
                   </h4>
-                  <p className={`text-xs font-medium leading-relaxed ${isDark ? "text-slate-200" : "text-slate-700"}`}>
-                    Setiap baris nomor invoice (contoh: <code className={`font-bold px-1.5 py-0.5 rounded border ${
-                      isDark ? "bg-blue-950 border-blue-800 text-blue-300" : "bg-blue-100 border-blue-200 text-blue-800"
-                    }`}>16180 ↗</code>) dapat diklik langsung. Sistem akan otomatis membuka <strong className={isDark ? "text-white" : "text-slate-900"}>Daftar Faktur</strong> dan mencari invoice tersebut. Saat Anda kembali ke tab <strong className={isDark ? "text-white" : "text-slate-900"}>Shipment Error</strong>, data Anda <strong className={isDark ? "text-emerald-400" : "text-emerald-700"}>langsung tampil instan tanpa loading lagi</strong> dan posisi tabel tetap tersimpan.
+                  <p className={`text-[11px] leading-relaxed ${isDark ? "text-slate-200" : "text-slate-600"}`}>
+                    Klik nomor invoice (contoh: <code>16180 ↗</code>) untuk langsung membuka faktur tersebut di Daftar Faktur tanpa reload!
                   </p>
                 </div>
 
@@ -303,15 +479,10 @@ export default function HowToUseModal({
                 }`}>
                   <h4 className={`font-bold text-xs flex items-center gap-1.5 mb-1.5 ${isDark ? "text-emerald-300" : "text-emerald-700"}`}>
                     <CheckCircle2 className="w-4 h-4" />
-                    Filter Minggu (W-Week) &amp; Status
+                    Filter Minggu (W-Week)
                   </h4>
-                  <p className={`text-xs font-medium leading-relaxed ${isDark ? "text-slate-200" : "text-slate-700"}`}>
-                    Gunakan filter Week (contoh: <code className={`font-bold px-1.5 py-0.5 rounded border ${
-                      isDark ? "bg-slate-800 border-slate-700 text-slate-200" : "bg-slate-100 border-slate-300 text-slate-800"
-                    }`}>W44</code>, <code className={`font-bold px-1.5 py-0.5 rounded border ${
-                      isDark ? "bg-slate-800 border-slate-700 text-slate-200" : "bg-slate-100 border-slate-300 text-slate-800"
-                    }`}>W43</code>) untuk melihat laporan performa mingguan. Status kasus terbagi menjadi:
-                    <strong className={isDark ? "text-amber-400 font-bold" : "text-amber-700 font-bold"}> Pending</strong> (menunggu approval), <strong className={isDark ? "text-blue-400 font-bold" : "text-blue-700 font-bold"}> In Progress</strong> (sedang diproses tim gudang), <strong className={isDark ? "text-emerald-400 font-bold" : "text-emerald-700 font-bold"}> Resolved</strong> (selesai/nota retur keluar), dan <strong className={isDark ? "text-rose-400 font-bold" : "text-rose-700 font-bold"}> Reject</strong> (ditolak).
+                  <p className={`text-[11px] leading-relaxed ${isDark ? "text-slate-200" : "text-slate-600"}`}>
+                    Filter berdasarkan minggu kalender (contoh: <code>W44</code>, <code>W43</code>) untuk evaluasi performa mingguan logistik.
                   </p>
                 </div>
 
@@ -320,10 +491,10 @@ export default function HowToUseModal({
                 }`}>
                   <h4 className={`font-bold text-xs flex items-center gap-1.5 mb-1.5 ${isDark ? "text-purple-300" : "text-purple-700"}`}>
                     <Layers className="w-4 h-4" />
-                    Freeze Column &amp; Kustom Tampilan
+                    Freeze Column (Pin)
                   </h4>
-                  <p className={`text-xs font-medium leading-relaxed ${isDark ? "text-slate-200" : "text-slate-700"}`}>
-                    Gunakan tombol <strong className={isDark ? "text-white" : "text-slate-900"}>Pin Kolom</strong> untuk membekukan 1, 2, atau 3 kolom utama agar tetap terlihat saat menggeser tabel ke kanan, mirip fitur Freeze Panes di Microsoft Excel.
+                  <p className={`text-[11px] leading-relaxed ${isDark ? "text-slate-200" : "text-slate-600"}`}>
+                    Kunci 1–3 kolom utama agar tetap terlihat saat menggeser tabel ke samping, mirip fitur Freeze Panes di Microsoft Excel.
                   </p>
                 </div>
               </div>
