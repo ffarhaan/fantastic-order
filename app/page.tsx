@@ -11,6 +11,7 @@ import {
   getPrekursorOOTClassification,
   normalize,
   calculateDominantCategory,
+  getDkLk,
 } from "@/lib/parser";
 import { FakturRecord, FirestoreFakturDoc, InvoiceProgression, FakturGroup, UploadNotification, ActiveUserPresence } from "@/lib/types";
 import {
@@ -89,7 +90,8 @@ import {
 } from "lucide-react";
 
 type Filter = "belum" | "sudah" | "all" | "double" | "retur";
-type KatFilter = "all" | "1P" | "2P" | "3P" | "3P (DK)" | "3P (LK)" | "2P (DK)" | "2P (LK)" | "1P (DK)" | "1P (LK)" | "DK" | "LK";
+type KatFilter = "all" | "1P" | "2P" | "3P";
+type DkLkFilter = "all" | "DK" | "LK";
 type JenisFilter = "all" | "ORA" | "DOO";
 type KlasFilter = "all" | "prekursor" | "oot" | "ccp" | "alkes" | "farma";
 
@@ -320,6 +322,7 @@ export default function Home() {
   const [selectedWarehouse, setSelectedWarehouse] = useState<"MBI" | "MAI">("MBI");
   const selectedWarehouseRef = useRef<"MBI" | "MAI">("MBI");
   const [katFilter, setKatFilter] = useState<KatFilter>("all");
+  const [dklkFilter, setDklkFilter] = useState<DkLkFilter>("all");
   const [jenisFilter, setJenisFilter] = useState<JenisFilter>("all");
   const [klasFilter, setKlasFilter] = useState<KlasFilter>("all");
   const [txDateFilter, setTxDateFilter] = useState<string>("all");
@@ -756,8 +759,10 @@ export default function Home() {
 
   const [selectedRowIndex, setSelectedRowIndex] = useState(0);
   const [selectedColIdx, setSelectedColIdx] = useState(3); // Default to No Invoice column
-  const [categoryOverrides, setCategoryOverrides] = useState<Record<string, "1P" | "2P" | "3P" | "DK" | "LK" | string>>({});
-  const categoryOverridesRef = useRef<Record<string, "1P" | "2P" | "3P" | "DK" | "LK" | string>>({});
+  const [categoryOverrides, setCategoryOverrides] = useState<Record<string, "1P" | "2P" | "3P" | string>>({});
+  const categoryOverridesRef = useRef<Record<string, "1P" | "2P" | "3P" | string>>({});
+  const [dklkOverrides, setDklkOverrides] = useState<Record<string, "DK" | "LK" | "-">>({});
+  const dklkOverridesRef = useRef<Record<string, "DK" | "LK" | "-">>({});
   const [productOverrides, setProductOverrides] = useState<Record<string, string>>({});
   const productOverridesRef = useRef<Record<string, string>>({});
   const printedInvoicesRef = useRef<Set<string>>(new Set());
@@ -1072,6 +1077,45 @@ export default function Home() {
       } catch (err) {
         console.warn("Update category error:", err);
       }
+    },
+    [showToast]
+  );
+
+  const handleUpdateDkLk = useCallback(
+    async (invoiceKey: string, newDkLk: "DK" | "LK" | "-", customerName?: string) => {
+      if (currentUserRef.current?.role === "readonly") {
+        showToast("⚠️ Akses Stranger: Anda hanya memiliki izin melihat data (Read Only).");
+        return;
+      }
+      const cleanInv = invoiceKey.replace(/-1P$/i, "");
+      const cleanCust = (customerName || "").trim();
+      const normCust = cleanCust ? normalize(cleanCust) : "";
+
+      setRecords((prev) =>
+        prev.map((r) => {
+          const rCleanCust = (r.customerName || "").trim();
+          const rNormCust = rCleanCust ? normalize(rCleanCust) : "";
+          const isMatch =
+            r.invoiceKey === invoiceKey ||
+            r.invoiceNumber === cleanInv ||
+            (normCust && rNormCust === normCust) ||
+            (cleanCust && rCleanCust === cleanCust);
+
+          return isMatch ? { ...r, dklk: newDkLk } : r;
+        })
+      );
+
+      if (normCust) dklkOverridesRef.current[normCust] = newDkLk;
+      if (cleanCust) dklkOverridesRef.current[cleanCust] = newDkLk;
+      if (cleanInv) dklkOverridesRef.current[cleanInv] = newDkLk;
+      setDklkOverrides((prev) => ({
+        ...prev,
+        ...(normCust ? { [normCust]: newDkLk } : {}),
+        ...(cleanCust ? { [cleanCust]: newDkLk } : {}),
+        ...(cleanInv ? { [cleanInv]: newDkLk } : {}),
+      }));
+
+      showToast(`✓ Wilayah ${cleanCust || cleanInv} disimpan ke ${newDkLk}`);
     },
     [showToast]
   );
@@ -1884,6 +1928,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       if (!key || key.startsWith("TEST-") || String(r.invoiceNumber || "").startsWith("TEST-")) continue;
 
       if (!map.has(key)) {
+        const cleanInv = r.invoiceNumber.replace(/-1P$/i, "");
+        const rawCust = String(r.customerName || "").trim();
+        const normCust = rawCust ? normalize(rawCust) : "";
+        const resolvedDkLk =
+          dklkOverridesRef.current[normCust] ||
+          dklkOverridesRef.current[rawCust] ||
+          dklkOverridesRef.current[cleanInv] ||
+          r.dklk ||
+          getDkLk(r.customerName) ||
+          "-";
+
         map.set(key, {
           key,
           invoiceNumber: r.invoiceNumber,
@@ -1895,6 +1950,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           jenisTransaksi: r.jenisTransaksi,
           customerName: r.customerName,
           kategori: r.kategori,
+          dklk: resolvedDkLk,
           kategoriProduk: r.kategoriProduk || "FARMA",
           entity: r.entity || "MBI",
           hasPrekursor: false,
@@ -2224,19 +2280,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       result = result.filter((g) => g.orderDate === orderDateFilter);
     }
     if (katFilter !== "all") {
-      if (katFilter === "DK") {
-        result = result.filter((g) => g.kategori.includes("DK"));
-      } else if (katFilter === "LK") {
-        result = result.filter((g) => g.kategori.includes("LK"));
-      } else if (katFilter === "1P") {
-        result = result.filter((g) => g.kategori.startsWith("1P"));
-      } else if (katFilter === "2P") {
-        result = result.filter((g) => g.kategori.startsWith("2P"));
-      } else if (katFilter === "3P") {
-        result = result.filter((g) => g.kategori.startsWith("3P"));
-      } else {
-        result = result.filter((g) => g.kategori === katFilter);
-      }
+      result = result.filter((g) => g.kategori === katFilter);
+    }
+    if (dklkFilter !== "all") {
+      result = result.filter((g) => g.dklk === dklkFilter);
     }
     if (jenisFilter !== "all") {
       result = result.filter((g) => g.jenisTransaksi === jenisFilter);
@@ -2270,7 +2317,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     }
 
     return result;
-  }, [grouped, selectedWarehouse, filter, katFilter, jenisFilter, klasFilter, txDateFilter, orderDateFilter, deferredSearch]);
+  }, [grouped, selectedWarehouse, filter, katFilter, dklkFilter, jenisFilter, klasFilter, txDateFilter, orderDateFilter, deferredSearch]);
 
   const totalPages = Math.ceil(filtered.length / ROWS_PER_PAGE);
   const pageData = filtered.slice(page * ROWS_PER_PAGE, (page + 1) * ROWS_PER_PAGE);
@@ -5087,7 +5134,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         </div>
 
         {/* Filter Dropdowns - Modern Clean Row */}
-        <div className={`p-2 rounded-xl border grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 shadow-xs transition-colors ${
+        <div className={`p-2 rounded-xl border grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 shadow-xs transition-colors ${
           isDarkMode ? "bg-[#09090b] border-zinc-800" : "bg-white border-zinc-300"
         }`}>
           {/* Kategori Filter */}
@@ -5100,18 +5147,25 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 : "bg-white border-zinc-300 text-black hover:border-black"
             }`}
           >
-            <option value="all">Semua Kategori (1P/2P/3P/DK/LK)</option>
-            <option value="1P">1P (Semua)</option>
-            <option value="2P">2P (Semua)</option>
-            <option value="3P">3P (Semua)</option>
-            <option value="3P (DK)">3P (DK - Dalam Kota)</option>
-            <option value="3P (LK)">3P (LK - Luar Kota)</option>
-            <option value="2P (DK)">2P (DK - Dalam Kota)</option>
-            <option value="2P (LK)">2P (LK - Luar Kota)</option>
-            <option value="1P (DK)">1P (DK - Dalam Kota)</option>
-            <option value="1P (LK)">1P (LK - Luar Kota)</option>
-            <option value="DK">Semua DK (Dalam Kota)</option>
-            <option value="LK">Semua LK (Luar Kota)</option>
+            <option value="all">Semua Kategori (1P/2P/3P)</option>
+            <option value="1P">1P</option>
+            <option value="2P">2P</option>
+            <option value="3P">3P</option>
+          </select>
+
+          {/* Wilayah (DK/LK) Filter */}
+          <select
+            value={dklkFilter}
+            onChange={(e) => { setDklkFilter(e.target.value as DkLkFilter); setPage(0); }}
+            className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border cursor-pointer ${
+              isDarkMode
+                ? "bg-zinc-950 border-zinc-800 text-zinc-200 hover:border-zinc-700"
+                : "bg-white border-zinc-300 text-black hover:border-black"
+            }`}
+          >
+            <option value="all">Semua Wilayah (DK/LK)</option>
+            <option value="DK">DK (Dalam Kota)</option>
+            <option value="LK">LK (Luar Kota)</option>
           </select>
 
           {/* Jenis Transaksi Filter */}
@@ -5251,6 +5305,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       { id: "tgl_faktur", label: "Tgl Faktur (Tx)" },
                       { id: "tgl_order", label: "Tgl Order (SO)" },
                       { id: "kat", label: "Kategori (1P/2P/3P)" },
+                      { id: "dklk", label: "Wilayah (DK / LK)" },
                       { id: "checker", label: "Checker" },
                       { id: "packer", label: "Packer" },
                       { id: "picker", label: "Picker" },
@@ -5305,6 +5360,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 (isColVisible("tgl_faktur") ? 1 : 0) +
                 (isColVisible("tgl_order") ? 1 : 0) +
                 (isColVisible("kat") ? 1 : 0) +
+                (isColVisible("dklk") ? 1 : 0) +
                 (isColVisible("checker") ? 1 : 0) +
                 (isColVisible("packer") ? 1 : 0) +
                 (isColVisible("picker") ? 1 : 0) +
@@ -5440,6 +5496,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       {isColVisible("kat") && (
                         <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
                           Kat
+                        </th>
+                      )}
+
+                      {/* Col: Wilayah (DK / LK) */}
+                      {isColVisible("dklk") && (
+                        <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Wilayah Pengiriman (DK: Dalam Kota, LK: Luar Kota)">
+                          DK / LK
                         </th>
                       )}
 
@@ -5854,36 +5917,60 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                 value={g.kategori}
                                 disabled={currentUser?.role === "readonly"}
                                 onChange={(e) => {
-                                  handleUpdateCategory(g.invoiceKey, e.target.value, g.customerName);
+                                  handleUpdateCategory(g.invoiceKey, e.target.value as "1P" | "2P" | "3P", g.customerName);
                                 }}
                                 className={`px-2 py-0.5 rounded text-xs font-black border cursor-pointer transition-colors ${
                                   currentUser?.role === "readonly" ? "cursor-not-allowed opacity-70" : ""
                                 } ${
-                                  g.kategori.includes("DK")
-                                    ? (isDarkMode ? "bg-emerald-950 text-emerald-300 border-emerald-600/70" : "bg-emerald-50 text-emerald-800 border-emerald-300")
-                                    : g.kategori.includes("LK")
-                                    ? (isDarkMode ? "bg-indigo-950 text-indigo-300 border-indigo-600/70" : "bg-indigo-50 text-indigo-800 border-indigo-300")
-                                    : g.kategori.startsWith("1P")
+                                  g.kategori === "1P"
                                     ? (isDarkMode ? "bg-rose-950 text-rose-300 border-rose-700/70" : "bg-rose-50 text-rose-800 border-rose-300")
-                                    : g.kategori.startsWith("2P")
+                                    : g.kategori === "2P"
                                     ? (isDarkMode ? "bg-amber-950 text-amber-300 border-amber-700/70" : "bg-amber-50 text-amber-800 border-amber-300")
-                                    : (isDarkMode ? "bg-zinc-800 text-zinc-100 border-zinc-700 hover:border-zinc-500" : "bg-white text-zinc-900 border-zinc-200 hover:border-zinc-300 shadow-2xs")
+                                    : (isDarkMode ? "bg-zinc-800 text-zinc-300 border-zinc-700 hover:border-zinc-500" : "bg-white text-zinc-800 border-zinc-200 hover:border-zinc-300 shadow-2xs")
                                 }`}
                                 title={
                                   currentUser?.role === "readonly"
                                     ? "Akses Stranger (Hanya Lihat)"
-                                    : "Klik untuk ubah Kategori (contoh: 3P (DK), 3P (LK))"
+                                    : "Klik untuk ubah Kategori (1P / 2P / 3P)"
                                 }
                               >
                                 <option value="1P">1P</option>
-                                <option value="1P (DK)">1P (DK)</option>
-                                <option value="1P (LK)">1P (LK)</option>
                                 <option value="2P">2P</option>
-                                <option value="2P (DK)">2P (DK)</option>
-                                <option value="2P (LK)">2P (LK)</option>
                                 <option value="3P">3P</option>
-                                <option value="3P (DK)">3P (DK)</option>
-                                <option value="3P (LK)">3P (LK)</option>
+                              </select>
+                            </td>
+                          )}
+
+                          {/* Col 10: Wilayah (DK / LK) */}
+                          {isColVisible("dklk") && (
+                            <td
+                              className="px-2 py-1.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <select
+                                value={g.dklk || "-"}
+                                disabled={currentUser?.role === "readonly"}
+                                onChange={(e) => {
+                                  handleUpdateDkLk(g.invoiceKey, e.target.value as "DK" | "LK" | "-", g.customerName);
+                                }}
+                                className={`px-2 py-0.5 rounded text-xs font-black border cursor-pointer transition-colors ${
+                                  currentUser?.role === "readonly" ? "cursor-not-allowed opacity-70" : ""
+                                } ${
+                                  g.dklk === "DK"
+                                    ? (isDarkMode ? "bg-emerald-950 text-emerald-300 border-emerald-600/70" : "bg-emerald-50 text-emerald-800 border-emerald-300")
+                                    : g.dklk === "LK"
+                                    ? (isDarkMode ? "bg-indigo-950 text-indigo-300 border-indigo-600/70" : "bg-indigo-50 text-indigo-800 border-indigo-300")
+                                    : (isDarkMode ? "bg-zinc-800/60 text-zinc-500 border-zinc-700" : "bg-zinc-100 text-zinc-500 border-zinc-200")
+                                }`}
+                                title={
+                                  currentUser?.role === "readonly"
+                                    ? "Akses Stranger (Hanya Lihat)"
+                                    : "Klik untuk ubah Wilayah (DK: Dalam Kota, LK: Luar Kota)"
+                                }
+                              >
+                                <option value="-">-</option>
+                                <option value="DK">DK</option>
+                                <option value="LK">LK</option>
                               </select>
                             </td>
                           )}
