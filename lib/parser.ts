@@ -39,12 +39,21 @@ const normDklkMapMAI: Record<string, "DK" | "LK"> = {};
   }
 });
 
-export function getDkLk(customerName?: string): "DK" | "LK" | "-" {
-  if (!customerName) return "-";
+export function getDkLk(customerName?: string, entity?: "MBI" | "MAI"): "DK" | "LK" | "-" {
+  if (!customerName || entity === "MBI") return "-";
   const c = customerName.toLowerCase().trim();
   if (dklkMapMAI[c]) return dklkMapMAI[c];
   const n = normalize(c);
   if (normDklkMapMAI[n]) return normDklkMapMAI[n];
+
+  const upper = customerName.toUpperCase().trim();
+  if (upper.startsWith("HAK ") || upper.startsWith("HAK-")) {
+    const branch = upper.replace(/^HAK[\s-]+/, "").toLowerCase().trim();
+    for (const [k, v] of Object.entries(dklkMapMAI)) {
+      if (k.includes(branch)) return v;
+    }
+  }
+
   return "-";
 }
 
@@ -324,7 +333,7 @@ export function categorize(
   shipToSite?: string,
   billToSite?: string,
   entity?: "MBI" | "MAI"
-): "1P" | "2P" | "3P" | "DK" | "LK" | string {
+): "1P" | "2P" | "3P" {
   const cust = String(customerName || "").trim();
   const upper = cust.toUpperCase();
   const rawJenis = String(jenisTransaksi || "").toUpperCase();
@@ -377,10 +386,10 @@ export function categorize(
   if (master2PNameSet.has(normCust)) return "2P";
 
   const exact = apotekMap[cust.toLowerCase()];
-  if (exact) return exact;
+  if (exact) return (exact as "1P" | "2P" | "3P") || "3P";
 
   const norm = normMap[normCust];
-  if (norm) return norm;
+  if (norm) return (norm as "1P" | "2P" | "3P") || "3P";
 
   return "3P";
 }
@@ -707,7 +716,7 @@ function parseXXCUST(
       lotNumber: val(idx.lotNumber) || "-",
       totalHarga: parsedTotal,
       kategori,
-      dklk: getDkLk(customerName),
+      dklk: getDkLk(customerName, rowEntity),
       kategoriProduk,
       klasifikasiObat,
       entity: rowEntity,
@@ -869,7 +878,7 @@ function parseHTMLTable(html: string): FakturRecord[] {
       lotNumber: "-",
       totalHarga,
       kategori,
-      dklk: getDkLk(customerName),
+      dklk: getDkLk(customerName, "MBI"),
       isDoubleInv: false,
       sourceFile: "EXPORT",
       rowIndex: i,
@@ -977,7 +986,7 @@ function parseExportArray(data: unknown[][], headerIdx: number): FakturRecord[] 
       lotNumber: "-",
       totalHarga,
       kategori,
-      dklk: getDkLk(customerName),
+      dklk: getDkLk(customerName, fileEntity),
       entity: fileEntity,
       isDoubleInv: false,
       sourceFile: "EXPORT",

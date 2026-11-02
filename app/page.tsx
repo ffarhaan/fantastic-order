@@ -975,6 +975,7 @@ export default function Home() {
   const handleSelectWarehouse = useCallback((wh: "MBI" | "MAI") => {
     setSelectedWarehouse(wh);
     selectedWarehouseRef.current = wh;
+    if (wh === "MBI") setDklkFilter("all");
     if (typeof window !== "undefined") {
       localStorage.setItem("faktur_selected_warehouse", wh);
     }
@@ -1032,7 +1033,7 @@ export default function Home() {
 
 
   const handleUpdateCategory = useCallback(
-    async (invoiceKey: string, newKat: "1P" | "2P" | "3P" | "DK" | "LK" | string, customerName?: string) => {
+    async (invoiceKey: string, newKat: "1P" | "2P" | "3P", customerName?: string) => {
       if (currentUserRef.current?.role === "readonly") {
         showToast("⚠️ Akses Stranger: Anda hanya memiliki izin melihat data (Read Only).");
         return;
@@ -1931,13 +1932,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         const cleanInv = r.invoiceNumber.replace(/-1P$/i, "");
         const rawCust = String(r.customerName || "").trim();
         const normCust = rawCust ? normalize(rawCust) : "";
+        const rEntity = (r.entity as "MBI" | "MAI") || selectedWarehouseRef.current;
         const resolvedDkLk =
-          dklkOverridesRef.current[normCust] ||
-          dklkOverridesRef.current[rawCust] ||
-          dklkOverridesRef.current[cleanInv] ||
-          r.dklk ||
-          getDkLk(r.customerName) ||
-          "-";
+          rEntity === "MBI"
+            ? "-"
+            : (dklkOverridesRef.current[normCust] ||
+               dklkOverridesRef.current[rawCust] ||
+               dklkOverridesRef.current[cleanInv] ||
+               r.dklk ||
+               getDkLk(r.customerName, "MAI") ||
+               "-");
 
         map.set(key, {
           key,
@@ -2282,7 +2286,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     if (katFilter !== "all") {
       result = result.filter((g) => g.kategori === katFilter);
     }
-    if (dklkFilter !== "all") {
+    if (selectedWarehouse === "MAI" && dklkFilter !== "all") {
       result = result.filter((g) => g.dklk === dklkFilter);
     }
     if (jenisFilter !== "all") {
@@ -5133,8 +5137,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           )}
         </div>
 
-        {/* Filter Dropdowns - Modern Clean Row */}
-        <div className={`p-2 rounded-xl border grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 shadow-xs transition-colors ${
+        {/* Filter Dropdowns - Modern Clean Row (Wilayah DK/LK khusus MAI sesuai Master Apotek) */}
+        <div className={`p-2 rounded-xl border grid grid-cols-2 sm:grid-cols-3 ${
+          selectedWarehouse === "MAI" ? "md:grid-cols-6" : "md:grid-cols-5"
+        } gap-2 shadow-xs transition-colors ${
           isDarkMode ? "bg-[#09090b] border-zinc-800" : "bg-white border-zinc-300"
         }`}>
           {/* Kategori Filter */}
@@ -5153,20 +5159,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             <option value="3P">3P</option>
           </select>
 
-          {/* Wilayah (DK/LK) Filter */}
-          <select
-            value={dklkFilter}
-            onChange={(e) => { setDklkFilter(e.target.value as DkLkFilter); setPage(0); }}
-            className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border cursor-pointer ${
-              isDarkMode
-                ? "bg-zinc-950 border-zinc-800 text-zinc-200 hover:border-zinc-700"
-                : "bg-white border-zinc-300 text-black hover:border-black"
-            }`}
-          >
-            <option value="all">Semua Wilayah (DK/LK)</option>
-            <option value="DK">DK (Dalam Kota)</option>
-            <option value="LK">LK (Luar Kota)</option>
-          </select>
+          {/* Wilayah (DK/LK) Filter - Khusus MAI sesuai Master Apotek */}
+          {selectedWarehouse === "MAI" && (
+            <select
+              value={dklkFilter}
+              onChange={(e) => { setDklkFilter(e.target.value as DkLkFilter); setPage(0); }}
+              className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold focus:outline-none transition-colors border cursor-pointer ${
+                isDarkMode
+                  ? "bg-zinc-950 border-zinc-800 text-zinc-200 hover:border-zinc-700"
+                  : "bg-white border-zinc-300 text-black hover:border-black"
+              }`}
+            >
+              <option value="all">Semua Wilayah (DK/LK)</option>
+              <option value="DK">DK (Dalam Kota)</option>
+              <option value="LK">LK (Luar Kota)</option>
+            </select>
+          )}
 
           {/* Jenis Transaksi Filter */}
           <select
@@ -5305,7 +5313,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       { id: "tgl_faktur", label: "Tgl Faktur (Tx)" },
                       { id: "tgl_order", label: "Tgl Order (SO)" },
                       { id: "kat", label: "Kategori (1P/2P/3P)" },
-                      { id: "dklk", label: "Wilayah (DK / LK)" },
+                      ...(selectedWarehouse === "MAI"
+                        ? [{ id: "dklk", label: "Wilayah (DK / LK) [MAI]" }]
+                        : []),
                       { id: "checker", label: "Checker" },
                       { id: "packer", label: "Packer" },
                       { id: "picker", label: "Picker" },
@@ -5360,7 +5370,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 (isColVisible("tgl_faktur") ? 1 : 0) +
                 (isColVisible("tgl_order") ? 1 : 0) +
                 (isColVisible("kat") ? 1 : 0) +
-                (isColVisible("dklk") ? 1 : 0) +
+                (selectedWarehouse === "MAI" && isColVisible("dklk") ? 1 : 0) +
                 (isColVisible("checker") ? 1 : 0) +
                 (isColVisible("packer") ? 1 : 0) +
                 (isColVisible("picker") ? 1 : 0) +
@@ -5499,9 +5509,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                         </th>
                       )}
 
-                      {/* Col: Wilayah (DK / LK) */}
-                      {isColVisible("dklk") && (
-                        <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Wilayah Pengiriman (DK: Dalam Kota, LK: Luar Kota)">
+                      {/* Col: Wilayah (DK / LK) - Khusus Gudang MAI sesuai Master Apotek */}
+                      {selectedWarehouse === "MAI" && isColVisible("dklk") && (
+                        <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Wilayah Pengiriman MAI (DK: Dalam Kota, LK: Luar Kota)">
                           DK / LK
                         </th>
                       )}
@@ -5941,8 +5951,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             </td>
                           )}
 
-                          {/* Col 10: Wilayah (DK / LK) */}
-                          {isColVisible("dklk") && (
+                          {/* Col 10: Wilayah (DK / LK) - Khusus Gudang MAI sesuai Master Apotek */}
+                          {selectedWarehouse === "MAI" && isColVisible("dklk") && (
                             <td
                               className="px-2 py-1.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800"
                               onClick={(e) => e.stopPropagation()}
