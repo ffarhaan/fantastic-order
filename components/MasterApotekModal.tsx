@@ -220,7 +220,7 @@ export default function MasterApotekModal({
               }`}>
                 <th className="py-2 px-3 w-12 text-center">#</th>
                 <th className="py-2 px-3">
-                  {activeWarehouse === "MAI" ? "Wilayah (DK / LK)" : "Kode Customer / Merchant"}
+                  Wilayah (DK / LK)
                 </th>
                 <th className="py-2 px-3">Nama Apotek ({activeWarehouse})</th>
                 <th className="py-2 px-3 text-center">Kategori</th>
@@ -243,7 +243,7 @@ export default function MasterApotekModal({
                       {page * ITEMS_PER_PAGE + idx + 1}
                     </td>
                     <td className={`py-2 px-3 font-mono ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
-                      {activeWarehouse === "MAI" ? (
+                      <div className="flex items-center gap-1.5">
                         <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
                           item.dklk === "DK"
                             ? (isDarkMode ? "bg-emerald-950 text-emerald-300 border border-emerald-700/50" : "bg-emerald-50 text-emerald-700 border border-emerald-200")
@@ -251,13 +251,12 @@ export default function MasterApotekModal({
                         }`}>
                           {item.dklk || "DK"}
                         </span>
-                      ) : (
-                        <>
-                          <div>{item.kodeCustomer || "-"}</div>
-                          {item.namaMerchant && item.namaMerchant !== "-" && (
-                            <div className="text-[10px] text-slate-500">{item.namaMerchant}</div>
-                          )}
-                        </>
+                        {item.kodeCustomer && item.kodeCustomer !== "-" && !item.kodeCustomer.includes("Wilayah") && (
+                          <span className="text-[10px] text-slate-500 font-mono">({item.kodeCustomer})</span>
+                        )}
+                      </div>
+                      {item.namaMerchant && item.namaMerchant !== "-" && (
+                        <div className="text-[10px] text-slate-500 truncate max-w-[200px]">{item.namaMerchant}</div>
                       )}
                     </td>
                     <td className={`py-2 px-3 font-semibold ${isDarkMode ? "text-slate-100" : "text-slate-900"}`}>

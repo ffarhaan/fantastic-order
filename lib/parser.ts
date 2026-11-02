@@ -6,6 +6,7 @@ import masterApotekMAI from "./masterApotek_MAI.json";
 import master2P_MAI from "./master2P_MAI.json";
 import masterProduct from "./masterProduct.json";
 import masterApotekListMAI from "./masterApotekList_MAI.json";
+import masterApotekListMBI from "./masterApotekList.json";
 
 const apotekMap = masterApotek as Record<string, string>;
 const apotekMapMAI: Record<string, string> = { ...(masterApotekMAI as Record<string, string>) };
@@ -39,20 +40,65 @@ const normDklkMapMAI: Record<string, "DK" | "LK"> = {};
   }
 });
 
-export function getDkLk(customerName?: string, entity?: "MBI" | "MAI"): "DK" | "LK" | "-" {
-  if (!customerName || entity === "MBI") return "-";
-  const c = customerName.toLowerCase().trim();
-  if (dklkMapMAI[c]) return dklkMapMAI[c];
-  const n = normalize(c);
-  if (normDklkMapMAI[n]) return normDklkMapMAI[n];
+const dklkMapMBI: Record<string, "DK" | "LK"> = {};
+const normDklkMapMBI: Record<string, "DK" | "LK"> = {};
 
+// Enrich MBI apotek DK/LK lookups from masterApotekList.json
+(masterApotekListMBI as Array<{ namaApotek: string; dklk?: string }>).forEach((item) => {
+  if (item.namaApotek && (item.dklk === "DK" || item.dklk === "LK")) {
+    dklkMapMBI[item.namaApotek.toLowerCase().trim()] = item.dklk;
+    normDklkMapMBI[normalize(item.namaApotek)] = item.dklk;
+  }
+});
+
+export function getDkLk(customerName?: string, entity: "MBI" | "MAI" = "MBI"): "DK" | "LK" | "-" {
+  if (!customerName) return "-";
+  const c = customerName.toLowerCase().trim();
+  const n = normalize(c);
   const upper = customerName.toUpperCase().trim();
+
+  // === MAI WAREHOUSE ===
+  if (entity === "MAI") {
+    if (dklkMapMAI[c]) return dklkMapMAI[c];
+    if (normDklkMapMAI[n]) return normDklkMapMAI[n];
+
+    if (upper.startsWith("HAK ") || upper.startsWith("HAK-")) {
+      const branch = upper.replace(/^HAK[\s-]+/, "").toLowerCase().trim();
+      for (const [k, v] of Object.entries(dklkMapMAI)) {
+        if (k.includes(branch)) return v;
+      }
+    }
+    return "-";
+  }
+
+  // === MBI WAREHOUSE (DEFAULT) ===
+  if (dklkMapMBI[c]) return dklkMapMBI[c];
+  if (normDklkMapMBI[n]) return normDklkMapMBI[n];
+
+  // Match HAK (Apotek Halomedika) in MBI
   if (upper.startsWith("HAK ") || upper.startsWith("HAK-")) {
     const branch = upper.replace(/^HAK[\s-]+/, "").toLowerCase().trim();
-    for (const [k, v] of Object.entries(dklkMapMAI)) {
+    if (
+      branch.includes("tirta raya") ||
+      branch.includes("cicendo") ||
+      branch.includes("denpasar") ||
+      branch.includes("malang") ||
+      branch.includes("dukuh pakis") ||
+      branch.includes("gejayan") ||
+      branch.includes("rancasari") ||
+      branch.includes("medan baru")
+    ) {
+      return "LK";
+    }
+    for (const [k, v] of Object.entries(dklkMapMBI)) {
       if (k.includes(branch)) return v;
     }
+    return "DK";
   }
+
+  // Fallback to MAI map if exists
+  if (dklkMapMAI[c]) return dklkMapMAI[c];
+  if (normDklkMapMAI[n]) return normDklkMapMAI[n];
 
   return "-";
 }
