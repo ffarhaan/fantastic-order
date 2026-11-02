@@ -179,7 +179,8 @@ function dbRowsToFakturRecords(
     const baseKey = isOra ? `${cleanInv}-1P` : cleanInv;
     const invKey = entity === "MAI" ? `MAI-${baseKey}` : baseKey;
     const cleanJenis: "DOO" | "ORA" = isOra ? "ORA" : "DOO";
-    const kategori = (r.kategori as "1P" | "2P" | "3P") || categorize(cleanJenis, cust, cleanJenis);
+    const calculatedKat = isOra ? "1P" : categorize(cleanJenis, cust, cleanJenis, undefined, undefined, entity);
+    const kategori = (entity === "MAI" ? calculatedKat : (r.kategori as "1P" | "2P" | "3P")) || calculatedKat;
     const pAt = (r.printed_at as string) || null;
     const pBy = (r.printed_by as string) || (extra.printed_by as string) || null;
 
@@ -2629,7 +2630,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const isOra = row.jenis_transaksi === "ORA" || isOraCustomer(cust);
           const targetKey = isOra ? `${cleanInv}-1P` : cleanInv;
           const num = parseInvNum(cleanInv);
-          const kat = isOra ? "1P" : categorize("DOO", cust);
+          const rowEntity = (row.entity as "MAI" | "MBI") || (rawInv.startsWith("MAI-") ? "MAI" : "MBI");
+          const kat = isOra ? "1P" : categorize("DOO", cust, undefined, undefined, undefined, rowEntity);
 
           if (num > 0) {
             if (isOra) {
@@ -2809,10 +2811,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             categoryOverridesRef.current[cleanInv] ||
             (prevInfo && (prevInfo.extra?.kategori as ("1P" | "2P" | "3P") | undefined));
 
+          const targetEntity = (r.entity as "MAI" | "MBI") || currentWh;
+          const defaultKat = isOra ? "1P" : categorize("DOO", r.customerName, undefined, undefined, undefined, targetEntity);
+
           if (!invMap.has(targetKey)) {
             const kategori = isOra
               ? "1P"
-              : (overriddenKat || r.kategori || categorize("DOO", r.customerName));
+              : (overriddenKat || (targetEntity === "MAI" ? defaultKat : r.kategori) || defaultKat);
             invMap.set(targetKey, {
               id: targetKey,
               no_faktur: targetKey,
@@ -2959,7 +2964,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const isOra = r.jenisTransaksi === "ORA" || isOraCustomer(r.customerName);
           const cleanInv = String(r.invoiceNumber || "").trim().replace(/-1P$/i, "");
           const num = parseInvNum(cleanInv);
-          const kat = isOra ? "1P" : (r.kategori || categorize("DOO", r.customerName));
+          const kat = isOra ? "1P" : (r.kategori || categorize("DOO", r.customerName, undefined, undefined, undefined, r.entity as "MAI" | "MBI"));
 
           if (num > 0) {
             if (isOra) {

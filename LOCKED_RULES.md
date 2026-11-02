@@ -194,6 +194,13 @@ Dokumen ini adalah acuan baku dan permanen untuk seluruh pengembangan, pemelihar
    - Tampilan nomor invoice ke operator tetap bersih hanya nomor faktur asli (`24000`), sementara kunci unik database terisolasi 100% sehingga tidak akan pernah terjadi tabrakan status cetak antar MAI dan MBI.
 6. **Tampilan Teks Sederhana di Tabel**:
    - Cukup tampilkan teks nama gudang secara ringkas dan bersih pada baris tabel (contoh: `DOO · MBI` atau `ORA · MAI`) tanpa ornamen berlebihan.
+7. **Pemisahan Kamus Master Apotek 2P/3P MBI vs MAI (Strict Master Customer Isolation - LOCKED MUTLAK)**:
+   - Master apotek dan klasifikasi 2P vs 3P antara entitas MBI dan MAI **DIISOLASI 100% SECARA MANDIRI**.
+   - **Master MBI**: Menggunakan `lib/master2P.json` dan `lib/masterApotek.json`.
+   - **Master MAI**: Menggunakan `lib/masterApotek_MAI.json` dan `lib/master2P_MAI.json` yang bersumber resmi dari tab MASTER MAI (4.518 apotek terdaftar).
+   - Fungsi klasifikasi `categorize(jenisTransaksi, customerName, sourceFile, shipToSite, billToSite, entity)` WAJIB mengevaluasi strictly sesuai entitas gudangnya (`entity === "MAI"` menggunakan kamus master MAI, dan `entity === "MBI"` menggunakan kamus master MBI).
+   - Klasifikasi 2P/3P pada MAI tidak boleh mempengaruhi MBI, begitu pula sebaliknya.
+
 
 ---
 

@@ -2,9 +2,12 @@ import * as XLSX from "xlsx";
 import { FakturRecord } from "./types";
 import masterApotek from "./masterApotek.json";
 import master2P from "./master2P.json";
+import masterApotekMAI from "./masterApotek_MAI.json";
+import master2P_MAI from "./master2P_MAI.json";
 import masterProduct from "./masterProduct.json";
 
 const apotekMap = masterApotek as Record<string, string>;
+const apotekMapMAI = masterApotekMAI as Record<string, string>;
 
 export function normalize(s: string): string {
   return String(s || "")
@@ -18,7 +21,12 @@ for (const [k, v] of Object.entries(apotekMap)) {
   normMap[normalize(k)] = v;
 }
 
-// 2P lookup structures
+const normMapMAI: Record<string, string> = {};
+for (const [k, v] of Object.entries(apotekMapMAI)) {
+  normMapMAI[normalize(k)] = v;
+}
+
+// 2P lookup structures (MBI)
 const master2PCodeMap = new Set<string>();
 const master2PNameSet = new Set<string>();
 
@@ -26,6 +34,12 @@ master2P.forEach((item) => {
   if (item.codeNum) master2PCodeMap.add(item.codeNum);
   if (item.namaApotekMBI) master2PNameSet.add(normalize(item.namaApotekMBI));
   if (item.namaMerchant) master2PNameSet.add(normalize(item.namaMerchant));
+});
+
+// 2P lookup structures (MAI)
+const master2PNameSetMAI = new Set<string>();
+(master2P_MAI as Array<{ namaApotek?: string }>).forEach((item) => {
+  if (item.namaApotek) master2PNameSetMAI.add(normalize(item.namaApotek));
 });
 
 // Product Category lookup structures (FARMA / ALKES / CCP / PREKURSOR / OOT)
@@ -267,21 +281,27 @@ export function isOraCustomer(customerName?: string): boolean {
 /**
  * ATURAN BAKU KATEGORI PRIORITAS (LOCKED):
  * - 1P: PT Helios (ORA) + Apotek Prioritas 1 DOO (Medika Prima, SBS, Pasti Hemat, Halomedika, Medika Akses).
- * - 2P: Apotek Prioritas 2 (dicek via master 2P).
+ * - 2P: Apotek Prioritas 2 (dicek via master 2P MBI vs MAI terpisah).
  * - 3P: Apotek Reguler lainnya.
+ * 
+ * Strict Warehouse Separation (LOCKED_RULES.md 1.M):
+ * - Jika entity === "MAI": dievaluasi strictly menggunakan Master Apotek MAI.
+ * - Jika entity === "MBI" (default): dievaluasi strictly menggunakan Master Apotek MBI.
  */
 export function categorize(
   jenisTransaksi: string,
   customerName: string,
   sourceFile?: string,
   shipToSite?: string,
-  billToSite?: string
+  billToSite?: string,
+  entity?: "MBI" | "MAI"
 ): "1P" | "2P" | "3P" {
   const cust = String(customerName || "").trim();
   const upper = cust.toUpperCase();
   const rawJenis = String(jenisTransaksi || "").toUpperCase();
   const rawSource = String(sourceFile || "").toUpperCase();
 
+  // 1P: Konsorsium Helios/ORA + Pelanggan DOO 1P Prioritas
   if (
     rawSource.includes("ORA") ||
     rawJenis === "ORA" ||
@@ -299,6 +319,22 @@ export function categorize(
     return "1P";
   }
 
+  const normCust = normalize(cust);
+
+  // === MAI WAREHOUSE ISOLATION ===
+  if (entity === "MAI") {
+    const exactMAI = apotekMapMAI[cust.toLowerCase()];
+    if (exactMAI === "1P" || exactMAI === "2P" || exactMAI === "3P") return exactMAI as "1P" | "2P" | "3P";
+
+    const normMAI = normMapMAI[normCust];
+    if (normMAI === "1P" || normMAI === "2P" || normMAI === "3P") return normMAI as "1P" | "2P" | "3P";
+
+    if (master2PNameSetMAI.has(normCust)) return "2P";
+
+    return "3P";
+  }
+
+  // === MBI WAREHOUSE (DEFAULT) ===
   if (shipToSite) {
     const num = String(shipToSite).replace(/[^0-9]/g, "").replace(/^0+/, "");
     if (num && master2PCodeMap.has(num)) return "2P";
@@ -309,7 +345,6 @@ export function categorize(
     if (num && master2PCodeMap.has(num)) return "2P";
   }
 
-  const normCust = normalize(cust);
   if (master2PNameSet.has(normCust)) return "2P";
 
   const exact = apotekMap[cust.toLowerCase()];
@@ -564,10 +599,6 @@ function parseXXCUST(
       customerCode = lastCustomerCode;
     }
 
-    const isOra = isOraCustomer(customerName) || isOraCustomer(customerCode) || customerCode === "CA-900001";
-    const jenisTransaksi: "ORA" | "DOO" = isOra ? "ORA" : "DOO";
-    const kategori = categorize(jenisTransaksi, customerName, jenisTransaksi);
-
     const rawEntity = (val(idx.entity) || val(idx.businessUnit) || fileEntity || "").toUpperCase();
     let rowEntity: "MAI" | "MBI" = "MBI";
     if (rawEntity.includes("MAI")) {
@@ -575,6 +606,10 @@ function parseXXCUST(
     } else if (rawEntity.includes("MBI")) {
       rowEntity = "MBI";
     }
+
+    const isOra = isOraCustomer(customerName) || isOraCustomer(customerCode) || customerCode === "CA-900001";
+    const jenisTransaksi: "ORA" | "DOO" = isOra ? "ORA" : "DOO";
+    const kategori = categorize(jenisTransaksi, customerName, jenisTransaksi, undefined, undefined, rowEntity);
 
     const cleanInv = invoiceNumber.replace(/-1P$/i, "");
     const baseKey = isOra ? `${cleanInv}-1P` : cleanInv;
@@ -780,7 +815,7 @@ function parseHTMLTable(html: string): FakturRecord[] {
     const shipSite = colMap["shipSite"] !== undefined ? texts[colMap["shipSite"]] : "";
     const billSite = colMap["billSite"] !== undefined ? texts[colMap["billSite"]] : "";
 
-    const kategori = isOra ? "1P" : categorize(jenisTransaksi, customerName, jenisTransaksi, shipSite, billSite);
+    const kategori = isOra ? "1P" : categorize(jenisTransaksi, customerName, jenisTransaksi, shipSite, billSite, htmlEntity);
     const finalInv = invVal || soVal;
     const cleanInv = finalInv.replace(/-1P$/i, "");
     const invoiceKey = isOra ? `${cleanInv}-1P` : cleanInv;
@@ -886,7 +921,7 @@ function parseExportArray(data: unknown[][], headerIdx: number): FakturRecord[] 
     const shipSite = String((colMap["shipSite"] !== undefined ? row[colMap["shipSite"]] : "") || "");
     const billSite = String((colMap["billSite"] !== undefined ? row[colMap["billSite"]] : "") || "");
 
-    const kategori = isOra ? "1P" : categorize(jenisTransaksi, customerName, jenisTransaksi, shipSite, billSite);
+    const kategori = isOra ? "1P" : categorize(jenisTransaksi, customerName, jenisTransaksi, shipSite, billSite, fileEntity);
     const finalInv = invVal || soVal;
     const cleanInv = finalInv.replace(/-1P$/i, "");
     const baseKey = isOra ? `${cleanInv}-1P` : cleanInv;
