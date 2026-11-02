@@ -317,6 +317,7 @@ export default function Home() {
   const [dashboardDateBasis, setDashboardDateBasis] = useState<"tx" | "order">("tx");
   const [dashboardStartDate, setDashboardStartDate] = useState<string>("");
   const [dashboardEndDate, setDashboardEndDate] = useState<string>("");
+  const [dashboardWarehouseFilter, setDashboardWarehouseFilter] = useState<"ALL" | "MBI" | "MAI">("ALL");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [page, setPage] = useState(0);
@@ -1990,26 +1991,65 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     };
   }, [grouped, selectedWarehouse]);
 
-  // 5B. Dashboard Stats (HANYA untuk Halaman Dashboard - Mengikuti rentang tanggal Dashboard)
+  // 5B. Dashboard Stats (HANYA untuk Halaman Dashboard - Mengikuti rentang tanggal Dashboard & Pemisahan MBI / MAI)
   const dashboardStats = useMemo(() => {
-    let belumCount = 0;
-    let sudahCount = 0;
-    let doubleCount = 0;
-    let returCount = 0;
-    let totalNilaiRp = 0;
-    let minDateMs = 0;
-    let maxDateMs = 0;
-    let minDateStr = "";
-    let maxDateStr = "";
-    const soSet = new Set<string>();
-    const katCounts = { "1P": 0, "2P": 0, "3P": 0 };
-    const jenisCounts = { DOO: 0, ORA: 0 };
-    const prodCounts: Record<string, number> = { PREKURSOR: 0, OOT: 0, CCP: 0, ALKES: 0, FARMA: 0 };
-    const custMap = new Map<string, { count: number; totalRp: number }>();
-
     const filterStartMs = dashboardStartDate ? parseDateMs(dashboardStartDate) : 0;
     const effectiveEndStr = dashboardEndDate || dashboardStartDate;
     const filterEndMs = effectiveEndStr ? parseDateMs(effectiveEndStr) + (24 * 60 * 60 * 1000 - 1) : 0;
+
+    const createBucket = () => ({
+      belumCount: 0,
+      sudahCount: 0,
+      doubleCount: 0,
+      returCount: 0,
+      totalNilaiRp: 0,
+      minDateMs: 0,
+      maxDateMs: 0,
+      minDateStr: "",
+      maxDateStr: "",
+      soSet: new Set<string>(),
+      katCounts: { "1P": 0, "2P": 0, "3P": 0 } as Record<"1P" | "2P" | "3P", number>,
+      jenisCounts: { DOO: 0, ORA: 0 } as Record<"DOO" | "ORA", number>,
+      prodCounts: { PREKURSOR: 0, OOT: 0, CCP: 0, ALKES: 0, FARMA: 0 } as Record<string, number>,
+      custMap: new Map<string, { count: number; totalRp: number }>(),
+    });
+
+    const mbiBucket = createBucket();
+    const maiBucket = createBucket();
+    const allBucket = createBucket();
+
+    const addToBucket = (b: ReturnType<typeof createBucket>, g: FakturGroup, d: string | undefined, dMs: number) => {
+      if (g.allPrinted) b.sudahCount++;
+      else b.belumCount++;
+      if (g.isDoubleInv) b.doubleCount++;
+      if (g.isRetur) b.returCount++;
+      if (g.so && g.so !== "-") b.soSet.add(g.so);
+      b.totalNilaiRp += (g.totalHarga || 0);
+
+      if (g.kategori in b.katCounts) b.katCounts[g.kategori as "1P" | "2P" | "3P"]++;
+      if (g.jenisTransaksi in b.jenisCounts) b.jenisCounts[g.jenisTransaksi as "DOO" | "ORA"]++;
+
+      const pKat = (g.kategoriProduk || "FARMA").toUpperCase();
+      if (pKat in b.prodCounts) b.prodCounts[pKat]++;
+      else b.prodCounts.FARMA++;
+
+      const cName = g.customerName || "Tanpa Nama";
+      const existing = b.custMap.get(cName) || { count: 0, totalRp: 0 };
+      existing.count += 1;
+      existing.totalRp += (g.totalHarga || 0);
+      b.custMap.set(cName, existing);
+
+      if (dMs > 0 && d) {
+        if (!b.minDateMs || dMs < b.minDateMs) {
+          b.minDateMs = dMs;
+          b.minDateStr = String(d);
+        }
+        if (!b.maxDateMs || dMs > b.maxDateMs) {
+          b.maxDateMs = dMs;
+          b.maxDateStr = String(d);
+        }
+      }
+    };
 
     for (let i = 0; i < grouped.length; i++) {
       const g = grouped[i];
@@ -2020,60 +2060,49 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       if (filterStartMs > 0 && dMs < filterStartMs) continue;
       if (filterEndMs > 0 && dMs > filterEndMs) continue;
 
-      if (g.allPrinted) sudahCount++;
-      else belumCount++;
-      if (g.isDoubleInv) doubleCount++;
-      if (g.isRetur) returCount++;
-      if (g.so && g.so !== "-") soSet.add(g.so);
-      totalNilaiRp += (g.totalHarga || 0);
-
-      if (g.kategori in katCounts) katCounts[g.kategori as "1P" | "2P" | "3P"]++;
-      if (g.jenisTransaksi in jenisCounts) jenisCounts[g.jenisTransaksi as "DOO" | "ORA"]++;
-
-      const pKat = (g.kategoriProduk || "FARMA").toUpperCase();
-      if (pKat in prodCounts) prodCounts[pKat]++;
-      else prodCounts.FARMA++;
-
-      const cName = g.customerName || "Tanpa Nama";
-      const existing = custMap.get(cName) || { count: 0, totalRp: 0 };
-      existing.count += 1;
-      existing.totalRp += (g.totalHarga || 0);
-      custMap.set(cName, existing);
-
-      if (dMs > 0 && d) {
-        if (!minDateMs || dMs < minDateMs) {
-          minDateMs = dMs;
-          minDateStr = String(d);
-        }
-        if (!maxDateMs || dMs > maxDateMs) {
-          maxDateMs = dMs;
-          maxDateStr = String(d);
-        }
+      addToBucket(allBucket, g, d, dMs);
+      if ((g.entity || "MBI") === "MAI") {
+        addToBucket(maiBucket, g, d, dMs);
+      } else {
+        addToBucket(mbiBucket, g, d, dMs);
       }
     }
 
-    const topCustomers = Array.from(custMap.entries())
-      .map(([name, data]) => ({ name, ...data }))
-      .sort((a, b) => b.totalRp - a.totalRp)
-      .slice(0, 5);
+    const formatBucket = (b: ReturnType<typeof createBucket>) => {
+      const topCustomers = Array.from(b.custMap.entries())
+        .map(([name, data]) => ({ name, ...data }))
+        .sort((a, b) => b.totalRp - a.totalRp)
+        .slice(0, 5);
 
-    const totalActiveCount = belumCount + sudahCount;
+      const totalActiveCount = b.belumCount + b.sudahCount;
+      return {
+        totalSO: b.soSet.size,
+        belumCount: b.belumCount,
+        sudahCount: b.sudahCount,
+        totalCount: totalActiveCount,
+        doubleCount: b.doubleCount,
+        returCount: b.returCount,
+        totalNilaiRp: b.totalNilaiRp,
+        dateRangeStr: b.minDateStr && b.maxDateStr ? (b.minDateStr === b.maxDateStr ? b.minDateStr : `${b.minDateStr} s/d ${b.maxDateStr}`) : "Semua Data",
+        katCounts: b.katCounts,
+        jenisCounts: b.jenisCounts,
+        prodCounts: b.prodCounts,
+        topCustomers,
+      };
+    };
+
+    const mbi = formatBucket(mbiBucket);
+    const mai = formatBucket(maiBucket);
+    const all = formatBucket(allBucket);
+    const active = dashboardWarehouseFilter === "MBI" ? mbi : dashboardWarehouseFilter === "MAI" ? mai : all;
 
     return {
-      totalSO: soSet.size,
-      belumCount,
-      sudahCount,
-      totalCount: totalActiveCount,
-      doubleCount,
-      returCount,
-      totalNilaiRp,
-      dateRangeStr: minDateStr && maxDateStr ? (minDateStr === maxDateStr ? minDateStr : `${minDateStr} s/d ${maxDateStr}`) : "Semua Data",
-      katCounts,
-      jenisCounts,
-      prodCounts,
-      topCustomers,
+      ...active,
+      mbi,
+      mai,
+      all,
     };
-  }, [grouped, dashboardDateBasis, dashboardStartDate, dashboardEndDate]);
+  }, [grouped, dashboardDateBasis, dashboardStartDate, dashboardEndDate, dashboardWarehouseFilter]);
 
   // 6. Filtered Faktur Groups (Instant single-string matching & 0ms numeric sorting)
   const filtered = useMemo(() => {
@@ -3832,15 +3861,18 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               </span>
 
               {/* Warehouse Switcher in Header: ONLY MBI and MAI (LOCKED_RULES.md) */}
-              {mainView === "workspace" && (
+              {(mainView === "workspace" || mainView === "dashboard") && (
                 <div className={`ml-2 sm:ml-4 flex items-center p-0.5 rounded-lg border text-xs font-black shadow-xs ${
                   isDarkMode ? "bg-zinc-950 border-zinc-800" : "bg-zinc-100 border-zinc-300"
                 }`}>
                   <button
                     type="button"
-                    onClick={() => handleSelectWarehouse("MBI")}
+                    onClick={() => {
+                      handleSelectWarehouse("MBI");
+                      if (mainView === "dashboard") setDashboardWarehouseFilter("MBI");
+                    }}
                     className={`px-3 py-1 rounded-md text-xs font-black tracking-wide transition-all cursor-pointer ${
-                      selectedWarehouse === "MBI"
+                      (mainView === "dashboard" ? dashboardWarehouseFilter === "MBI" : selectedWarehouse === "MBI")
                         ? (isDarkMode ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-400/50" : "bg-black text-white shadow-sm")
                         : (isDarkMode ? "text-zinc-400 hover:text-white" : "text-zinc-600 hover:text-black")
                     }`}
@@ -3850,9 +3882,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleSelectWarehouse("MAI")}
+                    onClick={() => {
+                      handleSelectWarehouse("MAI");
+                      if (mainView === "dashboard") setDashboardWarehouseFilter("MAI");
+                    }}
                     className={`px-3 py-1 rounded-md text-xs font-black tracking-wide transition-all cursor-pointer ${
-                      selectedWarehouse === "MAI"
+                      (mainView === "dashboard" ? dashboardWarehouseFilter === "MAI" : selectedWarehouse === "MAI")
                         ? (isDarkMode ? "bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400/50" : "bg-black text-white shadow-sm")
                         : (isDarkMode ? "text-zinc-400 hover:text-white" : "text-zinc-600 hover:text-black")
                     }`}
@@ -4207,11 +4242,53 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 : "bg-white border-slate-200 text-slate-900"
             }`}>
               <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xl">📊</span>
                   <span className="font-black text-sm tracking-wide text-slate-600 dark:text-slate-300">
                     PRATINJAU DATA TERPILIH:
                   </span>
+
+                  {/* Switcher Filter Entitas Gudang (MBI / MAI / ALL) */}
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold ml-0 sm:ml-2">
+                    <button
+                      type="button"
+                      onClick={() => setDashboardWarehouseFilter("ALL")}
+                      className={`px-2.5 py-1 rounded transition-all cursor-pointer ${
+                        dashboardWarehouseFilter === "ALL"
+                          ? (isDarkMode ? "bg-white text-black shadow-sm font-black" : "bg-black text-white shadow-sm font-black")
+                          : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-black")
+                      }`}
+                      title="Tampilkan data gabungan MBI & MAI"
+                    >
+                      Semua
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDashboardWarehouseFilter("MBI")}
+                      className={`px-2.5 py-1 rounded transition-all cursor-pointer flex items-center gap-1.5 ${
+                        dashboardWarehouseFilter === "MBI"
+                          ? "bg-blue-600 text-white shadow-sm font-black ring-1 ring-blue-400/50"
+                          : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-black")
+                      }`}
+                      title="Filter hanya data PT Medika Bina Investama (MBI)"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
+                      <span>Gudang MBI</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDashboardWarehouseFilter("MAI")}
+                      className={`px-2.5 py-1 rounded transition-all cursor-pointer flex items-center gap-1.5 ${
+                        dashboardWarehouseFilter === "MAI"
+                          ? "bg-emerald-600 text-white shadow-sm font-black ring-1 ring-emerald-400/50"
+                          : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-black")
+                      }`}
+                      title="Filter hanya data PT Medika Akses Investama (MAI)"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+                      <span>Gudang MAI</span>
+                    </button>
+                  </div>
                 </div>
                 
                 {/* DATE RANGE FILTER CONTROLS */}
@@ -4333,14 +4410,128 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 </div>
               </div>
 
+              {/* KOMPARASI DATA FAKTUR: PT MBI VS PT MAI (Pemisahan Eksplisit) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                {/* Kartu Gudang MBI */}
+                <div
+                  onClick={() => setDashboardWarehouseFilter(dashboardWarehouseFilter === "MBI" ? "ALL" : "MBI")}
+                  className={`p-4 rounded-xl border transition-all cursor-pointer ${
+                    dashboardWarehouseFilter === "MBI"
+                      ? "ring-2 ring-blue-500 border-blue-500 bg-blue-950/20 shadow-md"
+                      : isDarkMode
+                      ? "bg-[#090d18] border-slate-800 hover:border-slate-700"
+                      : "bg-slate-50 border-slate-200 hover:border-slate-300"
+                  }`}
+                  title="Klik untuk memfilter tampilan hanya MBI (klik lagi untuk kembali ke Semua)"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                      <span className="font-black text-xs sm:text-sm tracking-wide text-blue-600 dark:text-blue-400 uppercase">
+                        🏢 PT MEDIKA BINA INVESTAMA (MBI)
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/15 text-blue-500 border border-blue-500/30">
+                      {dashboardStats.all.totalCount > 0 ? Math.round((dashboardStats.mbi.totalCount / dashboardStats.all.totalCount) * 100) : 0}% Porsi Faktur
+                    </span>
+                  </div>
+
+                  <div className="text-xl sm:text-2xl font-black font-mono text-slate-900 dark:text-white mt-2">
+                    RP {Math.round(dashboardStats.mbi.totalNilaiRp).toLocaleString("id-ID")}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-slate-200 dark:border-slate-800 text-center">
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-semibold uppercase">Total SO</div>
+                      <div className="text-sm sm:text-base font-black font-mono mt-0.5 text-blue-600 dark:text-blue-400">
+                        {dashboardStats.mbi.totalSO}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-semibold uppercase">Lembar Faktur</div>
+                      <div className="text-sm sm:text-base font-black font-mono mt-0.5 text-indigo-600 dark:text-indigo-400">
+                        {dashboardStats.mbi.totalCount}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-semibold uppercase">Cetak (B/S)</div>
+                      <div className="text-xs sm:text-sm font-mono font-bold mt-0.5">
+                        <span className="text-amber-500" title="Belum Cetak">{dashboardStats.mbi.belumCount}</span> / <span className="text-emerald-500" title="Sudah Dicetak">{dashboardStats.mbi.sudahCount}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Kartu Gudang MAI */}
+                <div
+                  onClick={() => setDashboardWarehouseFilter(dashboardWarehouseFilter === "MAI" ? "ALL" : "MAI")}
+                  className={`p-4 rounded-xl border transition-all cursor-pointer ${
+                    dashboardWarehouseFilter === "MAI"
+                      ? "ring-2 ring-emerald-500 border-emerald-500 bg-emerald-950/20 shadow-md"
+                      : isDarkMode
+                      ? "bg-[#090d18] border-slate-800 hover:border-slate-700"
+                      : "bg-slate-50 border-slate-200 hover:border-slate-300"
+                  }`}
+                  title="Klik untuk memfilter tampilan hanya MAI (klik lagi untuk kembali ke Semua)"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="font-black text-xs sm:text-sm tracking-wide text-emerald-600 dark:text-emerald-400 uppercase">
+                        🏢 PT MEDIKA AKSES INVESTAMA (MAI)
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
+                      {dashboardStats.all.totalCount > 0 ? Math.round((dashboardStats.mai.totalCount / dashboardStats.all.totalCount) * 100) : 0}% Porsi Faktur
+                    </span>
+                  </div>
+
+                  <div className="text-xl sm:text-2xl font-black font-mono text-slate-900 dark:text-white mt-2">
+                    RP {Math.round(dashboardStats.mai.totalNilaiRp).toLocaleString("id-ID")}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-slate-200 dark:border-slate-800 text-center">
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-semibold uppercase">Total SO</div>
+                      <div className="text-sm sm:text-base font-black font-mono mt-0.5 text-emerald-600 dark:text-emerald-400">
+                        {dashboardStats.mai.totalSO}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-semibold uppercase">Lembar Faktur</div>
+                      <div className="text-sm sm:text-base font-black font-mono mt-0.5 text-teal-600 dark:text-teal-400">
+                        {dashboardStats.mai.totalCount}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-semibold uppercase">Cetak (B/S)</div>
+                      <div className="text-xs sm:text-sm font-mono font-bold mt-0.5">
+                        <span className="text-amber-500" title="Belum Cetak">{dashboardStats.mai.belumCount}</span> / <span className="text-emerald-500" title="Sudah Dicetak">{dashboardStats.mai.sudahCount}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Notice Banner */}
-              <div className={`mt-4 p-3 rounded-xl border text-xs flex items-center gap-2.5 ${
+              <div className={`mt-4 p-3 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-2.5 ${
                 isDarkMode ? "bg-[#090d18] border-slate-800 text-slate-300" : "bg-blue-50/60 border-blue-200 text-slate-800"
               }`}>
-                <span className="text-base">💡</span>
-                <span>
-                  Menarik <strong>{dashboardStats.totalCount} faktur</strong> yang diterbitkan pada rentang <strong>{dashboardStats.dateRangeStr}</strong> (mencakup <strong>{dashboardStats.totalSO} SO</strong>).
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-base">💡</span>
+                  <span>
+                    Menampilkan data <strong>{dashboardWarehouseFilter === "MBI" ? "PT Medika Bina Investama (MBI)" : dashboardWarehouseFilter === "MAI" ? "PT Medika Akses Investama (MAI)" : "Semua Gudang (MBI & MAI)"}</strong>: <strong>{dashboardStats.totalCount} faktur</strong> ({dashboardStats.totalSO} SO) pada rentang <strong>{dashboardStats.dateRangeStr}</strong>.
+                  </span>
+                </div>
+                {dashboardWarehouseFilter !== "ALL" && (
+                  <button
+                    type="button"
+                    onClick={() => setDashboardWarehouseFilter("ALL")}
+                    className="underline font-bold text-blue-500 hover:text-blue-400 cursor-pointer"
+                  >
+                    Kembali ke Semua (MBI + MAI)
+                  </button>
+                )}
               </div>
             </div>
 
