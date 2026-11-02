@@ -120,6 +120,17 @@ function parseDateMs(dStr: string): number {
   return isNaN(t) ? 0 : t;
 }
 
+const printDateCache = new Map<string, number>();
+function getCachedDateMs(dStr: string): number {
+  if (!dStr || dStr === "-") return 0;
+  let cached = printDateCache.get(dStr);
+  if (cached === undefined) {
+    cached = parseDateMs(dStr);
+    printDateCache.set(dStr, cached);
+  }
+  return cached;
+}
+
 function formatRupiah(n: number): string {
   if (typeof n !== "number" || isNaN(n)) return "0";
   return new Intl.NumberFormat("id-ID", {
@@ -782,7 +793,7 @@ export default function Home() {
       selectedWarehouseRef.current === "MAI";
 
     const targetMap = isMai ? checkerMapMaiRef.current : checkerMapMbiRef.current;
-    if (!targetMap || Object.keys(targetMap).length === 0) return null;
+    if (!targetMap) return null;
 
     const rawCandidates: string[] = [];
     if (so) rawCandidates.push(String(so).trim());
@@ -979,6 +990,7 @@ export default function Home() {
       localStorage.setItem("faktur_selected_warehouse", wh);
     }
     setPage(0);
+    setSelectedRowIndex(0);
   }, []);
 
   useEffect(() => {
@@ -2082,7 +2094,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         allPrinted: isPrinted,
         printedAt: pAt,
         printedBy: isPrinted ? (printedByMap[g.key] || null) : null,
-        printTimeMs: pAt ? parseDateMs(pAt) : 0,
+        printTimeMs: pAt ? getCachedDateMs(pAt) : 0,
       };
     });
   }, [baseGroups, printedInvoices, printedAtMap, printedByMap]);
@@ -2122,6 +2134,28 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
   // 5B. Dashboard Stats (HANYA untuk Halaman Dashboard - Mengikuti rentang tanggal Dashboard & Pemisahan MBI / MAI)
   const dashboardStats = useMemo(() => {
+    if (mainView !== "dashboard") {
+      const emptySub = {
+        totalSO: 0,
+        belumCount: 0,
+        sudahCount: 0,
+        totalCount: 0,
+        doubleCount: 0,
+        returCount: 0,
+        totalNilaiRp: 0,
+        dateRangeStr: "-",
+        katCounts: { "1P": 0, "2P": 0, "3P": 0, "DK": 0, "LK": 0 },
+        jenisCounts: { DOO: 0, ORA: 0 } as Record<"DOO" | "ORA", number>,
+        prodCounts: { PREKURSOR: 0, OOT: 0, CCP: 0, ALKES: 0, FARMA: 0 } as Record<string, number>,
+        topCustomers: [] as Array<{ name: string; count: number; totalRp: number }>,
+      };
+      return {
+        ...emptySub,
+        mbi: emptySub,
+        mai: emptySub,
+        all: emptySub,
+      };
+    }
     const filterStartMs = dashboardStartDate ? parseDateMs(dashboardStartDate) : 0;
     const effectiveEndStr = dashboardEndDate || dashboardStartDate;
     const filterEndMs = effectiveEndStr ? parseDateMs(effectiveEndStr) + (24 * 60 * 60 * 1000 - 1) : 0;
@@ -2235,7 +2269,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       mai,
       all,
     };
-  }, [grouped, dashboardDateBasis, dashboardStartDate, dashboardEndDate, dashboardWarehouseFilter]);
+  }, [mainView, grouped, dashboardDateBasis, dashboardStartDate, dashboardEndDate, dashboardWarehouseFilter]);
 
   // 6. Filtered Faktur Groups (Instant single-string matching & 0ms numeric sorting)
   const filtered = useMemo(() => {
@@ -2492,15 +2526,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         return;
       }
 
-      // Arrow Navigation (Smooth scroll into view)
+      // Arrow Navigation (Instant & smooth scroll into view)
       if (e.key === "ArrowDown" || e.key === "j") {
         e.preventDefault();
         setSelectedRowIndex((prev) => {
           const next = Math.min(maxRow, prev + 1);
-          requestAnimationFrame(() => {
-            const el = document.getElementById(`faktur-row-${next}`);
-            el?.scrollIntoView({ block: "nearest", behavior: "auto" });
-          });
+          const el = document.getElementById(`faktur-row-${next}`);
+          if (el) el.scrollIntoView({ block: "nearest", behavior: "auto" });
           return next;
         });
         return;
@@ -2509,10 +2541,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         e.preventDefault();
         setSelectedRowIndex((prev) => {
           const next = Math.max(0, prev - 1);
-          requestAnimationFrame(() => {
-            const el = document.getElementById(`faktur-row-${next}`);
-            el?.scrollIntoView({ block: "nearest", behavior: "auto" });
-          });
+          const el = document.getElementById(`faktur-row-${next}`);
+          if (el) el.scrollIntoView({ block: "nearest", behavior: "auto" });
           return next;
         });
         return;
