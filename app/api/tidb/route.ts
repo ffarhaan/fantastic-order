@@ -373,9 +373,12 @@ export async function GET(req: Request) {
 
     // ==========================================
     // CHECKERS, PACKERS & PICKERS MAPPING (SO -> Checker, Packer, Picker)
+    // Multi-Warehouse Support: MBI -> so_checkers, MAI -> so_checkers_mai
     // ==========================================
     if (action === "get_checkers") {
-      const rows = (await conn.execute("SELECT so_number, checker_name, packer_name, picker_name FROM so_checkers")) as Array<{
+      const warehouse = (searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
+      const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
+      const rows = (await conn.execute(`SELECT so_number, checker_name, packer_name, picker_name FROM ${tableName}`)) as Array<{
         so_number: string;
         checker_name: string;
         packer_name: string;
@@ -1489,6 +1492,10 @@ export async function POST(req: Request) {
         validRows.push([so, checker || "-", packer || null, picker || null]);
       }
 
+      const warehouse = (searchParams.get("warehouse") || body?.warehouse || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
+      const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
+      const recentDocId = warehouse === "MAI" ? "so_checkers_recent_mai" : "so_checkers_recent";
+
       // High-speed Batch Upsert in chunks of 100
       let updatedCount = 0;
       const CHUNK_SIZE = 100;
@@ -1498,7 +1505,7 @@ export async function POST(req: Request) {
         const flatParams = chunk.flat();
 
         await conn.execute(
-          `INSERT INTO so_checkers (so_number, checker_name, packer_name, picker_name)
+          `INSERT INTO ${tableName} (so_number, checker_name, packer_name, picker_name)
            VALUES ${placeholders}
            ON DUPLICATE KEY UPDATE 
              checker_name = VALUES(checker_name),
@@ -1509,7 +1516,7 @@ export async function POST(req: Request) {
         updatedCount += chunk.length;
       }
 
-      // Also propagate to Firestore app_data/so_checkers_recent for instant real-time WebSocket updates (<100ms)
+      // Also propagate to Firestore (so_checkers_recent for MBI, so_checkers_recent_mai for MAI) for instant real-time WebSocket updates (<100ms)
       const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
       const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "fantastic-order";
       if (apiKey && projectId && validRows.length > 0) {
@@ -1521,7 +1528,7 @@ export async function POST(req: Request) {
             recentMap[row[0]] = { c: row[1], p: row[2] || "", k: row[3] || "" };
           }
           await fetch(
-            `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/app_data/so_checkers_recent?key=${apiKey}&updateMask.fieldPaths=data&updateMask.fieldPaths=updatedAt`,
+            `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/app_data/${recentDocId}?key=${apiKey}&updateMask.fieldPaths=data&updateMask.fieldPaths=updatedAt`,
             {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
@@ -1532,13 +1539,13 @@ export async function POST(req: Request) {
                 },
               }),
             }
-          ).catch((e) => console.warn("[Sync Checkers] Firestore patch failed:", e));
+          ).catch((e) => console.warn(`[Sync Checkers ${warehouse}] Firestore patch failed:`, e));
         } catch (e) {
-          console.warn("[Sync Checkers] Firestore sync warning:", e);
+          console.warn(`[Sync Checkers ${warehouse}] Firestore sync warning:`, e);
         }
       }
 
-      return Response.json({ success: true, count: updatedCount });
+      return Response.json({ success: true, count: updatedCount, warehouse });
     }
 
     // 0.1. Sync shipment errors from Google Sheets (Bulk sync / Sheet sync)

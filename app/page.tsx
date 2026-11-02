@@ -737,19 +737,21 @@ export default function Home() {
   const printedInvoicesRef = useRef<Set<string>>(new Set());
   const printedAtMapRef = useRef<Record<string, string>>({});
   const printedByMapRef = useRef<Record<string, string>>({});
-  const [checkerMap, setCheckerMap] = useState<Record<string, { checker: string; packer: string; picker?: string }>>({});
-  const checkerMapRef = useRef<Record<string, { checker: string; packer: string; picker?: string }>>({});
+  const [checkerMapMbi, setCheckerMapMbi] = useState<Record<string, { checker: string; packer: string; picker?: string }>>({});
+  const checkerMapMbiRef = useRef<Record<string, { checker: string; packer: string; picker?: string }>>({});
+  const [checkerMapMai, setCheckerMapMai] = useState<Record<string, { checker: string; packer: string; picker?: string }>>({});
+  const checkerMapMaiRef = useRef<Record<string, { checker: string; packer: string; picker?: string }>>({});
 
   const getCheckerInfo = useCallback((so?: string, invoiceNo?: string | string[], invoiceKey?: string, entity?: string) => {
     // STRICT MULTI-WAREHOUSE ISOLATION (LOCKED_RULES.md Section 1.M & 6):
-    // Integrasi Google Sheet REPORT QC 2 adalah data tim Gudang MBI.
-    // Gudang MAI wajib kosong (-) dan DILARANG KERAS dicocokkan dengan data checker/packer/picker MBI!
+    // Gudang MBI dan Gudang MAI memiliki tim QC dan Google Sheet terpisah 100%!
     const isMai =
       entity === "MAI" ||
       (invoiceKey && String(invoiceKey).startsWith("MAI-")) ||
       selectedWarehouseRef.current === "MAI";
 
-    if (isMai) return null;
+    const targetMap = isMai ? checkerMapMaiRef.current : checkerMapMbiRef.current;
+    if (!targetMap || Object.keys(targetMap).length === 0) return null;
 
     const rawCandidates: string[] = [];
     if (so) rawCandidates.push(String(so).trim());
@@ -760,7 +762,10 @@ export default function Home() {
         rawCandidates.push(String(invoiceNo).trim());
       }
     }
-    if (invoiceKey) rawCandidates.push(String(invoiceKey).trim());
+    if (invoiceKey) {
+      const cleanKey = isMai ? String(invoiceKey).replace(/^MAI-/i, "").trim() : String(invoiceKey).trim();
+      rawCandidates.push(cleanKey);
+    }
 
     if (rawCandidates.length === 0) return null;
 
@@ -772,7 +777,7 @@ export default function Home() {
       const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 
       // 1. Direct match
-      entry = checkerMap[raw] || checkerMap[noSpace] || checkerMap[alpha];
+      entry = targetMap[raw] || targetMap[noSpace] || targetMap[alpha];
       if (entry) break;
 
       // 2. 0 <-> O variations (handling '0Y99DY-3580' vs 'OY99DY-3580')
@@ -781,8 +786,8 @@ export default function Home() {
       const oVarAll1 = raw.replace(/0/g, "O");
       const oVarAll2 = raw.replace(/O/gi, "0");
 
-      entry = checkerMap[oVar1] || checkerMap[oVar2] || checkerMap[oVarAll1] || checkerMap[oVarAll2] ||
-              checkerMap[oVar1.replace(/\s+/g, "")] || checkerMap[oVar2.replace(/\s+/g, "")];
+      entry = targetMap[oVar1] || targetMap[oVar2] || targetMap[oVarAll1] || targetMap[oVarAll2] ||
+              targetMap[oVar1.replace(/\s+/g, "")] || targetMap[oVar2.replace(/\s+/g, "")];
       if (entry) break;
 
       // 3. Suffix matching (e.g. "OY99DY-3580" or "3LORXL-0740" -> "3580", "0740", "740")
@@ -791,7 +796,7 @@ export default function Home() {
         const suffix = parts[parts.length - 1]?.trim();
         if (suffix) {
           const strippedSuffix = suffix.replace(/^0+/, "");
-          entry = checkerMap[suffix] || (strippedSuffix ? checkerMap[strippedSuffix] : null);
+          entry = targetMap[suffix] || (strippedSuffix ? targetMap[strippedSuffix] : null);
           if (entry) break;
         }
       }
@@ -824,12 +829,11 @@ export default function Home() {
       packer: p,
       picker: k,
     };
-  }, [checkerMap]);
+  }, [checkerMapMbi, checkerMapMai]);
 
   // Real-time direct Firebase Firestore subscription (0 byte on Vercel, <100ms sync)
   useEffect(() => {
-    // Immediate wipe of poisoned cache from user browser
-    // 1. Initial quick load from localStorage for 0ms startup
+    // 1. MBI Checkers Subscription
     if (typeof window !== "undefined") {
       try {
         const cached = localStorage.getItem("fantastic_so_checkers_cache");
@@ -839,22 +843,20 @@ export default function Home() {
       } catch {}
     }
 
-    // 2. Real-time WebSocket listener from Firebase (0 Byte on Vercel Origin!)
-    const unsub = subscribeToCheckers((map) => {
-      setCheckerMap((prev) => ({ ...prev, ...map }));
-      checkerMapRef.current = { ...checkerMapRef.current, ...map };
-    });
+    const unsubMbi = subscribeToCheckers((map) => {
+      setCheckerMapMbi((prev) => ({ ...prev, ...map }));
+      checkerMapMbiRef.current = { ...checkerMapMbiRef.current, ...map };
+    }, "MBI");
 
-    // 3. ZERO-ORIGIN-DRAIN: Only fetch from TiDB if browser cache is completely empty on very first visit!
     try {
-      const hasLocalCheckers = typeof window !== "undefined" && Boolean(localStorage.getItem("fantastic_so_checkers_cache"));
-      if (!hasLocalCheckers) {
-        fetch("/api/tidb?action=get_checkers")
+      const hasLocalMbi = typeof window !== "undefined" && Boolean(localStorage.getItem("fantastic_so_checkers_cache"));
+      if (!hasLocalMbi) {
+        fetch("/api/tidb?action=get_checkers&warehouse=MBI")
           .then((r) => r.json())
           .then((d) => {
             if (d.success && d.data) {
-              setCheckerMap((prev) => ({ ...prev, ...d.data }));
-              checkerMapRef.current = { ...checkerMapRef.current, ...d.data };
+              setCheckerMapMbi((prev) => ({ ...prev, ...d.data }));
+              checkerMapMbiRef.current = { ...checkerMapMbiRef.current, ...d.data };
               try {
                 localStorage.setItem("fantastic_so_checkers_cache", JSON.stringify(d.data));
               } catch {}
@@ -864,8 +866,42 @@ export default function Home() {
       }
     } catch {}
 
+    // 2. MAI Checkers Subscription
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("fantastic_so_checkers_cache_mai");
+        if (cached && (cached.includes("Apotek") || cached.includes("00:00:00") || cached.includes("GMT"))) {
+          localStorage.removeItem("fantastic_so_checkers_cache_mai");
+        }
+      } catch {}
+    }
+
+    const unsubMai = subscribeToCheckers((map) => {
+      setCheckerMapMai((prev) => ({ ...prev, ...map }));
+      checkerMapMaiRef.current = { ...checkerMapMaiRef.current, ...map };
+    }, "MAI");
+
+    try {
+      const hasLocalMai = typeof window !== "undefined" && Boolean(localStorage.getItem("fantastic_so_checkers_cache_mai"));
+      if (!hasLocalMai) {
+        fetch("/api/tidb?action=get_checkers&warehouse=MAI")
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success && d.data) {
+              setCheckerMapMai((prev) => ({ ...prev, ...d.data }));
+              checkerMapMaiRef.current = { ...checkerMapMaiRef.current, ...d.data };
+              try {
+                localStorage.setItem("fantastic_so_checkers_cache_mai", JSON.stringify(d.data));
+              } catch {}
+            }
+          })
+          .catch(() => {});
+      }
+    } catch {}
+
     return () => {
-      unsub();
+      unsubMbi();
+      unsubMai();
     };
   }, []);
   const invoiceProgressionRef = useRef<InvoiceProgression | null>(null);

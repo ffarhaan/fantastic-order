@@ -2125,17 +2125,23 @@ const SO_CHECKERS_RECENT_DOC = "so_checkers_recent";
  * 0 byte consumed on Vercel, real-time WebSocket sync (<100ms)
  */
 export function subscribeToCheckers(
-  onUpdate: (map: Record<string, { checker: string; packer: string; picker: string }>) => void
+  onUpdate: (map: Record<string, { checker: string; packer: string; picker: string }>) => void,
+  warehouse: "MBI" | "MAI" = "MBI"
 ): () => void {
+  const isMai = warehouse === "MAI";
+  const masterDocName = isMai ? "so_checkers_mai" : SO_CHECKERS_DOC;
+  const recentDocName = isMai ? "so_checkers_recent_mai" : SO_CHECKERS_RECENT_DOC;
+  const cacheKey = isMai ? "fantastic_so_checkers_cache_mai" : "fantastic_so_checkers_cache";
+
   let inMemoryMap: Record<string, { checker: string; packer: string; picker: string }> = {};
 
   // 1. Initial quick load from localStorage for 0ms startup
   if (typeof window !== "undefined") {
     try {
-      const cached = localStorage.getItem("fantastic_so_checkers_cache");
+      const cached = localStorage.getItem(cacheKey);
       if (cached) {
         if (cached.includes("Apotek") || cached.includes("00:00:00") || cached.includes("GMT")) {
-          localStorage.removeItem("fantastic_so_checkers_cache");
+          localStorage.removeItem(cacheKey);
         } else {
           inMemoryMap = JSON.parse(cached);
           onUpdate(inMemoryMap);
@@ -2189,15 +2195,15 @@ export function subscribeToCheckers(
       onUpdate({ ...inMemoryMap });
       if (typeof window !== "undefined") {
         try {
-          localStorage.setItem("fantastic_so_checkers_cache", JSON.stringify(inMemoryMap));
+          localStorage.setItem(cacheKey, JSON.stringify(inMemoryMap));
         } catch {}
       }
     }
   };
 
-  // 2. Realtime listener to master document (app_data/so_checkers)
+  // 2. Realtime listener to master document (app_data/so_checkers or app_data/so_checkers_mai)
   const unsubMaster = onSnapshot(
-    doc(db, APP_DATA_COLLECTION, SO_CHECKERS_DOC),
+    doc(db, APP_DATA_COLLECTION, masterDocName),
     (snap) => {
       if (snap.exists()) {
         const rawData = snap.data()?.data;
@@ -2211,12 +2217,12 @@ export function subscribeToCheckers(
         }
       }
     },
-    (err) => console.warn("Firestore so_checkers sync warning:", err)
+    (err) => console.warn(`Firestore ${masterDocName} sync warning:`, err)
   );
 
-  // 3. Realtime listener to recent edits from Google Sheets (app_data/so_checkers_recent)
+  // 3. Realtime listener to recent edits from Google Sheets (app_data/so_checkers_recent or app_data/so_checkers_recent_mai)
   const unsubRecent = onSnapshot(
-    doc(db, APP_DATA_COLLECTION, SO_CHECKERS_RECENT_DOC),
+    doc(db, APP_DATA_COLLECTION, recentDocName),
     (snap) => {
       if (snap.exists()) {
         const rawData = snap.data()?.data;
@@ -2230,7 +2236,7 @@ export function subscribeToCheckers(
         }
       }
     },
-    (err) => console.warn("Firestore so_checkers_recent sync warning:", err)
+    (err) => console.warn(`Firestore ${recentDocName} sync warning:`, err)
   );
 
   return () => {
