@@ -728,7 +728,17 @@ export default function Home() {
   const [checkerMap, setCheckerMap] = useState<Record<string, { checker: string; packer: string; picker?: string }>>({});
   const checkerMapRef = useRef<Record<string, { checker: string; packer: string; picker?: string }>>({});
 
-  const getCheckerInfo = useCallback((so?: string, invoiceNo?: string | string[], invoiceKey?: string) => {
+  const getCheckerInfo = useCallback((so?: string, invoiceNo?: string | string[], invoiceKey?: string, entity?: string) => {
+    // STRICT MULTI-WAREHOUSE ISOLATION (LOCKED_RULES.md Section 1.M & 6):
+    // Integrasi Google Sheet REPORT QC 2 adalah data tim Gudang MBI.
+    // Gudang MAI wajib kosong (-) dan DILARANG KERAS dicocokkan dengan data checker/packer/picker MBI!
+    const isMai =
+      entity === "MAI" ||
+      (invoiceKey && String(invoiceKey).startsWith("MAI-")) ||
+      selectedWarehouseRef.current === "MAI";
+
+    if (isMai) return null;
+
     const rawCandidates: string[] = [];
     if (so) rawCandidates.push(String(so).trim());
     if (invoiceNo) {
@@ -2402,13 +2412,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             textToCopy = currentRow.orderDate && currentRow.orderDate !== "-" ? currentRow.orderDate : "-";
             label = "Tgl Order";
           } else if (colIdx === 10) {
-            textToCopy = getCheckerInfo(currentRow.so, currentRow.invoiceNumber, currentRow.invoiceKey)?.checker || "-";
+            textToCopy = getCheckerInfo(currentRow.so, currentRow.invoiceNumber, currentRow.invoiceKey, currentRow.entity)?.checker || "-";
             label = "Checker";
           } else if (colIdx === 11) {
-            textToCopy = getCheckerInfo(currentRow.so, currentRow.invoiceNumber, currentRow.invoiceKey)?.packer || "-";
+            textToCopy = getCheckerInfo(currentRow.so, currentRow.invoiceNumber, currentRow.invoiceKey, currentRow.entity)?.packer || "-";
             label = "Packer";
           } else if (colIdx === 12) {
-            textToCopy = getCheckerInfo(currentRow.so, currentRow.invoiceNumber, currentRow.invoiceKey)?.picker || "-";
+            textToCopy = getCheckerInfo(currentRow.so, currentRow.invoiceNumber, currentRow.invoiceKey, currentRow.entity)?.picker || "-";
             label = "Picker";
           } else if (colIdx === 13) {
             textToCopy = currentRow.printedAt || "-";
@@ -5536,7 +5546,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                           {/* Col 10: Checker */}
                           {(() => {
-                            const cInfo = getCheckerInfo(g.so, g.invoiceNumber, g.invoiceKey);
+                            const cInfo = getCheckerInfo(g.so, g.invoiceNumber, g.invoiceKey, g.entity);
                             return (
                               <>
                                 {isColVisible("checker") && (
