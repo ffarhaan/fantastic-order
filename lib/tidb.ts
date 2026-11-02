@@ -2,8 +2,13 @@ import { connect } from "@tidbcloud/serverless";
 
 const databaseUrl =
   process.env.DATABASE_URL ||
-  "mysql://2F3e9mNrkPjPFFP.root:mOxC1v2lxbsc7FmF@gateway01.ap-southeast-1.prod.aws.tidbcloud.com:4000/test?ssl={\"rejectUnauthorized\":true}";
+  (process.env.TIDB_HOST
+    ? `mysql://${process.env.TIDB_USER}:${process.env.TIDB_PASSWORD}@${process.env.TIDB_HOST}:${process.env.TIDB_PORT || 4000}/${process.env.TIDB_DATABASE || "test"}?ssl={"rejectUnauthorized":true}`
+    : "");
 
 export function getTiDBClient() {
+  if (!databaseUrl) {
+    throw new Error("Missing DATABASE_URL or TIDB_* environment variables for TiDB connection");
+  }
   return connect({ url: databaseUrl });
 }

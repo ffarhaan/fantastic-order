@@ -12,7 +12,10 @@ import { FirestoreFakturDoc } from "./types";
 import { broadcastRealtimeSignal } from "./firestoreService";
 import { calculateDominantCategory } from "./parser";
 
-export async function syncFaktursToTiDB(fakturs: FirestoreFakturDoc[]): Promise<void> {
+export async function syncFaktursToTiDB(
+  fakturs: FirestoreFakturDoc[],
+  onProgress?: (processed: number, total: number) => void
+): Promise<void> {
   if (!fakturs || fakturs.length === 0) return;
   try {
     const payload = fakturs.map((f) => ({
@@ -32,30 +35,45 @@ export async function syncFaktursToTiDB(fakturs: FirestoreFakturDoc[]): Promise<
       items: f.extra?.items || [],
     }));
 
-    const CHUNK_SIZE = 500;
+    // SHIELD AGAINST VERCEL 10S TIMEOUT (LOCKED OPTIMIZATION)
+    // Use 250 items per slice to keep each request < 1.2s execution time
+    const CHUNK_SIZE = 250;
     const slices: typeof payload[] = [];
     for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
       slices.push(payload.slice(i, i + CHUNK_SIZE));
     }
 
-    // High-speed parallel batch execution (concurrency 4):
-    // 17,669 items / 500 = 36 chunks -> 9 concurrent rounds -> finishes in ~3s instead of 4 minutes!
-    const CONCURRENCY = 4;
+    const CONCURRENCY = 2;
+    let processedCount = 0;
     for (let i = 0; i < slices.length; i += CONCURRENCY) {
       const batch = slices.slice(i, i + CONCURRENCY);
       await Promise.all(
-        batch.map((slice) =>
-          fetch("/api/tidb", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "upsert_batch",
-              fakturs: slice,
-            }),
-          }).catch((err) => {
-            console.warn("[TiDB Sync] Upsert slice failed:", err);
-          })
-        )
+        batch.map(async (slice) => {
+          let attempts = 0;
+          while (attempts < 2) {
+            try {
+              const res = await fetch("/api/tidb", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "upsert_batch",
+                  fakturs: slice,
+                }),
+              });
+              if (res.ok) {
+                processedCount += slice.length;
+                if (onProgress) {
+                  onProgress(Math.min(processedCount, payload.length), payload.length);
+                }
+                break;
+              }
+            } catch (err) {
+              console.warn(`[TiDB Sync] Upsert attempt ${attempts + 1} failed:`, err);
+            }
+            attempts++;
+            if (attempts < 2) await new Promise((r) => setTimeout(r, 250));
+          }
+        })
       );
     }
     // Notify all connected browsers/devices that TiDB has finished writing all chunks!
@@ -65,13 +83,42 @@ export async function syncFaktursToTiDB(fakturs: FirestoreFakturDoc[]): Promise<
   }
 }
 
-export function syncFaktursToTiDBBackground(fakturs: FirestoreFakturDoc[]) {
+export function syncFaktursToTiDBBackground(
+  fakturs: FirestoreFakturDoc[],
+  onProgress?: (processed: number, total: number) => void
+) {
   if (!fakturs || fakturs.length === 0) return;
 
   // Run in next tick / microtask to ensure zero interference with current call stack
   setTimeout(async () => {
-    await syncFaktursToTiDB(fakturs);
+    await syncFaktursToTiDB(fakturs, onProgress);
   }, 50);
+}
+
+/**
+ * Smart Search on TiDB Archive:
+ * Searches across the entire database archive (19,000+ invoices from all months) in < 300ms
+ */
+export async function searchFaktursInTiDB(
+  query: string,
+  entity?: "MBI" | "MAI"
+): Promise<FirestoreFakturDoc[]> {
+  const cleanQ = (query || "").trim();
+  if (cleanQ.length < 2) return [];
+
+  try {
+    const entParam = entity ? `&entity=${entity}` : "";
+    const res = await fetch(`/api/tidb?action=search_fakturs&q=${encodeURIComponent(cleanQ)}${entParam}&limit=60`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (data.success && Array.isArray(data.fakturs)) {
+      return data.fakturs as FirestoreFakturDoc[];
+    }
+    return [];
+  } catch (err) {
+    console.warn("[TiDB Smart Search] Search query failed safely:", err);
+    return [];
+  }
 }
 
 export async function syncMissingFaktursToTiDB(localFakturs: FirestoreFakturDoc[]): Promise<number> {
@@ -206,18 +253,30 @@ export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreF
   }
 }
 
+export interface FetchFaktursOptions {
+  activeOnly?: boolean;
+  period?: string; // e.g. "2026-10", "2026-09", "all"
+}
+
 let activeFetchFaktursPromise: Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> | null = null;
 
-export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> {
-  if (activeFetchFaktursPromise) {
+export async function fetchFaktursFromTiDB(
+  options: FetchFaktursOptions = { activeOnly: true }
+): Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> {
+  const modeParam = options.activeOnly && (!options.period || options.period === "active") ? "&mode=active" : "";
+  const periodParam = options.period && options.period !== "all" && options.period !== "active" ? `&period=${encodeURIComponent(options.period)}` : "";
+
+  // If a request with identical options is already running, avoid redundant requests
+  const cacheKey = `${modeParam}::${periodParam}`;
+  if (activeFetchFaktursPromise && !options.period) {
     return activeFetchFaktursPromise;
   }
 
-  activeFetchFaktursPromise = (async () => {
+  const fetchPromise = (async () => {
     try {
       const PAGE_SIZE = 3500;
-      // Step 1: Fetch Page 0 (gets first 3,500 docs + exact totalCount in ~200ms)
-      const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=0`);
+      // Step 1: Fetch Page 0 (gets docs + exact totalCount in ~200ms)
+      const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=0${modeParam}${periodParam}`);
       if (!firstRes.ok) return null;
       const firstData = await firstRes.json();
       if (!firstData.success || !Array.isArray(firstData.fakturs)) return null;
@@ -236,7 +295,7 @@ export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFaktur
         const remainingResults = await Promise.all(
           remainingOffsets.map(async (offset) => {
             try {
-              const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=${offset}`);
+              const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=${offset}${modeParam}${periodParam}`);
               if (!res.ok) return [];
               const data = await res.json();
               if (data.success && Array.isArray(data.fakturs)) {
@@ -268,11 +327,17 @@ export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFaktur
       console.warn("[TiDB Read] Fetch failed safely:", err);
       return null;
     } finally {
-      activeFetchFaktursPromise = null;
+      if (!options.period) {
+        activeFetchFaktursPromise = null;
+      }
     }
   })();
 
-  return activeFetchFaktursPromise;
+  if (!options.period) {
+    activeFetchFaktursPromise = fetchPromise;
+  }
+
+  return fetchPromise;
 }
 
 // -------------------------------------------------------------

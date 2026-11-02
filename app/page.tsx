@@ -36,7 +36,7 @@ import {
   isSuperAdminUser,
   StaffAccountProfile,
 } from "@/lib/firestoreService";
-import { syncFaktursToTiDB, syncFaktursToTiDBBackground, syncMissingFaktursToTiDB, syncPrintStatusToTiDBBackground, fetchFaktursFromTiDB, getLocalCachedFakturs, setLocalCachedFakturs, setLocalCachedPrintState, clearLocalCachedFakturs, clearAllFaktursInTiDB, checkTiDBUpdates, fetchTiDBDelta } from "@/lib/tidbService";
+import { syncFaktursToTiDB, syncFaktursToTiDBBackground, searchFaktursInTiDB, syncMissingFaktursToTiDB, syncPrintStatusToTiDBBackground, fetchFaktursFromTiDB, getLocalCachedFakturs, setLocalCachedFakturs, setLocalCachedPrintState, clearLocalCachedFakturs, clearAllFaktursInTiDB, checkTiDBUpdates, fetchTiDBDelta } from "@/lib/tidbService";
 import MasterApotekModal from "@/components/MasterApotekModal";
 import MasterProductModal from "@/components/MasterProductModal";
 import LoginModal, { AppUser } from "@/components/LoginModal";
@@ -344,6 +344,8 @@ export default function Home() {
   const [dashboardWarehouseFilter, setDashboardWarehouseFilter] = useState<"ALL" | "MBI" | "MAI">("ALL");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("active");
+  const [isSearchingArchive, setIsSearchingArchive] = useState<boolean>(false);
   const [page, setPage] = useState(0);
   const [printedInvoices, setPrintedInvoices] = useState<Set<string>>(new Set());
   const [printedAtMap, setPrintedAtMap] = useState<Record<string, string>>({});
@@ -2368,6 +2370,100 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     }
   }, [pageData.length, selectedRowIndex]);
 
+  // SMART ARCHIVE SEARCH: Auto-query TiDB archive if search term is >= 3 chars and not in active local memory
+  useEffect(() => {
+    const q = deferredSearch.trim();
+    if (q.length < 3) return;
+
+    // Check if any matching invoice already exists in current memory
+    const sLower = q.toLowerCase();
+    const cleanS = sLower.replace(/_(1p|2p|3p)$/i, "").trim();
+    const localMatch = records.some((r) => {
+      const inv = String(r.invoiceNumber || "").toLowerCase();
+      const so = String(r.orderNumber || "").toLowerCase();
+      const cust = String(r.customerName || "").toLowerCase();
+      return (
+        inv.includes(sLower) ||
+        so.includes(sLower) ||
+        cust.includes(sLower) ||
+        (cleanS.length >= 3 && (inv.includes(cleanS) || so.includes(cleanS)))
+      );
+    });
+
+    // If already in local memory, no need to query archive
+    if (localMatch) return;
+
+    let isCancelled = false;
+    setIsSearchingArchive(true);
+    const timer = setTimeout(async () => {
+      try {
+        const archivedDocs = await searchFaktursInTiDB(q, selectedWarehouse);
+        if (isCancelled || archivedDocs.length === 0) {
+          setIsSearchingArchive(false);
+          return;
+        }
+
+        // Merge matched archive records into local working set seamlessly
+        const existingKeys = new Set(records.map((r) => r.invoiceKey || r.invoiceNumber));
+        const newArchived = archivedDocs.filter((d) => !existingKeys.has(d.id || d.no_faktur));
+        if (newArchived.length > 0) {
+          const { records: newRecs } = dbRowsToFakturRecords(
+            newArchived as unknown as Array<Record<string, unknown>>,
+            productOverridesRef.current,
+            printedInvoicesRef.current
+          );
+          setRecords((prev) => [...prev, ...newRecs]);
+          currentFakturDocsRef.current = [...(currentFakturDocsRef.current || []), ...newArchived];
+          showToast(`📦 Ditemukan ${newArchived.length} faktur dari arsip TiDB`);
+        }
+      } catch (err) {
+        console.warn("[Smart Search] Failed:", err);
+      } finally {
+        if (!isCancelled) setIsSearchingArchive(false);
+      }
+    }, 350);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+      setIsSearchingArchive(false);
+    };
+  }, [deferredSearch, selectedWarehouse, records]);
+
+  // Handle switching archive periods (Active month, October, September, All)
+  const handlePeriodChange = useCallback(async (newPeriod: string) => {
+    setSelectedPeriod(newPeriod);
+    setLoading(true);
+    setPage(0);
+    try {
+      const res = await fetchFaktursFromTiDB({
+        activeOnly: newPeriod === "active",
+        period: newPeriod === "active" ? undefined : newPeriod,
+      });
+      if (res && res.fakturs) {
+        currentFakturDocsRef.current = res.fakturs;
+        const { records: recs } = dbRowsToFakturRecords(
+          res.fakturs as unknown as Array<Record<string, unknown>>,
+          productOverridesRef.current,
+          printedInvoicesRef.current
+        );
+        setRecords(recs);
+        const label =
+          newPeriod === "active"
+            ? "Bulan Aktif"
+            : newPeriod === "all"
+            ? "Seluruh Riwayat Arsip"
+            : `Arsip ${newPeriod}`;
+        showToast(`✓ Berhasil memuat ${label} (${recs.length.toLocaleString("id-ID")} faktur)`);
+      }
+    } catch (err) {
+      console.warn("Failed to load period:", err);
+      showToast("⚠️ Gagal memuat arsip dari database.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const unprintedCountInFiltered = useMemo(() => {
     if (filter === "belum") return filtered.length;
     if (filter === "sudah") return 0;
@@ -3349,8 +3445,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           Array.from(brandNewUnprintedKeysSet)
         );
 
-        // 7. Save to TiDB in the background as permanent authoritative archive
-        syncFaktursToTiDBBackground(uploadedDocs);
+        // 7. Save to TiDB in the background as permanent authoritative archive with Vercel timeout shield
+        syncFaktursToTiDBBackground(uploadedDocs, (done, total) => {
+          if (total > 250) {
+            showToast(`💾 Menyimpan ke database: ${done} / ${total} faktur (${Math.round((done / total) * 100)}%)...`);
+          }
+        });
 
         // 8. Sync print metadata & broadcast upload notification to other devices via Firestore
         await saveFaktursBatch(
@@ -5133,6 +5233,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 isDarkMode ? "text-zinc-100 placeholder:text-zinc-500" : "text-black placeholder:text-zinc-500"
               }`}
             />
+            {isSearchingArchive && (
+              <span className="mr-3 text-[10px] text-blue-500 font-bold flex items-center gap-1 animate-pulse">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span className="hidden sm:inline">Mencari di arsip TiDB...</span>
+              </span>
+            )}
             {search && (
               <button
                 type="button"
@@ -5165,9 +5271,26 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         </div>
 
         {/* Filter Dropdowns - Modern Clean Row (Wilayah DK/LK untuk MBI & MAI) */}
-        <div className={`p-2 rounded-xl border grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 shadow-xs transition-colors ${
+        <div className={`p-2 rounded-xl border grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2 shadow-xs transition-colors ${
           isDarkMode ? "bg-[#09090b] border-zinc-800" : "bg-white border-zinc-300"
         }`}>
+          {/* Periode Arsip / Bulan (Optimasi Memori Laptop) */}
+          <select
+            value={selectedPeriod}
+            onChange={(e) => handlePeriodChange(e.target.value)}
+            className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold focus:outline-none transition-colors border cursor-pointer ${
+              isDarkMode
+                ? "bg-blue-950/40 border-blue-800 text-blue-300 hover:border-blue-600"
+                : "bg-blue-50 border-blue-200 text-blue-800 hover:border-blue-400"
+            }`}
+            title="Pilih Periode Database Arsip TiDB"
+          >
+            <option value="active">📅 Bulan Aktif (November)</option>
+            <option value="2026-10">📅 Arsip Okt 2026</option>
+            <option value="2026-09">📅 Arsip Sep 2026</option>
+            <option value="all">📅 Semua Arsip (Full)</option>
+          </select>
+
           {/* Kategori Filter */}
           <select
             value={katFilter}
