@@ -12,7 +12,8 @@ export interface FakturRecord {
   uom: string;
   lotNumber: string;
   totalHarga: number;
-  kategori: "1P" | "2P" | "3P" | "DK" | "LK" | string;
+  kategori: "1P" | "2P" | "3P" | string;
+  dklk?: "DK" | "LK" | "-" | string;
   kategoriProduk?: string;
   klasifikasiObat?: "Prekursor" | "OOT";
   isDoubleInv: boolean;
@@ -104,7 +105,8 @@ export interface FakturGroup {
   transactionDate?: string;
   jenisTransaksi: "ORA" | "DOO";
   customerName: string;
-  kategori: "1P" | "2P" | "3P" | "DK" | "LK" | string;
+  kategori: "1P" | "2P" | "3P" | string;
+  dklk?: "DK" | "LK" | "-" | string;
   kategoriProduk: string;
   hasPrekursor: boolean;
   hasOOT: boolean;

@@ -233,6 +233,34 @@ export default function DatabaseStatsModal({
                   {Number(tables.documents || 0).toLocaleString("id-ID")} berkas
                 </span>
               </div>
+
+              {/* QC Checkers MBI */}
+              <div className="p-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-indigo-500" />
+                  <div>
+                    <span className="font-bold block">so_checkers (QC MBI)</span>
+                    <span className="text-[10px] text-zinc-400 dark:text-slate-500">Data Checker, Packer, Picker MBI</span>
+                  </div>
+                </div>
+                <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400">
+                  {Number(tables.checkers_mbi || 0).toLocaleString("id-ID")} baris
+                </span>
+              </div>
+
+              {/* QC Checkers MAI */}
+              <div className="p-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-emerald-500" />
+                  <div>
+                    <span className="font-bold block">so_checkers_mai (QC MAI)</span>
+                    <span className="text-[10px] text-zinc-400 dark:text-slate-500">Data Checker, Packer, Picker MAI</span>
+                  </div>
+                </div>
+                <span className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400">
+                  {Number(tables.checkers_mai || 0).toLocaleString("id-ID")} baris
+                </span>
+              </div>
             </div>
           </div>
         </div>

@@ -23,17 +23,30 @@ for (const [k, v] of Object.entries(apotekMap)) {
 }
 
 const normMapMAI: Record<string, string> = {};
+const dklkMapMAI: Record<string, "DK" | "LK"> = {};
+const normDklkMapMAI: Record<string, "DK" | "LK"> = {};
 
-// Enrich MAI apotek mapping with DK/LK if present
+// Enrich MAI apotek mapping & DK/LK lookups
 (masterApotekListMAI as Array<{ namaApotek: string; kategori?: string; dklk?: string }>).forEach((item) => {
-  const dklk = item.dklk && item.dklk !== "-" ? item.dklk.trim() : "";
   const baseKat = item.kategori || "3P";
-  const fullKat = dklk ? `${baseKat} (${dklk})` : baseKat;
   if (item.namaApotek) {
-    apotekMapMAI[item.namaApotek.toLowerCase().trim()] = fullKat;
-    normMapMAI[normalize(item.namaApotek)] = fullKat;
+    apotekMapMAI[item.namaApotek.toLowerCase().trim()] = baseKat;
+    normMapMAI[normalize(item.namaApotek)] = baseKat;
+    if (item.dklk === "DK" || item.dklk === "LK") {
+      dklkMapMAI[item.namaApotek.toLowerCase().trim()] = item.dklk;
+      normDklkMapMAI[normalize(item.namaApotek)] = item.dklk;
+    }
   }
 });
+
+export function getDkLk(customerName?: string): "DK" | "LK" | "-" {
+  if (!customerName) return "-";
+  const c = customerName.toLowerCase().trim();
+  if (dklkMapMAI[c]) return dklkMapMAI[c];
+  const n = normalize(c);
+  if (normDklkMapMAI[n]) return normDklkMapMAI[n];
+  return "-";
+}
 
 for (const [k, v] of Object.entries(masterApotekMAI as Record<string, string>)) {
   const normKey = normalize(k);
@@ -340,14 +353,14 @@ export function categorize(
   // === MAI WAREHOUSE ISOLATION ===
   if (entity === "MAI") {
     const exactMAI = apotekMapMAI[cust.toLowerCase()];
-    if (exactMAI) return exactMAI;
+    if (exactMAI) return (exactMAI.replace(/\s*\(.*?\)/, "").trim() as "1P" | "2P" | "3P") || "3P";
 
     const normMAI = normMapMAI[normCust];
-    if (normMAI) return normMAI;
+    if (normMAI) return (normMAI.replace(/\s*\(.*?\)/, "").trim() as "1P" | "2P" | "3P") || "3P";
 
     if (master2PNameSetMAI.has(normCust)) return "2P";
 
-    return "3P (DK)";
+    return "3P";
   }
 
   // === MBI WAREHOUSE (DEFAULT) ===
@@ -694,6 +707,7 @@ function parseXXCUST(
       lotNumber: val(idx.lotNumber) || "-",
       totalHarga: parsedTotal,
       kategori,
+      dklk: getDkLk(customerName),
       kategoriProduk,
       klasifikasiObat,
       entity: rowEntity,
@@ -855,6 +869,7 @@ function parseHTMLTable(html: string): FakturRecord[] {
       lotNumber: "-",
       totalHarga,
       kategori,
+      dklk: getDkLk(customerName),
       isDoubleInv: false,
       sourceFile: "EXPORT",
       rowIndex: i,
@@ -962,6 +977,7 @@ function parseExportArray(data: unknown[][], headerIdx: number): FakturRecord[] 
       lotNumber: "-",
       totalHarga,
       kategori,
+      dklk: getDkLk(customerName),
       entity: fileEntity,
       isDoubleInv: false,
       sourceFile: "EXPORT",

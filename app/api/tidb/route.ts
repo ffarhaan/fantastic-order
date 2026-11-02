@@ -325,6 +325,17 @@ export async function GET(req: Request) {
     // DATABASE TRANSPARENCY & STATS (TiDB Cloud)
     // ==========================================
     if (action === "db_stats") {
+      let checkersMbiCount = 0;
+      let checkersMaiCount = 0;
+      try {
+        const [cMbi] = (await conn.execute("SELECT COUNT(*) AS c FROM so_checkers")) as any[];
+        checkersMbiCount = Number(cMbi?.c || 0);
+      } catch {}
+      try {
+        const [cMai] = (await conn.execute("SELECT COUNT(*) AS c FROM so_checkers_mai")) as any[];
+        checkersMaiCount = Number(cMai?.c || 0);
+      } catch {}
+
       const [counts] = (await conn.execute(`
         SELECT 
           (SELECT COUNT(*) FROM fakturs_archive) AS fakturs,
@@ -333,6 +344,11 @@ export async function GET(req: Request) {
           (SELECT COUNT(*) FROM customer_documents) AS documents,
           (SELECT COUNT(*) FROM return_requests) AS return_requests
       `)) as any[];
+
+      if (counts) {
+        counts.checkers_mbi = checkersMbiCount;
+        counts.checkers_mai = checkersMaiCount;
+      }
 
       let totalDataBytes = 0;
       let totalIndexBytes = 0;
