@@ -45,7 +45,8 @@ export default function SystemUpdateNotifier() {
   }, []);
 
   useEffect(() => {
-    const unsub = subscribeToSystemUpdate((payload) => {
+    const clientBuildTime = Number(process.env.NEXT_PUBLIC_BUILD_TIME || 0);
+    const unsub = subscribeToSystemUpdate(clientBuildTime, (payload) => {
       setUpdateInfo(payload);
       setIsDismissed(false);
       setCountdown(15);

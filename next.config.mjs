@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   compress: true,
+  env: {
+    NEXT_PUBLIC_BUILD_TIME: String(Date.now()),
+  },
   async headers() {
     return [
       {

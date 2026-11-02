@@ -2253,6 +2253,7 @@ export interface SystemUpdatePayload {
 }
 
 export function subscribeToSystemUpdate(
+  clientBuildTime: number,
   onUpdate: (payload: SystemUpdatePayload) => void
 ): Unsubscribe {
   let initialTimestamp = 0;
@@ -2269,10 +2270,18 @@ export function subscribeToSystemUpdate(
       if (!initialized) {
         initialTimestamp = ts;
         initialized = true;
+        if (clientBuildTime > 0 && ts > clientBuildTime + 3000) {
+          onUpdate({
+            timestamp: ts,
+            commitMsg: data?.system_update_msg || "",
+            commitSha: data?.system_update_sha || "",
+          });
+        }
         return;
       }
 
       if (ts > initialTimestamp) {
+        initialTimestamp = ts;
         onUpdate({
           timestamp: ts,
           commitMsg: data?.system_update_msg || "",
