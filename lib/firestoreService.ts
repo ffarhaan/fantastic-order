@@ -2244,7 +2244,45 @@ export function subscribeToCheckers(
 // UNIVERSAL REALTIME CROSS-BROWSER SIGNAL (FAKTURS, RETURNS, CUSTOMERS)
 // ============================================================================
 const REALTIME_SIGNALS_DOC = "realtime_signals";
-export type RealtimeSignalChannel = "fakturs" | "returns" | "customers" | "reset_all";
+export type RealtimeSignalChannel = "fakturs" | "returns" | "customers" | "reset_all" | "system_update";
+
+export interface SystemUpdatePayload {
+  timestamp: number;
+  commitMsg?: string;
+  commitSha?: string;
+}
+
+export function subscribeToSystemUpdate(
+  onUpdate: (payload: SystemUpdatePayload) => void
+): Unsubscribe {
+  let initialTimestamp = 0;
+  let initialized = false;
+
+  return onSnapshot(
+    doc(db, APP_DATA_COLLECTION, REALTIME_SIGNALS_DOC),
+    (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const ts = Number(data?.system_update || 0);
+      if (!ts) return;
+
+      if (!initialized) {
+        initialTimestamp = ts;
+        initialized = true;
+        return;
+      }
+
+      if (ts > initialTimestamp) {
+        onUpdate({
+          timestamp: ts,
+          commitMsg: data?.system_update_msg || "",
+          commitSha: data?.system_update_sha || "",
+        });
+      }
+    },
+    (err) => console.warn("subscribeToSystemUpdate warning:", err)
+  );
+}
 
 export async function broadcastRealtimeSignal(channel: RealtimeSignalChannel): Promise<void> {
   try {

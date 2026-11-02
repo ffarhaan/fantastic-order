@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import SystemUpdateNotifier from "@/components/SystemUpdateNotifier";
 
 export const metadata: Metadata = {
   title: "fantastic-order — Manajemen Faktur & Penjualan",
@@ -37,6 +38,7 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-white text-black dark:bg-black dark:text-zinc-100 min-h-screen antialiased selection:bg-black selection:text-white dark:selection:bg-blue-600/30 dark:selection:text-blue-200 transition-colors">
+        <SystemUpdateNotifier />
         {children}
       </body>
     </html>
