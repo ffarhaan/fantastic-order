@@ -1,6 +1,6 @@
 /**
  * ====================================================================
- * SINKRONISASI RESMI: SPREADSHEET "REPORT QC 2" (TAB: Rekap Lengkap)
+ * SINKRONISASI RESMI: SPREADSHEET "REPORT QC" (GUDANG MBI - TAB: Rekap Lengkap)
  * FANTASTIC ORDER REAL-TIME SINKRONISASI
  * Kolom: B (No SO), C (Checker), D (Packer), E (Picker)
  * ====================================================================

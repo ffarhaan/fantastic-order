@@ -264,22 +264,32 @@ Dokumen ini secara permanen mengunci prinsip efisiensi kuota dan kompresi data u
 
 ### 6. ARSITEKTUR INTEGRASI QC (CHECKER, PACKER, & PICKER) DARI GOOGLE SHEET (LOCKED TOTAL)
 
-Aturan ini mengunci secara mutlak integrasi data petugas gudang (Checker, Packer, dan Picker) antara Spreadsheet Google dan Aplikasi Fantastic Order:
+Aturan ini mengunci secara mutlak arsitektur integrasi data petugas gudang (Checker, Packer, dan Picker) antara Google Spreadsheet dan Aplikasi Fantastic Order dengan **ISOLASI DUA GUDANG (MBI & MAI) 100% TERPISAH**:
 
-1. **Sumber Data Tunggal & Kunci Tab Mutlak**:
-   - Sumber resmi: Google Spreadsheet `REPORT QC 2` (URL ID: `1wCbPpkVM2rI_axg-sOB8n_4hmsXGOXwU4ARwaks4p8g`).
-   - Tab resmi: HANYA tab **`Rekap Lengkap`** (GID spesifik: `1198696917`).
-   - Seluruh tab lain (termasuk tab dengan nama parsial "Rekap", "Order Proses", "Data", dll.) **DILARANG KERAS** dibaca atau diproses.
+1. **Pemisahan Sumber Data Gudang MBI vs Gudang MAI (Dual Warehouse Isolation - LOCKED MUTLAK)**:
+   - **GUDANG MBI (PT Medika Bina Investama)**:
+     - **Sumber Spreadsheet**: Google Spreadsheet **`REPORT QC`** (URL ID: `1wCbPpkVM2rI_axg-sOB8n_4hmsXGOXwU4ARwaks4p8g`).
+     - **Tab Resmi**: HANYA tab **`Rekap Lengkap`** (GID spesifik: `1198696917`).
+     - **Pemetaan Kolom MBI**:
+       - Kolom A: `Tanggal SO` (Diabaikan)
+       - Kolom B: `No SO Selesai` $\rightarrow$ Nomor SO (`so_number`)
+       - Kolom C: `Checker` $\rightarrow$ Nama Checker (`checker_name`)
+       - Kolom D: `Packer` $\rightarrow$ Nama Packer (`packer_name`)
+       - Kolom E: `Picker` $\rightarrow$ Nama Picker (`picker_name`)
+     - **Penyimpanan Database**: Tabel TiDB Serverless `so_checkers` dan channel Firestore `app_data/so_checkers_recent`.
+   - **GUDANG MAI (PT Medika Akses Investama)**:
+     - **Sumber Spreadsheet**: Google Spreadsheet **`Report QC MAI`** (URL ID: `1mFptY9OxIkP0oIW9C31PdJ-GICCPXocv8AXAu8vJ0WQ`).
+     - **Tab Resmi**: HANYA tab **`Rekap Lengkap`** (GID spesifik: `746703007`).
+     - **Pemetaan Kolom MAI**:
+       - Kolom A: `Tanggal SO` (Diabaikan)
+       - Kolom B: `No SO` $\rightarrow$ Nomor SO (`so_number`)
+       - Kolom C: `Picker` $\rightarrow$ Nama Picker (`picker_name`)
+       - Kolom D: `Checker` $\rightarrow$ Nama Checker (`checker_name`)
+       - Kolom E: `Packer` $\rightarrow$ Nama Packer (`packer_name`)
+     - **Penyimpanan Database**: Tabel TiDB Serverless `so_checkers_mai` dan channel Firestore `app_data/so_checkers_recent_mai`.
+   - **Isolasi Mutlak di UI**: Data QC MBI DILARANG KERAS merembes atau ditampilkan pada faktur MAI, begitu pula data QC MAI DILARANG KERAS merembes ke MBI. Evaluasi `getCheckerInfo` wajib strictly mengecek entitas faktur (`entity === 'MAI'` ke kamus MAI, selain itu ke kamus MBI).
 
-2. **Pemetaan Kolom Baku & Paten (Fixed Column Mapping)**:
-   - **Kolom A**: `Tanggal SO` $\rightarrow$ Wajib diabaikan dan DILARANG dibaca sebagai nomor SO.
-   - **Kolom B**: `No SO Selesai` $\rightarrow$ Nomor Sales Order (`so_number`).
-   - **Kolom C**: `Checker` $\rightarrow$ Nama petugas Checker (`checker_name`).
-   - **Kolom D**: `Packer` $\rightarrow$ Nama petugas Packer (`packer_name`).
-   - **Kolom E**: `Picker` $\rightarrow$ Nama petugas Picker (`picker_name`).
-   - Kolom F s/d I: Rincian SKU, Qty, Kategori, Koli $\rightarrow$ Tidak boleh menggeser atau mempengaruhi kolom B, C, D, dan E.
-
-3. **Aturan Kekosongan Nama (Empty / Blank Rule - LOCKED TOTAL)**:
+2. **Aturan Kekosongan Nama (Empty / Blank Rule - LOCKED TOTAL)**:
    - **JIKA TIDAK ADA NAMA, WAJIB DIKOSONGKAN**: Jika nama Checker, Packer, atau Picker tidak diisi di Google Sheet (berupa sel kosong, tanda strip `-`, `#N/A`, atau spasi):
      - Sistem **WAJIB MENYIMPANNYA SEBAGAI `NULL` / KOSONG**.
      - Di tampilan tabel aplikasi **WAJIB TAMPIL SEBAGAI TANDA STRIP KOSONG (`-`)**.
@@ -288,26 +298,26 @@ Aturan ini mengunci secara mutlak integrasi data petugas gudang (Checker, Packer
      - DILARANG KERAS mengambil tanggal/waktu untuk mengisi Packer atau Picker.
      - DILARANG KERAS mengisi nama fiktif/asumsi. Jika belum ada yang mengerjakan, kolom tersebut HARUS kosong (`-`).
 
-4. **Filter Sanitasi Berlapis Anti-Bocor (Multi-Layer Sanitization Guard - LOCKED)**:
+3. **Filter Sanitasi Berlapis Anti-Bocor (Multi-Layer Sanitization Guard - LOCKED)**:
    - Berlaku di 3 lapisan: (1) Google Apps Script, (2) Backend API TiDB (`/api/tidb`), dan (3) Frontend Web App (`app/page.tsx` & `lib/firestoreService.ts`).
    - Setiap nilai pada Packer atau Picker yang terdeteksi:
      - Diawali `Apotek`, `PT `, `Klinik`, `Rumah Sakit`, `Toko`, dll.
      - Mengandung format jam/tanggal: `00:00:00`, `GMT`, `WIB`, hari (`Mon`, `Tue`, `Wed`, dll), atau pola tanggal (`DD/MM/YYYY`).
      - **WAJIB OTOMATIS DIGUGURKAN / DIKOSONGKAN MENJADI NULL / EMPTY STRING**.
 
-5. **Otoritas Data & Eliminasi Cache Kotor (TiDB Authority & Anti-Pollution Cache)**:
-   - Database TiDB tabel `so_checkers` adalah satu-satunya otoritas kebenaran data (*Single Source of Truth*).
+4. **Otoritas Data & Eliminasi Cache Kotor (TiDB Authority & Anti-Pollution Cache)**:
+   - Database TiDB (`so_checkers` untuk MBI & `so_checkers_mai` untuk MAI) adalah satu-satunya otoritas kebenaran data (*Single Source of Truth*).
    - LocalStorage browser dan Firebase Firestore dilarang mendominasi atau menimpa data TiDB dengan data kotor/usang.
    - Aplikasi secara otomatis mendeteksi dan membersihkan cache localStorage jika terindikasi menyimpan data bocor.
 
-6. **Pemisahan Sumber Data Murni & Proteksi Data Upload (Upload Data Sovereignty - LOCKED MUTLAK)**:
+5. **Pemisahan Sumber Data Murni & Proteksi Data Upload (Upload Data Sovereignty - LOCKED MUTLAK)**:
    - **Data Utama Faktur (100% Hak File Excel Upload)**:
      - Nomor SO, Nomor Faktur, **Nama Apotek / Pelanggan**, Tanggal Order, Kategori Produk (Farma/Alkes), PBF (MAI/MBI), Kategori Apotek (1P/2P/3P), dan Nominal Harga **WAJIB 100% MURNI BERSUMBER DARI FILE EXCEL YANG DIUNGGAH OPERATOR**.
      - Google Sheet DILARANG KERAS menimpa, mengganti, atau merusak data utama faktur maupun Nama Apotek.
    - **Data Google Sheet QC (HANYA 3 Atribut Tambahan)**:
      - Google Sheet QC secara eksklusif HANYA memasok: **Nama Checker**, **Nama Packer**, dan **Nama Picker**.
 
-7. **Pencocokan Cerdas Kolom B Multi-Identifier & Normalisasi '0' vs 'O' (Smart Multi-Key Matcher - LOCKED)**:
+6. **Pencocokan Cerdas Kolom B Multi-Identifier & Normalisasi '0' vs 'O' (Smart Multi-Key Matcher - LOCKED)**:
    - Karena di lapangan petugas gudang pada Kolom B Google Sheet terkadang menginput No Faktur / DOO (contoh: `OY99DY-3580`) alih-alih No SO murni (contoh: `33184`), serta sering tertukar mengetik huruf `O` dan angka `0`:
    - Fungsi pencocokan `getCheckerInfo` WAJIB memeriksa secara berlapis:
      1. Pencocokan langsung via Nomor SO (`so_number`).
