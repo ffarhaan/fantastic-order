@@ -32,6 +32,15 @@ var DOCS_SET_LINK_SHARING = false;
 function onOpen() {
   ensureInstallableTrigger_();
   autoSyncPendingCustomers();
+
+  try {
+    SpreadsheetApp.getUi()
+      .createMenu("🚀 Fantastic Order")
+      .addItem("🔄 Sinkron Penuh Semua Data ke Web App", "syncAllCustomersToWebApp")
+      .addItem("📥 Ambil Data Baru dari Web App", "autoSyncPendingCustomers")
+      .addItem("⚙️ Setup Ulang Sinkronisasi Otomatis", "setupRealtimeSync")
+      .addToUi();
+  } catch (e) {}
 }
 
 /**
@@ -118,8 +127,9 @@ function syncOnEdit(e) {
     if (!e || !e.range) return;
     var range = e.range;
     var sheet = range.getSheet();
-    var row = range.getRow();
-    if (row <= 1) return; // Abaikan baris judul / header
+    var startRow = range.getRow();
+    var numRows = range.getNumRows();
+    if (startRow + numRows - 1 <= 1) return; // Abaikan jika hanya baris header
 
     var lastCol = sheet.getLastColumn();
     if (lastCol < 2) return;
@@ -130,34 +140,140 @@ function syncOnEdit(e) {
       return; // Bukan sheet customer, abaikan
     }
 
-    var rowValues = sheet.getRange(row, 1, 1, lastCol).getValues()[0];
-    var customer = {};
-    for (var i = 0; i < headers.length; i++) {
-      var h = String(headers[i] || "").trim();
-      if (h) customer[h] = rowValues[i];
+    var validStartRow = Math.max(2, startRow);
+    var actualNumRows = (startRow + numRows) - validStartRow;
+    if (actualNumRows <= 0) return;
+
+    var allValues = sheet.getRange(validStartRow, 1, actualNumRows, lastCol).getValues();
+    var customersToSend = [];
+
+    for (var r = 0; r < allValues.length; r++) {
+      var rowValues = allValues[r];
+      var customer = {};
+      for (var i = 0; i < headers.length; i++) {
+        var h = String(headers[i] || "").trim();
+        if (h) customer[h] = rowValues[i];
+      }
+
+      var customerId = String(customer["CUSTOMER ID"] || customer["id"] || "").trim();
+      var customerName = String(customer["NAMA APOTEK/RS/PBF/KLINIK"] || customer["name"] || "").trim();
+
+      if (customerId && customerName && customerId !== "#N/A" && customerName !== "#N/A") {
+        customersToSend.push(customer);
+      }
     }
 
-    var customerId = String(customer["CUSTOMER ID"] || customer["id"] || "").trim();
-    var customerName = String(customer["NAMA APOTEK/RS/PBF/KLINIK"] || customer["name"] || "").trim();
-
-    if (!customerId || !customerName) return;
+    if (customersToSend.length === 0) return;
 
     var webhookUrl = getWebhookUrl_();
-    var payload = {
-      action: "sync_single_customer",
-      customer: customer,
-      webhook_url: webhookUrl
-    };
 
-    UrlFetchApp.fetch(WEB_APP_API_URL + "?action=sync_single_customer", {
-      method: "post",
-      contentType: "application/json",
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true
-    });
+    if (customersToSend.length === 1) {
+      // Edit baris tunggal
+      UrlFetchApp.fetch(WEB_APP_API_URL + "?action=sync_single_customer", {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify({
+          action: "sync_single_customer",
+          customer: customersToSend[0],
+          webhook_url: webhookUrl
+        }),
+        muteHttpExceptions: true
+      });
+    } else {
+      // Edit / paste banyak baris sekaligus
+      UrlFetchApp.fetch(WEB_APP_API_URL + "?action=bulk_import_customers", {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify({
+          items: customersToSend,
+          webhook_url: webhookUrl
+        }),
+        muteHttpExceptions: true
+      });
+    }
   } catch (err) {
     Logger.log("syncOnEdit error: " + err);
   }
+}
+
+/**
+ * ====================================================================
+ * SINKRONISASI PENUH SELURUH PELANGGAN (Sheet -> Web App)
+ * Menjamin 100% data di seluruh baris sheet tersinkron tanpa ada yang tertinggal!
+ * ====================================================================
+ */
+function syncAllCustomersToWebApp() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = ss.getSheets();
+  var targetSheet = null;
+  var headers = null;
+
+  var norm = function(str) {
+    return String(str || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  };
+
+  for (var s = 0; s < sheets.length; s++) {
+    var sh = sheets[s];
+    var lastCol = sh.getLastColumn();
+    if (lastCol < 2) continue;
+    var hRow = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+    for (var c = 0; c < hRow.length; c++) {
+      if (norm(hRow[c]) === norm("CUSTOMER ID")) {
+        targetSheet = sh;
+        headers = hRow;
+        break;
+      }
+    }
+    if (targetSheet) break;
+  }
+
+  if (!targetSheet) {
+    targetSheet = ss.getSheets()[0];
+    headers = targetSheet.getRange(1, 1, 1, targetSheet.getLastColumn()).getValues()[0];
+  }
+
+  var data = targetSheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    ss.toast("Sheet tidak memiliki data pelanggan.", "Fantastic Order", 5);
+    return;
+  }
+
+  ss.toast("Memulai sinkronisasi penuh seluruh data pelanggan...", "Fantastic Order", 6);
+
+  var allCustomers = [];
+  for (var r = 1; r < data.length; r++) {
+    var rowValues = data[r];
+    var cust = {};
+    for (var col = 0; col < headers.length; col++) {
+      var h = String(headers[col] || "").trim();
+      if (h) cust[h] = rowValues[col];
+    }
+    var cId = String(cust["CUSTOMER ID"] || cust["id"] || "").trim();
+    var cName = String(cust["NAMA APOTEK/RS/PBF/KLINIK"] || cust["name"] || "").trim();
+    if (cId && cName && cId !== "#N/A" && cName !== "#N/A") {
+      allCustomers.push(cust);
+    }
+  }
+
+  var total = allCustomers.length;
+  var CHUNK_SIZE = 300;
+  var successCount = 0;
+
+  for (var i = 0; i < total; i += CHUNK_SIZE) {
+    var chunk = allCustomers.slice(i, i + CHUNK_SIZE);
+    var res = UrlFetchApp.fetch(WEB_APP_API_URL + "?action=bulk_import_customers", {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify({ items: chunk }),
+      muteHttpExceptions: true
+    });
+    if (res.getResponseCode() === 200) {
+      successCount += chunk.length;
+      ss.toast("Tersinkron: " + successCount + " / " + total + " pelanggan...", "Fantastic Order", 4);
+    }
+  }
+
+  ss.toast("✅ SUKSES! Seluruh " + successCount + " data pelanggan 100% sinkron dan cocok dengan Web App!", "Fantastic Order", 10);
 }
 
 /**

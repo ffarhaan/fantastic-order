@@ -2024,6 +2024,28 @@ export async function POST(req: Request) {
         insertedCount += chunk.length;
       }
 
+      // Automatically persist to activity_logs & broadcast realtime to all active web tabs
+      if (insertedCount > 0) {
+        try {
+          await conn.execute(
+            `INSERT INTO activity_logs (user_name, user_email, action_type, module, target_id, details, metadata)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+              "Google Sheet Sync",
+              "sheet-sync@mhealth.tech",
+              "BULK_SYNC_CUSTOMER_GSHEET",
+              "CUSTOMERS",
+              `SYNC_${insertedCount}_CUST`,
+              `Sinkronisasi massal pelanggan dari Google Sheet: ${insertedCount} data pelanggan diperbarui`,
+              JSON.stringify({ total_synced: insertedCount }),
+            ]
+          );
+        } catch (logErr) {
+          console.warn("Failed to record activity log for bulk customer sync:", logErr);
+        }
+        await broadcastSignalFromApi("customers");
+      }
+
       return Response.json({ success: true, count: insertedCount });
     }
 
