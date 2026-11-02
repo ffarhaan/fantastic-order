@@ -47,6 +47,7 @@ import ReturnsView from "@/components/ReturnsView";
 import CustomersView from "@/components/CustomersView";
 import DatabaseStatsModal from "@/components/DatabaseStatsModal";
 import ActivityLogModal from "@/components/ActivityLogModal";
+import HowToUseModal from "@/components/HowToUseModal";
 import { recordActivityLog } from "@/lib/activityLogger";
 import {
   LayoutDashboard,
@@ -57,6 +58,7 @@ import {
   Download,
   Plus,
   Pill,
+  BookOpen,
   PanelLeftClose,
   PanelLeftOpen,
   Database,
@@ -312,6 +314,7 @@ export default function Home() {
     if (mainView === "customers") setHasVisitedCustomers(true);
   }, [mainView]);
   const [showDbStatsModal, setShowDbStatsModal] = useState(false);
+  const [showHowToUseModal, setShowHowToUseModal] = useState(false);
   const [returnsOverviewStats, setReturnsOverviewStats] = useState<{ totalAll: number; totalResolved: number; totalPending: number; totalMbi: number; totalMai: number } | null>(null);
   const [filter, setFilter] = useState<Filter>("belum");
   const [selectedWarehouse, setSelectedWarehouse] = useState<"MBI" | "MAI">("MBI");
@@ -3579,6 +3582,20 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
               <button
                 type="button"
+                onClick={() => { setShowHowToUseModal(true); setMobileSidebarOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                  isDarkMode
+                    ? "text-zinc-400 hover:text-blue-400 hover:bg-zinc-900/60"
+                    : "text-zinc-600 hover:text-blue-600 hover:bg-zinc-100"
+                }`}
+                title="Buka Buku Panduan & How to Use"
+              >
+                <BookOpen className="w-4 h-4 text-blue-500 shrink-0" />
+                <span className="font-medium text-xs">Panduan &amp; How to Use</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => { setShowApotekModal(true); setMobileSidebarOpen(false); }}
                 className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
                   isDarkMode
@@ -3909,6 +3926,21 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
           {/* Right Action Buttons */}
           <div className="flex items-center gap-2 shrink-0">
+            {/* Panduan & How to Use Quick Button */}
+            <button
+              type="button"
+              onClick={() => setShowHowToUseModal(true)}
+              className={`px-2.5 py-1 rounded-lg border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                isDarkMode
+                  ? "bg-zinc-950 border-zinc-800 hover:border-blue-700/80 text-blue-400"
+                  : "bg-blue-50/80 border-blue-200 hover:border-blue-300 text-blue-700"
+              }`}
+              title="Buka Panduan Lengkap & How to Use"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-blue-500" />
+              <span className="hidden sm:inline">How to Use</span>
+            </button>
+
             {/* Realtime Online Users Pill */}
             <button
               type="button"
@@ -6090,6 +6122,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       </div>
 
       {/* Master Modals */}
+      <HowToUseModal
+        isOpen={showHowToUseModal}
+        onClose={() => setShowHowToUseModal(false)}
+        isDarkMode={isDarkMode}
+      />
       <MasterApotekModal
         isOpen={showApotekModal}
         onClose={() => setShowApotekModal(false)}

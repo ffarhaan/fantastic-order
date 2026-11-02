@@ -45,9 +45,11 @@ import {
   XCircle,
   Columns,
   Pin,
+  BookOpen,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import OverviewKpiView from "./returns/OverviewKpiView";
+import HowToUseModal from "@/components/HowToUseModal";
 import MonthlyReportView from "./returns/MonthlyReportView";
 import WeeklyReportView from "./returns/WeeklyReportView";
 import AnalisisView from "./returns/AnalisisView";
@@ -247,6 +249,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   });
   const [selectedReturn, setSelectedReturn] = useState<ShipmentReturnRecord | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showHowToUse, setShowHowToUse] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
@@ -1768,6 +1771,15 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               >
                 <Download className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 rotate-180 ${isImporting ? "animate-bounce" : ""}`} />
                 <span>{isImporting ? "Mengimpor..." : "Impor Excel"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowHowToUse(true)}
+                className="py-2 px-3 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                title="Buka Panduan & How to Use Shipment Error"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                <span>How to Use</span>
               </button>
               <input
                 ref={importFileRef}
@@ -3475,6 +3487,13 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           </div>
         </div>
       )}
+
+      {/* How To Use Modal */}
+      <HowToUseModal
+        isOpen={showHowToUse}
+        onClose={() => setShowHowToUse(false)}
+        initialTab="returns"
+      />
     </div>
   );
 }
