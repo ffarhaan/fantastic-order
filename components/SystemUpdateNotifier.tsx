@@ -38,15 +38,35 @@ export default function SystemUpdateNotifier() {
   }, []);
 
   const handleRefresh = useCallback(() => {
-    // Force reload with cache busting
     if (typeof window !== "undefined") {
       window.location.reload();
     }
   }, []);
 
+  const handleDismiss = useCallback(() => {
+    setIsDismissed(true);
+    if (updateInfo?.buildId) {
+      try {
+        sessionStorage.setItem(`dismissed_update_${updateInfo.buildId}`, "true");
+      } catch {}
+    }
+  }, [updateInfo?.buildId]);
+
   useEffect(() => {
-    const clientBuildTime = Number(process.env.NEXT_PUBLIC_BUILD_TIME || 0);
-    const unsub = subscribeToSystemUpdate(clientBuildTime, (payload) => {
+    const clientBuildId =
+      process.env.NEXT_PUBLIC_APP_BUILD_ID ||
+      (typeof window !== "undefined" && (window as unknown as { __NEXT_DATA__?: { buildId?: string } }).__NEXT_DATA__?.buildId) ||
+      "";
+
+    if (!clientBuildId) return;
+
+    const unsub = subscribeToSystemUpdate(clientBuildId, (payload) => {
+      try {
+        if (sessionStorage.getItem(`dismissed_update_${payload.buildId}`) === "true") {
+          return;
+        }
+      } catch {}
+
       setUpdateInfo(payload);
       setIsDismissed(false);
       setCountdown(15);
@@ -165,7 +185,7 @@ export default function SystemUpdateNotifier() {
                 </button>
               ) : (
                 <button
-                  onClick={() => setIsDismissed(true)}
+                  onClick={handleDismiss}
                   className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-zinc-300 text-xs font-medium rounded-lg transition cursor-pointer"
                 >
                   Nanti Saja
@@ -176,7 +196,7 @@ export default function SystemUpdateNotifier() {
 
           {/* Close button */}
           <button
-            onClick={() => setIsDismissed(true)}
+            onClick={handleDismiss}
             className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition shrink-0"
             title="Tutup pemberitahuan"
           >

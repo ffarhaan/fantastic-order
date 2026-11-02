@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const { initializeApp, getApps } = require("firebase/app");
 const { getFirestore, doc, setDoc } = require("firebase/firestore");
 
@@ -13,6 +15,15 @@ const firebaseConfig = {
 async function main() {
   console.log("📢 [notify_build] Menyiarkan sinyal pembaruan sistem ke Firebase Firestore...");
   try {
+    let buildId = "";
+    const buildIdPath = path.join(__dirname, "../.next/BUILD_ID");
+    if (fs.existsSync(buildIdPath)) {
+      buildId = fs.readFileSync(buildIdPath, "utf8").trim();
+    }
+    if (!buildId) {
+      buildId = process.env.VERCEL_GIT_COMMIT_SHA || `build-${Date.now()}`;
+    }
+
     const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const ref = doc(db, "app_data", "realtime_signals");
@@ -25,13 +36,14 @@ async function main() {
       ref,
       {
         system_update: now,
+        system_update_id: buildId,
         system_update_msg: commitMsg,
         system_update_sha: commitSha,
         updatedAt: new Date(now).toISOString(),
       },
       { merge: true }
     );
-    console.log(`✅ [notify_build] Sinyal pembaruan sistem berhasil terkirim! (Timestamp: ${now}, SHA: ${commitSha})`);
+    console.log(`✅ [notify_build] Sinyal update berhasil! Build ID: ${buildId}, SHA: ${commitSha}`);
   } catch (err) {
     console.warn("⚠️ [notify_build] Peringatan pengiriman sinyal (non-fatal):", err.message);
   }

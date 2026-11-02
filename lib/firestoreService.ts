@@ -2248,42 +2248,28 @@ export type RealtimeSignalChannel = "fakturs" | "returns" | "customers" | "reset
 
 export interface SystemUpdatePayload {
   timestamp: number;
+  buildId: string;
   commitMsg?: string;
   commitSha?: string;
 }
 
 export function subscribeToSystemUpdate(
-  clientBuildTime: number,
+  clientBuildId: string,
   onUpdate: (payload: SystemUpdatePayload) => void
 ): Unsubscribe {
-  let initialTimestamp = 0;
-  let initialized = false;
-
   return onSnapshot(
     doc(db, APP_DATA_COLLECTION, REALTIME_SIGNALS_DOC),
     (snap) => {
       if (!snap.exists()) return;
       const data = snap.data();
-      const ts = Number(data?.system_update || 0);
-      if (!ts) return;
+      const serverBuildId = String(data?.system_update_id || "");
+      if (!serverBuildId) return;
 
-      if (!initialized) {
-        initialTimestamp = ts;
-        initialized = true;
-        if (clientBuildTime > 0 && ts > clientBuildTime + 3000) {
-          onUpdate({
-            timestamp: ts,
-            commitMsg: data?.system_update_msg || "",
-            commitSha: data?.system_update_sha || "",
-          });
-        }
-        return;
-      }
-
-      if (ts > initialTimestamp) {
-        initialTimestamp = ts;
+      // Only notify if server build ID differs from this client's build ID!
+      if (clientBuildId && serverBuildId !== clientBuildId) {
         onUpdate({
-          timestamp: ts,
+          timestamp: Number(data?.system_update || Date.now()),
+          buildId: serverBuildId,
           commitMsg: data?.system_update_msg || "",
           commitSha: data?.system_update_sha || "",
         });
