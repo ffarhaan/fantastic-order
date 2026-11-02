@@ -5887,6 +5887,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         onClose={() => setShowApotekModal(false)}
         categoryOverrides={categoryOverrides}
         isDarkMode={isDarkMode}
+        initialWarehouse={selectedWarehouse}
       />
       <MasterProductModal
         isOpen={showProductModal}

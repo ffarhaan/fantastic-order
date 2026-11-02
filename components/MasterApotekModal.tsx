@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import masterApotekList from "@/lib/masterApotekList.json";
+import { useState, useMemo, useEffect } from "react";
+import masterApotekListMBI from "@/lib/masterApotekList.json";
+import masterApotekListMAI from "@/lib/masterApotekList_MAI.json";
 import { normalize } from "@/lib/parser";
 
 interface ApotekItem {
@@ -10,6 +11,8 @@ interface ApotekItem {
   namaMerchant?: string;
   kategori: string;
   keterangan?: string;
+  dklk?: string;
+  alamat?: string;
 }
 
 const ITEMS_PER_PAGE = 50;
@@ -19,18 +22,30 @@ export default function MasterApotekModal({
   onClose,
   categoryOverrides,
   isDarkMode,
+  initialWarehouse = "MBI",
 }: {
   isOpen: boolean;
   onClose: () => void;
   categoryOverrides?: Record<string, "1P" | "2P" | "3P">;
   isDarkMode?: boolean;
+  initialWarehouse?: "MBI" | "MAI";
 }) {
+  const [activeWarehouse, setActiveWarehouse] = useState<"MBI" | "MAI">(initialWarehouse);
   const [search, setSearch] = useState("");
   const [katFilter, setKatFilter] = useState<"all" | "1P" | "2P" | "3P">("all");
   const [page, setPage] = useState(0);
 
+  useEffect(() => {
+    if (isOpen) {
+      setActiveWarehouse(initialWarehouse);
+      setPage(0);
+      setSearch("");
+      setKatFilter("all");
+    }
+  }, [isOpen, initialWarehouse]);
+
   const apotekData = useMemo(() => {
-    const raw = masterApotekList as ApotekItem[];
+    const raw = (activeWarehouse === "MAI" ? masterApotekListMAI : masterApotekListMBI) as ApotekItem[];
     if (!categoryOverrides || Object.keys(categoryOverrides).length === 0) return raw;
 
     return raw.map((item) => {
@@ -45,7 +60,7 @@ export default function MasterApotekModal({
       }
       return item;
     });
-  }, [categoryOverrides]);
+  }, [activeWarehouse, categoryOverrides]);
 
   const filtered = useMemo(() => {
     let list = apotekData;
@@ -60,7 +75,9 @@ export default function MasterApotekModal({
         (item) =>
           item.namaApotek.toLowerCase().includes(s) ||
           (item.kodeCustomer && item.kodeCustomer.toLowerCase().includes(s)) ||
-          (item.namaMerchant && item.namaMerchant.toLowerCase().includes(s))
+          (item.namaMerchant && item.namaMerchant.toLowerCase().includes(s)) ||
+          (item.alamat && item.alamat.toLowerCase().includes(s)) ||
+          (item.dklk && item.dklk.toLowerCase().includes(s))
       );
     }
 
@@ -82,31 +99,76 @@ export default function MasterApotekModal({
           isDarkMode ? "bg-[#142038] border-slate-700/80" : "bg-slate-50 border-slate-200"
         }`}>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center font-bold text-base shadow-sm">
+            <div className={`w-9 h-9 rounded-xl text-white flex items-center justify-center font-bold text-base shadow-sm ${
+              activeWarehouse === "MAI"
+                ? "bg-gradient-to-tr from-indigo-600 to-purple-500"
+                : "bg-gradient-to-tr from-blue-600 to-cyan-500"
+            }`}>
               🏢
             </div>
             <div>
-              <h2 className={`text-base font-bold flex items-center gap-2 ${isDarkMode ? "text-white" : "text-slate-900"}`}>
-                <span>Master Apotek</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                  isDarkMode ? "bg-blue-950 text-blue-300 border border-blue-700/50" : "bg-blue-100 text-blue-800"
+              <div className="flex items-center gap-2">
+                <h2 className={`text-base font-bold flex items-center gap-2 ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+                  <span>Master Apotek ({activeWarehouse})</span>
+                </h2>
+                <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${
+                  activeWarehouse === "MAI"
+                    ? (isDarkMode ? "bg-purple-950/80 text-purple-300 border-purple-700/50" : "bg-purple-100 text-purple-800 border-purple-200")
+                    : (isDarkMode ? "bg-blue-950/80 text-blue-300 border-blue-700/50" : "bg-blue-100 text-blue-800 border-blue-200")
                 }`}>
                   {filtered.length.toLocaleString("id-ID")} Apotek
                 </span>
-              </h2>
+              </div>
               <p className={`text-xs ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                Database Klasifikasi Prioritas Apotek (1P / 2P / 3P)
+                Database Klasifikasi Terpisah 1P (Sama) · 2P & 3P (Khusus {activeWarehouse})
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg font-bold transition-colors ${
-              isDarkMode ? "text-slate-400 hover:text-white hover:bg-[#1b2b4b]" : "text-slate-400 hover:text-slate-700 hover:bg-slate-200/60"
-            }`}
-          >
-            ✕
-          </button>
+
+          <div className="flex items-center gap-3">
+            {/* Warehouse Toggle Tab */}
+            <div className={`flex items-center gap-1 p-1 rounded-xl border ${
+              isDarkMode ? "bg-[#0b1220] border-slate-700/80" : "bg-slate-200/70 border-slate-300/60"
+            }`}>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveWarehouse("MBI");
+                  setPage(0);
+                }}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  activeWarehouse === "MBI"
+                    ? (isDarkMode ? "bg-blue-600 text-white shadow-sm" : "bg-white text-blue-700 shadow-sm")
+                    : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900")
+                }`}
+              >
+                🏭 MBI
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveWarehouse("MAI");
+                  setPage(0);
+                }}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  activeWarehouse === "MAI"
+                    ? (isDarkMode ? "bg-purple-600 text-white shadow-sm" : "bg-white text-purple-700 shadow-sm")
+                    : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900")
+                }`}
+              >
+                🏢 MAI
+              </button>
+            </div>
+
+            <button
+              onClick={onClose}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg font-bold transition-colors ${
+                isDarkMode ? "text-slate-400 hover:text-white hover:bg-[#1b2b4b]" : "text-slate-400 hover:text-slate-700 hover:bg-slate-200/60"
+              }`}
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Modal Filter & Search Bar */}
@@ -117,7 +179,7 @@ export default function MasterApotekModal({
             <span className="absolute left-3 top-2.5 text-xs text-slate-400">🔍</span>
             <input
               type="text"
-              placeholder="Cari nama apotek / kode customer..."
+              placeholder={activeWarehouse === "MAI" ? "Cari nama apotek / wilayah / alamat MAI..." : "Cari nama apotek / kode customer MBI..."}
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -157,17 +219,21 @@ export default function MasterApotekModal({
                 isDarkMode ? "bg-[#16223d] text-slate-300 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200"
               }`}>
                 <th className="py-2 px-3 w-12 text-center">#</th>
-                <th className="py-2 px-3">Kode Customer / Merchant</th>
-                <th className="py-2 px-3">Nama Apotek (MBI)</th>
+                <th className="py-2 px-3">
+                  {activeWarehouse === "MAI" ? "Wilayah (DK / LK)" : "Kode Customer / Merchant"}
+                </th>
+                <th className="py-2 px-3">Nama Apotek ({activeWarehouse})</th>
                 <th className="py-2 px-3 text-center">Kategori</th>
-                <th className="py-2 px-3">Keterangan</th>
+                <th className="py-2 px-3">
+                  {activeWarehouse === "MAI" ? "Alamat & Status Izin" : "Keterangan"}
+                </th>
               </tr>
             </thead>
             <tbody className={`divide-y ${isDarkMode ? "divide-slate-800/80" : "divide-slate-100"}`}>
               {pageData.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="text-center py-8 text-slate-400">
-                    Tidak ditemukan data apotek yang sesuai.
+                    Tidak ditemukan data apotek yang sesuai di Master {activeWarehouse}.
                   </td>
                 </tr>
               ) : (
@@ -177,9 +243,21 @@ export default function MasterApotekModal({
                       {page * ITEMS_PER_PAGE + idx + 1}
                     </td>
                     <td className={`py-2 px-3 font-mono ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
-                      <div>{item.kodeCustomer || "-"}</div>
-                      {item.namaMerchant && item.namaMerchant !== "-" && (
-                        <div className="text-[10px] text-slate-500">{item.namaMerchant}</div>
+                      {activeWarehouse === "MAI" ? (
+                        <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                          item.dklk === "DK"
+                            ? (isDarkMode ? "bg-emerald-950 text-emerald-300 border border-emerald-700/50" : "bg-emerald-50 text-emerald-700 border border-emerald-200")
+                            : (isDarkMode ? "bg-amber-950 text-amber-300 border border-amber-700/50" : "bg-amber-50 text-amber-700 border border-amber-200")
+                        }`}>
+                          {item.dklk || "DK"}
+                        </span>
+                      ) : (
+                        <>
+                          <div>{item.kodeCustomer || "-"}</div>
+                          {item.namaMerchant && item.namaMerchant !== "-" && (
+                            <div className="text-[10px] text-slate-500">{item.namaMerchant}</div>
+                          )}
+                        </>
                       )}
                     </td>
                     <td className={`py-2 px-3 font-semibold ${isDarkMode ? "text-slate-100" : "text-slate-900"}`}>
@@ -198,8 +276,10 @@ export default function MasterApotekModal({
                         {item.kategori}
                       </span>
                     </td>
-                    <td className={`py-2 px-3 text-[11px] ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                      {item.keterangan || "-"}
+                    <td className={`py-2 px-3 max-w-[280px] truncate ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={item.alamat || item.keterangan || "-"}>
+                      {activeWarehouse === "MAI"
+                        ? (item.alamat && item.alamat !== "-" ? item.alamat : (item.keterangan || "-"))
+                        : (item.keterangan || "-")}
                     </td>
                   </tr>
                 ))
@@ -208,36 +288,38 @@ export default function MasterApotekModal({
           </table>
         </div>
 
-        {/* Modal Pagination Footer */}
-        {totalPages > 1 && (
-          <div className={`px-5 py-3 border-t flex items-center justify-between text-xs ${
-            isDarkMode ? "bg-[#142038] border-slate-700/80 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600"
-          }`}>
-            <span>
-              Halaman <strong>{page + 1}</strong> dari <strong>{totalPages}</strong>
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className={`px-3 py-1 border rounded-lg font-semibold disabled:opacity-40 ${
-                  isDarkMode ? "bg-[#1b2b4b] border-slate-700 text-slate-200 hover:bg-[#253961]" : "bg-white border-slate-200 hover:bg-slate-50"
-                }`}
-              >
-                Sebelumnya
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                disabled={page >= totalPages - 1}
-                className={`px-3 py-1 border rounded-lg font-semibold disabled:opacity-40 ${
-                  isDarkMode ? "bg-[#1b2b4b] border-slate-700 text-slate-200 hover:bg-[#253961]" : "bg-white border-slate-200 hover:bg-slate-50"
-                }`}
-              >
-                Berikutnya
-              </button>
-            </div>
+        {/* Modal Pagination */}
+        <div className={`px-5 py-3 border-t flex items-center justify-between text-xs ${
+          isDarkMode ? "bg-[#142038] border-slate-700/80 text-slate-300" : "bg-slate-50 border-slate-200 text-slate-600"
+        }`}>
+          <div>
+            Halaman <span className="font-bold">{totalPages === 0 ? 0 : page + 1}</span> dari <span className="font-bold">{totalPages}</span> ({filtered.length} total)
           </div>
-        )}
+          <div className="flex gap-2">
+            <button
+              disabled={page === 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              className={`px-3 py-1 rounded-lg font-bold border transition-all ${
+                page === 0
+                  ? "opacity-40 cursor-not-allowed border-transparent"
+                  : (isDarkMode ? "border-slate-700 hover:bg-[#1b2b4b] text-white" : "border-slate-300 bg-white hover:bg-slate-100 text-slate-800")
+              }`}
+            >
+              Sebelumnya
+            </button>
+            <button
+              disabled={page >= totalPages - 1}
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              className={`px-3 py-1 rounded-lg font-bold border transition-all ${
+                page >= totalPages - 1
+                  ? "opacity-40 cursor-not-allowed border-transparent"
+                  : (isDarkMode ? "border-slate-700 hover:bg-[#1b2b4b] text-white" : "border-slate-300 bg-white hover:bg-slate-100 text-slate-800")
+              }`}
+            >
+              Berikutnya
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
