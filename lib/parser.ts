@@ -5,9 +5,10 @@ import master2P from "./master2P.json";
 import masterApotekMAI from "./masterApotek_MAI.json";
 import master2P_MAI from "./master2P_MAI.json";
 import masterProduct from "./masterProduct.json";
+import masterApotekListMAI from "./masterApotekList_MAI.json";
 
 const apotekMap = masterApotek as Record<string, string>;
-const apotekMapMAI = masterApotekMAI as Record<string, string>;
+const apotekMapMAI: Record<string, string> = { ...(masterApotekMAI as Record<string, string>) };
 
 export function normalize(s: string): string {
   return String(s || "")
@@ -22,8 +23,23 @@ for (const [k, v] of Object.entries(apotekMap)) {
 }
 
 const normMapMAI: Record<string, string> = {};
-for (const [k, v] of Object.entries(apotekMapMAI)) {
-  normMapMAI[normalize(k)] = v;
+
+// Enrich MAI apotek mapping with DK/LK if present
+(masterApotekListMAI as Array<{ namaApotek: string; kategori?: string; dklk?: string }>).forEach((item) => {
+  const dklk = item.dklk && item.dklk !== "-" ? item.dklk.trim() : "";
+  const baseKat = item.kategori || "3P";
+  const fullKat = dklk ? `${baseKat} (${dklk})` : baseKat;
+  if (item.namaApotek) {
+    apotekMapMAI[item.namaApotek.toLowerCase().trim()] = fullKat;
+    normMapMAI[normalize(item.namaApotek)] = fullKat;
+  }
+});
+
+for (const [k, v] of Object.entries(masterApotekMAI as Record<string, string>)) {
+  const normKey = normalize(k);
+  if (!normMapMAI[normKey]) {
+    normMapMAI[normKey] = v;
+  }
 }
 
 // 2P lookup structures (MBI)
@@ -324,14 +340,14 @@ export function categorize(
   // === MAI WAREHOUSE ISOLATION ===
   if (entity === "MAI") {
     const exactMAI = apotekMapMAI[cust.toLowerCase()];
-    if (exactMAI === "1P" || exactMAI === "2P" || exactMAI === "3P") return exactMAI as "1P" | "2P" | "3P";
+    if (exactMAI) return exactMAI;
 
     const normMAI = normMapMAI[normCust];
-    if (normMAI === "1P" || normMAI === "2P" || normMAI === "3P") return normMAI as "1P" | "2P" | "3P";
+    if (normMAI) return normMAI;
 
     if (master2PNameSetMAI.has(normCust)) return "2P";
 
-    return "3P";
+    return "3P (DK)";
   }
 
   // === MBI WAREHOUSE (DEFAULT) ===
@@ -348,10 +364,10 @@ export function categorize(
   if (master2PNameSet.has(normCust)) return "2P";
 
   const exact = apotekMap[cust.toLowerCase()];
-  if (exact === "1P" || exact === "2P" || exact === "3P") return exact as "1P" | "2P" | "3P";
+  if (exact) return exact;
 
   const norm = normMap[normCust];
-  if (norm === "1P" || norm === "2P" || norm === "3P") return norm as "1P" | "2P" | "3P";
+  if (norm) return norm;
 
   return "3P";
 }

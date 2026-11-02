@@ -89,7 +89,7 @@ import {
 } from "lucide-react";
 
 type Filter = "belum" | "sudah" | "all" | "double" | "retur";
-type KatFilter = "all" | "1P" | "2P" | "3P" | "DK" | "LK";
+type KatFilter = "all" | "1P" | "2P" | "3P" | "3P (DK)" | "3P (LK)" | "2P (DK)" | "2P (LK)" | "1P (DK)" | "1P (LK)" | "DK" | "LK";
 type JenisFilter = "all" | "ORA" | "DOO";
 type KlasFilter = "all" | "prekursor" | "oot" | "ccp" | "alkes" | "farma";
 
@@ -1952,7 +1952,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
       // Precompute lowercase search string for blazing fast instant search
       const itemText = g.items.map((i) => `${i.itemCode} ${i.itemDescription}`).join(" ");
-      g.searchStr = `${g.so} ${g.invoiceNumber} ${g.customerName} ${g.transactionDate || ""} ${g.orderDate} ${g.kategoriProduk} ${g.isRetur ? "retur" : ""} ${itemText}`.toLowerCase();
+      g.searchStr = `${g.so} ${g.invoiceNumber} ${g.customerName} ${g.transactionDate || ""} ${g.orderDate} ${g.kategori} ${g.kategoriProduk} ${g.isRetur ? "retur" : ""} ${itemText}`.toLowerCase();
       g.invNum = parseInvNum(g.invoiceNumber);
     }
 
@@ -1981,13 +1981,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           maxOraStr = g.invoiceNumber;
         }
       } else {
-        if (g.kategori === "1P" && num > max1PDooNum) {
+        if (g.kategori.startsWith("1P") && num > max1PDooNum) {
           max1PDooNum = num;
           max1PDooStr = g.invoiceNumber;
-        } else if (g.kategori === "2P" && num > max2PNum) {
+        } else if (g.kategori.startsWith("2P") && num > max2PNum) {
           max2PNum = num;
           max2PStr = g.invoiceNumber;
-        } else if (g.kategori === "3P" && num > max3PNum) {
+        } else if (g.kategori.startsWith("3P") && num > max3PNum) {
           max3PNum = num;
           max3PStr = g.invoiceNumber;
         }
@@ -2080,7 +2080,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       minDateStr: "",
       maxDateStr: "",
       soSet: new Set<string>(),
-      katCounts: { "1P": 0, "2P": 0, "3P": 0 } as Record<"1P" | "2P" | "3P", number>,
+      katCounts: { "1P": 0, "2P": 0, "3P": 0, "DK": 0, "LK": 0 } as Record<string, number>,
       jenisCounts: { DOO: 0, ORA: 0 } as Record<"DOO" | "ORA", number>,
       prodCounts: { PREKURSOR: 0, OOT: 0, CCP: 0, ALKES: 0, FARMA: 0 } as Record<string, number>,
       custMap: new Map<string, { count: number; totalRp: number }>(),
@@ -2098,7 +2098,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       if (g.so && g.so !== "-") b.soSet.add(g.so);
       b.totalNilaiRp += (g.totalHarga || 0);
 
-      if (g.kategori in b.katCounts) b.katCounts[g.kategori as "1P" | "2P" | "3P"]++;
+      if (g.kategori.startsWith("1P")) b.katCounts["1P"]++;
+      else if (g.kategori.startsWith("2P")) b.katCounts["2P"]++;
+      else if (g.kategori.startsWith("3P")) b.katCounts["3P"]++;
+      if (g.kategori.includes("DK")) b.katCounts["DK"]++;
+      if (g.kategori.includes("LK")) b.katCounts["LK"]++;
       if (g.jenisTransaksi in b.jenisCounts) b.jenisCounts[g.jenisTransaksi as "DOO" | "ORA"]++;
 
       const pKat = (g.kategoriProduk || "FARMA").toUpperCase();
@@ -2220,7 +2224,19 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       result = result.filter((g) => g.orderDate === orderDateFilter);
     }
     if (katFilter !== "all") {
-      result = result.filter((g) => g.kategori === katFilter);
+      if (katFilter === "DK") {
+        result = result.filter((g) => g.kategori.includes("DK"));
+      } else if (katFilter === "LK") {
+        result = result.filter((g) => g.kategori.includes("LK"));
+      } else if (katFilter === "1P") {
+        result = result.filter((g) => g.kategori.startsWith("1P"));
+      } else if (katFilter === "2P") {
+        result = result.filter((g) => g.kategori.startsWith("2P"));
+      } else if (katFilter === "3P") {
+        result = result.filter((g) => g.kategori.startsWith("3P"));
+      } else {
+        result = result.filter((g) => g.kategori === katFilter);
+      }
     }
     if (jenisFilter !== "all") {
       result = result.filter((g) => g.jenisTransaksi === jenisFilter);
@@ -5085,11 +5101,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             }`}
           >
             <option value="all">Semua Kategori (1P/2P/3P/DK/LK)</option>
-            <option value="1P">1P</option>
-            <option value="2P">2P</option>
-            <option value="3P">3P</option>
-            <option value="DK">DK (Dalam Kota)</option>
-            <option value="LK">LK (Luar Kota)</option>
+            <option value="1P">1P (Semua)</option>
+            <option value="2P">2P (Semua)</option>
+            <option value="3P">3P (Semua)</option>
+            <option value="3P (DK)">3P (DK - Dalam Kota)</option>
+            <option value="3P (LK)">3P (LK - Luar Kota)</option>
+            <option value="2P (DK)">2P (DK - Dalam Kota)</option>
+            <option value="2P (LK)">2P (LK - Luar Kota)</option>
+            <option value="1P (DK)">1P (DK - Dalam Kota)</option>
+            <option value="1P (LK)">1P (LK - Luar Kota)</option>
+            <option value="DK">Semua DK (Dalam Kota)</option>
+            <option value="LK">Semua LK (Luar Kota)</option>
           </select>
 
           {/* Jenis Transaksi Filter */}
@@ -5832,26 +5854,36 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                 value={g.kategori}
                                 disabled={currentUser?.role === "readonly"}
                                 onChange={(e) => {
-                                  handleUpdateCategory(g.invoiceKey, e.target.value as "1P" | "2P" | "3P", g.customerName);
+                                  handleUpdateCategory(g.invoiceKey, e.target.value, g.customerName);
                                 }}
-                                className={`px-1.5 py-0.5 rounded text-xs font-bold border cursor-pointer ${
+                                className={`px-2 py-0.5 rounded text-xs font-black border cursor-pointer transition-colors ${
                                   currentUser?.role === "readonly" ? "cursor-not-allowed opacity-70" : ""
                                 } ${
-                                  isDarkMode
-                                    ? "bg-zinc-800 text-zinc-100 border-zinc-700 hover:border-zinc-500"
-                                    : "bg-white text-zinc-900 border-zinc-200 hover:border-zinc-300 shadow-2xs"
+                                  g.kategori.includes("DK")
+                                    ? (isDarkMode ? "bg-emerald-950 text-emerald-300 border-emerald-600/70" : "bg-emerald-50 text-emerald-800 border-emerald-300")
+                                    : g.kategori.includes("LK")
+                                    ? (isDarkMode ? "bg-indigo-950 text-indigo-300 border-indigo-600/70" : "bg-indigo-50 text-indigo-800 border-indigo-300")
+                                    : g.kategori.startsWith("1P")
+                                    ? (isDarkMode ? "bg-rose-950 text-rose-300 border-rose-700/70" : "bg-rose-50 text-rose-800 border-rose-300")
+                                    : g.kategori.startsWith("2P")
+                                    ? (isDarkMode ? "bg-amber-950 text-amber-300 border-amber-700/70" : "bg-amber-50 text-amber-800 border-amber-300")
+                                    : (isDarkMode ? "bg-zinc-800 text-zinc-100 border-zinc-700 hover:border-zinc-500" : "bg-white text-zinc-900 border-zinc-200 hover:border-zinc-300 shadow-2xs")
                                 }`}
                                 title={
                                   currentUser?.role === "readonly"
                                     ? "Akses Stranger (Hanya Lihat)"
-                                    : "Klik untuk ubah Kategori (1P / 2P / 3P / DK / LK)"
+                                    : "Klik untuk ubah Kategori (contoh: 3P (DK), 3P (LK))"
                                 }
                               >
                                 <option value="1P">1P</option>
+                                <option value="1P (DK)">1P (DK)</option>
+                                <option value="1P (LK)">1P (LK)</option>
                                 <option value="2P">2P</option>
+                                <option value="2P (DK)">2P (DK)</option>
+                                <option value="2P (LK)">2P (LK)</option>
                                 <option value="3P">3P</option>
-                                <option value="DK">DK</option>
-                                <option value="LK">LK</option>
+                                <option value="3P (DK)">3P (DK)</option>
+                                <option value="3P (LK)">3P (LK)</option>
                               </select>
                             </td>
                           )}
