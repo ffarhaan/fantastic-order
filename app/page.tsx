@@ -304,6 +304,13 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mainView, setMainView] = useState<"workspace" | "dashboard" | "returns" | "customers">("dashboard");
+  const [hasVisitedReturns, setHasVisitedReturns] = useState(false);
+  const [hasVisitedCustomers, setHasVisitedCustomers] = useState(false);
+
+  useEffect(() => {
+    if (mainView === "returns") setHasVisitedReturns(true);
+    if (mainView === "customers") setHasVisitedCustomers(true);
+  }, [mainView]);
   const [showDbStatsModal, setShowDbStatsModal] = useState(false);
   const [returnsOverviewStats, setReturnsOverviewStats] = useState<{ totalAll: number; totalResolved: number; totalPending: number; totalMbi: number; totalMai: number } | null>(null);
   const [filter, setFilter] = useState<Filter>("belum");
@@ -4216,24 +4223,33 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           </div>
         )}
 
-        {/* VIEW CONDITIONAL: FULL DASHBOARD ANALYTICS OR WORKSPACE */}
-        {mainView === "returns" ? (
-          <ReturnsView 
-            onSelectInvoice={(inv) => { 
-              const cleanInv = inv.replace(/_(1p|2p|3p)$/i, "").trim();
-              setSearch(cleanInv); 
-              setMainView("workspace"); 
-            }} 
-            onSelectCustomer={(c) => { setSearch(c); setMainView("workspace"); }} 
-            records={records}
-            currentUser={currentUser}
-          />
-        ) : mainView === "customers" ? (
-          <CustomersView 
-            onSelectCustomerForFilter={(c) => { setSearch(c); setMainView("workspace"); }} 
-            currentUser={currentUser}
-          />
-        ) : mainView === "dashboard" ? (
+        {/* VIEW CONDITIONAL: PERSISTENT KEEP-ALIVE TABS (Zero Reload When Switching Tabs) */}
+        <div className={mainView === "returns" ? "block" : "hidden"}>
+          {hasVisitedReturns && (
+            <ReturnsView 
+              onSelectInvoice={(inv) => { 
+                const cleanInv = inv.replace(/_(1p|2p|3p)$/i, "").trim();
+                setSearch(cleanInv); 
+                setMainView("workspace"); 
+              }} 
+              onSelectCustomer={(c) => { setSearch(c); setMainView("workspace"); }} 
+              records={records}
+              currentUser={currentUser}
+            />
+          )}
+        </div>
+
+        <div className={mainView === "customers" ? "block" : "hidden"}>
+          {hasVisitedCustomers && (
+            <CustomersView 
+              onSelectCustomerForFilter={(c) => { setSearch(c); setMainView("workspace"); }} 
+              currentUser={currentUser}
+            />
+          )}
+        </div>
+
+        {mainView !== "returns" && mainView !== "customers" && (
+          mainView === "dashboard" ? (
           <div className="space-y-3 animate-in fade-in duration-200">
             {/* PRATINJAU DATA TERPILIH HERO BANNER (From user's image) */}
             <div className={`p-4 sm:p-5 rounded-2xl border shadow-sm ${
@@ -6068,7 +6084,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           )}
         </div>
         </>
-        )}
+        )
+      )}
       </main>
       </div>
 

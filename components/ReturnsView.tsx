@@ -128,8 +128,14 @@ interface ReturnsViewProps {
   currentUser?: AppUser | null;
 }
 
+// Module-level in-memory cache to prevent re-loading when switching tabs
+let cachedReturnsData: ShipmentReturnRecord[] | null = null;
+let cachedTotalCount: number = 0;
+let cachedReturnsStats: any = null;
+let cachedAllReturnsData: ShipmentReturnRecord[] | null = null;
+
 export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records, currentUser }: ReturnsViewProps) {
-  const [returns, setReturns] = useState<ShipmentReturnRecord[]>([]);
+  const [returns, setReturns] = useState<ShipmentReturnRecord[]>(() => cachedReturnsData || []);
 
   const isSuper = isSuperAdminUser(currentUser?.name) || isSuperAdminUser(currentUser?.email);
   const canEditReturns = isSuper || Boolean(currentUser?.permissions?.can_edit_shipment_error);
@@ -162,7 +168,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     },
     [invoiceDateMap]
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !cachedReturnsData);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -186,7 +192,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     return list;
   }, [currentWeekNumber]);
   const [page, setPage] = useState(0);
-  const [total, setTotal] = useState(0);
+  const [total, setTotal] = useState(() => cachedTotalCount);
 
   // ─── Spreadsheet Freeze & Column Visibility States ───
   const [freezeColLevel, setFreezeColLevel] = useState<string>(() => {
@@ -226,7 +232,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   };
 
   const isColVisible = (colId: string) => !hiddenCols.includes(colId);
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState(() => cachedReturnsStats || {
     totalAll: 0,
     totalResolved: 0,
     totalPending: 0,
@@ -298,7 +304,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     | "reject"
     | "leaderboard"
   >("list");
-  const [allReturns, setAllReturns] = useState<ShipmentReturnRecord[]>([]);
+  const [allReturns, setAllReturns] = useState<ShipmentReturnRecord[]>(() => cachedAllReturnsData || []);
   const [personnelStats, setPersonnelStats] = useState<{
     personnel: any[];
     rootCauses: any[];
@@ -338,6 +344,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setAllReturns(json.data);
+        cachedAllReturnsData = json.data;
       }
     } catch (e) {
       console.error("fetchAllReturns error:", e);
@@ -640,6 +647,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         setReturns(data.data || []);
         setTotal(data.total || 0);
         if (data.stats) setStats(data.stats);
+        cachedReturnsData = data.data || [];
+        cachedTotalCount = data.total || 0;
+        if (data.stats) cachedReturnsStats = data.stats;
       }
     } catch (err) {
       console.error("Failed to fetch returns:", err);
@@ -650,8 +660,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
   // Real-time Firestore cross-browser signal (0 Byte on Vercel Origin, WebSocket Push)
   useEffect(() => {
-    fetchReturns();
-    fetchAllReturns();
+    const hasCache = Boolean(cachedReturnsData && cachedReturnsData.length > 0);
+    fetchReturns(hasCache);
+    fetchAllReturns(hasCache);
     const unsubRealtime = subscribeToRealtimeSignal("returns", () => {
       fetchReturns(true, true);
       fetchAllReturns(true);
