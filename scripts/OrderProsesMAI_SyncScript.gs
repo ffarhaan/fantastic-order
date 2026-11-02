@@ -4,7 +4,7 @@
  * FANTASTIC ORDER REAL-TIME SINKRONISASI - KHUSUS GUDANG MAI
  * Target Spreadsheet: https://docs.google.com/spreadsheets/d/1mFptY9OxIkP0oIW9C31PdJ-GICCPXocv8AXAu8vJ0WQ/edit?gid=746703007#gid=746703007
  * Target Tab GID: 746703007
- * Kolom: B (No SO), C (Checker), D (Packer), E (Picker)
+ * Kolom: B (No SO), C (Picker), D (Checker), E (Packer)
  * ====================================================================
  * 
  * CARA PASANG DI GOOGLE SPREADSHEET MAI:
@@ -198,13 +198,13 @@ function cleanStaffNameMAI(name) {
 /**
  * Deteksi kolom otomatis pada spreadsheet MAI:
  * Kolom A (0) = Tanggal SO
- * Kolom B (1) = No SO Selesai
- * Kolom C (2) = Checker
- * Kolom D (3) = Packer
- * Kolom E (4) = Picker
+ * Kolom B (1) = No SO
+ * Kolom C (2) = Picker
+ * Kolom D (3) = Checker
+ * Kolom E (4) = Packer
  */
 function detectColumnsMAI(headers) {
-  var map = { so: -1, checker: -1, packer: -1, picker: -1 };
+  var map = { so: -1, picker: -1, checker: -1, packer: -1 };
 
   for (var i = 0; i < headers.length; i++) {
     var h = String(headers[i] || "").toLowerCase().trim();
@@ -215,22 +215,23 @@ function detectColumnsMAI(headers) {
     if (map.so < 0 && (h.indexOf("so selesai") !== -1 || h.indexOf("no so") !== -1 || h.indexOf("no. so") !== -1 || h === "so" || h.indexOf("order") !== -1)) {
       map.so = i;
     }
+    if (map.picker < 0 && (h.indexOf("picker") !== -1 || h.indexOf("ambil") !== -1)) {
+      map.picker = i;
+    }
     if (map.checker < 0 && (h.indexOf("checker") !== -1 || h.indexOf("qc 1") !== -1 || h === "qc1")) {
       map.checker = i;
     }
     if (map.packer < 0 && (h.indexOf("packer") !== -1 || h.indexOf("packing") !== -1 || h.indexOf("qc 2") !== -1 || h === "qc2")) {
       map.packer = i;
     }
-    if (map.picker < 0 && (h.indexOf("picker") !== -1 || h.indexOf("ambil") !== -1)) {
-      map.picker = i;
-    }
   }
 
-  // Fallback standar: B=SO, C=Checker, D=Packer, E=Picker
+  // Fallback persis urutan kolom Report QC MAI:
+  // B = No SO (1), C = Picker (2), D = Checker (3), E = Packer (4)
   if (map.so < 0) map.so = 1;
-  if (map.checker < 0) map.checker = 2;
-  if (map.packer < 0) map.packer = 3;
-  if (map.picker < 0) map.picker = 4;
+  if (map.picker < 0) map.picker = 2;
+  if (map.checker < 0) map.checker = 3;
+  if (map.packer < 0) map.packer = 4;
 
   return map;
 }
