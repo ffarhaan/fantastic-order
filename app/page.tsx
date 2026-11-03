@@ -1422,13 +1422,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             return;
           }
 
-          // If client has a gap (e.g. client only has 300 rows from recent_sync, while TiDB has 17,309 rows),
-          // incremental delta is insufficient — perform full download to restore 100% parity!
-          const isMassiveGap = Boolean(
-            check.totalCount && (check.totalCount - clientCount > 20 || clientCount < 1000)
-          );
-
-          if (!isMassiveGap) {
+          // If client already has cached data (>= 1000), ALWAYS fetch lightweight delta!
+          if (clientCount >= 1000) {
             const deltaDocs = await fetchTiDBDelta(clientUpdated);
             if (!isMounted) return;
             if (deltaDocs && deltaDocs.length > 0) {
@@ -1463,6 +1458,38 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 printedAtMap: printedAtMapRef.current || {},
                 printedByMap: printedByMapRef.current || {},
               });
+            } else {
+              // Delta was empty, double check if there is an extreme count discrepancy (> 1000 missing)
+              if (check.totalCount && (check.totalCount - clientCount > 1000)) {
+                const result = await fetchFaktursFromTiDB();
+                if (!isMounted) return;
+                if (result && result.fakturs && result.fakturs.length > 0) {
+                  const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], result.fakturs);
+                  currentFakturDocsRef.current = merged;
+                  clientUpdatedRef.current = result.maxUpdated;
+                  const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
+                    merged as unknown as Array<Record<string, unknown>>,
+                    productOverridesRef.current,
+                    printedInvoicesRef.current
+                  );
+                  const nextPrinted = new Set([...Array.from(printedInvoicesRef.current || []), ...Array.from(docPrintedSet)]);
+                  const nextAtMap = { ...(printedAtMapRef.current || {}), ...docPrintedAtMap };
+                  const nextByMap = { ...(printedByMapRef.current || {}), ...docPrintedByMap };
+                  setRecords(recs);
+                  setPrintedInvoices(nextPrinted);
+                  printedInvoicesRef.current = nextPrinted;
+                  setPrintedAtMap(nextAtMap);
+                  printedAtMapRef.current = nextAtMap;
+                  setPrintedByMap(nextByMap);
+                  printedByMapRef.current = nextByMap;
+                  setLoading(false);
+                  setLocalCachedFakturs(merged, result.maxUpdated, {
+                    printedKeys: Array.from(nextPrinted),
+                    printedAtMap: nextAtMap,
+                    printedByMap: nextByMap,
+                  });
+                }
+              }
             }
             if (isMounted) setLoading(false);
             return;
