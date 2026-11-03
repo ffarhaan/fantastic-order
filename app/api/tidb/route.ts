@@ -21,19 +21,15 @@ function compressedJsonResponse(
 
   const etag = `"${crypto.createHash("md5").update(jsonStr).digest("hex")}"`;
 
-  const defaultCacheControl = isNoCache
-    ? "no-store, no-cache, must-revalidate"
-    : "public, max-age=0, must-revalidate";
-
-  const defaultCdnCache = isNoCache
+  const cdnHeader = isNoCache
     ? "no-store"
-    : "public, s-maxage=15, stale-while-revalidate=60";
+    : (customHeaders["Vercel-CDN-Cache-Control"] || customHeaders["CDN-Cache-Control"] || "public, s-maxage=60, stale-while-revalidate=300");
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "Cache-Control": isNoCache ? "no-store, no-cache, must-revalidate" : (customHeaders["Cache-Control"] || defaultCacheControl),
-    "CDN-Cache-Control": isNoCache ? "no-store" : (customHeaders["CDN-Cache-Control"] || defaultCdnCache),
-    "Vercel-CDN-Cache-Control": isNoCache ? "no-store" : (customHeaders["Vercel-CDN-Cache-Control"] || defaultCdnCache),
+    "Cache-Control": isNoCache ? "no-store, no-cache, must-revalidate" : (customHeaders["Cache-Control"] || cdnHeader),
+    "CDN-Cache-Control": cdnHeader,
+    "Vercel-CDN-Cache-Control": cdnHeader,
     "ETag": etag,
     ...customHeaders,
   };
