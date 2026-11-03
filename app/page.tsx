@@ -951,6 +951,8 @@ export default function Home() {
   const isUploadingRef = useRef(false);
   const currentFakturDocsRef = useRef<FirestoreFakturDoc[]>([]);
   const clientUpdatedRef = useRef<number>(0);
+  const isPeerSyncingRef = useRef(false);
+  const pendingPeerSyncRef = useRef(false);
 
   // Smooth & lag-free keyboard navigation refs
   const pageDataRef = useRef<FakturGroup[]>([]);
@@ -1224,6 +1226,98 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   return Array.from(map.values());
 }
 
+  // Unified Peer Sync Controller: Prioritizes Delta Sync (< 15KB) over full archive download (20MB)
+  // Single-flight with concurrency lock to avoid duplicate parallel downloads across tabs/broadcasts
+  const performPeerSync = useCallback(async () => {
+    if (isUploadingRef.current) return;
+    if (isPeerSyncingRef.current) {
+      pendingPeerSyncRef.current = true;
+      return;
+    }
+    isPeerSyncingRef.current = true;
+    pendingPeerSyncRef.current = false;
+
+    try {
+      const curCount = currentFakturDocsRef.current?.length || 0;
+      const curUpdated = clientUpdatedRef.current || 0;
+
+      // 1. Cold start / completely unpopulated local state (< 1000): full archive fetch once
+      if (curCount < 1000) {
+        const fullRes = await fetchFaktursFromTiDB();
+        if (fullRes && fullRes.fakturs && fullRes.fakturs.length > 0) {
+          const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], fullRes.fakturs);
+          currentFakturDocsRef.current = merged;
+          clientUpdatedRef.current = fullRes.maxUpdated || curUpdated;
+          const { records: recs } = dbRowsToFakturRecords(
+            merged as unknown as Array<Record<string, unknown>>,
+            productOverridesRef.current,
+            printedInvoicesRef.current
+          );
+          setRecords(recs);
+          setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
+            printedKeys: Array.from(printedInvoicesRef.current || []),
+            printedAtMap: printedAtMapRef.current || {},
+            printedByMap: printedByMapRef.current || {},
+          });
+        }
+        return;
+      }
+
+      // 2. Normal operational sync: ALWAYS prioritize Delta Sync (super light, < 15KB!)
+      // Fetches ONLY rows updated in TiDB since clientUpdated
+      const deltaDocs = await fetchTiDBDelta(curUpdated);
+      if (deltaDocs && deltaDocs.length > 0) {
+        const deltaMax = (deltaDocs as any).maxUpdated || curUpdated;
+        if (deltaMax > curUpdated) {
+          clientUpdatedRef.current = deltaMax;
+        }
+        const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], deltaDocs);
+        currentFakturDocsRef.current = merged;
+        const { records: recs } = dbRowsToFakturRecords(
+          merged as unknown as Array<Record<string, unknown>>,
+          productOverridesRef.current,
+          printedInvoicesRef.current
+        );
+        setRecords(recs);
+        setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
+          printedKeys: Array.from(printedInvoicesRef.current || []),
+          printedAtMap: printedAtMapRef.current || {},
+          printedByMap: printedByMapRef.current || {},
+        });
+      } else {
+        // Delta was empty, double check if there is an extreme count discrepancy (> 1000 missing)
+        const check = await checkTiDBUpdates(curCount, curUpdated);
+        if (check && check.totalCount && (check.totalCount - curCount > 1000)) {
+          const fullRes = await fetchFaktursFromTiDB();
+          if (fullRes && fullRes.fakturs && fullRes.fakturs.length > 0) {
+            const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], fullRes.fakturs);
+            currentFakturDocsRef.current = merged;
+            clientUpdatedRef.current = fullRes.maxUpdated || curUpdated;
+            const { records: recs } = dbRowsToFakturRecords(
+              merged as unknown as Array<Record<string, unknown>>,
+              productOverridesRef.current,
+              printedInvoicesRef.current
+            );
+            setRecords(recs);
+            setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
+              printedKeys: Array.from(printedInvoicesRef.current || []),
+              printedAtMap: printedAtMapRef.current || {},
+              printedByMap: printedByMapRef.current || {},
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[PeerSync] Error during peer sync:", err);
+    } finally {
+      isPeerSyncingRef.current = false;
+      if (pendingPeerSyncRef.current) {
+        pendingPeerSyncRef.current = false;
+        setTimeout(() => performPeerSync(), 500);
+      }
+    }
+  }, []);
+
   // 1. Instant 0ms Load from Local IndexedDB Cache, then Zero-Bandwidth Smart Delta Sync
   useEffect(() => {
     if (!currentUser) return;
@@ -1478,80 +1572,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             showToast(`📤 File baru diunggah rekan: ${uploadNotif.fileName} (${uploadNotif.newUnprinted} faktur baru)`);
           }
 
-          // ALWAYS trigger TiDB delta/full sync in background (at 1s and 3.5s) to ensure all peer devices
-          // achieve 100% total invoice count parity (e.g. 17,309) and full line items in real-time!
-          const syncFromTiDB = async () => {
-            const curCount = currentFakturDocsRef.current?.length || 0;
-            const curUpdated = clientUpdatedRef.current || 0;
-            const check = await checkTiDBUpdates(curCount, curUpdated);
-            if (check && check.totalCount && (check.totalCount - curCount > 20 || curCount < 1000)) {
-              const fullRes = await fetchFaktursFromTiDB();
-              if (fullRes && fullRes.fakturs && fullRes.fakturs.length > 0) {
-                const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], fullRes.fakturs);
-                currentFakturDocsRef.current = merged;
-                clientUpdatedRef.current = fullRes.maxUpdated || curUpdated;
-                const { records: recs } = dbRowsToFakturRecords(
-                  merged as unknown as Array<Record<string, unknown>>,
-                  productOverridesRef.current,
-                  printedInvoicesRef.current
-                );
-                setRecords(recs);
-                setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
-                  printedKeys: Array.from(printedInvoicesRef.current || []),
-                  printedAtMap: printedAtMapRef.current || {},
-                  printedByMap: printedByMapRef.current || {},
-                });
-              }
-              return;
-            }
-            const deltaDocs = await fetchTiDBDelta(curUpdated);
-            if (deltaDocs && deltaDocs.length > 0) {
-              const deltaMax = (deltaDocs as any).maxUpdated || curUpdated;
-              if (deltaMax > curUpdated) {
-                clientUpdatedRef.current = deltaMax;
-              }
-              const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], deltaDocs);
-              currentFakturDocsRef.current = merged;
-              const { records: recs } = dbRowsToFakturRecords(
-                merged as unknown as Array<Record<string, unknown>>,
-                productOverridesRef.current,
-                printedInvoicesRef.current
-              );
-              setRecords(recs);
-              setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
-                printedKeys: Array.from(printedInvoicesRef.current || []),
-                printedAtMap: printedAtMapRef.current || {},
-                printedByMap: printedByMapRef.current || {},
-              });
-            }
-          };
-          // Run immediately (< 1 second response across all devices) with non-blocking follow-up
-          syncFromTiDB();
-          setTimeout(syncFromTiDB, 1500);
+          // Trigger lightweight Delta Sync (< 15KB) across peer devices
+          performPeerSync();
         }
 
         if (reason === "print" || reason === "meta") {
-          // Real-time auto-heal: if local state only has recent_sync (<= 500 docs), pull full TiDB archive automatically
-          if ((currentFakturDocsRef.current?.length || 0) <= 500) {
-            fetchFaktursFromTiDB().then((fullRes) => {
-              if (fullRes && fullRes.fakturs && fullRes.fakturs.length > (currentFakturDocsRef.current?.length || 0)) {
-                const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], fullRes.fakturs);
-                currentFakturDocsRef.current = merged;
-                clientUpdatedRef.current = fullRes.maxUpdated || clientUpdatedRef.current || 0;
-                const { records: recs } = dbRowsToFakturRecords(
-                  merged as unknown as Array<Record<string, unknown>>,
-                  prodOverrides || productOverridesRef.current,
-                  printedInvoicesRef.current
-                );
-                setRecords(recs);
-                setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
-                  printedKeys: Array.from(printedInvoicesRef.current || []),
-                  printedAtMap: printedAtMapRef.current || {},
-                  printedByMap: printedByMapRef.current || {},
-                });
-              }
-            });
-          }
+          // In-place print state update is already completed (<50ms).
+          // Do NOT pull full TiDB archive!
           setLoading(false);
           return;
         }
@@ -1589,28 +1616,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             setPrintedByMap(printState.printedByMap || {});
             printedByMapRef.current = printState.printedByMap || {};
           }
-
-          // If we only received the 300 recent_sync docs, immediately pull the full TiDB archive in the background!
-          if (merged.length <= 500) {
-            fetchFaktursFromTiDB().then((fullRes) => {
-              if (fullRes && fullRes.fakturs && fullRes.fakturs.length > (currentFakturDocsRef.current?.length || 0)) {
-                const fullMerged = mergeKumulatifDocs(currentFakturDocsRef.current || [], fullRes.fakturs);
-                currentFakturDocsRef.current = fullMerged;
-                clientUpdatedRef.current = fullRes.maxUpdated || clientUpdatedRef.current || 0;
-                const { records: fullRecs } = dbRowsToFakturRecords(
-                  fullMerged as unknown as Array<Record<string, unknown>>,
-                  prodOverrides || productOverridesRef.current,
-                  printedInvoicesRef.current
-                );
-                setRecords(fullRecs);
-                setLocalCachedFakturs(fullMerged, clientUpdatedRef.current || 0, {
-                  printedKeys: Array.from(printedInvoicesRef.current || []),
-                  printedAtMap: printedAtMapRef.current || {},
-                  printedByMap: printedByMapRef.current || {},
-                });
-              }
-            });
-          }
         }
         setLoading(false);
       },
@@ -1624,49 +1629,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     // Subscribe to TiDB completion signal so peer browsers pull 100% of newly committed TiDB rows immediately
     const unsubTiDBSignal = subscribeToRealtimeSignal("fakturs", async () => {
       if (isUploadingRef.current) return;
-      const curCount = currentFakturDocsRef.current?.length || 0;
-      const curUpdated = clientUpdatedRef.current || 0;
-      const check = await checkTiDBUpdates(curCount, curUpdated);
-      if (check && check.totalCount && (check.totalCount - curCount > 20 || curCount < 1000)) {
-        const fullRes = await fetchFaktursFromTiDB();
-        if (fullRes && fullRes.fakturs && fullRes.fakturs.length > 0) {
-          const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], fullRes.fakturs);
-          currentFakturDocsRef.current = merged;
-          clientUpdatedRef.current = fullRes.maxUpdated || curUpdated;
-          const { records: recs } = dbRowsToFakturRecords(
-            merged as unknown as Array<Record<string, unknown>>,
-            productOverridesRef.current,
-            printedInvoicesRef.current
-          );
-          setRecords(recs);
-          setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
-            printedKeys: Array.from(printedInvoicesRef.current || []),
-            printedAtMap: printedAtMapRef.current || {},
-            printedByMap: printedByMapRef.current || {},
-          });
-        }
-        return;
-      }
-      const deltaDocs = await fetchTiDBDelta(curUpdated);
-      if (deltaDocs && deltaDocs.length > 0) {
-        const deltaMax = (deltaDocs as any).maxUpdated || curUpdated;
-        if (deltaMax > curUpdated) {
-          clientUpdatedRef.current = deltaMax;
-        }
-        const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], deltaDocs);
-        currentFakturDocsRef.current = merged;
-        const { records: recs } = dbRowsToFakturRecords(
-          merged as unknown as Array<Record<string, unknown>>,
-          productOverridesRef.current,
-          printedInvoicesRef.current
-        );
-        setRecords(recs);
-        setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
-          printedKeys: Array.from(printedInvoicesRef.current || []),
-          printedAtMap: printedAtMapRef.current || {},
-          printedByMap: printedByMapRef.current || {},
-        });
-      }
+      performPeerSync();
     });
 
     // Subscribe to Real-Time Total Reset signal from Owner so ALL browsers/devices wipe to 0 immediately
@@ -1742,12 +1705,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         return;
       }
 
-      // If client has a gap (e.g. 300 rows vs 17,309 in TiDB), perform a full download!
-      const isMassiveGap = Boolean(
-        !check || (check.totalCount && (check.totalCount - currentCount > 20 || currentCount < 1000))
-      );
+      // If client has a cold start / empty database (< 1000), perform full archive download
+      const isColdStart = Boolean(!check || currentCount < 1000);
 
-      if (isMassiveGap) {
+      if (isColdStart) {
         const fullRes = await fetchFaktursFromTiDB();
         if (fullRes && fullRes.fakturs && fullRes.fakturs.length > 0) {
           const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], fullRes.fakturs);
@@ -1783,7 +1744,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         }
       }
 
-      // Otherwise fetch incremental delta
+      // Otherwise fetch incremental delta (lightweight, ultra-fast & zero-waste bandwidth!)
       const deltaDocs = await fetchTiDBDelta(currentUpdated);
       if (deltaDocs && deltaDocs.length > 0) {
         const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], deltaDocs);
@@ -1816,6 +1777,30 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         });
         showToast(`✓ Berhasil menyinkronkan ${deltaDocs.length} pembaruan dari TiDB.`);
       } else {
+        // Delta was empty, check if there is an extreme count discrepancy (> 1000 missing)
+        if (check && check.totalCount && (check.totalCount - currentCount > 1000)) {
+          const fullRes = await fetchFaktursFromTiDB();
+          if (fullRes && fullRes.fakturs && fullRes.fakturs.length > 0) {
+            const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], fullRes.fakturs);
+            currentFakturDocsRef.current = merged;
+            const newMax = fullRes.maxUpdated || currentUpdated;
+            clientUpdatedRef.current = newMax;
+            const { records: recs } = dbRowsToFakturRecords(
+              merged as unknown as Array<Record<string, unknown>>,
+              prodOverrides || productOverridesRef.current,
+              printedInvoicesRef.current
+            );
+            setRecords(recs);
+            setLocalCachedFakturs(merged, newMax, {
+              printedKeys: Array.from(printedInvoicesRef.current || []),
+              printedAtMap: printedAtMapRef.current || {},
+              printedByMap: printedByMapRef.current || {},
+            });
+            showToast(`✓ Berhasil menyinkronkan penuh ${merged.length.toLocaleString("id-ID")} faktur dari TiDB!`);
+            setLoading(false);
+            return;
+          }
+        }
         showToast(`✓ Data sudah paling baru (${currentCount.toLocaleString("id-ID")} faktur sinkron).`);
       }
     } catch (err) {
