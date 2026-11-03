@@ -1099,6 +1099,10 @@ export async function GET(req: Request) {
         // Remove parenthetical annotations like (picker), (checker), (gudang)
         raw = raw.replace(/\([^)]*\)/g, ' ');
 
+        // Pre-clean legacy merged prefixes without separator (e.g. ARDRIDWAN -> ARDIN / RIDWAN)
+        raw = raw.replace(/\bARD(ANDRE|IDAL|WIBI|HIMAWAN|ASWIN|FARIS|YONNO|TRI|BUDI|RIDWAN)\b/gi, 'ARDIN / $1');
+        raw = raw.replace(/\bARDN\//gi, 'ARDIN / ');
+
         // Split by /, \, ,, +, &, " - ", " dan ", " and " (handles single, pairs, and triplets like AGUS/FAHRI/FATHUR)
         const parts = raw.split(/[\/\\,+&]|\s+-\s+|\s+dan\s+|\s+and\s+/i);
 
