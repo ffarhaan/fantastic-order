@@ -235,7 +235,7 @@ function dbRowsToFakturRecords(
             ? "Prekursor"
             : katProd === "OOT"
             ? "OOT"
-            : getPrekursorOOTClassification(itemDesc, itemCode) || undefined;
+            : undefined;
         const validSO = String(it.order_number || r.no_sales_order || "-").trim();
 
         records.push({
@@ -295,18 +295,22 @@ function dbRowsToFakturRecords(
     }
   }
 
-  // Detect double invoices
-  const soInvMap: Record<string, Set<string>> = {};
-  for (const rec of records) {
+  // Detect double invoices using fast Map
+  const soInvMap = new Map<string, Set<string>>();
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i];
     if (rec.orderNumber && rec.orderNumber !== "-") {
-      if (!soInvMap[rec.orderNumber]) soInvMap[rec.orderNumber] = new Set();
-      if (rec.invoiceNumber && rec.invoiceNumber !== "-") {
-        soInvMap[rec.orderNumber].add(rec.invoiceNumber);
+      let set = soInvMap.get(rec.orderNumber);
+      if (!set) {
+        set = new Set();
+        soInvMap.set(rec.orderNumber, set);
       }
+      set.add(rec.invoiceNumber);
     }
   }
-  for (const rec of records) {
-    if (rec.orderNumber && rec.orderNumber !== "-" && (soInvMap[rec.orderNumber]?.size || 0) > 1) {
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i];
+    if (rec.orderNumber && rec.orderNumber !== "-" && (soInvMap.get(rec.orderNumber)?.size || 0) > 1) {
       rec.isDoubleInv = true;
     }
   }
@@ -1611,7 +1615,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         }
 
         if (docs.length > 0) {
-          const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], docs);
+          const curDocs = currentFakturDocsRef.current || [];
+          if (curDocs.length >= 1000) {
+            // Check if docs actually introduces any new invoice before re-processing 20k rows!
+            const curKeys = new Set(curDocs.map((d) => d.id || d.no_faktur));
+            const hasNew = docs.some((d) => {
+              const k = d.id || d.no_faktur;
+              return k && !curKeys.has(k);
+            });
+            if (!hasNew) {
+              // All incoming docs already exist in memory! Do not freeze the main thread!
+              setLoading(false);
+              return;
+            }
+          }
+
+          const merged = mergeKumulatifDocs(curDocs, docs);
           currentFakturDocsRef.current = merged;
 
           // Ensure incoming unprinted docs from peer upload are purged from local printed set
@@ -2234,7 +2253,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     for (let i = 0; i < grouped.length; i++) {
       const g = grouped[i];
       const d = dashboardDateBasis === "tx" ? (g.transactionDate || g.orderDate) : (g.orderDate || g.transactionDate);
-      const dMs = d && d !== "-" ? parseDateMs(d) : 0;
+      const dMs = d && d !== "-" ? getCachedDateMs(d) : 0;
 
       // Apply accurate millisecond-based Dashboard Date Range Filter
       if (filterStartMs > 0 && dMs < filterStartMs) continue;
