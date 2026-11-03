@@ -365,7 +365,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const fetchAllReturns = useCallback(async (forceFresh = false) => {
     try {
       const url = forceFresh
-        ? "/api/tidb?action=returns&limit=5000&fresh=true"
+        ? `/api/tidb?action=returns&limit=5000&fresh=true&_t=${Date.now()}`
         : "/api/tidb?action=returns&limit=5000";
       const res = await fetch(url);
       const json = await res.json();
@@ -664,7 +664,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         limit: String(limit),
         offset: String(page * limit),
       });
-      if (forceFresh) params.set("fresh", "true");
+      if (forceFresh) {
+        params.set("fresh", "true");
+        params.set("_t", String(Date.now()));
+      }
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       if (pbfFilter !== "ALL") params.set("pbf", pbfFilter);
@@ -739,6 +742,13 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       if (data.success) {
         setReturns((prev) => prev.filter((r) => r.id !== id));
+        setAllReturns((prev) => prev.filter((r) => r.id !== id));
+        if (cachedReturnsData) {
+          cachedReturnsData = cachedReturnsData.filter((r) => r.id !== id);
+        }
+        if (cachedAllReturnsData) {
+          cachedAllReturnsData = cachedAllReturnsData.filter((r) => r.id !== id);
+        }
         if (selectedReturn?.id === id) {
           setSelectedReturn(null);
         }

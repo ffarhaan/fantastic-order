@@ -25,6 +25,8 @@ import {
   Loader2,
   Clock,
   XCircle,
+  HelpCircle,
+  FileText,
 } from "lucide-react";
 import { broadcastRealtimeSignal } from "@/lib/firestoreService";
 
@@ -93,6 +95,7 @@ export default function KomplainPage() {
   const [copiedWaText, setCopiedWaText] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [waNotification, setWaNotification] = useState("");
+  const [showInvoiceGuideModal, setShowInvoiceGuideModal] = useState(false);
 
   // Tab & Public Return Tracking State
   const [activeTab, setActiveTab] = useState<"form" | "track">("form");
@@ -1183,32 +1186,60 @@ ${photoStatus}
                 )}
               </div>
 
+              {/* Mini Helper Bar: Letak No. Invoice & No. SO di Lembar Faktur */}
+              <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <HelpCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span className="truncate text-[11px] sm:text-xs">
+                    Bingung letak <strong>No Faktur</strong> &amp; <strong>SO</strong> di kertas?
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowInvoiceGuideModal(true)}
+                  className="shrink-0 ml-2 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-semibold text-[11px] flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                >
+                  <FileText className="w-3 h-3" />
+                  <span>Lihat Contoh</span>
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 {/* No. Invoice */}
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                    No. Invoice (Faktur) <span className="text-red-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider">
+                      No. Invoice (Faktur) <span className="text-red-500">*</span>
+                    </label>
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                      (Baris &quot;Nomor :&quot;)
+                    </span>
+                  </div>
                   <input
                     type="text"
                     required
                     value={headerData.invoice_no}
                     onChange={(e) => setHeaderData({ ...headerData, invoice_no: e.target.value })}
-                    placeholder="Contoh: Inv-cfo-2610-20414"
+                    placeholder="Contoh: MBI/.../25XXX atau ketik 25XXX"
                     className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono font-bold text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black dark:focus:ring-white transition-all"
                   />
                 </div>
 
                 {/* No. SO */}
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
-                    No. Sales Order (SO)
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider">
+                      No. Sales Order (SO)
+                    </label>
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+                      (Baris &quot;Reference No.&quot;)
+                    </span>
+                  </div>
                   <input
                     type="text"
                     value={headerData.so_no}
                     onChange={(e) => setHeaderData({ ...headerData, so_no: e.target.value })}
-                    placeholder="Contoh: So-5yen4y-5539 (opsional)"
+                    placeholder="Contoh: 160XXXX atau 8YRVXX-XXXX (opsional)"
                     className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white transition-all"
                   />
                 </div>
@@ -1528,6 +1559,132 @@ ${photoStatus}
           Form Pengajuan Retur &bull; PT Medika Bina Investama &bull; PT Medika Akses Investama
         </p>
       </footer>
+
+      {/* MODAL PANDUAN NOMOR FAKTUR & NO SO (MOBILE-FRIENDLY) */}
+      {showInvoiceGuideModal && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
+          onClick={() => setShowInvoiceGuideModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-[#121215] border border-zinc-200 dark:border-zinc-800 rounded-t-3xl sm:rounded-2xl max-w-lg w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Drag Handle (Mobile) & Header */}
+            <div className="w-10 h-1 bg-zinc-300 dark:bg-zinc-700 rounded-full mx-auto mt-2 sm:hidden" />
+            <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-zinc-100 dark:border-zinc-800">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-500/15 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white">
+                    Panduan Letak No. Faktur &amp; SO
+                  </h3>
+                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                    Posisi nomor pada lembar kertas &quot;Faktur Penjualan&quot;
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowInvoiceGuideModal(false)}
+                className="w-7 h-7 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                aria-label="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body: Scrollable */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-3.5">
+              {/* Paper Preview Card */}
+              <div className="rounded-xl border border-zinc-300 dark:border-zinc-700 bg-amber-50/40 dark:bg-zinc-900/60 p-3 sm:p-4 font-mono shadow-inner text-[11px] sm:text-xs">
+                <div className="text-center font-bold tracking-wider pb-2 mb-2.5 border-b border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs">
+                  FAKTUR PENJUALAN
+                </div>
+
+                {/* Table representation */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] sm:text-[11px] leading-relaxed">
+                  <div className="text-zinc-600 dark:text-zinc-400 space-y-0.5">
+                    <p>Tanggal Invoice : 2026-11-XX</p>
+                    <p>Syarat Pembayaran: 30</p>
+                    <p>Tanggal Jatuh Tempo: 2026-12-XX</p>
+                  </div>
+                  <div className="space-y-1">
+                    {/* Highlight No Invoice */}
+                    <div className="p-1.5 rounded-lg bg-amber-500/20 border-2 border-amber-500/60 dark:border-amber-400/60">
+                      <p className="font-bold text-amber-950 dark:text-amber-200">
+                        Nomor : MBI/INV/CFO/26XX/25XXX
+                      </p>
+                      <span className="inline-block mt-0.5 px-1.5 py-0.2 text-[9px] font-bold rounded bg-amber-600 text-white font-sans uppercase">
+                        ← 1. NO INVOICE
+                      </span>
+                    </div>
+                    <p className="text-zinc-500 dark:text-zinc-400 px-0.5">FOB : 8268XX</p>
+                  </div>
+                </div>
+
+                {/* Reference No row */}
+                <div className="mt-2.5 pt-2 border-t border-dashed border-zinc-200 dark:border-zinc-800">
+                  <div className="p-1.5 rounded-lg bg-blue-500/20 border-2 border-blue-500/60 dark:border-blue-400/60">
+                    <p className="font-bold text-blue-950 dark:text-blue-200">
+                      Reference No. : 160XXXX | 8YRVXX-XXXX
+                    </p>
+                    <span className="inline-block mt-0.5 px-1.5 py-0.2 text-[9px] font-bold rounded bg-blue-600 text-white font-sans uppercase">
+                      ← 2. NO SALES ORDER (SO)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Detail Points */}
+              <div className="space-y-2 text-xs">
+                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-800/40">
+                  <div className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
+                    1
+                  </div>
+                  <div>
+                    <p className="font-bold text-zinc-900 dark:text-zinc-100 text-xs">
+                      No. Invoice (Faktur) &bull; <span className="text-red-500 font-bold">Wajib diisi</span>
+                    </p>
+                    <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-0.5 leading-relaxed">
+                      Di kertas tertulis pada baris <strong>&quot;Nomor :&quot;</strong> di bagian kanan atas.<br />
+                      Bisa diisi lengkap <code className="bg-amber-100 dark:bg-zinc-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-300 font-mono text-[10px]">MBI/INV/CFO/.../25XXX</code> atau cukup ketik digit akhirnya saja seperti <code className="bg-amber-100 dark:bg-zinc-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-300 font-mono text-[10px]">25XXX</code>.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200/70 dark:border-blue-800/40">
+                  <div className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
+                    2
+                  </div>
+                  <div>
+                    <p className="font-bold text-zinc-900 dark:text-zinc-100 text-xs">
+                      No. Sales Order (SO) &bull; <span className="text-zinc-500 font-normal">Opsional</span>
+                    </p>
+                    <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-0.5 leading-relaxed">
+                      Di kertas tertulis pada baris <strong>&quot;Reference No. :&quot;</strong>.<br />
+                      Bisa diisi nomor depan <code className="bg-blue-100 dark:bg-zinc-800 px-1 py-0.5 rounded text-blue-800 dark:text-blue-300 font-mono text-[10px]">160XXXX</code> atau kode order seperti <code className="bg-blue-100 dark:bg-zinc-800 px-1 py-0.5 rounded text-blue-800 dark:text-blue-300 font-mono text-[10px]">8YRVXX-XXXX</code>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 sm:p-4 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30">
+              <button
+                type="button"
+                onClick={() => setShowInvoiceGuideModal(false)}
+                className="w-full py-2.5 rounded-xl bg-black dark:bg-white text-white dark:text-black text-xs font-bold hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all cursor-pointer text-center"
+              >
+                Mengerti &bull; Lanjut Isi Form
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

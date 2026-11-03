@@ -31,12 +31,19 @@ function compressedJsonResponse(
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "Cache-Control": customHeaders["Cache-Control"] || defaultCacheControl,
-    "CDN-Cache-Control": customHeaders["CDN-Cache-Control"] || defaultCdnCache,
-    "Vercel-CDN-Cache-Control": customHeaders["Vercel-CDN-Cache-Control"] || defaultCdnCache,
+    "Cache-Control": isNoCache ? "no-store, no-cache, must-revalidate" : (customHeaders["Cache-Control"] || defaultCacheControl),
+    "CDN-Cache-Control": isNoCache ? "no-store" : (customHeaders["CDN-Cache-Control"] || defaultCdnCache),
+    "Vercel-CDN-Cache-Control": isNoCache ? "no-store" : (customHeaders["Vercel-CDN-Cache-Control"] || defaultCdnCache),
     "ETag": etag,
     ...customHeaders,
   };
+
+  if (isNoCache) {
+    headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+    headers["CDN-Cache-Control"] = "no-store";
+    headers["Vercel-CDN-Cache-Control"] = "no-store";
+    headers["Pragma"] = "no-cache";
+  }
 
   // If client/CDN sent If-None-Match and it matches our payload hash, return 304 with 0 bytes body!
   if (!isNoCache && req.headers.get("if-none-match") === etag) {
