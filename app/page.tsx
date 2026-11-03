@@ -4584,6 +4584,21 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     </button>
                   )}
 
+                  {/* Ekspor Data Button (MBI & MAI) */}
+                  <button
+                    type="button"
+                    onClick={handleExportExcel}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer shadow-xs ${
+                      isDarkMode
+                        ? "bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border-emerald-800"
+                        : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300"
+                    }`}
+                    title="Ekspor Data Terpilih (MBI & MAI) ke Excel"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Ekspor Data</span>
+                  </button>
+
                   <div className="text-lg sm:text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 ml-2">
                     RP {Math.round(dashboardStats.totalNilaiRp).toLocaleString("id-ID")}
                   </div>
@@ -6406,6 +6421,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         onClose={() => setShowExportModal(false)}
         groups={grouped}
         isDarkMode={isDarkMode}
+        initialWarehouse={mainView === "dashboard" ? dashboardWarehouseFilter : selectedWarehouse}
+        initialStartDate={mainView === "dashboard" ? dashboardStartDate : undefined}
+        initialEndDate={mainView === "dashboard" ? dashboardEndDate : undefined}
+        initialDateBasis={mainView === "dashboard" ? (dashboardDateBasis === "tx" ? "transaction" : "order") : undefined}
       />
 
       <DatabaseStatsModal

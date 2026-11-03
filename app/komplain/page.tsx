@@ -109,7 +109,7 @@ export default function KomplainPage() {
     setTrackError("");
     setTrackResults(null);
     try {
-      const res = await fetch(`/api/tidb?action=track_return&invoice_no=${encodeURIComponent(inv)}`);
+      const res = await fetch(`/api/tidb?action=track_return&invoice_no=${encodeURIComponent(inv)}&fresh=true&_t=${Date.now()}`);
       const data = await res.json();
       if (data.success && Array.isArray(data.data)) {
         setTrackResults(data.data);
