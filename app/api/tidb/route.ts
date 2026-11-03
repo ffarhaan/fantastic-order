@@ -1068,6 +1068,30 @@ export async function GET(req: Request) {
         'QC SESUAI', 'TIDAK ADA', 'TIDAK DIKETAHUI', 'UNKNOWN'
       ]);
 
+      // Smart Person Name Canonicalization (Merges nicknames/short names with official staff names)
+      const PERSON_CANONICAL_MAP: Record<string, string> = {
+        "BUDI": "BUDI SUSANTO",
+        "BUDI SUSANTO": "BUDI SUSANTO",
+        "ZAID": "ZAID AKMAL HUDA",
+        "ZAID AKMAL HUDA": "ZAID AKMAL HUDA",
+        "HASBI": "HASBIYAALLAH",
+        "HASBIYALLAH": "HASBIYAALLAH",
+        "HASBIYAALLAH": "HASBIYAALLAH",
+        "KHASBIYA": "HASBIYAALLAH",
+        "KHASBIYA RIZQI": "HASBIYAALLAH",
+        "OGI": "OGI SAPUTRA",
+        "OGIK": "OGI SAPUTRA",
+        "OGI SAPUTRA": "OGI SAPUTRA",
+        "DEFRI": "DEPRI",
+        "DEPRI": "DEPRI",
+        "SYUD": "MUHAMAD SYU'UD",
+        "SYU'UD": "MUHAMAD SYU'UD",
+        "WIBI": "WIBI ANDRIANSYAH",
+        "WIBI ANDRIANSYAH": "WIBI ANDRIANSYAH",
+        "AGUS": "AGUS SUROSO",
+        "AGUS SUROSO": "AGUS SUROSO",
+      };
+
       for (const r of rawReturns) {
         let raw = String(r.person || "").trim();
         if (!raw) continue;
@@ -1083,21 +1107,24 @@ export async function GET(req: Request) {
           p = p.replace(/^[.\\\/\s\-_]+|[.\\\/\s\-_]+$/g, '').replace(/\s+/g, ' ').trim();
           if (!p) continue;
 
-          const norm = p.toUpperCase();
+          let norm = p.toUpperCase();
           if (EXCLUDE_WORDS.has(norm)) continue;
           if (norm.length <= 1) continue;
 
-          let entry = personMap.get(norm);
+          // Map to canonical name if exists (e.g. BUDI and BUDI SUSANTO merge into BUDI SUSANTO)
+          const canonical = PERSON_CANONICAL_MAP[norm] || norm;
+
+          let entry = personMap.get(canonical);
           if (!entry) {
             entry = {
-              person: norm,
+              person: canonical,
               total_cases: 0,
               mbi_cases: 0,
               mai_cases: 0,
               resolved_cases: 0,
               pending_cases: 0,
             };
-            personMap.set(norm, entry);
+            personMap.set(canonical, entry);
           }
 
           entry.total_cases++;

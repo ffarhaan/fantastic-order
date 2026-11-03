@@ -522,10 +522,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const fetchPersonnelStats = useCallback(async (selectedMonth = monthFilter, selectedWeek = weekFilter) => {
     setLoadingStats(true);
     try {
-      const q = new URLSearchParams({ action: "personnel_stats" });
+      const q = new URLSearchParams({ 
+        action: "personnel_stats",
+        fresh: "true",
+        _t: String(Date.now()),
+      });
       if (selectedMonth && selectedMonth !== "ALL") q.set("month", selectedMonth);
       if (selectedWeek && selectedWeek !== "ALL") q.set("week", selectedWeek);
-      const res = await fetch(`/api/tidb?${q.toString()}`);
+      const res = await fetch(`/api/tidb?${q.toString()}`, { cache: "no-store" });
       const json = await res.json();
       if (json.success) {
         setPersonnelStats({
@@ -740,6 +744,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         }
         fetchReturns(true, true);
         fetchAllReturns(true);
+        fetchPersonnelStats(monthFilter, weekFilter);
         broadcastRealtimeSignal("returns");
         await recordActivityLog({
           action_type: "DELETE_RETURN",
@@ -784,6 +789,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         }
         fetchReturns(true, true);
         fetchAllReturns(true);
+        fetchPersonnelStats(monthFilter, weekFilter);
         broadcastRealtimeSignal("returns");
         await recordActivityLog({
           action_type: newStatus === "Resolved" ? "RESOLVE_RETURN" : "UPDATE_RETURN",
@@ -844,6 +850,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         setSelectedReturn(null);
         fetchReturns(true, true);
         fetchAllReturns(true);
+        fetchPersonnelStats(monthFilter, weekFilter);
         broadcastRealtimeSignal("returns");
         await recordActivityLog({
           action_type: isResolved ? "RESOLVE_RETURN" : "UPDATE_RETURN",
@@ -1953,7 +1960,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               }}
               className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
             >
-              <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Bulan (Jan - Okt 2026)</option>
+              <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Bulan (Jan - Des 2026)</option>
+              <option value="12" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Desember 2026</option>
+              <option value="11" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">November 2026</option>
               <option value="10" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Oktober 2026</option>
               <option value="9" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">September 2026</option>
               <option value="8" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Agustus 2026</option>
@@ -3033,7 +3042,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   }}
                   className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
                 >
-                  <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Bulan (Jan - Okt 2026)</option>
+                  <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Bulan (Jan - Des 2026)</option>
+                  <option value="12" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Desember 2026</option>
+                  <option value="11" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">November 2026</option>
                   <option value="10" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Oktober 2026</option>
                   <option value="9" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">September 2026</option>
                   <option value="8" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Agustus 2026</option>
