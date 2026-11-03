@@ -1904,25 +1904,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {/* Status Filter */}
-          <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-slate-700/60 rounded-xl px-2 py-1">
-            <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-medium">Status:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(0);
-              }}
-              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
-            >
-              <option value="ALL">Semua Status</option>
-              <option value="Resolved">Resolved (Selesai)</option>
-              <option value="Pending">Pending</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Approve">Approve</option>
-            </select>
-          </div>
-
-          {/* PBF Filter */}
           <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-slate-700/60 rounded-xl px-2.5 py-1">
             <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-medium">Status:</span>
             <select
@@ -1931,13 +1912,13 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 setStatusFilter(e.target.value);
                 setPage(0);
               }}
-              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
+              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
             >
-              <option value="ALL">Semua Status</option>
-              <option value="Resolved">Resolved (Selesai)</option>
-              <option value="Pending">Pending</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Approve">Approve</option>
+              <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Status</option>
+              <option value="Resolved" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Resolved (Selesai)</option>
+              <option value="Pending" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Pending</option>
+              <option value="In Progress" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">In Progress</option>
+              <option value="Approve" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Approve</option>
             </select>
           </div>
 
@@ -1950,11 +1931,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 setPbfFilter(e.target.value);
                 setPage(0);
               }}
-              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
+              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
             >
-              <option value="ALL">Semua PBF</option>
-              <option value="MBI">PT MEDIKA BINA INVESTAMA (MBI)</option>
-              <option value="MAI">PT MEDIKA AKSES INVESTAMA (MAI)</option>
+              <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua PBF</option>
+              <option value="MBI" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">PT MEDIKA BINA INVESTAMA (MBI)</option>
+              <option value="MAI" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">PT MEDIKA AKSES INVESTAMA (MAI)</option>
             </select>
           </div>
 
@@ -1970,19 +1951,19 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 setPage(0);
                 fetchPersonnelStats(m, weekFilter);
               }}
-              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
+              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
             >
-              <option value="ALL">Semua Bulan (Jan - Okt 2026)</option>
-              <option value="10">Oktober 2026</option>
-              <option value="9">September 2026</option>
-              <option value="8">Agustus 2026</option>
-              <option value="7">Juli 2026</option>
-              <option value="6">Juni 2026</option>
-              <option value="5">Mei 2026</option>
-              <option value="4">April 2026</option>
-              <option value="3">Maret 2026</option>
-              <option value="2">Februari 2026</option>
-              <option value="1">Januari 2026</option>
+              <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Bulan (Jan - Okt 2026)</option>
+              <option value="10" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Oktober 2026</option>
+              <option value="9" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">September 2026</option>
+              <option value="8" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Agustus 2026</option>
+              <option value="7" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Juli 2026</option>
+              <option value="6" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Juni 2026</option>
+              <option value="5" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Mei 2026</option>
+              <option value="4" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">April 2026</option>
+              <option value="3" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Maret 2026</option>
+              <option value="2" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Februari 2026</option>
+              <option value="1" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Januari 2026</option>
             </select>
           </div>
 
@@ -1998,13 +1979,13 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 setPage(0);
                 fetchPersonnelStats(monthFilter, w);
               }}
-              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1"
+              className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
             >
-              <option value="ALL">Semua Week (W1 - W{Math.max(43, currentWeekNumber)})</option>
-              <option value={String(currentWeekNumber)}>Week Sekarang (W{currentWeekNumber})</option>
-              <option disabled>──────────</option>
+              <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Week (W1 - W{Math.max(43, currentWeekNumber)})</option>
+              <option value={String(currentWeekNumber)} className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Week Sekarang (W{currentWeekNumber})</option>
+              <option disabled className="bg-white dark:bg-slate-900 text-zinc-400">──────────</option>
               {availableWeeks.map((w) => (
-                <option key={w} value={String(w)}>
+                <option key={w} value={String(w)} className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">
                   W{w} {w === currentWeekNumber ? "(Minggu Ini)" : ""}
                 </option>
               ))}
@@ -2036,13 +2017,13 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <select
               value={freezeColLevel}
               onChange={(e) => handleFreezeChange(e.target.value)}
-              className="bg-transparent border-none text-xs font-bold text-blue-600 dark:text-blue-400 focus:outline-none cursor-pointer pr-1"
+              className="bg-transparent border-none text-xs font-bold text-blue-600 dark:text-blue-400 dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
               title="Kunci kolom di sisi kiri seperti Excel/Google Sheets"
             >
-              <option value="none">Bebas (Tanpa Freeze)</option>
-              <option value="1">1. Kolom PBF</option>
-              <option value="2">2. PBF + Apotek</option>
-              <option value="3">3. Sampai No. Faktur</option>
+              <option value="none" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Bebas (Tanpa Freeze)</option>
+              <option value="1" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">1. Kolom PBF</option>
+              <option value="2" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">2. PBF + Apotek</option>
+              <option value="3" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">3. Sampai No. Faktur</option>
             </select>
           </div>
 
@@ -3050,19 +3031,19 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setMonthFilter(m);
                     fetchPersonnelStats(m, weekFilter);
                   }}
-                  className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white focus:outline-none cursor-pointer pr-1"
+                  className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
                 >
-                  <option value="ALL">Semua Bulan (Jan - Okt 2026)</option>
-                  <option value="10">Oktober 2026</option>
-                  <option value="9">September 2026</option>
-                  <option value="8">Agustus 2026</option>
-                  <option value="7">Juli 2026</option>
-                  <option value="6">Juni 2026</option>
-                  <option value="5">Mei 2026</option>
-                  <option value="4">April 2026</option>
-                  <option value="3">Maret 2026</option>
-                  <option value="2">Februari 2026</option>
-                  <option value="1">Januari 2026</option>
+                  <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Bulan (Jan - Okt 2026)</option>
+                  <option value="10" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Oktober 2026</option>
+                  <option value="9" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">September 2026</option>
+                  <option value="8" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Agustus 2026</option>
+                  <option value="7" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Juli 2026</option>
+                  <option value="6" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Juni 2026</option>
+                  <option value="5" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Mei 2026</option>
+                  <option value="4" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">April 2026</option>
+                  <option value="3" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Maret 2026</option>
+                  <option value="2" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Februari 2026</option>
+                  <option value="1" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Januari 2026</option>
                 </select>
               </div>
 
@@ -3077,13 +3058,13 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setWeekFilter(w);
                     fetchPersonnelStats(monthFilter, w);
                   }}
-                  className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white focus:outline-none cursor-pointer pr-1"
+                  className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
                 >
-                  <option value="ALL">Semua Week (W1 - W{Math.max(43, currentWeekNumber)})</option>
-                  <option value={String(currentWeekNumber)}>Week Sekarang (W{currentWeekNumber})</option>
-                  <option disabled>──────────</option>
+                  <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Week (W1 - W{Math.max(43, currentWeekNumber)})</option>
+                  <option value={String(currentWeekNumber)} className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Week Sekarang (W{currentWeekNumber})</option>
+                  <option disabled className="bg-white dark:bg-slate-900 text-zinc-400">──────────</option>
                   {availableWeeks.map((w) => (
-                    <option key={w} value={String(w)}>
+                    <option key={w} value={String(w)} className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">
                       W{w} {w === currentWeekNumber ? "(Minggu Ini)" : ""}
                     </option>
                   ))}

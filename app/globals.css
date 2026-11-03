@@ -63,3 +63,34 @@
   background: #18181b;
   border: 1px solid #27272a;
 }
+
+/* ─── Dark Mode & Form Controls (Fix Invisible Select Dropdowns in Windows/Chrome) ─── */
+html.dark,
+.dark {
+  color-scheme: dark;
+}
+
+select {
+  color-scheme: light;
+}
+
+.dark select,
+html.dark select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #ffffff;
+  color: #09090b;
+}
+
+.dark select option,
+html.dark select option {
+  background-color: #0c0c0e !important;
+  color: #f4f4f5 !important;
+}
+
+.dark select option:disabled,
+html.dark select option:disabled {
+  color: #71717a !important;
+}
