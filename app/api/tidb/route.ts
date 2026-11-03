@@ -817,7 +817,7 @@ export async function GET(req: Request) {
       }
 
       const rows = (await conn.execute(
-        `SELECT id, invoice_no, so_no, customer_name, product_name, qty, reason, status, action, nota_retur_no, resolved_date, report_date, photo_url, note
+        `SELECT id, invoice_no, so_no, customer_name, product_name, qty, reason, status, confirm, action, nota_retur_no, resolved_date, report_date, photo_url, note
          FROM shipment_returns 
          WHERE invoice_no = ? OR invoice_no LIKE ?
          ORDER BY id DESC LIMIT 20`,

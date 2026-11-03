@@ -24,6 +24,7 @@ import {
   Search,
   Loader2,
   Clock,
+  XCircle,
 } from "lucide-react";
 import { broadcastRealtimeSignal } from "@/lib/firestoreService";
 
@@ -923,14 +924,45 @@ ${photoStatus}
                   <span>Ditemukan {trackResults.length} tiket komplain untuk faktur "{trackInvoice}":</span>
                 </div>
                 {trackResults.map((item, idx) => {
-                  const isResolved = String(item.status || "").toLowerCase().includes("resolved");
+                  const isReject =
+                    String(item.confirm || "").toLowerCase() === "reject" ||
+                    String(item.status || "").toLowerCase().includes("reject") ||
+                    String(item.status || "").toLowerCase().includes("tolak") ||
+                    String(item.status || "").toLowerCase().includes("gagal");
+
+                  const isResolved =
+                    !isReject &&
+                    (String(item.status || "").toLowerCase().includes("resolved") ||
+                      String(item.status || "").toLowerCase().includes("selesai"));
+
+                  const isInProgress =
+                    !isReject &&
+                    !isResolved &&
+                    (String(item.status || "").toLowerCase().includes("progress") ||
+                      String(item.status || "").toLowerCase().includes("jalan") ||
+                      String(item.status || "").toLowerCase().includes("kirim") ||
+                      String(item.status || "").toLowerCase().includes("konfirmasi") ||
+                      String(item.confirm || "").toLowerCase() === "approve");
+
+                  const statusLabel = isReject
+                    ? "Ditolak (Reject)"
+                    : isResolved
+                    ? "Selesai (Resolved)"
+                    : isInProgress
+                    ? "Dalam Proses"
+                    : (item.status || "Pending");
+
                   const waText = encodeURIComponent(
-                    `Halo Admin Logistik MBI/MAI, saya dari ${item.customer_name || "Apotek"}. Mau konfirmasi update komplain Faktur No. ${item.invoice_no} untuk produk ${item.product_name}. Status saat ini: ${item.status || "Pending"}. Terima kasih.`
+                    `Halo Admin Logistik MBI/MAI, saya dari ${item.customer_name || "Apotek"}. Mau konfirmasi update komplain Faktur No. ${item.invoice_no} untuk produk ${item.product_name}. Status saat ini: ${statusLabel}. Terima kasih.`
                   );
                   return (
                     <div
                       key={item.id || idx}
-                      className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3"
+                      className={`bg-white dark:bg-[#0c0c0e] border rounded-2xl p-4 sm:p-5 shadow-xs space-y-3 transition-all ${
+                        isReject
+                          ? "border-red-300 dark:border-red-900/60"
+                          : "border-zinc-200 dark:border-zinc-800"
+                      }`}
                     >
                       {/* Top Header */}
                       <div className="flex items-start justify-between gap-3 border-b border-zinc-100 dark:border-zinc-800 pb-3">
@@ -950,13 +982,23 @@ ${photoStatus}
                         </div>
                         <span
                           className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 shrink-0 ${
-                            isResolved
+                            isReject
+                              ? "bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
+                              : isResolved
                               ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                              : isInProgress
+                              ? "bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
                               : "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
                           }`}
                         >
-                          {isResolved ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-                          <span>{isResolved ? "Selesai (Resolved)" : (item.status || "Sedang Ditinjau")}</span>
+                          {isReject ? (
+                            <XCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+                          ) : isResolved ? (
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          ) : (
+                            <Clock className="w-3.5 h-3.5" />
+                          )}
+                          <span>{statusLabel}</span>
                         </span>
                       </div>
 
@@ -964,24 +1006,23 @@ ${photoStatus}
                       <div className="p-3 bg-zinc-50 dark:bg-zinc-900/60 rounded-xl space-y-1.5 text-xs">
                         <div className="font-bold text-zinc-900 dark:text-white flex items-center justify-between">
                           <span>{item.product_name}</span>
-                          <span className="text-zinc-500">Qty: {item.qty}</span>
+                          <span className="text-zinc-500 font-mono">Qty: {item.qty}</span>
                         </div>
                         <div className="text-[11px] text-zinc-600 dark:text-zinc-400">
-                          <strong>Kendala:</strong> {item.reason || "-"}
+                          <strong>Kendala Dilaporkan:</strong> {item.reason || "-"}
                         </div>
-                        {item.note && (
-                          <div className="text-[11px] text-zinc-500 italic">
-                            "{item.note}"
-                          </div>
-                        )}
                       </div>
 
                       {/* Tindakan Logistik */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
                         <div className="p-2.5 bg-zinc-50 dark:bg-zinc-900/40 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
                           <span className="text-zinc-400 block text-[10px] font-bold uppercase">Tindakan Logistik:</span>
-                          <span className="font-bold text-zinc-800 dark:text-zinc-200">
-                            {item.action || "Menunggu verifikasi fisik"}
+                          <span className={`font-bold ${isReject ? "text-red-600 dark:text-red-400" : "text-zinc-800 dark:text-zinc-200"}`}>
+                            {item.action && item.action !== "-" && item.action !== "#N/A"
+                              ? item.action
+                              : isReject
+                              ? "Pengajuan Ditolak"
+                              : "Menunggu verifikasi fisik"}
                           </span>
                         </div>
                         <div className="p-2.5 bg-zinc-50 dark:bg-zinc-900/40 rounded-lg border border-zinc-100 dark:border-zinc-800/80">
@@ -991,6 +1032,37 @@ ${photoStatus}
                           </span>
                         </div>
                       </div>
+
+                      {/* Notes / Alasan Resmi dari Tim Logistik */}
+                      {item.note && item.note.trim() && (
+                        <div
+                          className={`p-3 rounded-xl border space-y-1 ${
+                            isReject
+                              ? "bg-red-50/80 dark:bg-red-950/30 border-red-200 dark:border-red-900/50"
+                              : "bg-blue-50/60 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/40"
+                          }`}
+                        >
+                          <div
+                            className={`flex items-center gap-1.5 text-xs font-bold ${
+                              isReject ? "text-red-700 dark:text-red-300" : "text-blue-700 dark:text-blue-300"
+                            }`}
+                          >
+                            {isReject ? (
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            ) : (
+                              <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                            )}
+                            <span>{isReject ? "Alasan & Catatan Tim Logistik:" : "Catatan Tim Logistik:"}</span>
+                          </div>
+                          <p
+                            className={`text-xs font-medium pl-5 whitespace-pre-wrap ${
+                              isReject ? "text-red-800 dark:text-red-200" : "text-zinc-800 dark:text-zinc-200"
+                            }`}
+                          >
+                            {item.note}
+                          </p>
+                        </div>
+                      )}
 
                       {/* Quick Contact Button */}
                       <div className="pt-1 flex justify-end">
