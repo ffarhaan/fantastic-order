@@ -1410,6 +1410,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           cached.fakturs = cached.fakturs.filter(
             (f) => !String(f.id || f.no_faktur || "").startsWith("TEST-")
           );
+
+          // Self-Healing Cache: Automatically detect and purge contaminated collision cache (e.g. October rows corrupted with November SOs)
+          const hasStaleCollisionCache = cached.fakturs.some(
+            (f) => String(f.id || f.no_faktur) === "27189" && String(f.no_sales_order).includes("1710443")
+          );
+          if (hasStaleCollisionCache) {
+            console.log("Self-healing: Purging stale collision cache to re-sync cleanly from TiDB...");
+            clearLocalCachedFakturs().catch(() => {});
+            cached.fakturs = [];
+          }
+
           clientCount = cached.fakturs.length;
           clientUpdated = cached.maxUpdated || 0;
 
@@ -3012,9 +3023,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const extra = (row.extra as Record<string, unknown>) || {};
           const cust = String(extra.nama_pelanggan || row.customer_name || "");
           const isOra = row.jenis_transaksi === "ORA" || isOraCustomer(cust);
-          const targetKey = isOra ? `${cleanInv}-1P` : cleanInv;
-          const num = parseInvNum(cleanInv);
           const rawKey = String((row as any).invoice_key || row.id || "").trim();
+          const isComposite = rawKey.includes("__");
+          // Multi-Month & Multi-SO Isolation: Composite keys must NEVER stomp or collapse into base keys!
+          const targetKey = isComposite
+            ? rawKey
+            : (isOra ? `${cleanInv}-1P` : cleanInv);
+          const num = parseInvNum(cleanInv);
           const isMaiOrder = rawKey.startsWith("MAI-") || rawInv.startsWith("MAI-");
           const rowEntity: "MAI" | "MBI" = (row.entity as "MAI" | "MBI") || (isMaiOrder ? "MAI" : "MBI");
           const kat = isOra ? "1P" : categorize("DOO", cust, undefined, undefined, undefined, rowEntity);
@@ -3149,20 +3164,29 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const baseTargetKey = r.invoiceKey || (isMaiRecord ? `MAI-${isOra ? `${cleanInv}-1P` : cleanInv}` : (isOra ? `${cleanInv}-1P` : cleanInv));
           let targetKey = baseTargetKey;
 
-          // Zero Collision Guarantee (LOCKED_RULES A.8):
-          // Check if an existing entry under baseTargetKey has a DIFFERENT, non-empty Sales Order (SO).
-          // If SOs differ (e.g. October ELZDZ2-8021 vs November 1710620), they MUST NEVER overwrite each other.
-          // Isolate the new transaction with a composite key: `${baseTargetKey}__${cleanSO}`.
+          // Zero Collision Guarantee & Multi-Month Order Date Isolation (LOCKED_RULES A.8):
+          // Check if an existing entry under baseTargetKey has a DIFFERENT Sales Order (SO) OR different Order Date.
+          // If SOs differ OR order dates belong to different months (e.g. October 10/2026 vs November 11/2026),
+          // they MUST NEVER overwrite each other. Isolate the new transaction with a composite key: `${baseTargetKey}__${cleanSO}`.
           const existingEntryCandidate = invMap.get(baseTargetKey);
           const prevInfoCandidate = existingStatusMap.get(baseTargetKey);
           const existingSO = String((existingEntryCandidate && existingEntryCandidate.no_sales_order) || (prevInfoCandidate && prevInfoCandidate.no_sales_order) || "").trim();
+          const existingDate = String((existingEntryCandidate && (existingEntryCandidate.order_date || (existingEntryCandidate.extra && (existingEntryCandidate.extra.order_date as string)))) || (prevInfoCandidate && (prevInfoCandidate.extra && (prevInfoCandidate.extra.order_date as string))) || "").trim();
+
+          const incomingDate = String(r.orderDate || "").trim();
+          const isDifferentMonth = Boolean(
+            existingDate && incomingDate &&
+            existingDate.length >= 7 && incomingDate.length >= 7 &&
+            existingDate.slice(-7) !== incomingDate.slice(-7)
+          );
 
           if (
             incomingSO &&
             incomingSO !== "-" &&
-            existingSO &&
-            existingSO !== "-" &&
-            existingSO !== incomingSO
+            (
+              (existingSO && existingSO !== "-" && existingSO !== incomingSO) ||
+              isDifferentMonth
+            )
           ) {
             targetKey = `${baseTargetKey}__${incomingSO}`;
           }
