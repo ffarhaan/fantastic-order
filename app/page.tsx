@@ -2365,6 +2365,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
     return qcOrders.filter((qc) => {
       if (!qc.so_number || qc.so_number === "-") return false;
+      // Must be a valid QC record with order data (not dummy blank row)
+      if (!qc.customer_name && !qc.so_date && !qc.waktu_kirim && !qc.no_do) return false;
       const cleanSo = qc.so_number.trim().toUpperCase();
       // If Oracle already has this SO uploaded, it automatically exits Report QC and moves into Belum Terprint!
       return !existingSOSet.has(cleanSo);

@@ -461,8 +461,8 @@ export async function GET(req: Request) {
       const rows = (await conn.execute(
         `SELECT warehouse, so_number, no_do, customer_name, so_date, waktu_kirim, checker_name, packer_name, picker_name, kategori, kategori_produk, total_item, total_qty, barang_catatan, is_done, status, updated_at
          FROM qc_reports 
-         WHERE warehouse = ?
-         ORDER BY updated_at DESC LIMIT 500;`,
+         WHERE warehouse = ? AND (customer_name IS NOT NULL OR so_date IS NOT NULL OR waktu_kirim IS NOT NULL OR no_do IS NOT NULL)
+         ORDER BY updated_at DESC, so_number DESC LIMIT 500;`,
         [warehouse]
       )) as any[];
       return Response.json({ success: true, count: rows.length, data: rows });
@@ -1707,7 +1707,7 @@ export async function POST(req: Request) {
         const barangCatatan = Number(item.barang_catatan || item.catatan_barang || item.barang_c) || 0;
         const isDone = String(item.is_done || item.done || "").trim();
 
-        if (cust || checker !== "-" || packer || picker || noDo) {
+        if (cust || soDate || waktuKirim || noDo) {
           qcRows.push([warehouse, so, noDo, cust, soDate, waktuKirim, checker, packer, picker, kat, katProd, totItem, totQty, barangCatatan, isDone]);
         }
       }
