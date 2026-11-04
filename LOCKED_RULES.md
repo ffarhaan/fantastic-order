@@ -33,6 +33,19 @@ Dokumen ini adalah acuan baku dan permanen untuk seluruh pengembangan, pemelihar
      - No SO yang sudah terisi (misal `696000`) TIDAK BOLEH ditimpa oleh tanda strip (`-`) dari file export.
      - Nama cabang apotek yang sudah terisi spesifik (misal `HAK Tirta Raya`) TIDAK BOLEH ditimpa kembali oleh nama induk generic (`PT Helios Alchemist Kesehatan`).
      - List barang (`items`) yang sudah terisi dari XXCUST TIDAK BOLEH dihapus atau dikosongkan oleh file export yang tidak memiliki rincian barang.
+8. **Jaminan Nol Tabrakan No SO & Isolasi Multi-SO (Zero SO Collision Guarantee - LOCKED TOTAL)**:
+   - **Latar Belakang & Masalah**: Di sistem Oracle atau lintas siklus waktu/bulan, nomor invoice (faktur) dapat dipakai ulang atau di-reset untuk Sales Order (SO) yang sama sekali berbeda di bulan berikutnya (contoh riil: Invoice `27171` terbit pada Oktober untuk SO `ELZDZ2-8021` / `Apotek Pasti Hemat Tebet`, dan terbit kembali pada November untuk SO `1710620` / `Apotek SBS Farma Mekarwangi`).
+   - **Larangan Mutlak Penimpaan & Jaminan Anti-Hilang**: DILARANG KERAS menimpa data lama atau menggabungkan transaksi berbeda hanya karena nomor invoicenya sama. No SO lama TIDAK BOLEH hilang dari sistem ataupun dari hasil pencarian!
+   - **Kunci Unik Komposit Multi-SO (`${cleanInv}__${cleanSO}`)**:
+     - Jika sebuah transaksi baru memiliki nomor faktur yang sudah pernah ada di database TETAPI memiliki No SO yang berbeda dan valid (bukan strip `-` atau kosong), transaksi baru tersebut WAJIB dialokasikan kunci unik mandiri (`${cleanInv}__${cleanSO}`, contoh: `27171__1710620`).
+     - Transaksi lama (contoh: `27171` dengan `ELZDZ2-8021`) tetap utuh 100% bersama apotek aslinya (`Apotek Pasti Hemat Tebet`).
+     - Transaksi baru (contoh: `27171__1710620` dengan `1710620`) berdiri mandiri 100% bersama apotek barunya (`Apotek SBS Farma Mekarwangi`).
+   - **Tampilan UI & Pencarian Global**:
+     - Di tabel UI, kolom "NO INVOICE" tetap menampilkan nomor invoice murni (`27171`).
+     - Kolom "NO SO" menampilkan No SO riil masing-masing baris (`ELZDZ2-8021` untuk baris 1, `1710620` untuk baris 2).
+     - Kolom "PELANGGAN" menampilkan nama apotek riil masing-masing baris.
+     - Pencarian global: Mengetik `ELZDZ2-8021` memunculkan transaksi Oktober, mengetik `1710620` memunculkan transaksi November, dan mengetik `27171` memunculkan KEDUA baris secara mandiri.
+   - **Independensi Status Cetak**: Menandai Done Print pada satu transaksi tidak akan pernah mempengaruhi status cetak transaksi lainnya. Partisi Firestore bucket (`getPrintPartitionId`) memisahkan suffix `__` sehingga kedua transaksi tersimpan aman di bucket yang tepat tanpa overflow.
 
 #### B. Jaminan Status Faktur Baru & Retensi Faktur Belum Dicetak (Unprinted Guarantee - LOCKED TOTAL)
 1. **Aturan Mutlak Faktur Baru**:

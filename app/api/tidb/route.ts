@@ -645,6 +645,18 @@ export async function GET(req: Request) {
     // ==========================================
     // 3. SHIPMENT RETURNS / KOMPLAIN
     // ==========================================
+    if (action === "return_photo") {
+      const id = searchParams.get("id");
+      if (!id) return Response.json({ success: false, error: "Missing ID" }, { status: 400 });
+      const rows = (await conn.execute("SELECT photo_url FROM shipment_returns WHERE id = ? LIMIT 1", [id])) as Array<{ photo_url: string }>;
+      return new Response(JSON.stringify({ success: true, photo_url: rows[0]?.photo_url || null }), {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800",
+        }
+      });
+    }
+
     if (action === "returns") {
       const search = (searchParams.get("search") || "").trim();
       const status = searchParams.get("status") || "";
@@ -652,6 +664,7 @@ export async function GET(req: Request) {
       const category = searchParams.get("category") || "";
       const limit = Math.min(Number(searchParams.get("limit")) || 50, 5000);
       const offset = Number(searchParams.get("offset")) || 0;
+      const includePhoto = searchParams.get("include_photo") === "1";
 
       let whereClause = "WHERE customer_name != '#N/A' AND customer_name != '' AND customer_name IS NOT NULL";
       const params: (string | number)[] = [];
@@ -698,7 +711,12 @@ export async function GET(req: Request) {
 
       const dataSql = `
         SELECT 
-          sr.*,
+          sr.id, sr.pbf, sr.report_date, sr.month, sr.week, sr.so_no, sr.customer_name,
+          sr.invoice_no, sr.invoice_date, sr.product_name, sr.batch_no, sr.exp_date,
+          sr.qty, sr.unit, sr.reason, sr.person, sr.root_cause, sr.note, sr.status,
+          sr.confirm, sr.category, sr.created_at, sr.updated_at,
+          CASE WHEN sr.photo_url IS NOT NULL AND CHAR_LENGTH(sr.photo_url) > 0 THEN 1 ELSE 0 END AS has_photo,
+          ${includePhoto ? "sr.photo_url" : "CASE WHEN CHAR_LENGTH(sr.photo_url) < 256 THEN sr.photo_url ELSE NULL END AS photo_url"},
           COALESCE(
             NULLIF(fa.order_date, ''),
             NULLIF(fa.transaction_date, ''),

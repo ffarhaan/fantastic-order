@@ -342,6 +342,29 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [personnelFilterPbf, setPersonnelFilterPbf] = useState<string>("ALL");
   const [personnelSearchQuery, setPersonnelSearchQuery] = useState<string>("");
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
+  const [loadingPhotoId, setLoadingPhotoId] = useState<number | null>(null);
+
+  const handlePreviewPhoto = useCallback(async (r: ShipmentReturnRecord | any) => {
+    if (r.photo_url) {
+      setPreviewPhotoUrl(r.photo_url);
+      return;
+    }
+    if ((r as any).has_photo || r.photo_url) {
+      try {
+        setLoadingPhotoId(r.id);
+        const res = await fetch(`/api/tidb?action=return_photo&id=${r.id}`);
+        const data = await res.json();
+        if (data.photo_url) {
+          r.photo_url = data.photo_url;
+          setPreviewPhotoUrl(data.photo_url);
+        }
+      } catch (err) {
+        console.error("Failed to fetch photo proof:", err);
+      } finally {
+        setLoadingPhotoId(null);
+      }
+    }
+  }, []);
 
   const openCasesCount = useMemo(() => {
     const list = allReturns.length > 0 ? allReturns : returns;
@@ -1054,14 +1077,15 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           </span>
         </div>
 
-        {r.photo_url && (
+        {(r.photo_url || (r as any).has_photo) && (
           <button
             type="button"
-            onClick={() => setPreviewPhotoUrl(r.photo_url || null)}
-            className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800"
+            onClick={() => handlePreviewPhoto(r)}
+            disabled={loadingPhotoId === r.id}
+            className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 disabled:opacity-50"
           >
             <Maximize2 className="w-3 h-3" />
-            <span>Lihat Foto Bukti</span>
+            <span>{loadingPhotoId === r.id ? "Memuat..." : "Lihat Foto Bukti"}</span>
           </button>
         )}
       </div>
@@ -2264,14 +2288,15 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
                 {/* 4. Action Buttons */}
                 <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800/80">
-                  {r.photo_url ? (
+                  {(r.photo_url || (r as any).has_photo) ? (
                     <button
                       type="button"
-                      onClick={() => setPreviewPhotoUrl(r.photo_url || null)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300 border border-violet-200 dark:border-violet-800 hover:scale-105 transition-all cursor-pointer"
+                      onClick={() => handlePreviewPhoto(r)}
+                      disabled={loadingPhotoId === r.id}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300 border border-violet-200 dark:border-violet-800 hover:scale-105 transition-all cursor-pointer disabled:opacity-50"
                     >
                       <Camera className="w-3 h-3 text-violet-600 dark:text-violet-400" />
-                      <span>Lihat Foto Bukti</span>
+                      <span>{loadingPhotoId === r.id ? "Memuat..." : "Lihat Foto Bukti"}</span>
                     </button>
                   ) : (
                     <span />
@@ -2637,18 +2662,19 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                               Qty: <strong className="text-black dark:text-slate-200">{r.qty || 1}</strong>
                               {r.batch_no && r.batch_no !== "#N/A" && ` • Batch: ${r.batch_no}`}
                             </p>
-                            {r.photo_url && (
+                            {(r.photo_url || (r as any).has_photo) && (
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setPreviewPhotoUrl(r.photo_url || null);
+                                  handlePreviewPhoto(r);
                                 }}
-                                className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-300 border border-violet-200 dark:border-violet-700 hover:scale-105 transition-all shadow-xs cursor-pointer"
+                                disabled={loadingPhotoId === r.id}
+                                className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-300 border border-violet-200 dark:border-violet-700 hover:scale-105 transition-all shadow-xs cursor-pointer disabled:opacity-50"
                                 title="Lihat foto bukti kerusakan dari apotek"
                               >
                                 <Camera className="w-3 h-3 text-violet-600 dark:text-violet-400" />
-                                <span>Foto Bukti</span>
+                                <span>{loadingPhotoId === r.id ? "Memuat..." : "Foto Bukti"}</span>
                               </button>
                             )}
                           </td>

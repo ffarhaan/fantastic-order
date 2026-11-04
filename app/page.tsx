@@ -192,7 +192,10 @@ function dbRowsToFakturRecords(
     const txDate = String(r.transaction_date || extra.transaction_date || date);
     const isOra = r.jenis_transaksi === "ORA" || isOraCustomer(cust);
     const baseKey = isOra ? `${cleanInv}-1P` : cleanInv;
-    const invKey = entity === "MAI" ? `MAI-${baseKey}` : baseKey;
+    const rawKey = String((r as any).invoice_key || r.id || "").trim();
+    const invKey = (rawKey && rawKey !== "undefined" && rawKey !== "null" && rawKey !== cleanInv && (rawKey.includes("__") || rawKey.includes("#") || rawKey.startsWith("MAI-") || rawKey.endsWith("-1P")))
+      ? rawKey
+      : (entity === "MAI" ? `MAI-${baseKey}` : baseKey);
     const cleanJenis: "DOO" | "ORA" = isOra ? "ORA" : "DOO";
     const calculatedKat = isOra ? "1P" : categorize(cleanJenis, cust, cleanJenis, undefined, undefined, entity);
     const kategori = (entity === "MAI" ? calculatedKat : (r.kategori as "1P" | "2P" | "3P")) || calculatedKat;
@@ -2052,6 +2055,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         if (it.itemCode !== "-" || it.itemDescription !== "-") {
           itemText += ` ${it.itemCode} ${it.itemDescription}`;
         }
+        if (it.orderNumber && it.orderNumber !== "-" && it.orderNumber !== g.so) {
+          itemText += ` ${it.orderNumber}`;
+        }
       }
       g.searchStr = `${g.so} ${g.invoiceNumber} ${g.customerName} ${g.transactionDate || ""} ${g.orderDate} ${g.kategori} ${g.kategoriProduk} ${g.isRetur ? "retur" : ""}${itemText}`.toLowerCase();
       g.invNum = parseInvNum(g.invoiceNumber);
@@ -2985,7 +2991,28 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const num = parseInvNum(cleanInv);
           if (!cleanInv || cleanInv === "-" || cleanInv === "0") continue;
 
-          const targetKey = r.invoiceKey || (r.entity === "MAI" ? `MAI-${isOra ? `${cleanInv}-1P` : cleanInv}` : (isOra ? `${cleanInv}-1P` : cleanInv));
+          const baseTargetKey = r.invoiceKey || (r.entity === "MAI" ? `MAI-${isOra ? `${cleanInv}-1P` : cleanInv}` : (isOra ? `${cleanInv}-1P` : cleanInv));
+          let targetKey = baseTargetKey;
+
+          // Zero Collision Guarantee (LOCKED_RULES A.8):
+          // Check if an existing entry under baseTargetKey has a DIFFERENT, non-empty Sales Order (SO).
+          // If SOs differ (e.g. October ELZDZ2-8021 vs November 1710620), they MUST NEVER overwrite each other.
+          // Isolate the new transaction with a composite key: `${baseTargetKey}__${cleanSO}`.
+          const incomingSO = String(r.orderNumber || "").trim();
+          const existingEntryCandidate = invMap.get(baseTargetKey);
+          const prevInfoCandidate = existingStatusMap.get(baseTargetKey);
+          const existingSO = String((existingEntryCandidate && existingEntryCandidate.no_sales_order) || (prevInfoCandidate && prevInfoCandidate.no_sales_order) || "").trim();
+
+          if (
+            incomingSO &&
+            incomingSO !== "-" &&
+            existingSO &&
+            existingSO !== "-" &&
+            existingSO !== incomingSO
+          ) {
+            targetKey = `${baseTargetKey}__${incomingSO}`;
+          }
+
           const prevInfo = existingStatusMap.get(targetKey);
           const existingEntry = invMap.get(targetKey);
 
@@ -3049,7 +3076,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               : (overriddenKat || (targetEntity === "MAI" ? defaultKat : r.kategori) || defaultKat);
             invMap.set(targetKey, {
               id: targetKey,
-              no_faktur: targetKey,
+              no_faktur: cleanInv,
               no_sales_order: r.orderNumber || "-",
               customer_name: r.customerName || "-",
               order_date: r.orderDate || "-",

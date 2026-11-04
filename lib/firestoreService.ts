@@ -74,9 +74,9 @@ export function scheduleChunkPersistence(chunkIds: Set<string>) {
  * (Bucket sizes of 5,000 invoices per partition ensure doc sizes stay under 150 KB, well below 1 MB limit)
  */
 export function getPrintPartitionId(invoiceKey: string): string {
-  // Strip suffix like -1P, -2P, -3P BEFORE removing non-digits
-  // so that "18033-1P" correctly maps to "18033" (bucket 15000_19999) and NOT "180331" (bucket 180000_184999)!
-  const cleanNumStr = invoiceKey.replace(/-[0-9]P$/i, "").replace(/\D/g, "");
+  // Strip multi-SO isolation suffix like __1710620 and ORA suffix -1P BEFORE removing non-digits
+  const baseKey = invoiceKey.split("__")[0].split("#")[0];
+  const cleanNumStr = baseKey.replace(/-[0-9]P$/i, "").replace(/\D/g, "");
   if (!cleanNumStr) return "part_misc";
   const num = parseInt(cleanNumStr, 10);
   const bucketIndex = Math.floor(num / 5000);
