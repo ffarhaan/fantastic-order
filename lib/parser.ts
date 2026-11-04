@@ -396,10 +396,12 @@ export function categorize(
     upper === "1001" ||
     upper.includes("HALOMEDIKA") ||
     upper.includes("MEDIKA PRIMA") ||
+    upper.includes("MEDIKA RAYA INDONESIA") ||
     upper.startsWith("MRI") ||
     upper.includes(" MRI") ||
     upper === "MRI" ||
     upper.includes("SBS") ||
+    upper.includes("SEHAT BAKTI SENTOSA") ||
     upper.includes("PASTI HEMAT") ||
     upper.includes("MEDIKA AKSES")
   ) {

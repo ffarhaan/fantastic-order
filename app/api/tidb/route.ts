@@ -3123,6 +3123,21 @@ export async function POST(req: Request) {
       return Response.json({ success: true, count: fakturs.length, processed: fakturs.length });
     }
 
+    if (action === "update_category") {
+      const invKey = String(body.invoice_key || "").trim();
+      const cust = String(body.customer_name || "").trim();
+      const kat = String(body.kategori || "1P").trim();
+      if (invKey || cust) {
+        if (cust) {
+          await conn.execute("UPDATE fakturs_archive SET kategori = ?, updated_at = NOW() WHERE customer_name = ? AND jenis_transaksi <> 'ORA'", [kat, cust]);
+        }
+        if (invKey) {
+          await conn.execute("UPDATE fakturs_archive SET kategori = ?, updated_at = NOW() WHERE invoice_key = ? AND jenis_transaksi <> 'ORA'", [kat, invKey]);
+        }
+      }
+      return Response.json({ success: true, updated: true });
+    }
+
     if (action === "update_print") {
       const keys: string[] = (body.keys || []).map((k: string) => String(k).trim()).filter(Boolean);
       if (keys.length === 0) {

@@ -167,7 +167,8 @@ function formatPrintTime(dStr?: string | null): string {
 function dbRowsToFakturRecords(
   rows: Array<Record<string, unknown>>,
   productOverrides?: Record<string, string>,
-  existingPrintedSet?: Set<string>
+  existingPrintedSet?: Set<string>,
+  catOverrides?: Record<string, string>
 ): {
   records: FakturRecord[];
   printedSet: Set<string>;
@@ -178,6 +179,7 @@ function dbRowsToFakturRecords(
   const printedSet = new Set<string>();
   const printedAtMap: Record<string, string> = {};
   const printedByMap: Record<string, string> = {};
+  const overrides = catOverrides || {};
 
   for (const r of rows) {
     const rawInv = String(r.no_faktur || "");
@@ -193,6 +195,7 @@ function dbRowsToFakturRecords(
     const cleanInv = rawInvWithoutPrefix.replace(/-1P$/i, "");
     const items = (extra.items as Array<Record<string, unknown>>) || [];
     const cust = String(extra.nama_pelanggan || r.customer_name || "");
+    const normCust = cust ? normalize(cust) : "";
     const date = String(extra.order_date || r.order_date || extra.accounting_date || "");
     const txDate = String(r.transaction_date || extra.transaction_date || date);
     const isOra = r.jenis_transaksi === "ORA" || isOraCustomer(cust);
@@ -201,8 +204,10 @@ function dbRowsToFakturRecords(
       ? rawKey
       : (entity === "MAI" ? `MAI-${baseKey}` : baseKey);
     const cleanJenis: "DOO" | "ORA" = isOra ? "ORA" : "DOO";
+    const overriddenKat = overrides[normCust] || overrides[cust] || overrides[cleanInv] || overrides[invKey] || (extra.kategori as string);
     const calculatedKat = isOra ? "1P" : categorize(cleanJenis, cust, cleanJenis, undefined, undefined, entity);
-    const kategori = (entity === "MAI" ? calculatedKat : (r.kategori as "1P" | "2P" | "3P")) || calculatedKat;
+    const baseKat = (entity === "MAI" ? calculatedKat : (r.kategori as "1P" | "2P" | "3P")) || calculatedKat;
+    const kategori = (overriddenKat as "1P" | "2P" | "3P") || baseKat;
     const pAt = (r.printed_at as string) || null;
     const pBy = (r.printed_by as string) || (extra.printed_by as string) || null;
 
@@ -1159,16 +1164,57 @@ export default function Home() {
       if (normCust) categoryOverridesRef.current[normCust] = newKat;
       if (cleanCust) categoryOverridesRef.current[cleanCust] = newKat;
       if (cleanInv) categoryOverridesRef.current[cleanInv] = newKat;
+      if (invoiceKey) categoryOverridesRef.current[invoiceKey] = newKat;
       setCategoryOverrides((prev) => ({
         ...prev,
         ...(normCust ? { [normCust]: newKat } : {}),
         ...(cleanCust ? { [cleanCust]: newKat } : {}),
         ...(cleanInv ? { [cleanInv]: newKat } : {}),
+        ...(invoiceKey ? { [invoiceKey]: newKat } : {}),
       }));
+
+      // Update in-memory docs and cache
+      if (currentFakturDocsRef.current) {
+        currentFakturDocsRef.current = currentFakturDocsRef.current.map((d) => {
+          const dCust = String(d.customer_name || d.extra?.nama_pelanggan || "").trim();
+          const dNormCust = dCust ? normalize(dCust) : "";
+          const dKey = String(d.id || d.no_faktur || "");
+          const isMatch =
+            dKey === invoiceKey ||
+            d.no_faktur === cleanInv ||
+            (normCust && dNormCust === normCust) ||
+            (cleanCust && dCust === cleanCust);
+          if (isMatch && d.jenis_transaksi !== "ORA") {
+            return {
+              ...d,
+              kategori: newKat,
+              extra: { ...(d.extra || {}), kategori: newKat }
+            };
+          }
+          return d;
+        });
+        setLocalCachedFakturs(currentFakturDocsRef.current, clientUpdatedRef.current || 0, {
+          printedKeys: Array.from(printedInvoicesRef.current || []),
+          printedAtMap: printedAtMapRef.current || {},
+          printedByMap: printedByMapRef.current || {},
+        });
+      }
 
       showToast(`✓ Kategori ${cleanCust ? `Apotek "${cleanCust}"` : `faktur ${cleanInv}`} disimpan ke ${newKat}`);
 
-      // 3. Persist to Firestore chunk & category_overrides doc
+      // 3. Persist to TiDB database permanently
+      fetch("/api/tidb", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_category",
+          invoice_key: invoiceKey,
+          customer_name: cleanCust,
+          kategori: newKat,
+        }),
+      }).catch((e) => console.warn("TiDB update_category warning:", e));
+
+      // 4. Persist to Firestore chunk & category_overrides doc
       try {
         await updateFakturCategory(invoiceKey, newKat, cleanCust);
       } catch (err) {
@@ -1350,7 +1396,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const { records: recs } = dbRowsToFakturRecords(
             merged as unknown as Array<Record<string, unknown>>,
             productOverridesRef.current,
-            printedInvoicesRef.current
+            printedInvoicesRef.current,
+            categoryOverridesRef.current
           );
           setRecords(recs);
           setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
@@ -1375,7 +1422,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         const { records: recs } = dbRowsToFakturRecords(
           merged as unknown as Array<Record<string, unknown>>,
           productOverridesRef.current,
-          printedInvoicesRef.current
+          printedInvoicesRef.current,
+          categoryOverridesRef.current
         );
         setRecords(recs);
         setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
@@ -1395,7 +1443,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             const { records: recs } = dbRowsToFakturRecords(
               merged as unknown as Array<Record<string, unknown>>,
               productOverridesRef.current,
-              printedInvoicesRef.current
+              printedInvoicesRef.current,
+              categoryOverridesRef.current
             );
             setRecords(recs);
             setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
@@ -1472,7 +1521,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           currentFakturDocsRef.current = cached.fakturs;
           const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
             cached.fakturs as unknown as Array<Record<string, unknown>>,
-            productOverridesRef.current
+            productOverridesRef.current,
+            undefined,
+            categoryOverridesRef.current
           );
           setRecords(recs);
 
@@ -1554,7 +1605,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
                 merged as unknown as Array<Record<string, unknown>>,
                 productOverridesRef.current,
-                printedInvoicesRef.current
+                printedInvoicesRef.current,
+                categoryOverridesRef.current
               );
               setRecords(recs);
               setPrintedInvoices((prev) => {
@@ -1590,7 +1642,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
                     merged as unknown as Array<Record<string, unknown>>,
                     productOverridesRef.current,
-                    printedInvoicesRef.current
+                    printedInvoicesRef.current,
+                    categoryOverridesRef.current
                   );
                   const nextPrinted = new Set([...Array.from(printedInvoicesRef.current || []), ...Array.from(docPrintedSet)]);
                   const nextAtMap = { ...(printedAtMapRef.current || {}), ...docPrintedAtMap };
@@ -1626,7 +1679,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
             merged as unknown as Array<Record<string, unknown>>,
             productOverridesRef.current,
-            printedInvoicesRef.current
+            printedInvoicesRef.current,
+            categoryOverridesRef.current
           );
           const nextPrinted = new Set([...Array.from(printedInvoicesRef.current || []), ...Array.from(docPrintedSet)]);
           const nextAtMap = { ...(printedAtMapRef.current || {}), ...docPrintedAtMap };
@@ -1765,7 +1819,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
             merged as unknown as Array<Record<string, unknown>>,
             prodOverrides || productOverridesRef.current,
-            printedInvoicesRef.current
+            printedInvoicesRef.current,
+            categoryOverridesRef.current
           );
           setRecords(recs);
 
@@ -1880,7 +1935,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
             merged as unknown as Array<Record<string, unknown>>,
             prodOverrides || productOverridesRef.current,
-            printedInvoicesRef.current
+            printedInvoicesRef.current,
+            categoryOverridesRef.current
           );
           const unifiedPrintedKeys = new Set([
             ...(printState?.printedKeys || []),
@@ -1916,7 +1972,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
           merged as unknown as Array<Record<string, unknown>>,
           prodOverrides || productOverridesRef.current,
-          printedInvoicesRef.current
+          printedInvoicesRef.current,
+          categoryOverridesRef.current
         );
         const unifiedPrintedKeys = new Set([
           ...(printState?.printedKeys || []),
@@ -1950,7 +2007,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             const { records: recs } = dbRowsToFakturRecords(
               merged as unknown as Array<Record<string, unknown>>,
               prodOverrides || productOverridesRef.current,
-              printedInvoicesRef.current
+              printedInvoicesRef.current,
+              categoryOverridesRef.current
             );
             setRecords(recs);
             setLocalCachedFakturs(merged, newMax, {
@@ -3276,15 +3334,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             categoryOverridesRef.current[normCust] ||
             categoryOverridesRef.current[rawCust] ||
             categoryOverridesRef.current[cleanInv] ||
+            categoryOverridesRef.current[targetKey] ||
             (prevInfo && (prevInfo.extra?.kategori as ("1P" | "2P" | "3P" | "DK" | "LK" | string) | undefined));
 
           const targetEntity = (r.entity as "MAI" | "MBI") || currentWh;
           const defaultKat = isOra ? "1P" : categorize("DOO", r.customerName, undefined, undefined, undefined, targetEntity);
+          const finalKat = isOra
+            ? "1P"
+            : (overriddenKat || (defaultKat === "1P" ? "1P" : (targetEntity === "MAI" ? defaultKat : (r.kategori || defaultKat))));
 
           if (!invMap.has(targetKey)) {
-            const kategori = isOra
-              ? "1P"
-              : (overriddenKat || (targetEntity === "MAI" ? defaultKat : r.kategori) || defaultKat);
+            const kategori = finalKat;
             invMap.set(targetKey, {
               id: targetKey,
               no_faktur: cleanInv,
@@ -3347,6 +3407,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           if (overriddenKat && !isOra) {
             entry.kategori = overriddenKat;
             if (entry.extra) entry.extra.kategori = overriddenKat;
+          } else if (defaultKat === "1P" && !isOra) {
+            entry.kategori = "1P";
+            if (entry.extra) entry.extra.kategori = "1P";
           }
 
           if (isOra && r.orderNumber && r.orderNumber !== "-") {
@@ -3562,7 +3625,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         const { records: localRecs } = dbRowsToFakturRecords(
           payload as unknown as Array<Record<string, unknown>>,
           productOverridesRef.current,
-          finalPrintedSet
+          finalPrintedSet,
+          categoryOverridesRef.current
         );
 
         printedInvoicesRef.current = finalPrintedSet;
