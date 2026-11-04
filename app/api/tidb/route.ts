@@ -458,12 +458,46 @@ export async function GET(req: Request) {
     // ==========================================
     if (action === "qc_reports") {
       const warehouse = (searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
+      const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
       const rows = (await conn.execute(
-        `SELECT warehouse, so_number, no_do, customer_name, so_date, waktu_kirim, checker_name, packer_name, picker_name, kategori, kategori_produk, total_item, total_qty, barang_catatan, is_done, status, updated_at
-         FROM qc_reports 
-         WHERE warehouse = ? AND (customer_name IS NOT NULL OR so_date IS NOT NULL OR waktu_kirim IS NOT NULL OR no_do IS NOT NULL)
-         ORDER BY updated_at DESC, so_number DESC LIMIT 500;`,
-        [warehouse]
+        `SELECT 
+           ? as warehouse,
+           t.so_number,
+           MAX(t.no_do) as no_do,
+           MAX(t.customer_name) as customer_name,
+           MAX(t.so_date) as so_date,
+           MAX(t.waktu_kirim) as waktu_kirim,
+           COALESCE(MAX(t.checker_name), '-') as checker_name,
+           MAX(t.packer_name) as packer_name,
+           MAX(t.picker_name) as picker_name,
+           COALESCE(MAX(t.kategori), '1P') as kategori,
+           COALESCE(MAX(t.kategori_produk), 'FARMA') as kategori_produk,
+           MAX(t.total_item) as total_item,
+           MAX(t.total_qty) as total_qty,
+           MAX(t.barang_catatan) as barang_catatan,
+           COALESCE(MAX(t.is_done), '') as is_done,
+           COALESCE(MAX(t.status), 'QC_DONE') as status,
+           MAX(t.updated_at) as updated_at
+         FROM (
+           SELECT 
+             warehouse, so_number, no_do, customer_name, so_date, waktu_kirim,
+             checker_name, packer_name, picker_name, kategori, kategori_produk,
+             total_item, total_qty, barang_catatan, is_done, status, updated_at
+           FROM qc_reports
+           WHERE warehouse = ? AND updated_at >= NOW() - INTERVAL 48 HOUR
+           UNION ALL
+           SELECT 
+             ? as warehouse, so_number, NULL as no_do, NULL as customer_name, NULL as so_date, NULL as waktu_kirim,
+             checker_name, packer_name, picker_name, '1P' as kategori, 'FARMA' as kategori_produk,
+             0 as total_item, 0 as total_qty, 0 as barang_catatan, '' as is_done, 'QC_DONE' as status, updated_at
+           FROM ${tableName}
+           WHERE updated_at >= NOW() - INTERVAL 48 HOUR
+             AND so_number IS NOT NULL AND so_number != '' AND so_number != '-'
+         ) t
+         GROUP BY t.so_number
+         ORDER BY updated_at DESC, t.so_number DESC
+         LIMIT 500;`,
+        [warehouse, warehouse, warehouse]
       )) as any[];
       return Response.json({ success: true, count: rows.length, data: rows });
     }
@@ -1707,7 +1741,7 @@ export async function POST(req: Request) {
         const barangCatatan = Number(item.barang_catatan || item.catatan_barang || item.barang_c) || 0;
         const isDone = String(item.is_done || item.done || "").trim();
 
-        if (cust || soDate || waktuKirim || noDo) {
+        if (so && (checker !== "-" || packer || picker || cust || soDate || waktuKirim || noDo || isDone || barangCatatan > 0)) {
           qcRows.push([warehouse, so, noDo, cust, soDate, waktuKirim, checker, packer, picker, kat, katProd, totItem, totQty, barangCatatan, isDone]);
         }
       }
