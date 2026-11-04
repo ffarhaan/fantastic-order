@@ -905,7 +905,10 @@ export default function Home() {
   // Fetch QC Reports (GSheet Rekap Lengkap / Rekap SO queue waiting for Oracle invoice)
   const fetchQcOrders = useCallback(async (wh: "MBI" | "MAI") => {
     try {
-      const res = await fetch(`/api/tidb?action=qc_reports&warehouse=${wh}`);
+      const res = await fetch(`/api/tidb?action=qc_reports&warehouse=${wh}&_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" }
+      });
       const d = await res.json();
       if (d && d.success && Array.isArray(d.data)) {
         if (wh === selectedWarehouseRef.current) {
@@ -1001,10 +1004,11 @@ export default function Home() {
 
   useEffect(() => {
     fetchQcOrders(selectedWarehouse);
-    // Polling safety net every 8 seconds + on tab focus
+    // Polling safety net: every 4 seconds in Report QC, 8 seconds otherwise + on tab focus
+    const pollInterval = filter === "report_qc" ? 4000 : 8000;
     const interval = setInterval(() => {
       fetchQcOrders(selectedWarehouseRef.current);
-    }, 8000);
+    }, pollInterval);
 
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
@@ -1017,7 +1021,7 @@ export default function Home() {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [selectedWarehouse, fetchQcOrders]);
+  }, [selectedWarehouse, filter, fetchQcOrders]);
   const invoiceProgressionRef = useRef<InvoiceProgression | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isUploadingRef = useRef(false);
@@ -5685,10 +5689,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 (isColVisible("kat_produk") ? 1 : 0) +
                 (isColVisible("jenis") ? 1 : 0) +
                 (isColVisible("pelanggan") ? 1 : 0) +
-                (isColVisible("tgl_faktur") ? 1 : 0) +
+                (filter === "report_qc" ? 2 : (isColVisible("tgl_faktur") ? 1 : 0)) +
                 (isColVisible("tgl_order") ? 1 : 0) +
                 (isColVisible("kat") ? 1 : 0) +
-                (isColVisible("dklk") ? 1 : 0) +
+                (filter !== "report_qc" && isColVisible("dklk") ? 1 : 0) +
                 (isColVisible("checker") ? 1 : 0) +
                 (isColVisible("packer") ? 1 : 0) +
                 (isColVisible("picker") ? 1 : 0) +
@@ -5806,11 +5810,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                         </th>
                       )}
 
-                      {/* Col 7: Tgl Faktur OR Status QC for Report QC */}
-                      {isColVisible("tgl_faktur") && (
-                        <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title={filter === "report_qc" ? "Status QC (Kolom N GSheet)" : "Tanggal Faktur / Invoice Date (Transaction Date)"}>
-                          {filter === "report_qc" ? "Status QC (N)" : "Tgl Faktur"}
-                        </th>
+                      {/* Col 7 & 7b: Status QC (N) & Barang Catatan (J) for Report QC */}
+                      {filter === "report_qc" ? (
+                        <>
+                          <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Status QC dari Kolom N GSheet">
+                            Status QC (N)
+                          </th>
+                          <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Jumlah Barang Catatan dari Kolom J GSheet">
+                            Barang Catatan (J)
+                          </th>
+                        </>
+                      ) : (
+                        isColVisible("tgl_faktur") && (
+                          <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Tanggal Faktur / Invoice Date (Transaction Date)">
+                            Tgl Faktur
+                          </th>
+                        )
                       )}
 
                       {/* Col 8: Tgl Order */}
@@ -5827,10 +5842,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                         </th>
                       )}
 
-                      {/* Col: Wilayah (DK / LK) OR Barang Catatan for Report QC */}
-                      {isColVisible("dklk") && (
-                        <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title={filter === "report_qc" ? "Jumlah Barang Catatan (Kolom J GSheet)" : "Wilayah Pengiriman (DK: Dalam Kota, LK: Luar Kota)"}>
-                          {filter === "report_qc" ? "Barang Catatan (J)" : "DK / LK"}
+                      {/* Col: Wilayah (DK / LK) - Regular invoice table only */}
+                      {filter !== "report_qc" && isColVisible("dklk") && (
+                        <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Wilayah Pengiriman (DK: Dalam Kota, LK: Luar Kota)">
+                          DK / LK
                         </th>
                       )}
 
@@ -6267,17 +6282,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             </td>
                           )}
 
-                          {/* Col 7: Tgl Faktur OR Status QC for Report QC */}
-                          {isColVisible("tgl_faktur") && (
-                            <td
-                              className={`px-2 py-1.5 text-center whitespace-nowrap font-mono text-[11px] font-medium border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(7)}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectCell(7);
-                              }}
-                            >
-                              {g.isQcQueue ? (
-                                g.isQcDone ? (
+                          {/* Col 7 & 7b: Status QC (N) & Barang Catatan (J) for Report QC */}
+                          {filter === "report_qc" ? (
+                            <>
+                              <td
+                                className={`px-2 py-1.5 text-center whitespace-nowrap font-mono text-[11px] font-medium border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(7)}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectCell(7);
+                                }}
+                              >
+                                {g.isQcDone ? (
                                   <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border tracking-tight ${
                                     isDarkMode ? "bg-emerald-950 text-emerald-300 border-emerald-600" : "bg-emerald-100 text-emerald-800 border-emerald-400"
                                   }`}>
@@ -6289,11 +6304,35 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                   }`}>
                                     ⏳ PROSES
                                   </span>
-                                )
-                              ) : (
-                                g.transactionDate && g.transactionDate !== "-" ? g.transactionDate : g.orderDate
-                              )}
-                            </td>
+                                )}
+                              </td>
+                              <td
+                                className="px-2 py-1.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 font-mono text-[11px]"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {(g.barangCatatan && g.barangCatatan > 0) ? (
+                                  <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-black border inline-flex items-center gap-1 ${
+                                    isDarkMode ? "bg-rose-950/90 text-rose-300 border-rose-700" : "bg-rose-100 text-rose-800 border-rose-300 font-bold"
+                                  }`}>
+                                    📝 {g.barangCatatan} Catatan
+                                  </span>
+                                ) : (
+                                  <span className="text-zinc-400 font-mono text-[11px]">0</span>
+                                )}
+                              </td>
+                            </>
+                          ) : (
+                            isColVisible("tgl_faktur") && (
+                              <td
+                                className={`px-2 py-1.5 text-center whitespace-nowrap font-mono text-[11px] font-medium border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(7)}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectCell(7);
+                                }}
+                              >
+                                {g.transactionDate && g.transactionDate !== "-" ? g.transactionDate : g.orderDate}
+                              </td>
+                            )
                           )}
 
                           {/* Col 8: Tgl Order */}
@@ -6348,58 +6387,46 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             </td>
                           )}
 
-                          {/* Col 10: Wilayah (DK / LK) OR Barang Catatan for Report QC */}
-                          {isColVisible("dklk") && (
+                          {/* Col 10: Wilayah (DK / LK) - Regular invoice table only */}
+                          {filter !== "report_qc" && isColVisible("dklk") && (
                             <td
                               className="px-2 py-1.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              {g.isQcQueue ? (
-                                (g.barangCatatan && g.barangCatatan > 0) ? (
-                                  <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-black border inline-flex items-center gap-1 ${
-                                    isDarkMode ? "bg-rose-950/90 text-rose-300 border-rose-700" : "bg-rose-100 text-rose-800 border-rose-300 font-bold"
-                                  }`}>
-                                    📝 {g.barangCatatan} Catatan
-                                  </span>
-                                ) : (
-                                  <span className="text-zinc-400 font-mono text-[11px]">0</span>
-                                )
-                              ) : (
-                                <select
-                                  value={g.dklk || "-"}
-                                  disabled={currentUser?.role === "readonly"}
-                                  onChange={(e) => {
-                                    handleUpdateDkLk(g.invoiceKey, e.target.value as "DK" | "LK" | "-", g.customerName);
-                                  }}
-                                  className={`px-2 py-0.5 rounded text-xs font-black border cursor-pointer transition-colors ${
-                                    currentUser?.role === "readonly" ? "cursor-not-allowed opacity-70" : ""
-                                  } ${
-                                    g.dklk === "DK"
-                                      ? (isDarkMode ? "bg-emerald-950 text-emerald-300 border-emerald-600/70" : "bg-emerald-50 text-emerald-800 border-emerald-300")
-                                      : g.dklk === "LK"
-                                      ? (isDarkMode ? "bg-indigo-950 text-indigo-300 border-indigo-600/70" : "bg-indigo-50 text-indigo-800 border-indigo-300")
-                                      : (isDarkMode ? "bg-zinc-800/60 text-zinc-500 border-zinc-700" : "bg-zinc-100 text-zinc-500 border-zinc-200")
-                                  }`}
-                                  title={
-                                    currentUser?.role === "readonly"
-                                      ? "Akses Stranger (Hanya Lihat)"
-                                      : "Klik untuk ubah Wilayah (DK: Dalam Kota, LK: Luar Kota)"
-                                  }
-                                >
-                                  <option value="-">-</option>
-                                  <option value="DK">DK</option>
-                                  <option value="LK">LK</option>
-                                </select>
-                              )}
+                              <select
+                                value={g.dklk || "-"}
+                                disabled={currentUser?.role === "readonly"}
+                                onChange={(e) => {
+                                  handleUpdateDkLk(g.invoiceKey, e.target.value as "DK" | "LK" | "-", g.customerName);
+                                }}
+                                className={`px-2 py-0.5 rounded text-xs font-black border cursor-pointer transition-colors ${
+                                  currentUser?.role === "readonly" ? "cursor-not-allowed opacity-70" : ""
+                                } ${
+                                  g.dklk === "DK"
+                                    ? (isDarkMode ? "bg-emerald-950 text-emerald-300 border-emerald-600/70" : "bg-emerald-50 text-emerald-800 border-emerald-300")
+                                    : g.dklk === "LK"
+                                    ? (isDarkMode ? "bg-indigo-950 text-indigo-300 border-indigo-600/70" : "bg-indigo-50 text-indigo-800 border-indigo-300")
+                                    : (isDarkMode ? "bg-zinc-800/60 text-zinc-500 border-zinc-700" : "bg-zinc-100 text-zinc-500 border-zinc-200")
+                                }`}
+                                title={
+                                  currentUser?.role === "readonly"
+                                    ? "Akses Stranger (Hanya Lihat)"
+                                    : "Klik untuk ubah Wilayah (DK: Dalam Kota, LK: Luar Kota)"
+                                }
+                              >
+                                <option value="-">-</option>
+                                <option value="DK">DK</option>
+                                <option value="LK">LK</option>
+                              </select>
                             </td>
                           )}
 
                           {/* Col 10: Checker */}
                           {(() => {
-                            const cInfo = getCheckerInfo(g.so, g.invoiceNumber, g.invoiceKey, g.entity);
-                            const checkerName = cInfo?.checker || g.checker;
-                            const packerName = cInfo?.packer || g.packer;
-                            const pickerName = cInfo?.picker || g.picker;
+                            const cInfo = g.isQcQueue ? null : getCheckerInfo(g.so, g.invoiceNumber, g.invoiceKey, g.entity);
+                            const checkerName = g.isQcQueue ? (g.checker || cInfo?.checker) : (cInfo?.checker || g.checker);
+                            const packerName = g.isQcQueue ? (g.packer || cInfo?.packer) : (cInfo?.packer || g.packer);
+                            const pickerName = g.isQcQueue ? (g.picker || cInfo?.picker) : (cInfo?.picker || g.picker);
                             return (
                               <>
                                 {isColVisible("checker") && (

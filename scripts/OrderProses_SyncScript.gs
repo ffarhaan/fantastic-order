@@ -11,14 +11,12 @@
 var WEB_APP_URL = "https://fantastic-order.vercel.app/api/tidb?action=sync_checkers";
 
 /**
- * Helper untuk mendeteksi sheet aktif (Mendukung "Rekap SO" maupun "Rekap Lengkap")
+ * Helper untuk mendeteksi sheet target (Mendukung "Rekap SO" maupun "Rekap Lengkap")
  */
 function getTargetSheet(ss) {
-  // 1. Coba cari nama persis "Rekap SO" atau "Rekap Lengkap"
   var s = ss.getSheetByName("Rekap SO") || ss.getSheetByName("Rekap Lengkap");
   if (s) return s;
 
-  // 2. Coba cari case-insensitive
   var sheets = ss.getSheets();
   for (var j = 0; j < sheets.length; j++) {
     var name = sheets[j].getName().trim().toLowerCase();
@@ -32,12 +30,12 @@ function getTargetSheet(ss) {
 
 /**
  * 1. SINKRONISASI INSTAN SAAT EDIT (<1 DETIK)
- * Berjalan seketika saat petugas mengetik, mengubah sel, atau memilih dropdown DONE
+ * Berjalan seketika saat petugas mengetik, mengubah sel, atau memilih dropdown DONE (Kolom N / J)
  */
-function onEditSync(e) {
+function onEditReportQcMBI(e) {
   try {
     if (!e || !e.range) {
-      autoSyncCheckers();
+      syncReportQcMBI();
       return;
     }
 
@@ -82,7 +80,7 @@ function onEditSync(e) {
       packerVal = cleanStaffName(packerVal);
       pickerVal = cleanStaffName(pickerVal);
 
-      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal || custVal || doneVal)) {
+      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal || custVal || doneVal || barangCatatanVal > 0)) {
         itemsToSend.push({
           so: soVal,
           no_do: noDoVal,
@@ -113,15 +111,15 @@ function onEditSync(e) {
       Logger.log("⚡ Instant sync on edit: " + itemsToSend.length + " baris terkirim.");
     }
   } catch (err) {
-    Logger.log("Error onEditSync: " + err);
+    Logger.log("Error onEditReportQcMBI: " + err);
   }
 }
 
 /**
  * 2. SINKRONISASI BATCH (MENYELURUH SETIAP 1 MENIT)
- * Mengambil 1000 baris terbaru dari tab Rekap SO / Rekap Lengkap
+ * Mengambil 500 baris aktif terbaru dari tab Rekap SO / Rekap Lengkap
  */
-function autoSyncCheckers() {
+function syncReportQcMBI() {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = getTargetSheet(ss);
@@ -139,7 +137,7 @@ function autoSyncCheckers() {
     var colMap = detectColumns(headers);
     if (colMap.so < 0) return;
 
-    // Temukan baris terakhir yang benar-benar berisi No SO (mengatasi sheet dengan puluhan ribu baris kosong di bawah)
+    // Temukan baris terakhir yang benar-benar berisi No SO (mengatasi sheet dengan template 40.000 baris kosong di bawah)
     var soColValues = sheet.getRange(1, colMap.so + 1, maxRows, 1).getValues();
     var actualLastRow = 1;
     for (var k = soColValues.length - 1; k >= 0; k--) {
@@ -177,7 +175,7 @@ function autoSyncCheckers() {
       packerVal = cleanStaffName(packerVal);
       pickerVal = cleanStaffName(pickerVal);
 
-      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal || custVal || doneVal)) {
+      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal || custVal || doneVal || barangCatatanVal > 0)) {
         itemsToSend.push({
           so: soVal,
           no_do: noDoVal,
@@ -212,7 +210,7 @@ function autoSyncCheckers() {
       Logger.log("✅ Berhasil sync " + itemsToSend.length + " baris dari tab '" + sheet.getName() + "'.");
     }
   } catch (err) {
-    Logger.log("Error autoSyncCheckers: " + err);
+    Logger.log("Error syncReportQcMBI: " + err);
   }
 }
 
@@ -288,7 +286,7 @@ function detectColumns(headers) {
     }
   }
 
-  // Fallback persis urutan kolom tab "Rekap SO" Gudang MBI:
+  // Fallback standar posisi kolom tab "Rekap SO" Gudang MBI:
   if (map.waktuKirim < 0) map.waktuKirim = 0;       // Col A
   if (map.noDo < 0) map.noDo = 1;                   // Col B
   if (map.so < 0) map.so = 2;                       // Col C
@@ -306,20 +304,37 @@ function detectColumns(headers) {
 }
 
 /**
- * 3. PASANG TRIGGER OTOMATIS
+ * 3. PASANG TRIGGER OTOMATIS (MBI)
+ * Jalankan fungsi ini SEKALI di Google Apps Script untuk mengaktifkan sinkronisasi otomatis
  */
-function setupAutoSyncTrigger() {
+function setupReportQcMBI() {
   var triggers = ScriptApp.getProjectTriggers();
   for (var i = 0; i < triggers.length; i++) {
     var fn = triggers[i].getHandlerFunction();
-    if (fn === "autoSyncCheckers" || fn === "onEditSync") {
+    if (fn === "syncReportQcMBI" || fn === "onEditReportQcMBI" || fn === "autoSyncCheckers" || fn === "onEditSync") {
       ScriptApp.deleteTrigger(triggers[i]);
     }
   }
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  ScriptApp.newTrigger("onEditSync").forSpreadsheet(ss).onEdit().create();
-  ScriptApp.newTrigger("autoSyncCheckers").timeBased().everyMinutes(1).create();
+  ScriptApp.newTrigger("onEditReportQcMBI").forSpreadsheet(ss).onEdit().create();
+  ScriptApp.newTrigger("syncReportQcMBI").timeBased().everyMinutes(1).create();
 
-  autoSyncCheckers();
+  syncReportQcMBI();
+  Logger.log("🚀 Trigger Berhasil Dipasang: OnEdit (<1 detik) & Timer (1 menit).");
+}
+
+/**
+ * Backward compatibility alias jika masih memanggil nama fungsi lama
+ */
+function autoSyncCheckers() {
+  syncReportQcMBI();
+}
+
+function onEditSync(e) {
+  onEditReportQcMBI(e);
+}
+
+function setupAutoSyncTrigger() {
+  setupReportQcMBI();
 }

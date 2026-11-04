@@ -499,7 +499,15 @@ export async function GET(req: Request) {
          LIMIT 500;`,
         [warehouse, warehouse, warehouse]
       )) as any[];
-      return Response.json({ success: true, count: rows.length, data: rows });
+      return Response.json(
+        { success: true, count: rows.length, data: rows },
+        {
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            "Pragma": "no-cache",
+          },
+        }
+      );
     }
 
     // ==========================================
@@ -1768,8 +1776,8 @@ export async function POST(req: Request) {
               kategori_produk = IF(VALUES(kategori_produk) IS NOT NULL AND VALUES(kategori_produk) != '', VALUES(kategori_produk), qc_reports.kategori_produk),
               total_item = IF(VALUES(total_item) > 0, VALUES(total_item), qc_reports.total_item),
               total_qty = IF(VALUES(total_qty) > 0, VALUES(total_qty), qc_reports.total_qty),
-              barang_catatan = VALUES(barang_catatan),
-              is_done = VALUES(is_done),
+              barang_catatan = IF(VALUES(barang_catatan) > 0, VALUES(barang_catatan), qc_reports.barang_catatan),
+              is_done = IF(VALUES(is_done) IS NOT NULL AND VALUES(is_done) != '', VALUES(is_done), qc_reports.is_done),
               updated_at = CURRENT_TIMESTAMP`,
             chunk.flat()
           );
@@ -1779,7 +1787,7 @@ export async function POST(req: Request) {
       // Also propagate to Firestore (so_checkers_recent for MBI, so_checkers_recent_mai for MAI) for instant real-time WebSocket updates (<100ms)
       const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
       const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "fantastic-order";
-      if (apiKey && projectId && validRows.length > 0) {
+      if (apiKey && projectId && (validRows.length > 0 || qcRows.length > 0)) {
         try {
           const recentMap: Record<string, { c: string; p: string; k?: string }> = {};
           // Take the most recent up to 500 items to avoid payload limits
