@@ -126,16 +126,28 @@ function autoSyncCheckersMAI() {
       return;
     }
 
-    var lastRow = sheet.getLastRow();
     var lastCol = sheet.getLastColumn();
-    if (lastRow <= 1) return;
-
-    // Ambil 1000 baris terakhir
-    var startRow = Math.max(2, lastRow - 999);
-    var numRows = lastRow - startRow + 1;
+    var maxRows = sheet.getLastRow();
+    if (maxRows <= 1 || lastCol <= 1) return;
 
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var colMap = detectColumnsMAI(headers);
+    if (colMap.so < 0) return;
+
+    // Temukan baris terakhir yang benar-benar berisi No SO
+    var soColValues = sheet.getRange(1, colMap.so + 1, maxRows, 1).getValues();
+    var actualLastRow = 1;
+    for (var k = soColValues.length - 1; k >= 0; k--) {
+      var val = String(soColValues[k][0] || "").trim();
+      if (val && val !== "-" && val !== "#N/A" && val.toLowerCase() !== "no so" && val.toLowerCase() !== "so") {
+        actualLastRow = k + 1;
+        break;
+      }
+    }
+    if (actualLastRow <= 1) return;
+
+    var startRow = Math.max(2, actualLastRow - 499);
+    var numRows = actualLastRow - startRow + 1;
 
     var dataRange = sheet.getRange(startRow, 1, numRows, lastCol).getValues();
     var itemsToSend = [];
