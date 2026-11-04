@@ -132,6 +132,9 @@ export interface FakturGroup {
   picker?: string;
   noDo?: string;
   waktuKirim?: string;
+  barangCatatan?: number;
+  isQcDone?: boolean;
+  qcDoneStatus?: string;
 }
 
 export interface UploadNotification {

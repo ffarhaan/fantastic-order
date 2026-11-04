@@ -2379,6 +2379,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         isRetur: false,
         totalHarga: 0,
         totalItems: qc.total_item ? Number(qc.total_item) : (qc.total_qty ? Number(qc.total_qty) : 0),
+        barangCatatan: Number(qc.barang_catatan) || 0,
+        isQcDone: String(qc.is_done || qc.status || "").trim().toUpperCase() === "DONE",
+        qcDoneStatus: String(qc.is_done || "").trim(),
         entity: selectedWarehouse,
         allPrinted: false,
         printedAt: null,
@@ -5908,16 +5911,29 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             }}
                           >
                             {g.isQcQueue ? (
-                              <div
-                                className={`w-6 h-6 mx-auto rounded-md flex items-center justify-center text-xs font-black border ${
-                                  isDarkMode
-                                    ? "bg-amber-950/40 border-amber-700/60 text-amber-400"
-                                    : "bg-amber-50 border-amber-300 text-amber-600"
-                                }`}
-                                title="Menunggu Faktur Oracle (Belum di-upload)"
-                              >
-                                ⏳
-                              </div>
+                              g.isQcDone ? (
+                                <div
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase border tracking-tight flex items-center justify-center gap-0.5 shadow-2xs ${
+                                    isDarkMode
+                                      ? "bg-emerald-950/80 text-emerald-300 border-emerald-600"
+                                      : "bg-emerald-600 text-white border-emerald-700"
+                                  }`}
+                                  title="Selesai QC di Gudang (DONE) - Menunggu Faktur Oracle diupload"
+                                >
+                                  ✓ DONE
+                                </div>
+                              ) : (
+                                <div
+                                  className={`w-6 h-6 mx-auto rounded-md flex items-center justify-center text-xs font-black border ${
+                                    isDarkMode
+                                      ? "bg-amber-950/40 border-amber-700/60 text-amber-400"
+                                      : "bg-amber-50 border-amber-300 text-amber-600"
+                                  }`}
+                                  title="Sedang Proses QC - Menunggu Faktur Oracle"
+                                >
+                                  ⏳
+                                </div>
+                              )
                             ) : (
                               <button
                                 type="button"
@@ -5976,10 +5992,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                 onSelectCell(2);
                               }}
                             >
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span>{g.so}</span>
                                 {g.isDoubleInv && (
                                   <span className="text-amber-500 font-bold" title="Double Invoice Detected">⚠</span>
+                                )}
+                                {g.isQcQueue && Boolean(g.barangCatatan && g.barangCatatan > 0) && (
+                                  <span
+                                    className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold border ${
+                                      isDarkMode
+                                        ? "bg-rose-950/80 text-rose-300 border-rose-700"
+                                        : "bg-rose-100 text-rose-800 border-rose-300"
+                                    }`}
+                                    title={`Jumlah Barang Catatan: ${g.barangCatatan}`}
+                                  >
+                                    📝 {g.barangCatatan} Catatan
+                                  </span>
                                 )}
                               </div>
                             </td>
@@ -6017,15 +6045,28 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             >
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 {g.isQcQueue ? (
-                                  <span
-                                    className={`px-2 py-0.5 rounded text-[10px] font-black tracking-wide border flex items-center gap-1 ${
-                                      isDarkMode
-                                        ? "bg-amber-950/80 text-amber-300 border-amber-700/80"
-                                        : "bg-amber-100 text-amber-800 border-amber-300"
-                                    }`}
-                                  >
-                                    ⏳ Menunggu Faktur
-                                  </span>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-black tracking-wide border flex items-center gap-1 ${
+                                        isDarkMode
+                                          ? "bg-amber-950/80 text-amber-300 border-amber-700/80"
+                                          : "bg-amber-100 text-amber-800 border-amber-300"
+                                      }`}
+                                    >
+                                      ⏳ Menunggu Faktur
+                                    </span>
+                                    {g.isQcDone && (
+                                      <span
+                                        className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border tracking-tight ${
+                                          isDarkMode
+                                            ? "bg-emerald-950 text-emerald-300 border-emerald-600"
+                                            : "bg-emerald-100 text-emerald-800 border-emerald-400"
+                                        }`}
+                                      >
+                                        ✓ QC DONE
+                                      </span>
+                                    )}
+                                  </div>
                                 ) : (
                                   <span>{g.invoiceNumber}</span>
                                 )}
@@ -6443,13 +6484,28 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                                 {g.isQcQueue && (!g.items || g.items.length === 0) ? (
                                   <div className="py-6 text-center text-xs space-y-2">
-                                    <div className="text-amber-500 font-bold text-sm">⏳ Data Antrean Selesai QC (Menunggu Faktur Oracle)</div>
+                                    <div className="flex items-center justify-center gap-2">
+                                      <span className="text-amber-500 font-bold text-sm">⏳ Data Antrean Selesai QC (Menunggu Faktur Oracle)</span>
+                                      {g.isQcDone && (
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
+                                          isDarkMode
+                                            ? "bg-emerald-950 text-emerald-300 border-emerald-600"
+                                            : "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                        }`}>
+                                          ✓ DONE QC
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="text-slate-400 max-w-md mx-auto">
-                                      Order fisik ini telah selesai di-QC di gudang (tercatat di GSheet Rekap Lengkap). Nomor invoice dan rincian item obat akan terisi otomatis dan order akan berpindah ke <strong>Belum Terprint</strong> setelah file XXCUST faktur di-upload.
+                                      Order fisik ini telah tercatat di GSheet Rekap SO / Rekap Lengkap. Nomor invoice dan rincian obat akan otomatis terisi dan order berpindah ke <strong>Belum Terprint</strong> seketika file XXCUST faktur di-upload.
                                     </div>
                                     <div className="flex flex-wrap justify-center gap-4 sm:gap-6 pt-2 font-mono text-[11px] text-slate-400">
                                       <span>Waktu Kirim: {g.waktuKirim || "-"}</span>
-                                      <span>Total Item / Qty: {g.totalItems}</span>
+                                      <span>Total Item: {g.totalItems}</span>
+                                      <span className={g.barangCatatan && g.barangCatatan > 0 ? "text-rose-400 font-bold" : ""}>
+                                        Barang Catatan: {g.barangCatatan || 0}
+                                      </span>
+                                      <span>Status QC: <strong className={g.isQcDone ? "text-emerald-400" : "text-amber-400"}>{g.isQcDone ? "✓ DONE" : "⏳ PROSES"}</strong></span>
                                       <span>Checker: {g.checker || "-"}</span>
                                       <span>Packer: {g.packer || "-"}</span>
                                       <span>Picker: {g.picker || "-"}</span>

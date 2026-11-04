@@ -459,7 +459,7 @@ export async function GET(req: Request) {
     if (action === "qc_reports") {
       const warehouse = (searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
       const rows = (await conn.execute(
-        `SELECT warehouse, so_number, no_do, customer_name, so_date, waktu_kirim, checker_name, packer_name, picker_name, kategori, kategori_produk, total_item, total_qty, status, updated_at
+        `SELECT warehouse, so_number, no_do, customer_name, so_date, waktu_kirim, checker_name, packer_name, picker_name, kategori, kategori_produk, total_item, total_qty, barang_catatan, is_done, status, updated_at
          FROM qc_reports 
          WHERE warehouse = ?
          ORDER BY updated_at DESC LIMIT 500;`,
@@ -1704,21 +1704,23 @@ export async function POST(req: Request) {
         const katProd = String(item.kategori_produk || "").trim() || null;
         const totItem = Number(item.total_item) || 0;
         const totQty = Number(item.total_qty) || 0;
+        const barangCatatan = Number(item.barang_catatan || item.catatan_barang || item.barang_c) || 0;
+        const isDone = String(item.is_done || item.done || "").trim();
 
         if (cust || checker !== "-" || packer || picker || noDo) {
-          qcRows.push([warehouse, so, noDo, cust, soDate, waktuKirim, checker, packer, picker, kat, katProd, totItem, totQty]);
+          qcRows.push([warehouse, so, noDo, cust, soDate, waktuKirim, checker, packer, picker, kat, katProd, totItem, totQty, barangCatatan, isDone]);
         }
       }
 
       if (qcRows.length > 0) {
         for (let i = 0; i < qcRows.length; i += CHUNK_SIZE) {
           const chunk = qcRows.slice(i, i + CHUNK_SIZE);
-          const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QC_DONE')").join(", ");
+          const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QC_DONE')").join(", ");
           await conn.execute(
             `INSERT INTO qc_reports (
               warehouse, so_number, no_do, customer_name, so_date, waktu_kirim,
               checker_name, packer_name, picker_name, kategori, kategori_produk,
-              total_item, total_qty, status
+              total_item, total_qty, barang_catatan, is_done, status
             ) VALUES ${placeholders}
             ON DUPLICATE KEY UPDATE 
               no_do = IF(VALUES(no_do) IS NOT NULL AND VALUES(no_do) != '', VALUES(no_do), qc_reports.no_do),
@@ -1732,6 +1734,8 @@ export async function POST(req: Request) {
               kategori_produk = IF(VALUES(kategori_produk) IS NOT NULL AND VALUES(kategori_produk) != '', VALUES(kategori_produk), qc_reports.kategori_produk),
               total_item = IF(VALUES(total_item) > 0, VALUES(total_item), qc_reports.total_item),
               total_qty = IF(VALUES(total_qty) > 0, VALUES(total_qty), qc_reports.total_qty),
+              barang_catatan = VALUES(barang_catatan),
+              is_done = VALUES(is_done),
               updated_at = CURRENT_TIMESTAMP`,
             chunk.flat()
           );

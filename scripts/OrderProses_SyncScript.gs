@@ -1,33 +1,28 @@
 /**
  * ====================================================================
- * SINKRONISASI RESMI: SPREADSHEET "REPORT QC" (GUDANG MBI - TAB: Rekap Lengkap)
- * FANTASTIC ORDER REAL-TIME SINKRONISASI
- * Kolom: B (No SO), C (Checker), D (Packer), E (Picker)
+ * SINKRONISASI RESMI: SPREADSHEET "REPORT QC" (GUDANG MBI - TAB: Rekap SO / Rekap Lengkap)
+ * FANTASTIC ORDER REAL-TIME SINKRONISASI & REPORT QC PIPELINE
+ * Kolom A: Waktu Kirim | B: NO DO | C: No SO | D: Apotek | E: Tanggal SO
+ * Kolom F: Checker | H: Total Item | I: Total Qty | J: Barang Catatan
+ * Kolom K: Kategori (1P/3P) | L: Kategori Produk (FARMA/ALKES) | N: DONE
  * ====================================================================
  */
 
 var WEB_APP_URL = "https://fantastic-order.vercel.app/api/tidb?action=sync_checkers";
 
 /**
- * Helper untuk memastikan sheet yang diproses HANYA "Rekap Lengkap"
+ * Helper untuk mendeteksi sheet aktif (Mendukung "Rekap SO" maupun "Rekap Lengkap")
  */
 function getTargetSheet(ss) {
-  // 1. Coba cari nama persis "Rekap Lengkap"
-  var s = ss.getSheetByName("Rekap Lengkap");
+  // 1. Coba cari nama persis "Rekap SO" atau "Rekap Lengkap"
+  var s = ss.getSheetByName("Rekap SO") || ss.getSheetByName("Rekap Lengkap");
   if (s) return s;
 
-  // 2. Coba cari berdasarkan GID spesifik (gid=1198696917)
+  // 2. Coba cari case-insensitive
   var sheets = ss.getSheets();
-  for (var i = 0; i < sheets.length; i++) {
-    if (sheets[i].getSheetId() === 1198696917) {
-      return sheets[i];
-    }
-  }
-
-  // 3. Coba cari case-insensitive "rekap lengkap"
   for (var j = 0; j < sheets.length; j++) {
     var name = sheets[j].getName().trim().toLowerCase();
-    if (name === "rekap lengkap" || name.indexOf("rekap lengkap") !== -1) {
+    if (name === "rekap so" || name.indexOf("rekap so") !== -1 || name === "rekap lengkap" || name.indexOf("rekap lengkap") !== -1) {
       return sheets[j];
     }
   }
@@ -37,7 +32,7 @@ function getTargetSheet(ss) {
 
 /**
  * 1. SINKRONISASI INSTAN SAAT EDIT (<1 DETIK)
- * Berjalan seketika saat petugas mengetik/mengubah sel di tab "Rekap Lengkap"
+ * Berjalan seketika saat petugas mengetik, mengubah sel, atau memilih dropdown DONE
  */
 function onEditSync(e) {
   try {
@@ -48,13 +43,10 @@ function onEditSync(e) {
 
     var sheet = e.range.getSheet();
     var sheetName = sheet.getName().trim().toLowerCase();
-    var sheetId = sheet.getSheetId();
 
-    // STRICT CHECK: Hanya tab "Rekap Lengkap" yang boleh diproses!
-    var isRekapLengkap = (sheetName === "rekap lengkap" || sheetName.indexOf("rekap lengkap") !== -1 || sheetId === 1198696917);
-    if (!isRekapLengkap) {
-      return; // Tolak mentah-mentah jika tab lain
-    }
+    // STRICT CHECK: Hanya tab "Rekap SO" atau "Rekap Lengkap" yang diproses!
+    var isTarget = (sheetName === "rekap so" || sheetName.indexOf("rekap so") !== -1 || sheetName === "rekap lengkap" || sheetName.indexOf("rekap lengkap") !== -1);
+    if (!isTarget) return;
 
     var startRow = e.range.getRow();
     var numRows = e.range.getNumRows();
@@ -84,12 +76,13 @@ function onEditSync(e) {
       var katProdVal = colMap.kategoriProduk >= 0 ? String(row[colMap.kategoriProduk] || "").trim() : "";
       var totalItemVal = colMap.totalItem >= 0 ? Number(row[colMap.totalItem]) || 0 : 0;
       var totalQtyVal = colMap.totalQty >= 0 ? Number(row[colMap.totalQty]) || 0 : 0;
+      var barangCatatanVal = colMap.barangCatatan >= 0 ? Number(row[colMap.barangCatatan]) || 0 : 0;
+      var doneVal = colMap.done >= 0 ? String(row[colMap.done] || "").trim() : "";
 
-      // Sanitasi nilai agar tidak salah ambil
       packerVal = cleanStaffName(packerVal);
       pickerVal = cleanStaffName(pickerVal);
 
-      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal || custVal)) {
+      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal || custVal || doneVal)) {
         itemsToSend.push({
           so: soVal,
           no_do: noDoVal,
@@ -103,6 +96,8 @@ function onEditSync(e) {
           kategori_produk: katProdVal,
           total_item: totalItemVal,
           total_qty: totalQtyVal,
+          barang_catatan: barangCatatanVal,
+          is_done: doneVal,
           warehouse: "MBI"
         });
       }
@@ -124,7 +119,7 @@ function onEditSync(e) {
 
 /**
  * 2. SINKRONISASI BATCH (MENYELURUH SETIAP 1 MENIT)
- * Membaca tab Rekap Lengkap dan mengirimkan seluruh SO, Checker, Packer, & Picker
+ * Mengambil 1000 baris terbaru dari tab Rekap SO / Rekap Lengkap
  */
 function autoSyncCheckers() {
   try {
@@ -132,7 +127,7 @@ function autoSyncCheckers() {
     var sheet = getTargetSheet(ss);
 
     if (!sheet) {
-      Logger.log("⚠️ GAGAL: Tab 'Rekap Lengkap' tidak ditemukan di spreadsheet ini.");
+      Logger.log("⚠️ GAGAL: Tab 'Rekap SO' atau 'Rekap Lengkap' tidak ditemukan.");
       return;
     }
 
@@ -140,7 +135,6 @@ function autoSyncCheckers() {
     var lastCol = sheet.getLastColumn();
     if (lastRow <= 1) return;
 
-    // Ambil 1000 baris terakhir
     var startRow = Math.max(2, lastRow - 999);
     var numRows = lastRow - startRow + 1;
 
@@ -164,12 +158,13 @@ function autoSyncCheckers() {
       var katProdVal = colMap.kategoriProduk >= 0 ? String(row[colMap.kategoriProduk] || "").trim() : "";
       var totalItemVal = colMap.totalItem >= 0 ? Number(row[colMap.totalItem]) || 0 : 0;
       var totalQtyVal = colMap.totalQty >= 0 ? Number(row[colMap.totalQty]) || 0 : 0;
+      var barangCatatanVal = colMap.barangCatatan >= 0 ? Number(row[colMap.barangCatatan]) || 0 : 0;
+      var doneVal = colMap.done >= 0 ? String(row[colMap.done] || "").trim() : "";
 
-      // Sanitasi nilai
       packerVal = cleanStaffName(packerVal);
       pickerVal = cleanStaffName(pickerVal);
 
-      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal || custVal)) {
+      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal || custVal || doneVal)) {
         itemsToSend.push({
           so: soVal,
           no_do: noDoVal,
@@ -183,19 +178,21 @@ function autoSyncCheckers() {
           kategori_produk: katProdVal,
           total_item: totalItemVal,
           total_qty: totalQtyVal,
+          barang_catatan: barangCatatanVal,
+          is_done: doneVal,
           warehouse: "MBI"
         });
       }
     }
 
     if (itemsToSend.length > 0) {
-      // Kirim dalam batch per 300 baris
-      for (var b = 0; b < itemsToSend.length; b += 300) {
-        var slice = itemsToSend.slice(b, b + 300);
+      var CHUNK = 200;
+      for (var i = 0; i < itemsToSend.length; i += CHUNK) {
+        var chunk = itemsToSend.slice(i, i + CHUNK);
         UrlFetchApp.fetch(WEB_APP_URL, {
           method: "post",
           contentType: "application/json",
-          payload: JSON.stringify({ items: slice }),
+          payload: JSON.stringify({ items: chunk }),
           muteHttpExceptions: true
         });
       }
@@ -207,14 +204,13 @@ function autoSyncCheckers() {
 }
 
 /**
- * Filter sanitasi nama petugas (mencegah nama pelanggan atau tanggal masuk ke kolom petugas)
+ * Filter sanitasi nama petugas
  */
 function cleanStaffName(name) {
   if (!name) return "";
   var s = String(name).trim();
   var low = s.toLowerCase();
 
-  // Jika berisi indikasi tanggal, jam, atau nama pelanggan apotek, tolak!
   if (low.indexOf("apotek") === 0 || low.indexOf("pt ") === 0 || low.indexOf("klinik") === 0) return "";
   if (low.indexOf("00:00:00") !== -1 || low.indexOf("gmt") !== -1 || low.indexOf("wib") !== -1) return "";
   if (/^(mon|tue|wed|thu|fri|sat|sun)\s/i.test(s)) return "";
@@ -224,18 +220,27 @@ function cleanStaffName(name) {
 }
 
 /**
- * Deteksi kolom persis pada tab "Rekap Lengkap":
- * Kolom A (0) = Tanggal SO
- * Kolom B (1) = No SO Selesai
- * Kolom C (2) = Checker
- * Kolom D (3) = Packer
- * Kolom E (4) = Picker
+ * Deteksi kolom persis pada tab "Rekap SO" / "Rekap Lengkap":
+ * Col A (0) = Waktu Kirim
+ * Col B (1) = NO DO
+ * Col C (2) = No SO
+ * Col D (3) = Apotek / Pelanggan
+ * Col E (4) = Tanggal SO
+ * Col F (5) = Checker
+ * Col G (6) = Durasi (mnt)
+ * Col H (7) = Total Item
+ * Col I (8) = Total Qty
+ * Col J (9) = Barang Catatan
+ * Col K (10) = Kategori (1P / 3P)
+ * Col L (11) = Kategori Produk (FARMA / ALKES)
+ * Col M (12) = Adjustment
+ * Col N (13) = DONE
  */
 function detectColumns(headers) {
   var map = {
     so: -1, noDo: -1, customer: -1, soDate: -1, waktuKirim: -1,
     checker: -1, packer: -1, picker: -1, kategori: -1, kategoriProduk: -1,
-    totalItem: -1, totalQty: -1
+    totalItem: -1, totalQty: -1, barangCatatan: -1, done: -1
   };
 
   for (var i = 0; i < headers.length; i++) {
@@ -249,8 +254,9 @@ function detectColumns(headers) {
     if (map.kategori < 0 && (h === "kategori" || h === "kat")) map.kategori = i;
     if (map.totalItem < 0 && (h.indexOf("total item") !== -1 || h.indexOf("item") !== -1)) map.totalItem = i;
     if (map.totalQty < 0 && (h.indexOf("total qty") !== -1 || h.indexOf("qty") !== -1)) map.totalQty = i;
+    if (map.barangCatatan < 0 && (h.indexOf("barang c") !== -1 || h.indexOf("catatan") !== -1 || h.indexOf("brg c") !== -1)) map.barangCatatan = i;
+    if (map.done < 0 && (h === "done" || h.indexOf("done") !== -1 || h === "status")) map.done = i;
 
-    // Abaikan kata tanggal/tgl saat deteksi SO agar Tanggal SO tidak dianggap No SO
     if (h.indexOf("tanggal") !== -1 || h.indexOf("tgl") !== -1 || h.indexOf("date") !== -1) {
       continue;
     }
@@ -269,29 +275,25 @@ function detectColumns(headers) {
     }
   }
 
-  // Posisi fallback baku pada tab "Rekap Lengkap" MBI:
-  // Col A (0) = Waktu Kirim
-  // Col B (1) = No DO
-  // Col C (2) = No SO
-  // Col D (3) = Apotek / Pelanggan
-  // Col E (4) = Tanggal SO
-  // Col F (5) = Checker
-  // Col K (10) = Kategori (1P / 3P)
-  // Col L (11) = Kategori Produk (FARMA / ALKES)
-  if (map.waktuKirim < 0) map.waktuKirim = 0;
-  if (map.noDo < 0) map.noDo = 1;
-  if (map.so < 0) map.so = 2;
-  if (map.customer < 0) map.customer = 3;
-  if (map.soDate < 0) map.soDate = 4;
-  if (map.checker < 0) map.checker = 5;
-  if (map.kategori < 0) map.kategori = 10;
-  if (map.kategoriProduk < 0) map.kategoriProduk = 11;
+  // Fallback persis urutan kolom tab "Rekap SO" Gudang MBI:
+  if (map.waktuKirim < 0) map.waktuKirim = 0;       // Col A
+  if (map.noDo < 0) map.noDo = 1;                   // Col B
+  if (map.so < 0) map.so = 2;                       // Col C
+  if (map.customer < 0) map.customer = 3;           // Col D
+  if (map.soDate < 0) map.soDate = 4;               // Col E
+  if (map.checker < 0) map.checker = 5;             // Col F
+  if (map.totalItem < 0) map.totalItem = 7;         // Col H
+  if (map.totalQty < 0) map.totalQty = 8;           // Col I
+  if (map.barangCatatan < 0) map.barangCatatan = 9; // Col J: Jumlah Barang Catatan
+  if (map.kategori < 0) map.kategori = 10;          // Col K
+  if (map.kategoriProduk < 0) map.kategoriProduk = 11; // Col L
+  if (map.done < 0) map.done = 13;                  // Col N: DONE
 
   return map;
 }
 
 /**
- * 3. PASANG TRIGGER OTOMATIS (Jalankan sekali dari tombol Run di Apps Script)
+ * 3. PASANG TRIGGER OTOMATIS
  */
 function setupAutoSyncTrigger() {
   var triggers = ScriptApp.getProjectTriggers();
@@ -302,14 +304,9 @@ function setupAutoSyncTrigger() {
     }
   }
 
-  // Pasang trigger onEdit (instan <1 detik)
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   ScriptApp.newTrigger("onEditSync").forSpreadsheet(ss).onEdit().create();
-
-  // Pasang trigger waktu tiap 1 menit
   ScriptApp.newTrigger("autoSyncCheckers").timeBased().everyMinutes(1).create();
 
-  // Jalankan sync pertama kali
   autoSyncCheckers();
-  Logger.log("🚀 Sinkronisasi Rekap Lengkap AKTIF! B = SO, C = Checker, D = Packer, E = Picker");
 }
