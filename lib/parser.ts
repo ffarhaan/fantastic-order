@@ -396,6 +396,9 @@ export function categorize(
     upper === "1001" ||
     upper.includes("HALOMEDIKA") ||
     upper.includes("MEDIKA PRIMA") ||
+    upper.startsWith("MRI") ||
+    upper.includes(" MRI") ||
+    upper === "MRI" ||
     upper.includes("SBS") ||
     upper.includes("PASTI HEMAT") ||
     upper.includes("MEDIKA AKSES")
