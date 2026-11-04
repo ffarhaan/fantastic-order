@@ -454,6 +454,21 @@ export async function GET(req: Request) {
     }
 
     // ==========================================
+    // QC REPORTS (Queue for SOs finished QC in warehouse, waiting for Oracle invoice upload)
+    // ==========================================
+    if (action === "qc_reports") {
+      const warehouse = (searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
+      const rows = (await conn.execute(
+        `SELECT warehouse, so_number, no_do, customer_name, so_date, waktu_kirim, checker_name, packer_name, picker_name, kategori, kategori_produk, total_item, total_qty, status, updated_at
+         FROM qc_reports 
+         WHERE warehouse = ?
+         ORDER BY updated_at DESC LIMIT 500;`,
+        [warehouse]
+      )) as any[];
+      return Response.json({ success: true, count: rows.length, data: rows });
+    }
+
+    // ==========================================
     // 1. CUSTOMERS DIRECTORY
     // ==========================================
     if (action === "get_all_customers_for_sheet") {
@@ -712,9 +727,9 @@ export async function GET(req: Request) {
       const dataSql = `
         SELECT 
           sr.id, sr.pbf, sr.report_date, sr.month, sr.week, sr.so_no, sr.customer_name,
-          sr.invoice_no, sr.invoice_date, sr.product_name, sr.batch_no, sr.exp_date,
-          sr.qty, sr.unit, sr.reason, sr.person, sr.root_cause, sr.note, sr.status,
-          sr.confirm, sr.category, sr.created_at, sr.updated_at,
+          sr.invoice_no, sr.invoice_date, sr.product_name, sr.batch_no, sr.expiry_date,
+          sr.qty, sr.reason, sr.person, sr.root_cause, sr.note, sr.status,
+          sr.confirm, sr.action, sr.nota_retur_no, sr.resolved_date, sr.category, sr.created_at,
           CASE WHEN sr.photo_url IS NOT NULL AND CHAR_LENGTH(sr.photo_url) > 0 THEN 1 ELSE 0 END AS has_photo,
           ${includePhoto ? "sr.photo_url" : "CASE WHEN CHAR_LENGTH(sr.photo_url) < 256 THEN sr.photo_url ELSE NULL END AS photo_url"},
           COALESCE(
@@ -729,7 +744,7 @@ export async function GET(req: Request) {
           WHERE no_faktur != '' AND no_faktur IS NOT NULL
           GROUP BY no_faktur
         ) fa ON sr.invoice_no = fa.no_faktur
-        ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|person|batch_no|root_cause|note|status|pbf|category|month|week|report_date|invoice_date)\b/g, 'sr.$1')}
+        ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|person|batch_no|expiry_date|root_cause|note|status|pbf|category|month|week|report_date|invoice_date|action|nota_retur_no|resolved_date)\b/g, 'sr.$1')}
         ORDER BY CASE WHEN sr.report_date IS NOT NULL AND sr.report_date != '' THEN sr.report_date ELSE '1970-01-01' END DESC, sr.id DESC 
         LIMIT ? OFFSET ?
       `;
@@ -1671,6 +1686,56 @@ export async function POST(req: Request) {
           flatParams
         );
         updatedCount += chunk.length;
+      }
+
+      // Upsert rich QC report data into qc_reports (for "Report QC" pipeline queue)
+      const qcRows: (string | number | null)[][] = [];
+      for (const item of items) {
+        const so = String(item.so || item.so_number || "").trim();
+        if (!so || so === "-" || so === "#N/A") continue;
+        const noDo = String(item.no_do || item.do || "").trim() || null;
+        const cust = String(item.customer || item.customer_name || item.apotek || "").trim() || null;
+        const soDate = String(item.so_date || item.tanggal_so || "").trim() || null;
+        const waktuKirim = String(item.waktu_kirim || "").trim() || null;
+        const checker = String(item.checker || item.checker_name || "").trim() || "-";
+        const packer = String(item.packer || item.packer_name || "").trim() || null;
+        const picker = String(item.picker || item.picker_name || "").trim() || null;
+        const kat = String(item.kategori || "").trim() || null;
+        const katProd = String(item.kategori_produk || "").trim() || null;
+        const totItem = Number(item.total_item) || 0;
+        const totQty = Number(item.total_qty) || 0;
+
+        if (cust || checker !== "-" || packer || picker || noDo) {
+          qcRows.push([warehouse, so, noDo, cust, soDate, waktuKirim, checker, packer, picker, kat, katProd, totItem, totQty]);
+        }
+      }
+
+      if (qcRows.length > 0) {
+        for (let i = 0; i < qcRows.length; i += CHUNK_SIZE) {
+          const chunk = qcRows.slice(i, i + CHUNK_SIZE);
+          const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QC_DONE')").join(", ");
+          await conn.execute(
+            `INSERT INTO qc_reports (
+              warehouse, so_number, no_do, customer_name, so_date, waktu_kirim,
+              checker_name, packer_name, picker_name, kategori, kategori_produk,
+              total_item, total_qty, status
+            ) VALUES ${placeholders}
+            ON DUPLICATE KEY UPDATE 
+              no_do = IF(VALUES(no_do) IS NOT NULL AND VALUES(no_do) != '', VALUES(no_do), qc_reports.no_do),
+              customer_name = IF(VALUES(customer_name) IS NOT NULL AND VALUES(customer_name) != '', VALUES(customer_name), qc_reports.customer_name),
+              so_date = IF(VALUES(so_date) IS NOT NULL AND VALUES(so_date) != '', VALUES(so_date), qc_reports.so_date),
+              waktu_kirim = IF(VALUES(waktu_kirim) IS NOT NULL AND VALUES(waktu_kirim) != '', VALUES(waktu_kirim), qc_reports.waktu_kirim),
+              checker_name = IF(VALUES(checker_name) IS NOT NULL AND VALUES(checker_name) != '-', VALUES(checker_name), qc_reports.checker_name),
+              packer_name = IF(VALUES(packer_name) IS NOT NULL AND VALUES(packer_name) != '', VALUES(packer_name), qc_reports.packer_name),
+              picker_name = IF(VALUES(picker_name) IS NOT NULL AND VALUES(picker_name) != '', VALUES(picker_name), qc_reports.picker_name),
+              kategori = IF(VALUES(kategori) IS NOT NULL AND VALUES(kategori) != '', VALUES(kategori), qc_reports.kategori),
+              kategori_produk = IF(VALUES(kategori_produk) IS NOT NULL AND VALUES(kategori_produk) != '', VALUES(kategori_produk), qc_reports.kategori_produk),
+              total_item = IF(VALUES(total_item) > 0, VALUES(total_item), qc_reports.total_item),
+              total_qty = IF(VALUES(total_qty) > 0, VALUES(total_qty), qc_reports.total_qty),
+              updated_at = CURRENT_TIMESTAMP`,
+            chunk.flat()
+          );
+        }
       }
 
       // Also propagate to Firestore (so_checkers_recent for MBI, so_checkers_recent_mai for MAI) for instant real-time WebSocket updates (<100ms)
