@@ -1412,13 +1412,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           );
 
           // Self-Healing Cache: Automatically detect and purge contaminated collision cache (e.g. October rows corrupted with November SOs)
-          const hasStaleCollisionCache = cached.fakturs.some(
-            (f) => String(f.id || f.no_faktur) === "27189" && String(f.no_sales_order).includes("1710443")
-          );
+          const hasStaleCollisionCache = cached.fakturs.some((f) => {
+            const rawKey = String((f as any).invoice_key || f.id || f.no_faktur || "");
+            const isComposite = rawKey.includes("__");
+            if (isComposite) return false; // Composite rows are legitimately November
+            const oDate = String(f.order_date || (f.extra as any)?.order_date || "");
+            const txDate = String(f.transaction_date || (f.extra as any)?.transaction_date || "");
+            const isOct = oDate.includes("/10/") || txDate.includes("/10/") || oDate.includes("-10-") || txDate.includes("-10-");
+            const so = String(f.no_sales_order || "");
+            return isOct && (so.startsWith("170") || so.startsWith("171"));
+          });
           if (hasStaleCollisionCache) {
-            console.log("Self-healing: Purging stale collision cache to re-sync cleanly from TiDB...");
-            clearLocalCachedFakturs().catch(() => {});
+            console.log("Self-healing: Stale contaminated cache detected in IndexedDB. Purging to re-sync cleanly from TiDB...");
+            await clearLocalCachedFakturs().catch(() => {});
             cached.fakturs = [];
+            clientCount = 0;
+            clientUpdated = 0;
+            clientUpdatedRef.current = 0;
           }
 
           clientCount = cached.fakturs.length;
