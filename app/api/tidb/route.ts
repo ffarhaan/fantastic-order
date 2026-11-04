@@ -658,7 +658,7 @@ export async function GET(req: Request) {
     }
 
     // ==========================================
-    // 3. SHIPMENT RETURNS / KOMPLAIN
+    // 3. SHIPMENT RETURNS / KOMPLAIN (LIVE DATA)
     // ==========================================
     if (action === "return_photo") {
       const id = searchParams.get("id");
