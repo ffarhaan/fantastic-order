@@ -126,6 +126,12 @@ export interface FakturGroup {
   printTimeMs?: number;
   hasActiveComplaint?: boolean;
   complaintCount?: number;
+  isQcQueue?: boolean;
+  checker?: string;
+  packer?: string;
+  picker?: string;
+  noDo?: string;
+  waktuKirim?: string;
 }
 
 export interface UploadNotification {

@@ -73,20 +73,37 @@ function onEditSync(e) {
     for (var r = 0; r < dataRange.length; r++) {
       var row = dataRange[r];
       var soVal = String(row[colMap.so] || "").trim();
+      var noDoVal = colMap.noDo >= 0 ? String(row[colMap.noDo] || "").trim() : "";
+      var custVal = colMap.customer >= 0 ? String(row[colMap.customer] || "").trim() : "";
+      var tglSoVal = colMap.soDate >= 0 ? String(row[colMap.soDate] || "").trim() : "";
+      var waktuKirimVal = colMap.waktuKirim >= 0 ? String(row[colMap.waktuKirim] || "").trim() : "";
       var checkerVal = colMap.checker >= 0 ? String(row[colMap.checker] || "").trim() : "";
       var packerVal = colMap.packer >= 0 ? String(row[colMap.packer] || "").trim() : "";
       var pickerVal = colMap.picker >= 0 ? String(row[colMap.picker] || "").trim() : "";
+      var katVal = colMap.kategori >= 0 ? String(row[colMap.kategori] || "").trim() : "";
+      var katProdVal = colMap.kategoriProduk >= 0 ? String(row[colMap.kategoriProduk] || "").trim() : "";
+      var totalItemVal = colMap.totalItem >= 0 ? Number(row[colMap.totalItem]) || 0 : 0;
+      var totalQtyVal = colMap.totalQty >= 0 ? Number(row[colMap.totalQty]) || 0 : 0;
 
       // Sanitasi nilai agar tidak salah ambil
       packerVal = cleanStaffName(packerVal);
       pickerVal = cleanStaffName(pickerVal);
 
-      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal)) {
+      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal || custVal)) {
         itemsToSend.push({
           so: soVal,
+          no_do: noDoVal,
+          customer: custVal,
+          so_date: tglSoVal,
+          waktu_kirim: waktuKirimVal,
           checker: checkerVal,
           packer: packerVal,
-          picker: pickerVal
+          picker: pickerVal,
+          kategori: katVal,
+          kategori_produk: katProdVal,
+          total_item: totalItemVal,
+          total_qty: totalQtyVal,
+          warehouse: "MBI"
         });
       }
     }
@@ -136,20 +153,37 @@ function autoSyncCheckers() {
     for (var r = 0; r < dataRange.length; r++) {
       var row = dataRange[r];
       var soVal = String(row[colMap.so] || "").trim();
+      var noDoVal = colMap.noDo >= 0 ? String(row[colMap.noDo] || "").trim() : "";
+      var custVal = colMap.customer >= 0 ? String(row[colMap.customer] || "").trim() : "";
+      var tglSoVal = colMap.soDate >= 0 ? String(row[colMap.soDate] || "").trim() : "";
+      var waktuKirimVal = colMap.waktuKirim >= 0 ? String(row[colMap.waktuKirim] || "").trim() : "";
       var checkerVal = colMap.checker >= 0 ? String(row[colMap.checker] || "").trim() : "";
       var packerVal = colMap.packer >= 0 ? String(row[colMap.packer] || "").trim() : "";
       var pickerVal = colMap.picker >= 0 ? String(row[colMap.picker] || "").trim() : "";
+      var katVal = colMap.kategori >= 0 ? String(row[colMap.kategori] || "").trim() : "";
+      var katProdVal = colMap.kategoriProduk >= 0 ? String(row[colMap.kategoriProduk] || "").trim() : "";
+      var totalItemVal = colMap.totalItem >= 0 ? Number(row[colMap.totalItem]) || 0 : 0;
+      var totalQtyVal = colMap.totalQty >= 0 ? Number(row[colMap.totalQty]) || 0 : 0;
 
       // Sanitasi nilai
       packerVal = cleanStaffName(packerVal);
       pickerVal = cleanStaffName(pickerVal);
 
-      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal)) {
+      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal || custVal)) {
         itemsToSend.push({
           so: soVal,
+          no_do: noDoVal,
+          customer: custVal,
+          so_date: tglSoVal,
+          waktu_kirim: waktuKirimVal,
           checker: checkerVal,
           packer: packerVal,
-          picker: pickerVal
+          picker: pickerVal,
+          kategori: katVal,
+          kategori_produk: katProdVal,
+          total_item: totalItemVal,
+          total_qty: totalQtyVal,
+          warehouse: "MBI"
         });
       }
     }
@@ -198,11 +232,25 @@ function cleanStaffName(name) {
  * Kolom E (4) = Picker
  */
 function detectColumns(headers) {
-  var map = { so: -1, checker: -1, packer: -1, picker: -1 };
+  var map = {
+    so: -1, noDo: -1, customer: -1, soDate: -1, waktuKirim: -1,
+    checker: -1, packer: -1, picker: -1, kategori: -1, kategoriProduk: -1,
+    totalItem: -1, totalQty: -1
+  };
 
   for (var i = 0; i < headers.length; i++) {
     var h = String(headers[i] || "").toLowerCase().trim();
-    // PENTING: Abaikan jika ada kata tanggal / tgl agar Kolom A "Tanggal SO" TIDAK dianggap SO!
+
+    if (map.waktuKirim < 0 && (h.indexOf("waktu kirim") !== -1 || h.indexOf("waktu") !== -1 || h.indexOf("jam") !== -1)) map.waktuKirim = i;
+    if (map.noDo < 0 && (h.indexOf("no do") !== -1 || h.indexOf("no. do") !== -1 || h === "do")) map.noDo = i;
+    if (map.customer < 0 && (h.indexOf("apotek") !== -1 || h.indexOf("pelanggan") !== -1 || h.indexOf("customer") !== -1)) map.customer = i;
+    if (map.soDate < 0 && (h.indexOf("tanggal so") !== -1 || h.indexOf("tgl so") !== -1 || h.indexOf("tanggal order") !== -1 || h.indexOf("tgl order") !== -1)) map.soDate = i;
+    if (map.kategoriProduk < 0 && (h.indexOf("kategori produk") !== -1 || h.indexOf("kat produk") !== -1)) map.kategoriProduk = i;
+    if (map.kategori < 0 && (h === "kategori" || h === "kat")) map.kategori = i;
+    if (map.totalItem < 0 && (h.indexOf("total item") !== -1 || h.indexOf("item") !== -1)) map.totalItem = i;
+    if (map.totalQty < 0 && (h.indexOf("total qty") !== -1 || h.indexOf("qty") !== -1)) map.totalQty = i;
+
+    // Abaikan kata tanggal/tgl saat deteksi SO agar Tanggal SO tidak dianggap No SO
     if (h.indexOf("tanggal") !== -1 || h.indexOf("tgl") !== -1 || h.indexOf("date") !== -1) {
       continue;
     }
@@ -210,7 +258,7 @@ function detectColumns(headers) {
     if (map.so < 0 && (h.indexOf("so selesai") !== -1 || h.indexOf("no so") !== -1 || h.indexOf("no. so") !== -1 || h === "so")) {
       map.so = i;
     }
-    if (map.checker < 0 && (h.indexOf("checker") !== -1 || h.indexOf("qc 1") !== -1 || h === "qc1")) {
+    if (map.checker < 0 && (h.indexOf("checker") !== -1 || h.indexOf("qc 1") !== -1 || h === "qc1" || h === "qc")) {
       map.checker = i;
     }
     if (map.packer < 0 && (h.indexOf("packer") !== -1 || h.indexOf("packing") !== -1 || h.indexOf("qc 2") !== -1 || h === "qc2")) {
@@ -221,15 +269,23 @@ function detectColumns(headers) {
     }
   }
 
-  // Posisi baku & pasti pada tab "Rekap Lengkap":
-  // Kolom B (1) = No SO Selesai
-  // Kolom C (2) = Checker
-  // Kolom D (3) = Packer
-  // Kolom E (4) = Picker
-  if (map.so < 0) map.so = 1;
-  if (map.checker < 0) map.checker = 2;
-  if (map.packer < 0) map.packer = 3;
-  if (map.picker < 0) map.picker = 4;
+  // Posisi fallback baku pada tab "Rekap Lengkap" MBI:
+  // Col A (0) = Waktu Kirim
+  // Col B (1) = No DO
+  // Col C (2) = No SO
+  // Col D (3) = Apotek / Pelanggan
+  // Col E (4) = Tanggal SO
+  // Col F (5) = Checker
+  // Col K (10) = Kategori (1P / 3P)
+  // Col L (11) = Kategori Produk (FARMA / ALKES)
+  if (map.waktuKirim < 0) map.waktuKirim = 0;
+  if (map.noDo < 0) map.noDo = 1;
+  if (map.so < 0) map.so = 2;
+  if (map.customer < 0) map.customer = 3;
+  if (map.soDate < 0) map.soDate = 4;
+  if (map.checker < 0) map.checker = 5;
+  if (map.kategori < 0) map.kategori = 10;
+  if (map.kategoriProduk < 0) map.kategoriProduk = 11;
 
   return map;
 }
