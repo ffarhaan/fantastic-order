@@ -243,7 +243,14 @@ function dbRowsToFakturRecords(
             : katProd === "OOT"
             ? "OOT"
             : undefined;
-        const validSO = String(it.order_number || r.no_sales_order || "-").trim();
+        const itSO = String(it.order_number || "").trim();
+        const docSO = String(r.no_sales_order || "").trim();
+        const isOctDate = date.includes("/10/") || txDate.includes("/10/");
+        const isNovSO = itSO.startsWith("170") || itSO.startsWith("171");
+        // Strict Isolation per LOCKED_RULES.md A.8: Never allow a November SO to contaminate an October transaction!
+        const validSO = (isOctDate && isNovSO && docSO && !docSO.startsWith("170") && !docSO.startsWith("171"))
+          ? docSO
+          : (itSO || docSO || "-");
 
         records.push({
           orderDate: date,
@@ -1282,6 +1289,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       const newCust = String(d.customer_name || "").trim();
       const isGeneric = (n: string) => !n || n === "-" || n === "1001" || n.toUpperCase().includes("HELIOS");
       const keepPrevCust = isGeneric(newCust) && !isGeneric(prevCust);
+
+      // Multi-Month & Cross-Cycle Anti-Contamination (LOCKED_RULES A.8):
+      // If previous row had a different month or date than incoming authoritative row,
+      // never retain contaminated items from a different month!
+      const prevDate = String(prev.order_date || prev.transaction_date || prev.extra?.order_date || "");
+      const newDate = String(d.order_date || d.transaction_date || d.extra?.order_date || "");
+      const isDiffMonth = Boolean(
+        prevDate && newDate &&
+        prevDate.length >= 7 && newDate.length >= 7 &&
+        prevDate.slice(-7) !== newDate.slice(-7)
+      );
+
+      const resolvedItems = (d.extra?.items && d.extra.items.length > 0)
+        ? d.extra.items
+        : (isDiffMonth ? [] : (prev.extra?.items || []));
+
       map.set(d.id, {
         ...prev,
         ...d,
@@ -1294,7 +1317,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           ...prev.extra,
           ...d.extra,
           nama_pelanggan: keepPrevCust ? (prev.extra?.nama_pelanggan || prev.customer_name) : (d.extra?.nama_pelanggan || prev.extra?.nama_pelanggan),
-          items: (d.extra?.items && d.extra.items.length > 0) ? d.extra.items : (prev.extra?.items || []),
+          items: resolvedItems,
         },
       });
     }

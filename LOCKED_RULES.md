@@ -49,6 +49,12 @@ Dokumen ini adalah acuan baku dan permanen untuk seluruh pengembangan, pemelihar
      - Kolom "PELANGGAN" menampilkan nama apotek riil masing-masing baris (`Apotek Sawarna Farma` untuk Oktober, `Apotek Halomedika Cempaka Putih` untuk November).
      - Pencarian global: Mengetik `ELZDZ2-6968` memunculkan transaksi Oktober saja, mengetik `1710443` memunculkan transaksi November saja, dan mengetik `27189` memunculkan KEDUA baris secara mandiri.
    - **Independensi Status Cetak**: Menandai Done Print pada satu transaksi tidak akan pernah mempengaruhi status cetak transaksi lainnya. Partisi Firestore bucket (`getPrintPartitionId`) memisahkan suffix `__` sehingga kedua transaksi tersimpan aman di bucket yang tepat tanpa overflow.
+   - **Double-Layer Titanium Shield (Database Backend & Client-Side Parser - PERMANEN)**:
+     - **TiDB Backend (`app/api/tidb/route.ts`)**: Klausul `ON DUPLICATE KEY UPDATE` pada tabel `fakturs_archive` dilengkapi pelindung SQL multi-bulan: jika baris di database memiliki bulan berbeda dari data yang masuk, database MENOLAK menimpa `no_sales_order`, `customer_name`, `items_json`, dan `transaction_date` pada kunci dasar.
+     - **Auto-Split Key di Backend**: Jika ada upload yang mengirimkan faktur bernomor Oktober (27169-27418) pada transaksi ber-Order Date November tanpa kunci komposit, backend TiDB otomatis mengubah `invoice_key` menjadi `${noFaktur}__${noSO}` sehingga baris dasar Oktober secara fisik mustahil tertimpa.
+     - **Client-Side Item Guard (`dbRowsToFakturRecords`)**: Jika tanggal transaksi ber-Order Date Oktober, parser dilarang keras membaca `it.order_number` yang numerik (`170%` / `171%`) dari sisa rincian barang November. Nilai No SO wajib terkunci ke `r.no_sales_order` DOO asli (`ELZDZ2-...`).
+     - **Client-Side Merge Guard (`mergeKumulatifDocs`)**: Saat sinkronisasi delta, baris dengan beda bulan dilarang mewariskan list `items` lama ke baris baru.
+     - **Self-Healing Otomatis Cache**: Saat inisialisasi IndexedDB, jika terdeteksi baris Order Date Oktober yang masih menyimpan SO numerik November, cache lokal seketika dihapus otomatis dan menyinkronkan ulang data bersih dari TiDB.
 
 #### B. Jaminan Status Faktur Baru & Retensi Faktur Belum Dicetak (Unprinted Guarantee - LOCKED TOTAL)
 1. **Aturan Mutlak Faktur Baru**:

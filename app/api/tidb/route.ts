@@ -3024,12 +3024,21 @@ export async function POST(req: Request) {
         const params: (string | number | null)[] = [];
 
         for (const item of slice) {
-          const invKey = String(item.invoice_key || item.invoiceKey || item.no_faktur || item.invoiceNumber || "").trim();
+          let invKey = String(item.invoice_key || item.invoiceKey || item.no_faktur || item.invoiceNumber || "").trim();
           const noFaktur = String(item.no_faktur || item.invoiceNumber || invKey).trim();
           const noSO = String(item.no_sales_order || item.so || "-").trim();
           const cust = String(item.customer_name || item.customerName || "-").trim();
           const oDate = String(item.order_date || item.orderDate || "-").trim();
           const txDate = String(item.transaction_date || item.transactionDate || oDate || "-").trim();
+
+          // Server-side Multi-Month & Different SO Titanium Shield (LOCKED_RULES A.8):
+          // Invoices 27169 to 27418 re-used in November must ALWAYS be isolated with composite key `${noFaktur}__${noSO}`
+          if (!invKey.includes("__") && noSO && noSO !== "-" && (oDate.includes("/11/") || oDate.includes("-11-") || txDate.includes("/11/") || txDate.includes("-11-"))) {
+            const num = parseInt(noFaktur, 10);
+            if (!isNaN(num) && num >= 27169 && num <= 27418) {
+              invKey = `${noFaktur}__${noSO}`;
+            }
+          }
           const jenis = String(item.jenis_transaksi || item.jenisTransaksi || "DOO").trim();
           const kat = String(item.kategori || "3P").trim();
           let katProd = String(item.kategori_produk || item.kategoriProduk || "").trim();
@@ -3070,27 +3079,43 @@ export async function POST(req: Request) {
             total_harga, items_json
           ) VALUES ${placeholders}
           ON DUPLICATE KEY UPDATE
-            no_sales_order = IF(VALUES(no_sales_order) IS NOT NULL AND CHAR_LENGTH(VALUES(no_sales_order)) > 1, VALUES(no_sales_order), fakturs_archive.no_sales_order),
-            customer_name = IF(
-              VALUES(customer_name) IS NOT NULL AND CHAR_LENGTH(VALUES(customer_name)) > 1
-                AND NOT (
-                  (UPPER(VALUES(customer_name)) LIKE _utf8mb4 '%HELIOS%' COLLATE utf8mb4_unicode_ci OR VALUES(customer_name) = _utf8mb4 '1001' COLLATE utf8mb4_unicode_ci)
-                  AND fakturs_archive.customer_name IS NOT NULL
-                  AND CHAR_LENGTH(fakturs_archive.customer_name) > 1
-                  AND UPPER(fakturs_archive.customer_name) NOT LIKE _utf8mb4 '%HELIOS%' COLLATE utf8mb4_unicode_ci
-                  AND fakturs_archive.customer_name <> _utf8mb4 '1001' COLLATE utf8mb4_unicode_ci
-                ),
-              VALUES(customer_name),
-              fakturs_archive.customer_name
+            no_sales_order = IF(
+              fakturs_archive.invoice_key NOT LIKE '%\_\_%' ESCAPE '\\' AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
+              fakturs_archive.no_sales_order,
+              IF(VALUES(no_sales_order) IS NOT NULL AND CHAR_LENGTH(VALUES(no_sales_order)) > 1, VALUES(no_sales_order), fakturs_archive.no_sales_order)
             ),
-            transaction_date = IF(VALUES(transaction_date) IS NOT NULL AND CHAR_LENGTH(VALUES(transaction_date)) > 1, VALUES(transaction_date), fakturs_archive.transaction_date),
+            customer_name = IF(
+              fakturs_archive.invoice_key NOT LIKE '%\_\_%' ESCAPE '\\' AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
+              fakturs_archive.customer_name,
+              IF(
+                VALUES(customer_name) IS NOT NULL AND CHAR_LENGTH(VALUES(customer_name)) > 1
+                  AND NOT (
+                    (UPPER(VALUES(customer_name)) LIKE _utf8mb4 '%HELIOS%' COLLATE utf8mb4_unicode_ci OR VALUES(customer_name) = _utf8mb4 '1001' COLLATE utf8mb4_unicode_ci)
+                    AND fakturs_archive.customer_name IS NOT NULL
+                    AND CHAR_LENGTH(fakturs_archive.customer_name) > 1
+                    AND UPPER(fakturs_archive.customer_name) NOT LIKE _utf8mb4 '%HELIOS%' COLLATE utf8mb4_unicode_ci
+                    AND fakturs_archive.customer_name <> _utf8mb4 '1001' COLLATE utf8mb4_unicode_ci
+                  ),
+                VALUES(customer_name),
+                fakturs_archive.customer_name
+              )
+            ),
+            transaction_date = IF(
+              fakturs_archive.invoice_key NOT LIKE '%\_\_%' ESCAPE '\\' AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
+              fakturs_archive.transaction_date,
+              IF(VALUES(transaction_date) IS NOT NULL AND CHAR_LENGTH(VALUES(transaction_date)) > 1, VALUES(transaction_date), fakturs_archive.transaction_date)
+            ),
             kategori = VALUES(kategori),
             kategori_produk = IF(VALUES(items_json) IS NOT NULL, VALUES(kategori_produk), fakturs_archive.kategori_produk),
             status_cetak = IF(fakturs_archive.status_cetak = 1, 1, VALUES(status_cetak)),
             printed_at = IF(fakturs_archive.status_cetak = 1, fakturs_archive.printed_at, VALUES(printed_at)),
             printed_by = IF(fakturs_archive.status_cetak = 1, fakturs_archive.printed_by, VALUES(printed_by)),
             total_harga = IF(VALUES(items_json) IS NOT NULL OR VALUES(total_harga) <> 0, VALUES(total_harga), fakturs_archive.total_harga),
-            items_json = IF(VALUES(items_json) IS NOT NULL, VALUES(items_json), fakturs_archive.items_json);`,
+            items_json = IF(
+              fakturs_archive.invoice_key NOT LIKE '%\_\_%' ESCAPE '\\' AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
+              fakturs_archive.items_json,
+              IF(VALUES(items_json) IS NOT NULL, VALUES(items_json), fakturs_archive.items_json)
+            );`,
           params
         );
       }
