@@ -184,12 +184,7 @@ function dbRowsToFakturRecords(
     if (!rawInv || rawInv.startsWith("TEST-")) continue;
     const extra = (r.extra as Record<string, unknown>) || {};
     const rawKey = String((r as any).invoice_key || r.id || "").trim();
-    const soStr = String(r.no_sales_order || (extra as any).no_sales_order || "").trim();
-    const isMaiOrder =
-      rawKey.startsWith("MAI-") ||
-      rawInv.startsWith("MAI-") ||
-      soStr.startsWith("WY3M") ||
-      soStr.startsWith("8YRV");
+    const isMaiOrder = rawKey.startsWith("MAI-") || rawInv.startsWith("MAI-");
     const entity: "MAI" | "MBI" =
       (r.entity as "MAI" | "MBI") ||
       (extra.entity as "MAI" | "MBI") ||
@@ -2873,8 +2868,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const targetKey = isOra ? `${cleanInv}-1P` : cleanInv;
           const num = parseInvNum(cleanInv);
           const rawKey = String((row as any).invoice_key || row.id || "").trim();
-          const soStr = String(row.no_sales_order || (extra as any).no_sales_order || "").trim();
-          const isMaiOrder = rawKey.startsWith("MAI-") || rawInv.startsWith("MAI-") || soStr.startsWith("WY3M") || soStr.startsWith("8YRV");
+          const isMaiOrder = rawKey.startsWith("MAI-") || rawInv.startsWith("MAI-");
           const rowEntity: "MAI" | "MBI" = (row.entity as "MAI" | "MBI") || (isMaiOrder ? "MAI" : "MBI");
           const kat = isOra ? "1P" : categorize("DOO", cust, undefined, undefined, undefined, rowEntity);
 
@@ -3004,7 +2998,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           if (!cleanInv || cleanInv === "-" || cleanInv === "0") continue;
 
           const incomingSO = String(r.orderNumber || "").trim();
-          const isMaiRecord = r.entity === "MAI" || incomingSO.startsWith("WY3M") || incomingSO.startsWith("8YRV");
+          const isMaiRecord = r.entity === "MAI";
           const baseTargetKey = r.invoiceKey || (isMaiRecord ? `MAI-${isOra ? `${cleanInv}-1P` : cleanInv}` : (isOra ? `${cleanInv}-1P` : cleanInv));
           let targetKey = baseTargetKey;
 
