@@ -3407,33 +3407,34 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           if (overriddenKat && !isOra) {
             entry.kategori = overriddenKat;
             if (entry.extra) entry.extra.kategori = overriddenKat;
-          } else if (defaultKat === "1P" && !isOra) {
-            entry.kategori = "1P";
-            if (entry.extra) entry.extra.kategori = "1P";
+          } else if (!isOra) {
+            entry.kategori = finalKat;
+            if (entry.extra) entry.extra.kategori = finalKat;
           }
 
-          if (isOra && r.orderNumber && r.orderNumber !== "-") {
-            entry.no_sales_order = r.orderNumber;
-          } else if (!isOra && (entry.no_sales_order === "-" || !entry.no_sales_order) && r.orderNumber) {
+          // Authoritative Sales Order: Always honor orderNumber from the uploaded file (LOCKED_RULES.md Sec 6.5)
+          if (r.orderNumber && r.orderNumber !== "-") {
             entry.no_sales_order = r.orderNumber;
           }
 
+          // Authoritative Customer Name: Always honor customerName from the uploaded file (LOCKED_RULES.md Sec 6.5)
+          // (Only prevent downgrade from specific Helios branch to generic Helios induk - LOCKED_RULES.md Sec 1.A.7)
           const currentCust = String(entry.customer_name || "").trim();
           const incomingCust = String(r.customerName || "").trim();
           const upperCurrent = currentCust.toUpperCase();
           const upperIncoming = incomingCust.toUpperCase();
-          if (
-            (upperCurrent.includes("HELIOS") || currentCust === "1001" || currentCust === "-" || !currentCust) &&
-            incomingCust && !upperIncoming.includes("HELIOS") && incomingCust !== "1001"
-          ) {
-            entry.customer_name = incomingCust;
-            entry.extra.nama_pelanggan = incomingCust;
-          } else if (
-            (!entry.customer_name || entry.customer_name === "-" || entry.customer_name === "1001") &&
-            incomingCust
-          ) {
-            entry.customer_name = incomingCust;
-            entry.extra.nama_pelanggan = incomingCust;
+          if (incomingCust && incomingCust !== "-") {
+            const isDowngradeToGenericHelios =
+              (upperIncoming.includes("HELIOS") || incomingCust === "1001") &&
+              currentCust &&
+              !upperCurrent.includes("HELIOS") &&
+              currentCust !== "1001" &&
+              currentCust !== "-";
+
+            if (!isDowngradeToGenericHelios) {
+              entry.customer_name = incomingCust;
+              if (entry.extra) entry.extra.nama_pelanggan = incomingCust;
+            }
           }
 
           const hasItemInfo = (r.itemCode && r.itemCode !== "-") || (r.itemDescription && r.itemDescription !== "-");

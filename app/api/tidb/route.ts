@@ -3032,10 +3032,10 @@ export async function POST(req: Request) {
           const txDate = String(item.transaction_date || item.transactionDate || oDate || "-").trim();
 
           // Server-side Multi-Month & Different SO Titanium Shield (LOCKED_RULES A.8):
-          // Invoices 27169 to 27418 re-used in November must ALWAYS be isolated with composite key `${noFaktur}__${noSO}`
+          // Invoices from October re-used in November must ALWAYS be isolated with composite key `${noFaktur}__${noSO}`
           if (!invKey.includes("__") && noSO && noSO !== "-" && (oDate.includes("/11/") || oDate.includes("-11-") || txDate.includes("/11/") || txDate.includes("-11-"))) {
             const num = parseInt(noFaktur, 10);
-            if (!isNaN(num) && num >= 27169 && num <= 27418) {
+            if (!isNaN(num) && num >= 24000 && num <= 38500) {
               invKey = `${noFaktur}__${noSO}`;
             }
           }
