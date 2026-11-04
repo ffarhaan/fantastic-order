@@ -409,6 +409,23 @@ export default function Home() {
     }
   };
 
+  const [showInvoiceProgression, setShowInvoiceProgression] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("inv_show_progression") === "true";
+    }
+    return false;
+  });
+
+  const toggleInvoiceProgression = () => {
+    setShowInvoiceProgression((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("inv_show_progression", String(next));
+      }
+      return next;
+    });
+  };
+
   const getFreezeOffsets = () => {
     const p0 = 0; // # (w: 32px)
     const p1 = 32; // Print (w: 48px)
@@ -5119,8 +5136,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           </div>
         ) : (
           <>
-        {/* 10 Metric KPI - Executive High-Performance Bar */}
-        <div className={`rounded-xl overflow-hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10 divide-y sm:divide-y-0 sm:divide-x border shadow-xs transition-colors ${
+        {/* Metric KPI - Executive High-Performance Bar */}
+        <div className={`rounded-xl overflow-hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 ${
+          showInvoiceProgression ? "lg:grid-cols-11" : "lg:grid-cols-7"
+        } divide-y sm:divide-y-0 sm:divide-x border shadow-xs transition-colors ${
           isDarkMode
             ? "border-zinc-800 divide-zinc-800 bg-[#09090b]"
             : "border-zinc-200 divide-zinc-200 bg-white"
@@ -5226,57 +5245,62 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             </span>
           </div>
 
-          {/* Cell 4: 1P ORA */}
-          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
-              1P (ORA)
-            </span>
-            <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
-              {highestInvoices.maxOraStr}
-            </div>
-            <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.rangeOra || ""}>
-              {invoiceProgression?.rangeOra ? `R: ${invoiceProgression.rangeOra}` : "Belum ada"}
-            </span>
-          </div>
+          {/* Cell 4 to 7: Range Faktur 1P ORA, 1P DOO, 2P, 3P (Dapat disembunyikan/ditampilkan) */}
+          {showInvoiceProgression && (
+            <>
+              {/* Cell 4: 1P ORA */}
+              <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center animate-in fade-in duration-200">
+                <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
+                  1P (ORA)
+                </span>
+                <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+                  {highestInvoices.maxOraStr}
+                </div>
+                <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.rangeOra || ""}>
+                  {invoiceProgression?.rangeOra ? `R: ${invoiceProgression.rangeOra}` : "Belum ada"}
+                </span>
+              </div>
 
-          {/* Cell 5: 1P DOO */}
-          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
-              1P (DOO)
-            </span>
-            <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
-              {highestInvoices.max1PDooStr}
-            </div>
-            <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.range1PDoo || ""}>
-              {invoiceProgression?.range1PDoo ? `R: ${invoiceProgression.range1PDoo}` : "Belum ada"}
-            </span>
-          </div>
+              {/* Cell 5: 1P DOO */}
+              <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center animate-in fade-in duration-200">
+                <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
+                  1P (DOO)
+                </span>
+                <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+                  {highestInvoices.max1PDooStr}
+                </div>
+                <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.range1PDoo || ""}>
+                  {invoiceProgression?.range1PDoo ? `R: ${invoiceProgression.range1PDoo}` : "Belum ada"}
+                </span>
+              </div>
 
-          {/* Cell 6: 2P */}
-          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
-              2P
-            </span>
-            <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
-              {highestInvoices.max2PStr}
-            </div>
-            <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.range2P || ""}>
-              {invoiceProgression?.range2P ? `R: ${invoiceProgression.range2P}` : "Belum ada"}
-            </span>
-          </div>
+              {/* Cell 6: 2P */}
+              <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center animate-in fade-in duration-200">
+                <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
+                  2P
+                </span>
+                <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+                  {highestInvoices.max2PStr}
+                </div>
+                <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.range2P || ""}>
+                  {invoiceProgression?.range2P ? `R: ${invoiceProgression.range2P}` : "Belum ada"}
+                </span>
+              </div>
 
-          {/* Cell 7: 3P */}
-          <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
-              3P
-            </span>
-            <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
-              {highestInvoices.max3PStr}
-            </div>
-            <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.range3P || ""}>
-              {invoiceProgression?.range3P ? `R: ${invoiceProgression.range3P}` : "Belum ada"}
-            </span>
-          </div>
+              {/* Cell 7: 3P */}
+              <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center animate-in fade-in duration-200">
+                <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
+                  3P
+                </span>
+                <div className={`my-0.5 font-black text-xs font-mono ${isDarkMode ? "text-white" : "text-slate-900"}`}>
+                  {highestInvoices.max3PStr}
+                </div>
+                <span className={`text-[9px] font-semibold leading-none truncate max-w-full px-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} title={invoiceProgression?.range3P || ""}>
+                  {invoiceProgression?.range3P ? `R: ${invoiceProgression.range3P}` : "Belum ada"}
+                </span>
+              </div>
+            </>
+          )}
 
           {/* Cell 8: Double INV (Clickable Filter) */}
           <button
@@ -5331,6 +5355,34 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             </div>
             <span className={`text-[9px] font-bold leading-none ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
               {filter === "retur" ? "● Aktif" : "Faktur Retur"}
+            </span>
+          </button>
+
+          {/* Cell 10: Toggle Sembunyikan / Tampilkan Range 1P-3P */}
+          <button
+            type="button"
+            onClick={toggleInvoiceProgression}
+            className={`py-1.5 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
+              showInvoiceProgression
+                ? (isDarkMode ? "bg-slate-800/90 ring-1 ring-inset ring-slate-600" : "bg-slate-100 ring-1 ring-inset ring-slate-300")
+                : (isDarkMode ? "hover:bg-slate-800/60" : "hover:bg-slate-100")
+            }`}
+            title={showInvoiceProgression ? "Sembunyikan kartu range nomor faktur 1P, 2P, 3P" : "Tampilkan kartu range nomor faktur terakhir 1P, 2P, 3P"}
+          >
+            <span className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-0.5 ${
+              isDarkMode ? "text-slate-400 group-hover:text-white" : "text-slate-600 group-hover:text-black"
+            }`}>
+              {showInvoiceProgression ? "Range ▲" : "Range ▼"}
+            </span>
+            <div className={`my-0.5 px-1.5 py-0.2 rounded font-black text-[10px] font-mono border ${
+              showInvoiceProgression
+                ? (isDarkMode ? "bg-blue-950/60 border-blue-700 text-blue-300" : "bg-blue-50 border-blue-300 text-blue-800")
+                : (isDarkMode ? "bg-zinc-800 border-zinc-700 text-zinc-400" : "bg-zinc-100 border-zinc-300 text-zinc-600")
+            }`}>
+              1P–3P
+            </div>
+            <span className={`text-[9px] font-bold leading-none ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+              {showInvoiceProgression ? "Sembunyikan" : "Tampilkan"}
             </span>
           </button>
         </div>
