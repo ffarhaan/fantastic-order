@@ -183,7 +183,17 @@ function dbRowsToFakturRecords(
     const rawInv = String(r.no_faktur || "");
     if (!rawInv || rawInv.startsWith("TEST-")) continue;
     const extra = (r.extra as Record<string, unknown>) || {};
-    const entity: "MAI" | "MBI" = (r.entity as "MAI" | "MBI") || (extra.entity as "MAI" | "MBI") || (rawInv.startsWith("MAI-") ? "MAI" : "MBI");
+    const rawKey = String((r as any).invoice_key || r.id || "").trim();
+    const soStr = String(r.no_sales_order || (extra as any).no_sales_order || "").trim();
+    const isMaiOrder =
+      rawKey.startsWith("MAI-") ||
+      rawInv.startsWith("MAI-") ||
+      soStr.startsWith("WY3M") ||
+      soStr.startsWith("8YRV");
+    const entity: "MAI" | "MBI" =
+      (r.entity as "MAI" | "MBI") ||
+      (extra.entity as "MAI" | "MBI") ||
+      (isMaiOrder ? "MAI" : "MBI");
     const rawInvWithoutPrefix = rawInv.replace(/^MAI-/i, "");
     const cleanInv = rawInvWithoutPrefix.replace(/-1P$/i, "");
     const items = (extra.items as Array<Record<string, unknown>>) || [];
@@ -192,7 +202,6 @@ function dbRowsToFakturRecords(
     const txDate = String(r.transaction_date || extra.transaction_date || date);
     const isOra = r.jenis_transaksi === "ORA" || isOraCustomer(cust);
     const baseKey = isOra ? `${cleanInv}-1P` : cleanInv;
-    const rawKey = String((r as any).invoice_key || r.id || "").trim();
     const invKey = (rawKey && rawKey !== "undefined" && rawKey !== "null" && rawKey !== cleanInv && (rawKey.includes("__") || rawKey.includes("#") || rawKey.startsWith("MAI-") || rawKey.endsWith("-1P")))
       ? rawKey
       : (entity === "MAI" ? `MAI-${baseKey}` : baseKey);
@@ -2863,7 +2872,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const isOra = row.jenis_transaksi === "ORA" || isOraCustomer(cust);
           const targetKey = isOra ? `${cleanInv}-1P` : cleanInv;
           const num = parseInvNum(cleanInv);
-          const rowEntity = (row.entity as "MAI" | "MBI") || (rawInv.startsWith("MAI-") ? "MAI" : "MBI");
+          const rawKey = String((row as any).invoice_key || row.id || "").trim();
+          const soStr = String(row.no_sales_order || (extra as any).no_sales_order || "").trim();
+          const isMaiOrder = rawKey.startsWith("MAI-") || rawInv.startsWith("MAI-") || soStr.startsWith("WY3M") || soStr.startsWith("8YRV");
+          const rowEntity: "MAI" | "MBI" = (row.entity as "MAI" | "MBI") || (isMaiOrder ? "MAI" : "MBI");
           const kat = isOra ? "1P" : categorize("DOO", cust, undefined, undefined, undefined, rowEntity);
 
           if (num > 0) {
@@ -2991,14 +3003,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const num = parseInvNum(cleanInv);
           if (!cleanInv || cleanInv === "-" || cleanInv === "0") continue;
 
-          const baseTargetKey = r.invoiceKey || (r.entity === "MAI" ? `MAI-${isOra ? `${cleanInv}-1P` : cleanInv}` : (isOra ? `${cleanInv}-1P` : cleanInv));
+          const incomingSO = String(r.orderNumber || "").trim();
+          const isMaiRecord = r.entity === "MAI" || incomingSO.startsWith("WY3M") || incomingSO.startsWith("8YRV");
+          const baseTargetKey = r.invoiceKey || (isMaiRecord ? `MAI-${isOra ? `${cleanInv}-1P` : cleanInv}` : (isOra ? `${cleanInv}-1P` : cleanInv));
           let targetKey = baseTargetKey;
 
           // Zero Collision Guarantee (LOCKED_RULES A.8):
           // Check if an existing entry under baseTargetKey has a DIFFERENT, non-empty Sales Order (SO).
           // If SOs differ (e.g. October ELZDZ2-8021 vs November 1710620), they MUST NEVER overwrite each other.
           // Isolate the new transaction with a composite key: `${baseTargetKey}__${cleanSO}`.
-          const incomingSO = String(r.orderNumber || "").trim();
           const existingEntryCandidate = invMap.get(baseTargetKey);
           const prevInfoCandidate = existingStatusMap.get(baseTargetKey);
           const existingSO = String((existingEntryCandidate && existingEntryCandidate.no_sales_order) || (prevInfoCandidate && prevInfoCandidate.no_sales_order) || "").trim();
