@@ -902,6 +902,19 @@ export default function Home() {
     };
   }, [checkerMapMbi, checkerMapMai]);
 
+  // Fetch QC Reports (GSheet Rekap Lengkap / Rekap SO queue waiting for Oracle invoice)
+  const fetchQcOrders = useCallback(async (wh: "MBI" | "MAI") => {
+    try {
+      const res = await fetch(`/api/tidb?action=qc_reports&warehouse=${wh}`);
+      const d = await res.json();
+      if (d && d.success && Array.isArray(d.data)) {
+        setQcOrders(d.data);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch qc_reports:", e);
+    }
+  }, []);
+
   // Real-time direct Firebase Firestore subscription (0 byte on Vercel, <100ms sync)
   useEffect(() => {
     // 1. MBI Checkers Subscription
@@ -917,6 +930,8 @@ export default function Home() {
     const unsubMbi = subscribeToCheckers((map) => {
       setCheckerMapMbi((prev) => ({ ...prev, ...map }));
       checkerMapMbiRef.current = { ...checkerMapMbiRef.current, ...map };
+      // Real-time trigger: Instantly re-fetch QC queue on any Google Sheet edit event
+      fetchQcOrders("MBI");
     }, "MBI");
 
     try {
@@ -950,6 +965,8 @@ export default function Home() {
     const unsubMai = subscribeToCheckers((map) => {
       setCheckerMapMai((prev) => ({ ...prev, ...map }));
       checkerMapMaiRef.current = { ...checkerMapMaiRef.current, ...map };
+      // Real-time trigger: Instantly re-fetch QC queue on any Google Sheet edit event
+      fetchQcOrders("MAI");
     }, "MAI");
 
     try {
@@ -974,27 +991,26 @@ export default function Home() {
       unsubMbi();
       unsubMai();
     };
-  }, []);
-
-  // Fetch QC Reports (GSheet Rekap Lengkap queue waiting for Oracle invoice)
-  const fetchQcOrders = useCallback(async (wh: "MBI" | "MAI") => {
-    try {
-      const res = await fetch(`/api/tidb?action=qc_reports&warehouse=${wh}`);
-      const d = await res.json();
-      if (d && d.success && Array.isArray(d.data)) {
-        setQcOrders(d.data);
-      }
-    } catch (e) {
-      console.warn("Failed to fetch qc_reports:", e);
-    }
-  }, []);
+  }, [fetchQcOrders]);
 
   useEffect(() => {
     fetchQcOrders(selectedWarehouse);
+    // Polling safety net every 8 seconds + on tab focus
     const interval = setInterval(() => {
       fetchQcOrders(selectedWarehouseRef.current);
-    }, 20000);
-    return () => clearInterval(interval);
+    }, 8000);
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchQcOrders(selectedWarehouseRef.current);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [selectedWarehouse, fetchQcOrders]);
   const invoiceProgressionRef = useRef<InvoiceProgression | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
