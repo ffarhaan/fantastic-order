@@ -3353,22 +3353,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
         existingDB.forEach((row) => {
           const rawInv = String(row.no_faktur || "");
-          const cleanInv = rawInv.replace(/-1P$/i, "");
+          const cleanInv = rawInv.replace(/^MAI-/i, "").replace(/-1P$/i, "");
           const extra = (row.extra as Record<string, unknown>) || {};
           const cust = String(extra.nama_pelanggan || row.customer_name || "");
           const isOra = row.jenis_transaksi === "ORA" || isOraCustomer(cust);
           const rawKey = String((row as any).invoice_key || row.id || "").trim();
           const isComposite = rawKey.includes("__");
-          // Multi-Month & Multi-SO Isolation: Composite keys must NEVER stomp or collapse into base keys!
+          const isMaiOrder = rawKey.startsWith("MAI-") || rawInv.startsWith("MAI-") || row.entity === "MAI" || extra.entity === "MAI";
+          const rowEntity: "MAI" | "MBI" = (row.entity as "MAI" | "MBI") || (isMaiOrder ? "MAI" : "MBI");
+          const baseKeyForTarget = isOra ? `${cleanInv}-1P` : cleanInv;
+          // Multi-Month & Multi-SO Isolation & Strict MBI/MAI Key Isolation:
           const targetKey = isComposite
             ? rawKey
-            : (isOra ? `${cleanInv}-1P` : cleanInv);
+            : (rowEntity === "MAI" ? `MAI-${baseKeyForTarget}` : baseKeyForTarget);
           const num = parseInvNum(cleanInv);
-          const isMaiOrder = rawKey.startsWith("MAI-") || rawInv.startsWith("MAI-");
-          const rowEntity: "MAI" | "MBI" = (row.entity as "MAI" | "MBI") || (isMaiOrder ? "MAI" : "MBI");
           const kat = isOra ? "1P" : categorize("DOO", cust, undefined, undefined, undefined, rowEntity);
 
-          if (num > 0) {
+          if (num > 0 && rowEntity === currentWh) {
             if (isOra) {
               if (num > prevOraNum) {
                 prevOraNum = num;

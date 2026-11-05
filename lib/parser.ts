@@ -926,7 +926,8 @@ function parseHTMLTable(html: string): FakturRecord[] {
     const kategori = isOra ? "1P" : categorize(jenisTransaksi, customerName, jenisTransaksi, shipSite, billSite, htmlEntity);
     const finalInv = invVal || soVal;
     const cleanInv = finalInv.replace(/-1P$/i, "");
-    const invoiceKey = isOra ? `${cleanInv}-1P` : cleanInv;
+    const baseKey = isOra ? `${cleanInv}-1P` : cleanInv;
+    const invoiceKey = htmlEntity === "MAI" ? `MAI-${baseKey}` : baseKey;
     const finalSO = soVal || "-";
     const txVal = colMap["txDate"] !== undefined ? texts[colMap["txDate"]] : undefined;
     const rawAmt = colMap["amount"] !== undefined ? texts[colMap["amount"]] : texts[11];
@@ -947,7 +948,8 @@ function parseHTMLTable(html: string): FakturRecord[] {
       lotNumber: "-",
       totalHarga,
       kategori,
-      dklk: getDkLk(customerName, "MBI"),
+      dklk: getDkLk(customerName, htmlEntity),
+      entity: htmlEntity,
       isDoubleInv: false,
       sourceFile: "EXPORT",
       rowIndex: i,
