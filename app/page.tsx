@@ -355,6 +355,28 @@ export default function Home() {
   const [returnsOverviewStats, setReturnsOverviewStats] = useState<{ totalAll: number; totalResolved: number; totalPending: number; totalMbi: number; totalMai: number } | null>(null);
   const [filter, setFilter] = useState<Filter>("belum");
   const [qcOrders, setQcOrders] = useState<any[]>([]);
+  // Local In-App Status QC (Pure client state, decoupled from GSheet & no database writing)
+  const [qcDoneLocalMap, setQcDoneLocalMap] = useState<Record<string, boolean>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = sessionStorage.getItem("fantastic_qc_done_local");
+        return saved ? JSON.parse(saved) : {};
+      } catch {}
+    }
+    return {};
+  });
+
+  const toggleLocalQcDone = useCallback((so: string) => {
+    if (!so) return;
+    setQcDoneLocalMap((prev) => {
+      const nextVal = !prev[so];
+      const updated = { ...prev, [so]: nextVal };
+      try {
+        sessionStorage.setItem("fantastic_qc_done_local", JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, []);
   const [selectedWarehouse, setSelectedWarehouse] = useState<"MBI" | "MAI">("MBI");
   const selectedWarehouseRef = useRef<"MBI" | "MAI">("MBI");
   const [katFilter, setKatFilter] = useState<KatFilter>("all");
@@ -2569,8 +2591,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         totalHarga: 0,
         totalItems: qc.total_item ? Number(qc.total_item) : (qc.total_qty ? Number(qc.total_qty) : 0),
         barangCatatan: Number(qc.barang_catatan) || 0,
-        isQcDone: String(qc.is_done || "").trim().toUpperCase().includes("DONE"),
-        qcDoneStatus: String(qc.is_done || "").trim(),
+        isQcDone: Boolean(qcDoneLocalMap[soClean]),
+        qcDoneStatus: qcDoneLocalMap[soClean] ? "DONE" : "PROSES",
         entity: selectedWarehouse,
         allPrinted: false,
         printedAt: null,
@@ -2588,7 +2610,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         qcUpdatedAt: qc.updated_at || "",
       };
     });
-  }, [pendingQcList, selectedWarehouse]);
+  }, [pendingQcList, selectedWarehouse, qcDoneLocalMap]);
 
   // 6. Filtered Faktur Groups (Instant single-string matching & 0ms numeric sorting)
   const filtered = useMemo(() => {
@@ -2704,6 +2726,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   }, [pageData.length, selectedRowIndex]);
 
   const unprintedCountInFiltered = useMemo(() => {
+    if (filter === "report_qc") return 0;
     if (filter === "belum") return filtered.length;
     if (filter === "sudah") return 0;
     let count = 0;
@@ -5855,7 +5878,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 (isColVisible("kat_produk") ? 1 : 0) +
                 (isColVisible("jenis") ? 1 : 0) +
                 (isColVisible("pelanggan") ? 1 : 0) +
-                (filter === "report_qc" ? 2 : (isColVisible("tgl_faktur") ? 1 : 0)) +
+                (filter === "report_qc" ? 1 : (isColVisible("tgl_faktur") ? 1 : 0)) +
                 (isColVisible("tgl_order") ? 1 : 0) +
                 (isColVisible("kat") ? 1 : 0) +
                 (filter !== "report_qc" && isColVisible("dklk") ? 1 : 0) +
@@ -5885,9 +5908,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                         #
                       </th>
 
-                      {/* Col 1: Print */}
+                      {/* Col 1: Print / Status QC */}
                       <th
-                        className={`px-2 py-2.5 w-12 min-w-[48px] text-center ${
+                        className={`px-2 py-2.5 ${filter === "report_qc" ? "min-w-[95px] w-24" : "w-12 min-w-[48px]"} text-center ${
                           freezeColLevel === "1"
                             ? "sticky left-[32px] z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
                             : freezeColLevel !== "none"
@@ -5895,7 +5918,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             : "border-r border-zinc-200 dark:border-zinc-800"
                         }`}
                       >
-                        Print
+                        {filter === "report_qc" ? "STATUS QC" : "Print"}
                       </th>
 
                       {/* Col 2: No SO */}
@@ -5976,16 +5999,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                         </th>
                       )}
 
-                      {/* Col 7 & 7b: Status QC (N) & Barang Catatan (J) for Report QC */}
+                      {/* Col 7b: Barang Catatan (J) for Report QC */}
                       {filter === "report_qc" ? (
-                        <>
-                          <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Status QC dari Kolom N GSheet">
-                            Status QC (N)
-                          </th>
-                          <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Jumlah Barang Catatan dari Kolom J GSheet">
-                            Barang Catatan (J)
-                          </th>
-                        </>
+                        <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Jumlah Barang Catatan dari Kolom J GSheet">
+                          Barang Catatan (J)
+                        </th>
                       ) : (
                         isColVisible("tgl_faktur") && (
                           <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Tanggal Faktur / Invoice Date (Transaction Date)">
@@ -6168,29 +6186,25 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             }}
                           >
                             {g.isQcQueue ? (
-                              g.isQcDone ? (
-                                <div
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase border tracking-tight flex items-center justify-center gap-0.5 shadow-2xs ${
-                                    isDarkMode
-                                      ? "bg-emerald-950/80 text-emerald-300 border-emerald-600"
-                                      : "bg-emerald-600 text-white border-emerald-700"
-                                  }`}
-                                  title="Selesai QC di Gudang (DONE) - Menunggu Faktur Oracle diupload"
-                                >
-                                  ✓ DONE
-                                </div>
-                              ) : (
-                                <div
-                                  className={`w-6 h-6 mx-auto rounded-md flex items-center justify-center text-xs font-black border ${
-                                    isDarkMode
-                                      ? "bg-amber-950/40 border-amber-700/60 text-amber-400"
-                                      : "bg-amber-50 border-amber-300 text-amber-600"
-                                  }`}
-                                  title="Sedang Proses QC - Menunggu Faktur Oracle"
-                                >
-                                  ⏳
-                                </div>
-                              )
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleLocalQcDone(g.so);
+                                }}
+                                className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-tight flex items-center justify-center gap-1 shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95 mx-auto ${
+                                  g.isQcDone
+                                    ? isDarkMode
+                                      ? "bg-emerald-950 text-emerald-300 border border-emerald-600 hover:bg-emerald-900"
+                                      : "bg-emerald-600 text-white border border-emerald-700 hover:bg-emerald-700 shadow-xs"
+                                    : isDarkMode
+                                    ? "bg-amber-950/60 text-amber-300 border border-amber-700/80 hover:bg-amber-900/60"
+                                    : "bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200"
+                                }`}
+                                title={g.isQcDone ? "Klik untuk ubah kembali ke PROSES" : "Klik untuk tandai DONE"}
+                              >
+                                {g.isQcDone ? "✓ DONE" : "⏳ PROSES"}
+                              </button>
                             ) : (
                               <button
                                 type="button"
@@ -6302,45 +6316,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             >
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 {g.isQcQueue ? (
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span
-                                      className={`px-2 py-0.5 rounded text-[10px] font-black tracking-wide border flex items-center gap-1 ${
-                                        isDarkMode
-                                          ? "bg-amber-950/80 text-amber-300 border-amber-700/80"
-                                          : "bg-amber-100 text-amber-800 border-amber-300"
-                                      }`}
-                                    >
-                                      ⏳ Menunggu Faktur
-                                    </span>
-                                    {g.isQcQueue && isSuperAdminUser(currentUser?.name) && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleCancelQcOrder(g.so);
-                                        }}
-                                        className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95 ${
-                                          isDarkMode
-                                            ? "bg-red-950/50 text-red-300 border-red-800/80 hover:bg-red-900/60 hover:text-white"
-                                            : "bg-red-50 text-red-700 border-red-300 hover:bg-red-100 hover:text-red-900"
-                                        }`}
-                                        title="Keluarkan dari antrean jika pesanan dibatalkan (Cancel by Oracle)"
-                                      >
-                                        ✕ Cancel by Oracle
-                                      </button>
-                                    )}
-                                    {g.isQcDone && (
-                                      <span
-                                        className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border tracking-tight ${
-                                          isDarkMode
-                                            ? "bg-emerald-950 text-emerald-300 border-emerald-600"
-                                            : "bg-emerald-100 text-emerald-800 border-emerald-400"
-                                        }`}
-                                      >
-                                        ✓ QC DONE
-                                      </span>
-                                    )}
-                                  </div>
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-black tracking-wide border flex items-center gap-1 ${
+                                      isDarkMode
+                                        ? "bg-amber-950/80 text-amber-300 border-amber-700/80"
+                                        : "bg-amber-100 text-amber-800 border-amber-300"
+                                    }`}
+                                  >
+                                    ⏳ Menunggu Faktur
+                                  </span>
                                 ) : (
                                   <span>{g.invoiceNumber}</span>
                                 )}
@@ -6465,45 +6449,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             </td>
                           )}
 
-                          {/* Col 7 & 7b: Status QC (N) & Barang Catatan (J) for Report QC */}
+                          {/* Col 7b: Barang Catatan (J) for Report QC */}
                           {filter === "report_qc" ? (
-                            <>
-                              <td
-                                className={`px-2 py-1.5 text-center whitespace-nowrap font-mono text-[11px] font-medium border-r border-zinc-200 dark:border-zinc-800 ${getCellCls(7)}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onSelectCell(7);
-                                }}
-                              >
-                                {g.isQcDone ? (
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border tracking-tight ${
-                                    isDarkMode ? "bg-emerald-950 text-emerald-300 border-emerald-600" : "bg-emerald-100 text-emerald-800 border-emerald-400"
-                                  }`}>
-                                    ✓ DONE
-                                  </span>
-                                ) : (
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border tracking-tight ${
-                                    isDarkMode ? "bg-amber-950/80 text-amber-300 border-amber-700/80" : "bg-amber-100 text-amber-800 border-amber-300"
-                                  }`}>
-                                    ⏳ PROSES
-                                  </span>
-                                )}
-                              </td>
-                              <td
-                                className="px-2 py-1.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 font-mono text-[11px]"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {(g.barangCatatan && g.barangCatatan > 0) ? (
-                                  <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-black border inline-flex items-center gap-1 ${
-                                    isDarkMode ? "bg-rose-950/90 text-rose-300 border-rose-700" : "bg-rose-100 text-rose-800 border-rose-300 font-bold"
-                                  }`}>
-                                    📝 {g.barangCatatan} Catatan
-                                  </span>
-                                ) : (
-                                  <span className="text-zinc-400 font-mono text-[11px]">0</span>
-                                )}
-                              </td>
-                            </>
+                            <td
+                              className="px-2 py-1.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 font-mono text-[11px]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {(g.barangCatatan && g.barangCatatan > 0) ? (
+                                <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-black border inline-flex items-center gap-1 ${
+                                  isDarkMode ? "bg-rose-950/90 text-rose-300 border-rose-700" : "bg-rose-100 text-rose-800 border-rose-300 font-bold"
+                                }`}>
+                                  📝 {g.barangCatatan} Catatan
+                                </span>
+                              ) : (
+                                <span className="text-zinc-400 font-mono text-[11px]">0</span>
+                              )}
+                            </td>
                           ) : (
                             isColVisible("tgl_faktur") && (
                               <td
@@ -6834,18 +6795,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                       <span>Packer: {g.packer || "-"}</span>
                                       <span>Picker: {g.picker || "-"}</span>
                                     </div>
-                                    {isSuperAdminUser(currentUser?.name) && (
-                                      <div className="pt-3 flex justify-center">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleCancelQcOrder(g.so)}
-                                          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all inline-flex items-center gap-2 shadow-sm cursor-pointer active:scale-95"
-                                        >
-                                          <span>✕</span>
-                                          <span>Batalkan SO Ini (Cancel by Oracle)</span>
-                                        </button>
-                                      </div>
-                                    )}
+
                                   </div>
                                 ) : (
                                   <>
