@@ -936,6 +936,10 @@ export default function Home() {
   const handleCancelQcOrder = useCallback(async (soNum: string) => {
     if (!soNum) return;
     const cleanSo = soNum.trim();
+    if (!isSuperAdminUser(currentUser?.name)) {
+      alert("Akses Ditolak: Fitur Cancel by Oracle hanya dapat dilakukan oleh akun Owner (Farhan).");
+      return;
+    }
     const confirmed = window.confirm(
       `Konfirmasi Pembatalan:\n\nApakah Anda yakin ingin membatalkan SO "${cleanSo}" dan mengeluarkannya dari Antrean Report QC karena Cancel by Oracle?`
     );
@@ -6315,7 +6319,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                     >
                                       ⏳ Menunggu Faktur
                                     </span>
-                                    {g.isQcQueue && currentUser?.role !== "readonly" && (
+                                    {g.isQcQueue && isSuperAdminUser(currentUser?.name) && (
                                       <button
                                         type="button"
                                         onClick={(e) => {
@@ -6837,7 +6841,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                       <span>Packer: {g.packer || "-"}</span>
                                       <span>Picker: {g.picker || "-"}</span>
                                     </div>
-                                    {currentUser?.role !== "readonly" && (
+                                    {isSuperAdminUser(currentUser?.name) && (
                                       <div className="pt-3 flex justify-center">
                                         <button
                                           type="button"
