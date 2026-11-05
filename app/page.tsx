@@ -33,6 +33,7 @@ import {
   subscribeToCheckers,
   subscribeToUserProfiles,
   subscribeToRealtimeSignal,
+  broadcastRealtimeSignal,
   isSuperAdminUser,
   StaffAccountProfile,
 } from "@/lib/firestoreService";
@@ -801,7 +802,7 @@ export default function Home() {
       setExpandedInvoices(new Set());
       setPage(0);
       showToast("✓ Seluruh data faktur berhasil dihapus total (0) di semua perangkat secara real-time.");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Clear error:", err);
       alert("Gagal mereset data di database.");
     } finally {
@@ -931,6 +932,44 @@ export default function Home() {
       console.warn("Failed to fetch qc_reports:", e);
     }
   }, []);
+
+  const handleCancelQcOrder = useCallback(async (soNum: string) => {
+    if (!soNum) return;
+    const cleanSo = soNum.trim();
+    const confirmed = window.confirm(
+      `Konfirmasi Pembatalan:\n\nApakah Anda yakin ingin membatalkan SO "${cleanSo}" dan mengeluarkannya dari Antrean Report QC karena Cancel by Oracle?`
+    );
+    if (!confirmed) return;
+
+    try {
+      // 0ms instant visual optimistic update
+      setQcOrders((prev) => prev.filter((q) => (q.so_number || "").trim() !== cleanSo));
+
+      const res = await fetch("/api/tidb", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "cancel_qc_so",
+          so_number: cleanSo,
+          warehouse: selectedWarehouseRef.current,
+          user_name: currentUser?.name || "Admin",
+          user_email: currentUser?.email || "",
+          reason: "Cancel by Oracle",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchQcOrders(selectedWarehouseRef.current);
+        broadcastRealtimeSignal("fakturs");
+      } else {
+        alert(`Gagal membatalkan: ${data.error || "Terjadi kesalahan"}`);
+        fetchQcOrders(selectedWarehouseRef.current);
+      }
+    } catch (err) {
+      alert("Terjadi kendala jaringan saat menghubungi server.");
+      fetchQcOrders(selectedWarehouseRef.current);
+    }
+  }, [fetchQcOrders, currentUser]);
 
   // Real-time direct Firebase Firestore subscription (0 byte on Vercel, <100ms sync)
   useEffect(() => {
@@ -6276,6 +6315,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                     >
                                       ⏳ Menunggu Faktur
                                     </span>
+                                    {g.isQcQueue && currentUser?.role !== "readonly" && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleCancelQcOrder(g.so);
+                                        }}
+                                        className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95 ${
+                                          isDarkMode
+                                            ? "bg-red-950/50 text-red-300 border-red-800/80 hover:bg-red-900/60 hover:text-white"
+                                            : "bg-red-50 text-red-700 border-red-300 hover:bg-red-100 hover:text-red-900"
+                                        }`}
+                                        title="Keluarkan dari antrean jika pesanan dibatalkan (Cancel by Oracle)"
+                                      >
+                                        ✕ Cancel by Oracle
+                                      </button>
+                                    )}
                                     {g.isQcDone && (
                                       <span
                                         className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border tracking-tight ${
@@ -6781,6 +6837,18 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                       <span>Packer: {g.packer || "-"}</span>
                                       <span>Picker: {g.picker || "-"}</span>
                                     </div>
+                                    {currentUser?.role !== "readonly" && (
+                                      <div className="pt-3 flex justify-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCancelQcOrder(g.so)}
+                                          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all inline-flex items-center gap-2 shadow-sm cursor-pointer active:scale-95"
+                                        >
+                                          <span>✕</span>
+                                          <span>Batalkan SO Ini (Cancel by Oracle)</span>
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 ) : (
                                   <>

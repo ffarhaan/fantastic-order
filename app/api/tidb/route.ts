@@ -494,6 +494,8 @@ export async function GET(req: Request) {
            WHERE updated_at >= NOW() - INTERVAL 48 HOUR
              AND so_number IS NOT NULL AND so_number != '' AND so_number != '-'
          ) t
+         LEFT JOIN cancelled_qc_sos cqs ON t.so_number = cqs.so_number
+         WHERE cqs.so_number IS NULL
          GROUP BY t.so_number
          ORDER BY updated_at DESC, t.so_number DESC
          LIMIT 500;`,
@@ -1647,6 +1649,50 @@ export async function POST(req: Request) {
       body = {};
     }
     const action = searchParams.get("action") || body?.action;
+
+    // 0. Cancel QC SO (Cancel by Oracle - keluarkan dari antrean Report QC)
+    if (action === "cancel_qc_so") {
+      const so_number = String(body?.so_number || searchParams.get("so_number") || "").trim();
+      const warehouse = String(body?.warehouse || searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
+      const userName = String(body?.user_name || body?.userName || "Admin").trim();
+      const reason = String(body?.reason || "Cancel by Oracle").trim();
+
+      if (!so_number) {
+        return Response.json({ success: false, error: "Missing so_number" }, { status: 400 });
+      }
+
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS cancelled_qc_sos (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          so_number VARCHAR(100) NOT NULL UNIQUE,
+          warehouse VARCHAR(20) NOT NULL,
+          cancelled_by VARCHAR(100) DEFAULT '',
+          reason VARCHAR(255) DEFAULT 'Cancel by Oracle',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      await conn.execute(
+        `INSERT INTO cancelled_qc_sos (so_number, warehouse, cancelled_by, reason)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE reason = VALUES(reason), cancelled_by = VALUES(cancelled_by)`,
+        [so_number, warehouse, userName, reason]
+      );
+
+      await conn.execute("DELETE FROM qc_reports WHERE so_number = ?", [so_number]);
+      const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
+      await conn.execute(`DELETE FROM ${tableName} WHERE so_number = ?`, [so_number]);
+
+      try {
+        await conn.execute(
+          `INSERT INTO activity_logs (user_name, user_email, action_type, module, target_id, details)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [userName, body?.user_email || "", "CANCEL_QC_SO", "REPORT_QC", so_number, `Membatalkan antrean QC SO #${so_number} (${warehouse}) - ${reason}`]
+        );
+      } catch {}
+
+      return Response.json({ success: true, message: `SO ${so_number} berhasil dibatalkan dari antrean Report QC` });
+    }
 
     // 0. Log Activity (Audit Trail)
     if (action === "log_activity") {
