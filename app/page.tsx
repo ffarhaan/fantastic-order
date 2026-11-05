@@ -2244,6 +2244,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       g.items.push(r);
       g.totalHarga += r.totalHarga;
       g.totalItems += 1;
+      if ((!g.so || g.so === "-") && r.orderNumber && r.orderNumber !== "-") {
+        g.so = r.orderNumber;
+      }
 
       if (r.isDoubleInv) g.isDoubleInv = true;
       if (r.isRetur || r.totalHarga < 0) g.isRetur = true;
@@ -2538,10 +2541,38 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   // that do NOT yet have an Oracle invoice uploaded in the current warehouse.
   const pendingQcList = useMemo(() => {
     const existingSOSet = new Set<string>();
+    const normalizeSO = (soStr: string) => soStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
     for (let i = 0; i < grouped.length; i++) {
       const g = grouped[i];
-      if ((g.entity || "MBI") === selectedWarehouse && g.so && g.so !== "-") {
-        existingSOSet.add(g.so.trim().toUpperCase());
+      if ((g.entity || "MBI") === selectedWarehouse) {
+        if (g.so && g.so !== "-") {
+          const rawSo = g.so.trim().toUpperCase();
+          existingSOSet.add(rawSo);
+          const normSo = normalizeSO(rawSo);
+          if (normSo) existingSOSet.add(normSo);
+
+          // Handle multiple SOs separated by comma, slash, space, semicolon
+          const parts = rawSo.split(/[,;\/\s\n\r]+/).filter(Boolean);
+          for (const p of parts) {
+            existingSOSet.add(p);
+            const np = normalizeSO(p);
+            if (np) existingSOSet.add(np);
+          }
+        }
+
+        // Also check all item-level orderNumbers in case it was stored at the item level
+        if (Array.isArray(g.items)) {
+          for (const it of g.items) {
+            const itSO = it.orderNumber || (it as any).no_sales_order || (it as any).order_number;
+            if (itSO && itSO !== "-") {
+              const rawItSO = String(itSO).trim().toUpperCase();
+              existingSOSet.add(rawItSO);
+              const normIt = normalizeSO(rawItSO);
+              if (normIt) existingSOSet.add(normIt);
+            }
+          }
+        }
       }
     }
 
@@ -2550,8 +2581,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       // STRICT ISOLATION per LOCKED_RULES.md: MBI only sees MBI, MAI only sees MAI
       if ((qc.warehouse || "MBI").toUpperCase() !== selectedWarehouse) return false;
       const cleanSo = qc.so_number.trim().toUpperCase();
+      const normSo = normalizeSO(cleanSo);
       // If Oracle already has this SO uploaded, it automatically exits Report QC and moves into Belum Terprint!
-      return !existingSOSet.has(cleanSo);
+      return !existingSOSet.has(cleanSo) && !existingSOSet.has(normSo);
     });
   }, [qcOrders, grouped, selectedWarehouse]);
 

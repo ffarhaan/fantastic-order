@@ -629,6 +629,7 @@ function parseXXCUST(
     orderDate: getCol("order date", "tanggal order", "date", "accounting date", "tgl order", "tgl so", "tanggal so", "so date", "tanggal pesanan", "tgl pesanan", "tanggal", "tgl"),
     accountingDate: getCol("accounting date", "tanggal akuntansi", "tgl akuntansi"),
     orderNumber: getCol("order number", "order no", "no order", "no so", "so number", "nomor order", "nomor pesanan", "no pesanan", "so no", "order", "sales order", "sales order no", "sales order number", "no sales order", "nomor sales order", "reference", "no ref", "ref no"),
+    referenceOrderNumber: getCol("reference order number", "ref order number", "ref order no", "reference order no", "nomor order referensi", "no ref order"),
     itemCode: getCol("item code", "kode barang", "kode produk", "kode item", "item", "item number", "item no", "product code", "part number", "kode obat", "sku", "kode"),
     itemDescription: getCol("item description", "nama barang", "deskripsi barang", "description", "item desc", "nama produk", "deskripsi produk", "item name", "nama item", "nama obat", "deskripsi", "product name"),
     qty: getCol("qty", "quantity", "jumlah", "kuantiti", "qty ordered", "ordered quantity", "shipped quantity", "qty shipped", "banyak", "vol", "volume"),
@@ -655,6 +656,9 @@ function parseXXCUST(
     const rawVal = (cIdx: number | undefined) => (cIdx !== undefined && cIdx >= 0 ? row[cIdx] : undefined);
 
     let orderNumber = val(idx.orderNumber);
+    if (!orderNumber && idx.referenceOrderNumber !== undefined) {
+      orderNumber = val(idx.referenceOrderNumber);
+    }
     let invoiceNumber = val(idx.invoiceNumber);
 
     const itemCode = val(idx.itemCode);
@@ -677,6 +681,12 @@ function parseXXCUST(
     if (!invoiceNumber && orderNumber) {
       invoiceNumber = orderNumber;
     }
+
+    // Carry-forward orderNumber for multiple items in the same invoice if orderNumber was only specified on first row
+    if (!orderNumber && invoiceNumber && invoiceNumber === lastInvoiceNumber && lastOrderNumber && lastOrderNumber !== "-") {
+      orderNumber = lastOrderNumber;
+    }
+
     if (!orderNumber && invoiceNumber) {
       orderNumber = "-";
     }
@@ -714,7 +724,9 @@ function parseXXCUST(
     }
 
     // Cache last valid headers for subsequent line items
-    lastOrderNumber = orderNumber;
+    if (orderNumber && orderNumber !== "-") {
+      lastOrderNumber = orderNumber;
+    }
     lastInvoiceNumber = invoiceNumber;
     lastCustomerName = customerName;
     lastCustomerCode = customerCode;
@@ -909,7 +921,7 @@ function parseHTMLTable(html: string): FakturRecord[] {
     const finalInv = invVal || soVal;
     const cleanInv = finalInv.replace(/-1P$/i, "");
     const invoiceKey = isOra ? `${cleanInv}-1P` : cleanInv;
-    const finalSO = isOra ? "-" : (soVal || "-");
+    const finalSO = soVal || "-";
     const txVal = colMap["txDate"] !== undefined ? texts[colMap["txDate"]] : undefined;
     const rawAmt = colMap["amount"] !== undefined ? texts[colMap["amount"]] : texts[11];
     const totalHarga = parseNumeric(rawAmt);
@@ -1019,7 +1031,7 @@ function parseExportArray(data: unknown[][], headerIdx: number): FakturRecord[] 
     const invoiceKey = fileEntity === "MAI" ? `MAI-${baseKey}` : baseKey;
     const rawAmount = colMap["amount"] !== undefined ? row[colMap["amount"]] : row[11];
     const totalHarga = parseNumeric(rawAmount);
-    const finalSO = isOra ? "-" : (soVal || "-");
+    const finalSO = soVal || "-";
     const txVal = colMap["txDate"] !== undefined ? row[colMap["txDate"]] : undefined;
 
     records.push({
@@ -1093,8 +1105,13 @@ export async function parseExcelFile(
       }),
     ];
 
-    // Find the sheet and robust header row that contains the actual transactions
+    const allRecords: FakturRecord[] = [];
+    const processedSheets = new Set<string>();
+
+    // Find sheets and robust header rows that contain actual transactions (read all sheets completely!)
     for (const sheetName of prioritizedSheetNames) {
+      if (processedSheets.has(sheetName)) continue;
+      processedSheets.add(sheetName);
       const ws = wb.Sheets[sheetName];
       if (!ws) continue;
       const data = (ws["!data"]
@@ -1165,7 +1182,7 @@ export async function parseExcelFile(
         try {
           const parsed = parseXXCUST(data, headerIdx, productOverrides);
           if (parsed && parsed.length > 0) {
-            return parsed;
+            allRecords.push(...parsed);
           }
         } catch (parseErr: any) {
           if (parseErr && parseErr.message && parseErr.message.includes("File Ditolak: Anda sedang membuka Gudang")) {
@@ -1174,6 +1191,11 @@ export async function parseExcelFile(
           // Try next sheet if available
         }
       }
+    }
+
+    if (allRecords.length > 0) {
+      detectDoubleInvoices(allRecords);
+      return allRecords;
     }
 
     throw new Error("⚠️ File Ditolak: Hanya file XXCUST resmi yang memiliki kolom Entity (MBI LE / MAI LE) yang diizinkan untuk diupload.");
