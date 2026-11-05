@@ -1438,7 +1438,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
       // 2. Normal operational sync: ALWAYS prioritize Delta Sync (super light, < 15KB!)
       // Fetches ONLY rows updated in TiDB since clientUpdated (with 10-second overlap window)
-      const deltaDocs = await fetchTiDBDelta(Math.max(0, curUpdated - 10));
+      const deltaDocs = await fetchTiDBDelta(Math.max(0, curUpdated - 30));
       if (deltaDocs && deltaDocs.length > 0) {
         const deltaMax = (deltaDocs as any).maxUpdated || curUpdated;
         if (deltaMax > curUpdated) {
@@ -1461,12 +1461,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       } else {
         // Delta was empty, double check if there is an extreme count discrepancy (> 1000 missing)
         const check = await checkTiDBUpdates(curCount, curUpdated);
-        if (check && check.totalCount && (check.totalCount - curCount > 1000)) {
-          const fullRes = await fetchFaktursFromTiDB();
-          if (fullRes && fullRes.fakturs && fullRes.fakturs.length > 0) {
-            const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], fullRes.fakturs);
+        if (check && check.totalCount && check.totalCount > curCount) {
+          const recentDelta = await fetchTiDBDelta(Math.max(0, curUpdated - 600));
+          if (recentDelta && recentDelta.length > 0) {
+            const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], recentDelta);
             currentFakturDocsRef.current = merged;
-            clientUpdatedRef.current = fullRes.maxUpdated || curUpdated;
+            const deltaMax = (recentDelta as any).maxUpdated || curUpdated;
+            if (deltaMax > curUpdated) clientUpdatedRef.current = deltaMax;
             const { records: recs } = dbRowsToFakturRecords(
               merged as unknown as Array<Record<string, unknown>>,
               productOverridesRef.current,
@@ -1516,7 +1517,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         }
       };
   
-      const interval = setInterval(syncNetTick, 2500);
+      const interval = setInterval(syncNetTick, 2000);
   
       const onVisibility = () => {
         if (document.visibilityState === "visible") {
@@ -3796,7 +3797,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           .map((k) => invMap.get(k))
           .filter(Boolean) as FirestoreFakturDoc[];
 
-        // 6. Broadcast uploaded documents immediately via Firebase for 0ms Real-Time sync to all peer devices!
+        // 6. Save directly to TiDB FIRST (< 800ms) so rows exist in DB BEFORE peers are notified!
+        await syncFaktursToTiDB(uploadedDocs, (done, total) => {
+          if (total > 250) {
+            showToast(`💾 Menyimpan ke database: ${done} / ${total} faktur (${Math.round((done / total) * 100)}%)...`);
+          }
+        });
+
+        // 7. Broadcast uploaded documents immediately via Firebase for 0ms Real-Time sync to all peer devices!
         await broadcastRecentUpload(
           uploadedDocs,
           progObj,
@@ -3806,12 +3814,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           Array.from(brandNewUnprintedKeysSet)
         );
 
-        // 7. Save to TiDB in the background as permanent authoritative archive with Vercel timeout shield
-        syncFaktursToTiDBBackground(uploadedDocs, (done, total) => {
-          if (total > 250) {
-            showToast(`💾 Menyimpan ke database: ${done} / ${total} faktur (${Math.round((done / total) * 100)}%)...`);
-          }
-        });
+        // 8. Also broadcast real-time signal so peer browsers immediately pull from TiDB!
+        await broadcastRealtimeSignal("fakturs");
 
         // 8. Sync print metadata & broadcast upload notification to other devices via Firestore
         await saveFaktursBatch(

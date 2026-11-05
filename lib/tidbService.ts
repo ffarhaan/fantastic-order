@@ -182,8 +182,8 @@ export async function checkTiDBUpdates(
   clientUpdated: number
 ): Promise<{ upToDate: boolean; totalCount: number; maxUpdated: number } | null> {
   const now = Date.now();
-  // Throttle redundant checks within 5s
-  if (lastCheckResult && now - lastCheckTime < 5000) {
+  // Ultra-fast deduplication window (< 1.2s instead of slow 5s throttle)
+  if (lastCheckResult && now - lastCheckTime < 1200) {
     return lastCheckResult;
   }
   if (activeCheckPromise) {

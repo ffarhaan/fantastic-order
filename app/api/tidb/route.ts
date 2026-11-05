@@ -957,7 +957,7 @@ export async function GET(req: Request) {
 
       const clientCount = Number(searchParams.get("count") || 0);
       const clientUpdated = Number(searchParams.get("updated") || 0);
-      const isUpToDate = clientCount === totalCount && totalCount > 0 && (clientUpdated === 0 || clientUpdated >= maxUpdated);
+      const isUpToDate = clientCount === totalCount && totalCount > 0 && clientUpdated > 0 && clientUpdated >= maxUpdated;
 
       return compressedJsonResponse(
         req,
