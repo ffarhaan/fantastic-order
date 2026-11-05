@@ -185,6 +185,7 @@ interface CachedGroupEntry {
   group: FakturGroup;
 }
 const docGroupCacheMap = new WeakMap<FakturRecord, CachedGroupEntry>();
+const unsyncedTiDBKeysSet = new Set<string>();
 
 function dbRowsToFakturRecords(
   rows: Array<Record<string, unknown>>,
@@ -1294,7 +1295,7 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
         ...(invoiceKey ? { [invoiceKey]: newKat } : {}),
       }));
 
-      // 2. Update matching docs in memory & IndexedDB cache
+      // 2. Update matching docs in memory & IndexedDB cache (invalidating docRecordsCacheMap & updating cached recs)
       if (currentFakturDocsRef.current) {
         for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
           const d = currentFakturDocsRef.current[i];
@@ -1309,6 +1310,14 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
           if (isMatch && d.jenis_transaksi !== "ORA") {
             d.kategori = newKat;
             if (d.extra) d.extra.kategori = newKat;
+            const cachedEntry = docRecordsCacheMap.get(d);
+            if (cachedEntry?.recs) {
+              for (const rec of cachedEntry.recs) {
+                rec.kategori = newKat;
+                docGroupCacheMap.delete(rec);
+              }
+            }
+            docRecordsCacheMap.delete(d);
           }
         }
         setLocalCachedFakturs(currentFakturDocsRef.current, clientUpdatedRef.current || 0, {
@@ -1362,6 +1371,30 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
         ...(cleanInv ? { [cleanInv]: newDkLk } : {}),
       }));
 
+      if (currentFakturDocsRef.current) {
+        for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
+          const d = currentFakturDocsRef.current[i];
+          const dCust = String(d.customer_name || d.extra?.nama_pelanggan || "").trim();
+          const dNormCust = dCust ? normalize(dCust) : "";
+          const dKey = String(d.id || d.no_faktur || "");
+          const isMatch =
+            dKey === invoiceKey ||
+            d.no_faktur === cleanInv ||
+            (normCust && dNormCust === normCust) ||
+            (cleanCust && dCust === cleanCust);
+          if (isMatch) {
+            const cachedEntry = docRecordsCacheMap.get(d);
+            if (cachedEntry?.recs) {
+              for (const rec of cachedEntry.recs) {
+                rec.dklk = newDkLk;
+                docGroupCacheMap.delete(rec);
+              }
+            }
+            docRecordsCacheMap.delete(d);
+          }
+        }
+      }
+
       showToast(`✓ Wilayah ${cleanCust || cleanInv} disimpan ke ${newDkLk}`);
 
       if (newDkLk === "DK" || newDkLk === "LK") {
@@ -1393,6 +1426,33 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
 
       productOverridesRef.current = newOverrides;
       setProductOverrides(newOverrides);
+
+      // Invalidate docRecordsCacheMap for any doc containing this product
+      if (currentFakturDocsRef.current) {
+        for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
+          const d = currentFakturDocsRef.current[i];
+          const items = d.extra?.items;
+          if (Array.isArray(items)) {
+            let matchedDoc = false;
+            for (const it of items) {
+              const iCode = String(it.item_code || "").trim();
+              const iDesc = String(it.item_description || "").trim();
+              const iNorm = iDesc ? normalize(iDesc) : "";
+              if (
+                (cleanCode && cleanCode !== "-" && iCode === cleanCode) ||
+                (cleanName && cleanName !== "-" && iDesc === cleanName) ||
+                (normName && iNorm === normName)
+              ) {
+                it.kategori_produk = newKat;
+                matchedDoc = true;
+              }
+            }
+            if (matchedDoc) {
+              docRecordsCacheMap.delete(d);
+            }
+          }
+        }
+      }
 
       // 2. Optimistically update all records matching product in state
       setRecords((prev) =>
@@ -1469,9 +1529,11 @@ function sanitizeDuplicateCompositeDocs(docs: FirestoreFakturDoc[]): FirestoreFa
           existingBase.status_cetak = true;
           existingBase.printed_at = existingBase.printed_at || d.printed_at || new Date().toISOString();
           existingBase.printed_by = existingBase.printed_by || d.printed_by || null;
+          docRecordsCacheMap.delete(existingBase);
         }
         if ((!baseSO || baseSO === "-") && compSO && compSO !== "-") {
           existingBase.no_sales_order = compSO;
+          docRecordsCacheMap.delete(existingBase);
         }
       }
     } else {
@@ -2010,6 +2072,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 d.status_cetak = false;
                 d.printed_at = null;
                 d.printed_by = null;
+                docRecordsCacheMap.delete(d);
               } else if (d.status_cetak) {
                 mergedSet.add(k);
               }
@@ -2048,6 +2111,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 const d = currentFakturDocsRef.current[i];
                 const k = d.id || d.no_faktur;
                 if (k && mergedSet.has(k)) {
+                  if (!d.status_cetak) docRecordsCacheMap.delete(d);
                   d.status_cetak = true;
                   d.printed_at = d.printed_at || combinedAt[k] || null;
                   d.printed_by = d.printed_by || combinedBy[k] || null;
@@ -2077,7 +2141,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           lastProcessedUploadMsRef.current = uploadTs;
           setUploadNotification(uploadNotif);
           showToast(`📤 File baru diunggah rekan: ${uploadNotif.fileName} (${uploadNotif.newUnprinted} faktur baru)`);
-          // Trigger lightweight Delta Sync (< 15KB) across peer devices
+        }
+
+        // Only pull TiDB delta when metadata (`saveFaktursBatch`) is committed AFTER `syncFaktursToTiDB` finishes!
+        if (reason === "meta" && isPeerUploadRecent) {
           performPeerSync(true);
         }
 
@@ -2365,6 +2432,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             d.status_cetak = willBePrinted;
             d.printed_at = willBePrinted ? nowIso : null;
             d.printed_by = willBePrinted ? currentUserName : null;
+            const cachedEntry = docRecordsCacheMap.get(d);
+            if (cachedEntry?.recs) {
+              for (const rec of cachedEntry.recs) {
+                rec.status_cetak = willBePrinted;
+                rec.printed_at = willBePrinted ? nowIso : null;
+                rec.printed_by = willBePrinted ? currentUserName : null;
+              }
+            }
+            docRecordsCacheMap.delete(d);
           }
         });
       }
@@ -3108,6 +3184,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           d.status_cetak = true;
           d.printed_at = nowIso;
           d.printed_by = currentUserName;
+          const cachedEntry = docRecordsCacheMap.get(d);
+          if (cachedEntry?.recs) {
+            for (const rec of cachedEntry.recs) {
+              rec.status_cetak = true;
+              rec.printed_at = nowIso;
+              rec.printed_by = currentUserName;
+            }
+          }
+          docRecordsCacheMap.delete(d);
         }
       });
     }
@@ -3590,14 +3675,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           printed: boolean;
           totalHarga: number;
           itemsLen: number;
-          firstSig: string;
-          lastSig: string;
+          itemsSig: string;
         }
         const getDocDirtySnapshot = (d: FirestoreFakturDoc): DocDirtySnapshot => {
           const ex = d.extra || {};
           const items = Array.isArray(ex.items) ? ex.items : [];
-          const first = items[0];
-          const last = items[items.length - 1];
+          let itemsSig = "";
+          for (let i = 0; i < items.length; i++) {
+            const it = items[i];
+            itemsSig += `${it.item_code || ""}:${it.item_description || ""}:${it.qty || 0}:${it.uom || ""}:${it.lot_number || ""}:${Math.round(Number(it.total_harga || 0))}:${it.order_number || ""}:${it.kategori_produk || ""}|`;
+          }
           return {
             so: String(d.no_sales_order || "-").trim(),
             cust: String(d.customer_name || ex.nama_pelanggan || "-").trim(),
@@ -3608,8 +3695,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             printed: Boolean(d.status_cetak),
             totalHarga: Math.round(Number(ex.total_harga || 0)),
             itemsLen: items.length,
-            firstSig: first ? `${first.item_code || ""}:${first.qty || 0}:${first.lot_number || ""}:${Math.round(Number(first.total_harga || 0))}:${first.kategori_produk || ""}` : "",
-            lastSig: last ? `${last.item_code || ""}:${last.qty || 0}:${last.lot_number || ""}:${Math.round(Number(last.total_harga || 0))}:${last.kategori_produk || ""}` : "",
+            itemsSig,
           };
         };
 
@@ -4098,15 +4184,26 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         setLoading(false);
         showToast(`✓ Berhasil memuat ${touchedInvoiceInThisUpload.size} faktur (${parsed.length} baris data) dari ${fileNames.join(", ")}`);
 
-        // 6. Smart Dirty-Check: Only send genuinely new or modified invoices to TiDB (< 200ms instead of 10s!)
+        // 6. Smart Dirty-Check & Guaranteed Sync for Unprinted / Daily Uploads:
+        // - Always sync 100% if uploadedDocs <= 300 (e.g. daily export.xls), or if invoice is unprinted (!status_cetak), or if previously failed (unsyncedTiDBKeysSet).
+        // - Only skip unchanged already-printed (Sudah Terprint) historical invoices on massive cumulative XXCUST uploads (> 300 invoices).
         const uploadedKeys = touchedInvoiceInThisUpload;
         const uploadedDocs = Array.from(uploadedKeys)
           .map((k) => invMap.get(k))
           .filter(Boolean) as FirestoreFakturDoc[];
 
+        const isSmallOrDailyUpload = uploadedDocs.length <= 300;
         const dirtyUploadedDocs = uploadedDocs.filter((doc) => {
           const k = doc.id || doc.no_faktur;
-          if (!k || brandNewUnprintedKeysSet.has(k)) return true;
+          if (!k) return true;
+          if (
+            isSmallOrDailyUpload ||
+            !doc.status_cetak ||
+            brandNewUnprintedKeysSet.has(k) ||
+            unsyncedTiDBKeysSet.has(k)
+          ) {
+            return true;
+          }
           const prevSnap = prevDocSnapshotMap.get(k);
           if (!prevSnap) return true;
           const curSnap = getDocDirtySnapshot(doc);
@@ -4120,8 +4217,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             prevSnap.printed !== curSnap.printed ||
             prevSnap.totalHarga !== curSnap.totalHarga ||
             prevSnap.itemsLen !== curSnap.itemsLen ||
-            prevSnap.firstSig !== curSnap.firstSig ||
-            prevSnap.lastSig !== curSnap.lastSig
+            prevSnap.itemsSig !== curSnap.itemsSig
           );
         });
 
@@ -4129,41 +4225,40 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           ? dirtyUploadedDocs
           : uploadedDocs.slice(0, 200);
 
-        const uploadMaxUpdated = Math.floor(Date.now() / 1000);
-        clientUpdatedRef.current = Math.max(clientUpdatedRef.current || 0, uploadMaxUpdated);
-        setLocalCachedFakturs(payload, uploadMaxUpdated, {
-          printedKeys: Array.from(finalPrintedSet),
-          printedAtMap: finalPrintedAtMap,
-          printedByMap: printedByMapRef.current || {},
-        });
+        // 7A. Send instant preview to peer screens via Firebase recent_sync (< 30ms) without triggering fetchTiDBDelta yet
+        broadcastRecentUpload(
+          docsForRealtimeBroadcast,
+          progObj,
+          fileNames.join(", "),
+          deviceIdRef.current,
+          brandNewUnprintedKeysSet.size,
+          Array.from(brandNewUnprintedKeysSet)
+        ).catch((e) => console.warn("Broadcast recent upload warning:", e));
 
-        // 7. Execute Real-Time Broadcast (< 30ms), TiDB Delta Persistence (< 200ms), and Print Metadata Sync in PARALLEL!
-        await Promise.all([
-          broadcastRecentUpload(
-            docsForRealtimeBroadcast,
-            progObj,
-            fileNames.join(", "),
-            deviceIdRef.current,
-            brandNewUnprintedKeysSet.size,
-            Array.from(brandNewUnprintedKeysSet)
-          ),
-          (async () => {
-            if (dirtyUploadedDocs.length > 0) {
-              try {
-                await syncFaktursToTiDB(dirtyUploadedDocs, (done, total) => {
-                  if (total > 500) {
-                    showToast(`💾 Menyimpan ke database: ${done} / ${total} faktur baru/berubah (${Math.round((done / total) * 100)}%)...`);
-                  }
-                });
-                await broadcastRealtimeSignal("fakturs");
-              } catch (dbErr) {
-                console.error("[Upload] TiDB save failed:", dbErr);
-                showToast(`⚠️ GAGAL simpan ke database — device lain belum bisa lihat faktur ini. Coba upload ulang. (${String((dbErr as Error)?.message || dbErr).slice(0, 160)})`);
+        // 7B. Commit 100% of dirty/new invoices to TiDB FIRST so rows and full items exist in TiDB BEFORE peers pull fetchTiDBDelta!
+        if (dirtyUploadedDocs.length > 0) {
+          try {
+            await syncFaktursToTiDB(dirtyUploadedDocs, (done, total) => {
+              if (total > 500) {
+                showToast(`💾 Menyimpan ke database: ${done} / ${total} faktur (${Math.round((done / total) * 100)}%)...`);
               }
-            } else {
-              await broadcastRealtimeSignal("fakturs");
+            });
+            for (const d of dirtyUploadedDocs) {
+              const k = d.id || d.no_faktur;
+              if (k) unsyncedTiDBKeysSet.delete(k);
             }
-          })(),
+          } catch (dbErr) {
+            for (const d of dirtyUploadedDocs) {
+              const k = d.id || d.no_faktur;
+              if (k) unsyncedTiDBKeysSet.add(k);
+            }
+            console.error("[Upload] TiDB save failed:", dbErr);
+            showToast(`⚠️ GAGAL simpan ke database — device lain belum bisa lihat faktur ini. Coba upload ulang. (${String((dbErr as Error)?.message || dbErr).slice(0, 160)})`);
+          }
+        }
+
+        // 7C. Now that TiDB commit is 100% complete, broadcast metadata & TiDB completion signal so peer browsers pull complete TiDB delta!
+        await Promise.all([
           saveFaktursBatch(
             payload,
             progObj,
@@ -4175,12 +4270,21 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             Array.from(brandNewUnprintedKeysSet),
             notifPayload
           ),
+          broadcastRealtimeSignal("fakturs"),
         ]);
+
+        const uploadMaxUpdated = Math.floor(Date.now() / 1000);
+        clientUpdatedRef.current = Math.max(clientUpdatedRef.current || 0, uploadMaxUpdated);
+        setLocalCachedFakturs(payload, uploadMaxUpdated, {
+          printedKeys: Array.from(finalPrintedSet),
+          printedAtMap: finalPrintedAtMap,
+          printedByMap: printedByMapRef.current || {},
+        });
 
         setTimeout(() => {
           isUploadingRef.current = false;
         }, 300);
-        showToast(`✓ Berhasil mengupload ${parsed.length} baris data (${dirtyUploadedDocs.length} faktur baru/diperbarui)!`);
+        showToast(`✓ Berhasil mengupload ${parsed.length} baris data (${dirtyUploadedDocs.length} faktur disinkronkan ke TiDB)!`);
       } catch (err) {
         console.error("Upload error:", err);
         setError(err instanceof Error ? err.message : "Gagal memproses file upload.");
