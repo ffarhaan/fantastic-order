@@ -332,9 +332,12 @@ Aturan ini mengunci secara mutlak arsitektur integrasi data petugas gudang (Chec
    - LocalStorage browser dan Firebase Firestore dilarang mendominasi atau menimpa data TiDB dengan data kotor/usang.
    - Aplikasi secara otomatis mendeteksi dan membersihkan cache localStorage jika terindikasi menyimpan data bocor.
 
-5. **Pemisahan Sumber Data Murni & Proteksi Data Upload (Upload Data Sovereignty - LOCKED MUTLAK)**:
+5. **Pemisahan Sumber Data Murni & Proteksi Data Upload (Upload Data Sovereignty & Zero-Assumption Full-File Ingestion - LOCKED MUTLAK)**:
+   - **Kewajiban Pembacaan Fisik Menyeluruh Tanpa Asumsi (Zero-Assumption Rule)**:
+     - Setiap file Excel yang diunggah WAJIB dibaca secara utuh baris demi baris, kolom demi kolom, sel demi sel.
+     - DILARANG KERAS menggunakan asumsi, menebak pola, memotong pembacaan baris, atau menahan nilai lama dari memori/riwayat.
    - **Data Utama Faktur (100% Hak File Excel Upload)**:
-     - Nomor SO, Nomor Faktur, **Nama Apotek / Pelanggan**, Tanggal Order, Kategori Produk (Farma/Alkes), PBF (MAI/MBI), Kategori Apotek (1P/2P/3P), dan Nominal Harga **WAJIB 100% MURNI BERSUMBER DARI FILE EXCEL YANG DIUNGGAH OPERATOR**.
+     - Nomor SO (`Order Number`), Nomor Faktur (`No Invoice AR`), **Nama Apotek / Pelanggan** (`Nama Pelanggan` / `Nama Lokasi`), Tanggal Order (`Order Date`), Kategori Produk (Farma/Alkes), PBF (MAI/MBI), Kategori Apotek (1P/2P/3P), dan Nominal Harga **WAJIB 100% MURNI BERSUMBER DARI FILE EXCEL YANG DIUNGGAH OPERATOR**.
      - Google Sheet DILARANG KERAS menimpa, mengganti, atau merusak data utama faktur maupun Nama Apotek.
    - **Data Google Sheet QC (HANYA 3 Atribut Tambahan)**:
      - Google Sheet QC secara eksklusif HANYA memasok: **Nama Checker**, **Nama Packer**, dan **Nama Picker**.
@@ -366,4 +369,5 @@ Aturan ini mengunci secara mutlak arsitektur integrasi data petugas gudang (Chec
 > 10. Arsitektur Hybrid Dual-Sync (TiDB Authoritative + Firebase Realtime Broadcast)
 > 11. Integrasi QC Checker, Packer, & Picker: Tab Rekap Lengkap, aturan wajib kosong jika tanpa nama, dan sanitasi mutlak anti-bocor.
 > 12. Proteksi Kedaulatan Data Upload: Nomor SO, Nomor Faktur, dan Nama Apotek 100% dari file Excel yang diunggah, Google Sheet hanya memasok Checker, Packer, dan Picker via Smart Multi-Key Matcher.
+> 13. Larangan Mutlak Asumsi & Tebakan: Wajib membaca fisik file Excel secara lengkap baris demi baris (`Order Number`, `No Invoice AR`, `Nama Pelanggan`, `Order Date`) tanpa jalan pintas atau pemotongan data.
 
