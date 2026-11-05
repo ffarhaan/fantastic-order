@@ -1410,8 +1410,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
 
       // 2. Normal operational sync: ALWAYS prioritize Delta Sync (super light, < 15KB!)
-      // Fetches ONLY rows updated in TiDB since clientUpdated
-      const deltaDocs = await fetchTiDBDelta(curUpdated);
+      // Fetches ONLY rows updated in TiDB since clientUpdated (with 10-second overlap window)
+      const deltaDocs = await fetchTiDBDelta(Math.max(0, curUpdated - 10));
       if (deltaDocs && deltaDocs.length > 0) {
         const deltaMax = (deltaDocs as any).maxUpdated || curUpdated;
         if (deltaMax > curUpdated) {
@@ -1786,15 +1786,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
         if (docs.length > 0) {
           const curDocs = currentFakturDocsRef.current || [];
-          if (curDocs.length >= 1000) {
-            // Check if docs actually introduces any new invoice before re-processing 20k rows!
+          const isPeerUpload = uploadNotif && uploadNotif.uploaderId !== deviceIdRef.current;
+
+          // For internal duplicate echoes (NOT peer uploads), skip re-rendering if no keys changed
+          if (curDocs.length >= 1000 && !isPeerUpload && reason !== "chunks") {
             const curKeys = new Set(curDocs.map((d) => d.id || d.no_faktur));
             const hasNew = docs.some((d) => {
               const k = d.id || d.no_faktur;
               return k && !curKeys.has(k);
             });
             if (!hasNew) {
-              // All incoming docs already exist in memory! Do not freeze the main thread!
               setLoading(false);
               return;
             }
@@ -1804,7 +1805,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           currentFakturDocsRef.current = merged;
 
           // Ensure incoming unprinted docs from peer upload are purged from local printed set
-          if (uploadNotif && uploadNotif.uploaderId !== deviceIdRef.current) {
+          if (isPeerUpload) {
             const nextPrinted = new Set(printedInvoicesRef.current);
             docs.forEach((d) => {
               const k = d.id || d.no_faktur;
@@ -1816,7 +1817,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             setPrintedInvoices(nextPrinted);
           }
 
-          const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
+          const { records: recs } = dbRowsToFakturRecords(
             merged as unknown as Array<Record<string, unknown>>,
             prodOverrides || productOverridesRef.current,
             printedInvoicesRef.current,
@@ -1833,6 +1834,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             setPrintedByMap(printState.printedByMap || {});
             printedByMapRef.current = printState.printedByMap || {};
           }
+
+          // Persist merged peer documents to local IndexedDB cache so refresh retains peer state
+          setLocalCachedFakturs(merged, clientUpdatedRef.current || Math.floor(Date.now() / 1000), {
+            printedKeys: Array.from(printedInvoicesRef.current || []),
+            printedAtMap: printedAtMapRef.current || {},
+            printedByMap: printedByMapRef.current || {},
+          });
         }
         setLoading(false);
       },
@@ -1846,7 +1854,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     // Subscribe to TiDB completion signal so peer browsers pull 100% of newly committed TiDB rows immediately
     const unsubTiDBSignal = subscribeToRealtimeSignal("fakturs", async () => {
       if (isUploadingRef.current) return;
-      performPeerSync();
+      setTimeout(() => performPeerSync(), 250);
     });
 
     // Subscribe to Real-Time Total Reset signal from Owner so ALL browsers/devices wipe to 0 immediately

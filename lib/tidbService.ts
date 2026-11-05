@@ -36,8 +36,8 @@ export async function syncFaktursToTiDB(
     }));
 
     // SHIELD AGAINST VERCEL 10S TIMEOUT (LOCKED OPTIMIZATION)
-    // Use 250 items per slice to keep each request < 1.2s execution time
-    const CHUNK_SIZE = 250;
+    // Use 50 items per slice to keep each request < 800ms execution time and prevent 504 timeouts
+    const CHUNK_SIZE = 50;
     const slices: typeof payload[] = [];
     for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
       slices.push(payload.slice(i, i + CHUNK_SIZE));
@@ -192,7 +192,9 @@ export async function checkTiDBUpdates(
 
   activeCheckPromise = (async () => {
     try {
-      const res = await fetch(`/api/tidb?action=check&count=${clientCount}&updated=${clientUpdated}`);
+      const res = await fetch(`/api/tidb?action=check&count=${clientCount}&updated=${clientUpdated}&_t=${Date.now()}`, {
+        cache: "no-store",
+      });
       if (!res.ok) return null;
       const data = await res.json();
       if (data.success) {
@@ -223,10 +225,12 @@ export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreF
     let maxUpdated = sinceTimestamp;
     let cursor = "";
     let pageCount = 0;
+    // 10-second overlap window to shield against serverless clock drift & second-level MySQL resolution
+    const querySince = Math.max(0, sinceTimestamp - 10);
 
     while (true) {
-      const url = `/api/tidb?action=delta&since=${sinceTimestamp}&cursor=${encodeURIComponent(cursor)}&limit=5000`;
-      const res = await fetch(url);
+      const url = `/api/tidb?action=delta&since=${querySince}&cursor=${encodeURIComponent(cursor)}&limit=5000&_t=${Date.now()}`;
+      const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) break;
       const data = await res.json();
       if (!data.success || !Array.isArray(data.fakturs)) break;

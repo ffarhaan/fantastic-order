@@ -552,6 +552,9 @@ function parseInvoiceNumberForSort(key: string): number {
 }
 
 function pruneDocForBroadcast(doc: FirestoreFakturDoc): FirestoreFakturDoc {
+  const isMai = Boolean(doc.entity === "MAI" || doc.id?.startsWith("MAI-") || doc.no_faktur?.startsWith("MAI-"));
+  const entityVal: "MAI" | "MBI" = isMai ? "MAI" : "MBI";
+
   return {
     id: doc.id,
     no_faktur: doc.no_faktur,
@@ -561,6 +564,7 @@ function pruneDocForBroadcast(doc: FirestoreFakturDoc): FirestoreFakturDoc {
     transaction_date: doc.transaction_date || doc.extra?.transaction_date || doc.order_date || "-",
     jenis_transaksi: doc.jenis_transaksi || doc.extra?.jenis_transaksi || "DOO",
     kategori: doc.kategori || doc.extra?.kategori || "3P",
+    entity: entityVal,
     status_cetak: Boolean(doc.status_cetak),
     printed_at: doc.printed_at || null,
     printed_by: doc.printed_by || null,
@@ -569,6 +573,7 @@ function pruneDocForBroadcast(doc: FirestoreFakturDoc): FirestoreFakturDoc {
       order_date: doc.extra?.order_date || doc.order_date || "-",
       transaction_date: doc.extra?.transaction_date || doc.transaction_date || doc.order_date || "-",
       kategori: doc.extra?.kategori || doc.kategori || "3P",
+      entity: entityVal,
       total_harga: Number(doc.extra?.total_harga || 0),
       items: (doc.extra?.items || []).slice(0, 10).map((it) => ({
         item_code: it.item_code || "",
@@ -611,8 +616,8 @@ export async function broadcastRecentUpload(
       return parseInvoiceNumberForSort(bKey) - parseInvoiceNumberForSort(aKey); // highest invoice numbers first!
     });
 
-    // 2. Prune items to lightweight structures (~300 bytes/doc) so 300 docs safely use only ~90 KB
-    const prunedDocs = sortedDocs.slice(0, 300).map(pruneDocForBroadcast);
+    // 2. Prune items to lightweight structures (~300 bytes/doc) so up to 800 docs safely use ~300-600 KB (< 1MB Firestore limit)
+    const prunedDocs = sortedDocs.slice(0, 800).map(pruneDocForBroadcast);
 
     await setDoc(syncDocRef, {
       syncId: `sync_${Date.now()}_${uploaderId}`,

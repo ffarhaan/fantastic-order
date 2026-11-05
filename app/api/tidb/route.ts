@@ -968,8 +968,9 @@ export async function GET(req: Request) {
           maxUpdated,
         },
         {
-          "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+          "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+          "CDN-Cache-Control": "no-store",
+          "Vercel-CDN-Cache-Control": "no-store",
         }
       );
     }
@@ -1091,8 +1092,9 @@ export async function GET(req: Request) {
           hasMore,
         },
         {
-          "CDN-Cache-Control": "public, s-maxage=30, stale-while-revalidate=120",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=30, stale-while-revalidate=120",
+          "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+          "CDN-Cache-Control": "no-store",
+          "Vercel-CDN-Cache-Control": "no-store",
         }
       );
     }
@@ -3013,7 +3015,7 @@ export async function POST(req: Request) {
         return Response.json({ success: true, count: 0 });
       }
 
-      const CHUNK_SIZE = 500;
+      const CHUNK_SIZE = 50;
       for (let i = 0; i < fakturs.length; i += CHUNK_SIZE) {
         const slice = fakturs
           .slice(i, i + CHUNK_SIZE)
@@ -3033,7 +3035,8 @@ export async function POST(req: Request) {
 
           // Server-side Multi-Month & Different SO Titanium Shield (LOCKED_RULES A.8):
           // Invoices from October re-used in November must ALWAYS be isolated with composite key `${noFaktur}__${noSO}`
-          if (!invKey.includes("__") && noSO && noSO !== "-" && (oDate.includes("/11/") || oDate.includes("-11-") || txDate.includes("/11/") || txDate.includes("-11-"))) {
+          // Strictly protect MAI keys so their "MAI-" prefix is NEVER stripped!
+          if (!invKey.startsWith("MAI-") && !invKey.includes("__") && noSO && noSO !== "-" && (oDate.includes("/11/") || oDate.includes("-11-") || txDate.includes("/11/") || txDate.includes("-11-"))) {
             const num = parseInt(noFaktur, 10);
             if (!isNaN(num) && num >= 24000 && num <= 38500) {
               invKey = `${noFaktur}__${noSO}`;
