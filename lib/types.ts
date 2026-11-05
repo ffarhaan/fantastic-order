@@ -135,6 +135,8 @@ export interface FakturGroup {
   barangCatatan?: number;
   isQcDone?: boolean;
   qcDoneStatus?: string;
+  sheetRow?: number;
+  qcUpdatedAt?: string;
 }
 
 export interface UploadNotification {

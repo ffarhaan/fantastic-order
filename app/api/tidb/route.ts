@@ -435,10 +435,7 @@ export async function GET(req: Request) {
             const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
             if (noSpace && !map[noSpace]) map[noSpace] = val;
             if (alpha && !map[alpha]) map[alpha] = val;
-            if (raw.includes("-")) {
-              const suffix = raw.split("-").pop()?.trim();
-              if (suffix && !map[suffix]) map[suffix] = val;
-            }
+            // Strict No-Suffix: prevents cross-SO collision (e.g. -1048)
           }
         }
       }
@@ -477,19 +474,20 @@ export async function GET(req: Request) {
            MAX(t.barang_catatan) as barang_catatan,
            COALESCE(MAX(t.is_done), '') as is_done,
            COALESCE(MAX(t.status), 'QC_DONE') as status,
+           MAX(t.sheet_row) as sheet_row,
            MAX(t.updated_at) as updated_at
          FROM (
            SELECT 
              warehouse, so_number, no_do, customer_name, so_date, waktu_kirim,
              checker_name, packer_name, picker_name, kategori, kategori_produk,
-             total_item, total_qty, barang_catatan, is_done, status, updated_at
+             total_item, total_qty, barang_catatan, is_done, status, sheet_row, updated_at
            FROM qc_reports
            WHERE warehouse = ? AND updated_at >= NOW() - INTERVAL 48 HOUR
            UNION ALL
            SELECT 
              ? as warehouse, so_number, NULL as no_do, NULL as customer_name, NULL as so_date, NULL as waktu_kirim,
              checker_name, packer_name, picker_name, '1P' as kategori, 'FARMA' as kategori_produk,
-             0 as total_item, 0 as total_qty, 0 as barang_catatan, '' as is_done, 'QC_DONE' as status, updated_at
+             0 as total_item, 0 as total_qty, 0 as barang_catatan, '' as is_done, 'QC_DONE' as status, 0 as sheet_row, updated_at
            FROM ${tableName}
            WHERE updated_at >= NOW() - INTERVAL 48 HOUR
              AND so_number IS NOT NULL AND so_number != '' AND so_number != '-'
@@ -497,7 +495,7 @@ export async function GET(req: Request) {
          LEFT JOIN cancelled_qc_sos cqs ON t.so_number = cqs.so_number
          WHERE cqs.so_number IS NULL
          GROUP BY t.so_number
-         ORDER BY updated_at DESC, t.so_number DESC
+         ORDER BY updated_at DESC, sheet_row DESC
          LIMIT 500;`,
         [warehouse, warehouse, warehouse]
       )) as any[];
@@ -1770,9 +1768,9 @@ export async function POST(req: Request) {
           `INSERT INTO ${tableName} (so_number, checker_name, packer_name, picker_name)
            VALUES ${placeholders}
            ON DUPLICATE KEY UPDATE 
-             checker_name = VALUES(checker_name),
-             packer_name = VALUES(packer_name),
-             picker_name = VALUES(picker_name)`,
+             checker_name = IF(VALUES(checker_name) IS NOT NULL AND VALUES(checker_name) != '' AND VALUES(checker_name) != '-', VALUES(checker_name), ${tableName}.checker_name),
+             packer_name = IF(VALUES(packer_name) IS NOT NULL AND VALUES(packer_name) != '', VALUES(packer_name), ${tableName}.packer_name),
+             picker_name = IF(VALUES(picker_name) IS NOT NULL AND VALUES(picker_name) != '', VALUES(picker_name), ${tableName}.picker_name)`,
           flatParams
         );
         updatedCount += chunk.length;
@@ -1796,36 +1794,38 @@ export async function POST(req: Request) {
         const totQty = Number(item.total_qty) || 0;
         const barangCatatan = Number(item.barang_catatan || item.catatan_barang || item.barang_c) || 0;
         const isDone = String(item.is_done || item.done || "").trim();
+        const sheetRow = Number(item.sheet_row || item.row || item.row_number) || 0;
 
-        if (so && (checker !== "-" || packer || picker || cust || soDate || waktuKirim || noDo || isDone || barangCatatan > 0)) {
-          qcRows.push([warehouse, so, noDo, cust, soDate, waktuKirim, checker, packer, picker, kat, katProd, totItem, totQty, barangCatatan, isDone]);
+        if (so && (checker !== "-" || packer || picker || cust || soDate || waktuKirim || noDo || isDone || barangCatatan > 0 || sheetRow > 0)) {
+          qcRows.push([warehouse, so, noDo, cust, soDate, waktuKirim, checker, packer, picker, kat, katProd, totItem, totQty, barangCatatan, isDone, sheetRow]);
         }
       }
 
       if (qcRows.length > 0) {
         for (let i = 0; i < qcRows.length; i += CHUNK_SIZE) {
           const chunk = qcRows.slice(i, i + CHUNK_SIZE);
-          const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QC_DONE')").join(", ");
+          const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QC_DONE')").join(", ");
           await conn.execute(
             `INSERT INTO qc_reports (
               warehouse, so_number, no_do, customer_name, so_date, waktu_kirim,
               checker_name, packer_name, picker_name, kategori, kategori_produk,
-              total_item, total_qty, barang_catatan, is_done, status
+              total_item, total_qty, barang_catatan, is_done, sheet_row, status
             ) VALUES ${placeholders}
             ON DUPLICATE KEY UPDATE 
               no_do = IF(VALUES(no_do) IS NOT NULL AND VALUES(no_do) != '', VALUES(no_do), qc_reports.no_do),
               customer_name = IF(VALUES(customer_name) IS NOT NULL AND VALUES(customer_name) != '', VALUES(customer_name), qc_reports.customer_name),
               so_date = IF(VALUES(so_date) IS NOT NULL AND VALUES(so_date) != '', VALUES(so_date), qc_reports.so_date),
               waktu_kirim = IF(VALUES(waktu_kirim) IS NOT NULL AND VALUES(waktu_kirim) != '', VALUES(waktu_kirim), qc_reports.waktu_kirim),
-              checker_name = IF(VALUES(checker_name) IS NOT NULL AND VALUES(checker_name) != '-', VALUES(checker_name), qc_reports.checker_name),
+              checker_name = IF(VALUES(checker_name) IS NOT NULL AND VALUES(checker_name) != '-' AND VALUES(checker_name) != '', VALUES(checker_name), qc_reports.checker_name),
               packer_name = IF(VALUES(packer_name) IS NOT NULL AND VALUES(packer_name) != '', VALUES(packer_name), qc_reports.packer_name),
               picker_name = IF(VALUES(picker_name) IS NOT NULL AND VALUES(picker_name) != '', VALUES(picker_name), qc_reports.picker_name),
               kategori = IF(VALUES(kategori) IS NOT NULL AND VALUES(kategori) != '', VALUES(kategori), qc_reports.kategori),
               kategori_produk = IF(VALUES(kategori_produk) IS NOT NULL AND VALUES(kategori_produk) != '', VALUES(kategori_produk), qc_reports.kategori_produk),
               total_item = IF(VALUES(total_item) > 0, VALUES(total_item), qc_reports.total_item),
               total_qty = IF(VALUES(total_qty) > 0, VALUES(total_qty), qc_reports.total_qty),
-              barang_catatan = IF(VALUES(barang_catatan) > 0, VALUES(barang_catatan), qc_reports.barang_catatan),
+              barang_catatan = IF(VALUES(barang_catatan) IS NOT NULL, VALUES(barang_catatan), qc_reports.barang_catatan),
               is_done = IF(VALUES(is_done) IS NOT NULL AND VALUES(is_done) != '', VALUES(is_done), qc_reports.is_done),
+              sheet_row = IF(VALUES(sheet_row) > 0, VALUES(sheet_row), qc_reports.sheet_row),
               updated_at = CURRENT_TIMESTAMP`,
             chunk.flat()
           );

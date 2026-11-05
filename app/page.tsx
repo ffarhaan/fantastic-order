@@ -837,21 +837,11 @@ export default function Home() {
     const targetMap = isMai ? checkerMapMaiRef.current : checkerMapMbiRef.current;
     if (!targetMap) return null;
 
-    const rawCandidates: string[] = [];
-    if (so) rawCandidates.push(String(so).trim());
-    if (invoiceNo) {
-      if (Array.isArray(invoiceNo)) {
-        invoiceNo.forEach((inv) => inv && rawCandidates.push(String(inv).trim()));
-      } else {
-        rawCandidates.push(String(invoiceNo).trim());
-      }
-    }
-    if (invoiceKey) {
-      const cleanKey = isMai ? String(invoiceKey).replace(/^MAI-/i, "").trim() : String(invoiceKey).trim();
-      rawCandidates.push(cleanKey);
-    }
-
-    if (rawCandidates.length === 0) return null;
+    // STRICT MATCHING BY NO SO ONLY (Per operational instruction, do NOT match against invoice number or loose suffixes)
+    if (!so || so === "-" || so === "#N/A") return null;
+    const cleanSo = String(so).trim();
+    if (!cleanSo) return null;
+    const rawCandidates: string[] = [cleanSo];
 
     let entry = null;
 
@@ -874,16 +864,7 @@ export default function Home() {
               targetMap[oVar1.replace(/\s+/g, "")] || targetMap[oVar2.replace(/\s+/g, "")];
       if (entry) break;
 
-      // 3. Suffix matching (e.g. "OY99DY-3580" or "3LORXL-0740" -> "3580", "0740", "740")
-      if (raw.includes("-")) {
-        const parts = raw.split("-");
-        const suffix = parts[parts.length - 1]?.trim();
-        if (suffix) {
-          const strippedSuffix = suffix.replace(/^0+/, "");
-          entry = targetMap[suffix] || (strippedSuffix ? targetMap[strippedSuffix] : null);
-          if (entry) break;
-        }
-      }
+      // Strict No-Suffix: SO must match in its entirety, suffix matching is disabled
     }
 
     if (!entry) return null;
@@ -980,9 +961,9 @@ export default function Home() {
     // 1. MBI Checkers Subscription
     if (typeof window !== "undefined") {
       try {
-        const cached = localStorage.getItem("fantastic_so_checkers_cache");
+        const cached = localStorage.getItem("fantastic_so_checkers_cache_v2");
         if (cached && (cached.includes("Apotek") || cached.includes("00:00:00") || cached.includes("GMT"))) {
-          localStorage.removeItem("fantastic_so_checkers_cache");
+          localStorage.removeItem("fantastic_so_checkers_cache_v2");
         }
       } catch {}
     }
@@ -997,7 +978,7 @@ export default function Home() {
     }, "MBI");
 
     try {
-      const hasLocalMbi = typeof window !== "undefined" && Boolean(localStorage.getItem("fantastic_so_checkers_cache"));
+      const hasLocalMbi = typeof window !== "undefined" && Boolean(localStorage.getItem("fantastic_so_checkers_cache_v2"));
       if (!hasLocalMbi) {
         fetch("/api/tidb?action=get_checkers&warehouse=MBI")
           .then((r) => r.json())
@@ -1006,7 +987,7 @@ export default function Home() {
               setCheckerMapMbi((prev) => ({ ...prev, ...d.data }));
               checkerMapMbiRef.current = { ...checkerMapMbiRef.current, ...d.data };
               try {
-                localStorage.setItem("fantastic_so_checkers_cache", JSON.stringify(d.data));
+                localStorage.setItem("fantastic_so_checkers_cache_v2", JSON.stringify(d.data));
               } catch {}
             }
           })
@@ -1017,9 +998,9 @@ export default function Home() {
     // 2. MAI Checkers Subscription
     if (typeof window !== "undefined") {
       try {
-        const cached = localStorage.getItem("fantastic_so_checkers_cache_mai");
+        const cached = localStorage.getItem("fantastic_so_checkers_cache_mai_v2");
         if (cached && (cached.includes("Apotek") || cached.includes("00:00:00") || cached.includes("GMT"))) {
-          localStorage.removeItem("fantastic_so_checkers_cache_mai");
+          localStorage.removeItem("fantastic_so_checkers_cache_mai_v2");
         }
       } catch {}
     }
@@ -1034,7 +1015,7 @@ export default function Home() {
     }, "MAI");
 
     try {
-      const hasLocalMai = typeof window !== "undefined" && Boolean(localStorage.getItem("fantastic_so_checkers_cache_mai"));
+      const hasLocalMai = typeof window !== "undefined" && Boolean(localStorage.getItem("fantastic_so_checkers_cache_mai_v2"));
       if (!hasLocalMai) {
         fetch("/api/tidb?action=get_checkers&warehouse=MAI")
           .then((r) => r.json())
@@ -1043,7 +1024,7 @@ export default function Home() {
               setCheckerMapMai((prev) => ({ ...prev, ...d.data }));
               checkerMapMaiRef.current = { ...checkerMapMaiRef.current, ...d.data };
               try {
-                localStorage.setItem("fantastic_so_checkers_cache_mai", JSON.stringify(d.data));
+                localStorage.setItem("fantastic_so_checkers_cache_mai_v2", JSON.stringify(d.data));
               } catch {}
             }
           })
@@ -2553,7 +2534,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   }, [qcOrders, grouped, selectedWarehouse]);
 
   const pendingQcGroups = useMemo<FakturGroup[]>(() => {
-    return pendingQcList.map((qc) => {
+    // Sort so newest arrived orders from GSheet (latest updated_at and highest sheet_row) are ALWAYS AT THE VERY TOP!
+    const sorted = [...pendingQcList].sort((a, b) => {
+      const timeA = new Date(a.updated_at || 0).getTime();
+      const timeB = new Date(b.updated_at || 0).getTime();
+      if (timeB !== timeA) return timeB - timeA;
+      const rowA = Number(a.sheet_row) || 0;
+      const rowB = Number(b.sheet_row) || 0;
+      return rowB - rowA;
+    });
+
+    return sorted.map((qc) => {
       const soClean = (qc.so_number || "").trim();
       return {
         key: `QC-${soClean}`,
@@ -2593,6 +2584,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         picker: qc.picker_name || "",
         noDo: qc.no_do || "",
         waktuKirim: qc.waktu_kirim || "",
+        sheetRow: Number(qc.sheet_row) || 0,
+        qcUpdatedAt: qc.updated_at || "",
       };
     });
   }, [pendingQcList, selectedWarehouse]);

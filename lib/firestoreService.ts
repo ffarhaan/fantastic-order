@@ -2136,7 +2136,7 @@ export function subscribeToCheckers(
   const isMai = warehouse === "MAI";
   const masterDocName = isMai ? "so_checkers_mai" : SO_CHECKERS_DOC;
   const recentDocName = isMai ? "so_checkers_recent_mai" : SO_CHECKERS_RECENT_DOC;
-  const cacheKey = isMai ? "fantastic_so_checkers_cache_mai" : "fantastic_so_checkers_cache";
+  const cacheKey = isMai ? "fantastic_so_checkers_cache_mai_v2" : "fantastic_so_checkers_cache_v2";
 
   let inMemoryMap: Record<string, { checker: string; packer: string; picker: string }> = {};
 
@@ -2189,10 +2189,7 @@ export function subscribeToCheckers(
       inMemoryMap[raw] = entry;
       if (noSpace) inMemoryMap[noSpace] = entry;
       if (alpha) inMemoryMap[alpha] = entry;
-      if (raw.includes("-")) {
-        const suffix = raw.split("-").pop()?.trim();
-        if (suffix) inMemoryMap[suffix] = entry;
-      }
+      // Strict No-Suffix: prevents cross-SO collision (e.g. -1048)
       changed = true;
     }
 
