@@ -384,13 +384,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }).length;
   }, [allReturns, returns]);
 
-  // Fetch all returns for analytic tabs
-  const fetchAllReturns = useCallback(async (forceFresh = false) => {
+  // Fetch all returns for analytic tabs (always real-time fresh from TiDB)
+  const fetchAllReturns = useCallback(async (_forceFresh = true) => {
     try {
-      const url = forceFresh
-        ? `/api/tidb?action=returns&limit=5000&fresh=true&_t=${Date.now()}`
-        : "/api/tidb?action=returns&limit=5000";
-      const res = await fetch(url);
+      const url = `/api/tidb?action=returns&limit=5000&fresh=true&_t=${Date.now()}`;
+      const res = await fetch(url, { cache: "no-store" });
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setAllReturns(json.data);
@@ -1551,7 +1549,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           {/* Tab 5: Analisis */}
           <button
             type="button"
-            onClick={() => setActiveTab("analisis")}
+            onClick={() => {
+              setActiveTab("analisis");
+              fetchAllReturns(true);
+            }}
             className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === "analisis"
                 ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
@@ -3259,7 +3260,21 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* ─── TAB: ANALISIS & ROOT CAUSE ─── */}
       {activeTab === "analisis" && (
-        <AnalisisView returns={allReturns.length > 0 ? allReturns : returns} />
+        <AnalisisView
+          returns={allReturns.length > 0 ? allReturns : returns}
+          selectedMonth={monthFilter}
+          selectedWeek={weekFilter}
+          onMonthChange={(m) => {
+            setMonthFilter(m);
+            setPage(0);
+            fetchPersonnelStats(m, weekFilter);
+          }}
+          onWeekChange={(w) => {
+            setWeekFilter(w);
+            setPage(0);
+            fetchPersonnelStats(monthFilter, w);
+          }}
+        />
       )}
 
       {/* â”€â”€â”€ ADD NEW RETURN MODAL â”€â”€â”€ */}

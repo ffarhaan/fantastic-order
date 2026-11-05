@@ -818,6 +818,8 @@ export async function GET(req: Request) {
         FROM shipment_returns ${statsCondition};
       `, statsQueryParams)) as any[];
 
+      const isFreshReq = searchParams.get("fresh") === "true" || searchParams.has("_t");
+
       return compressedJsonResponse(
         req, 
         {
@@ -840,18 +842,24 @@ export async function GET(req: Request) {
           limit,
           offset,
         },
-        {
-          "CDN-Cache-Control": limit <= 5
-            ? "public, s-maxage=300, stale-while-revalidate=600"
-            : limit >= 1000
-            ? "public, s-maxage=60, stale-while-revalidate=180"
-            : "public, s-maxage=30, stale-while-revalidate=60",
-          "Vercel-CDN-Cache-Control": limit <= 5
-            ? "public, s-maxage=300, stale-while-revalidate=600"
-            : limit >= 1000
-            ? "public, s-maxage=60, stale-while-revalidate=180"
-            : "public, s-maxage=30, stale-while-revalidate=60",
-        }
+        isFreshReq
+          ? {
+              "Cache-Control": "no-store, no-cache, must-revalidate",
+              "CDN-Cache-Control": "no-store",
+              "Vercel-CDN-Cache-Control": "no-store",
+            }
+          : {
+              "CDN-Cache-Control": limit <= 5
+                ? "public, s-maxage=300, stale-while-revalidate=600"
+                : limit >= 1000
+                ? "public, s-maxage=60, stale-while-revalidate=180"
+                : "public, s-maxage=30, stale-while-revalidate=60",
+              "Vercel-CDN-Cache-Control": limit <= 5
+                ? "public, s-maxage=300, stale-while-revalidate=600"
+                : limit >= 1000
+                ? "public, s-maxage=60, stale-while-revalidate=180"
+                : "public, s-maxage=30, stale-while-revalidate=60",
+            }
       );
     }
 

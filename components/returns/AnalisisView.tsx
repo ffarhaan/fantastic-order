@@ -2,36 +2,119 @@
 
 import { useMemo, useState } from "react";
 import {
-  BarChart3,
-  PieChart,
   Lightbulb,
-  CheckCircle2,
-  AlertCircle,
-  HelpCircle,
-  Layers,
-  Sparkles,
-  ShieldCheck,
-  TrendingUp,
+  Calendar,
+  CalendarRange,
+  Filter,
+  RotateCcw,
 } from "lucide-react";
 import { ShipmentReturnRecord } from "@/lib/types";
 
 interface AnalisisViewProps {
   returns: ShipmentReturnRecord[];
+  selectedMonth?: string;
+  selectedWeek?: string;
+  onMonthChange?: (month: string) => void;
+  onWeekChange?: (week: string) => void;
 }
 
-// Colors matching Apps Script chart
+const MONTH_NAMES: Record<number, string> = {
+  1: "Januari 2026",
+  2: "Februari 2026",
+  3: "Maret 2026",
+  4: "April 2026",
+  5: "Mei 2026",
+  6: "Juni 2026",
+  7: "Juli 2026",
+  8: "Agustus 2026",
+  9: "September 2026",
+  10: "Oktober 2026",
+  11: "November 2026",
+  12: "Desember 2026",
+};
+
+// Consistent semantic colors per error reason + fallback palette
+const REASON_COLOR_MAP: Record<string, string> = {
+  "Fisik yang dikirim kurang": "#10b981", // Emerald Green
+  "Fisik yang dikirim salah": "#f97316", // Orange
+  "ED kurang dari 1 tahun": "#3b82f6", // Blue
+  "Fisik yang dikirim tidak ada": "#a855f7", // Purple
+  "Fisik yang dikirim lebih": "#eab308", // Amber / Yellow
+  "Damage On Delivery": "#06b6d4", // Cyan
+  "Produk rusak (berubah warna/berbau/kapsul bocor)": "#ec4899", // Pink
+  "Recall": "#ef4444", // Red
+  "Retur admin salah SKU": "#6366f1", // Indigo
+};
+
 const COLOR_PALETTE = [
-  "#ef4444", // Red
+  "#10b981", // Emerald
+  "#f97316", // Orange
   "#3b82f6", // Blue
   "#a855f7", // Purple
-  "#f97316", // Orange
-  "#10b981", // Emerald
   "#eab308", // Amber
   "#06b6d4", // Cyan
   "#ec4899", // Pink
+  "#ef4444", // Red
+  "#6366f1", // Indigo
+  "#14b8a6", // Teal
 ];
 
-// Helper to calculate SVG donut slice path
+function extractMonthFromRecord(r: ShipmentReturnRecord): number {
+  const m = r.month ? Number(r.month) : 0;
+  if (m >= 1 && m <= 12) return m;
+  const dateStr = r.report_date || r.invoice_date || r.created_at || "";
+  if (dateStr) {
+    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+      const parsed = parseInt(dateStr.slice(5, 7), 10);
+      if (parsed >= 1 && parsed <= 12) return parsed;
+    } else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(dateStr)) {
+      const parts = dateStr.split(/[\/\-]/);
+      const parsed = parseInt(parts[1], 10);
+      if (parsed >= 1 && parsed <= 12) return parsed;
+    }
+  }
+  return 0;
+}
+
+function extractWeekFromRecord(r: ShipmentReturnRecord): number {
+  if (r.week) {
+    const wNum = Number(String(r.week).replace(/[^0-9]/g, ""));
+    if (!isNaN(wNum) && wNum > 0) return wNum;
+  }
+  return 0;
+}
+
+function normalizeReasonName(raw: string): string {
+  const trimmed = (raw || "").trim();
+  if (!trimmed || trimmed === "-" || trimmed === "#N/A") return "Lainnya";
+  const lower = trimmed.toLowerCase();
+  if (lower === "recall") return "Recall";
+  if (lower === "retur admin salah sku") return "Retur admin salah SKU";
+  if (lower === "fisik yang dikirim kurang") return "Fisik yang dikirim kurang";
+  if (lower === "fisik yang dikirim salah") return "Fisik yang dikirim salah";
+  if (lower === "fisik yang dikirim tidak ada") return "Fisik yang dikirim tidak ada";
+  if (lower === "fisik yang dikirim lebih") return "Fisik yang dikirim lebih";
+  if (lower === "ed kurang dari 1 tahun") return "ED kurang dari 1 tahun";
+  if (lower === "damage on delivery") return "Damage On Delivery";
+  return trimmed;
+}
+
+function normalizeRootCauseName(raw: string): string {
+  const trimmed = (raw || "").trim();
+  if (!trimmed || trimmed === "-" || trimmed === "#N/A" || trimmed.toLowerCase() === "null" || trimmed.toLowerCase() === "none") {
+    return "Belum Diisi / Pending";
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower === "human error") return "Human Error";
+  if (lower === "oracle issue") return "Oracle Issue";
+  if (lower === "ops issue") return "Ops Issue";
+  if (lower === "delivery issue") return "Delivery Issue";
+  if (lower === "vendor issue") return "Vendor Issue";
+  if (lower === "system issue") return "System Issue";
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+// Helper to calculate SVG donut slice path (0 degrees = 12 o'clock top)
 function polarToCartesian(cx: number, cy: number, r: number, angleInDegrees: number) {
   const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
   return {
@@ -66,100 +149,200 @@ function describeDonutSlice(
   ].join(" ");
 }
 
-export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
-  // Aggregate data by PBF
-  const stats = useMemo(() => {
-    const hasLiveReturns = returns && returns.length > 0;
+export default function AnalisisView({
+  returns = [],
+  selectedMonth: propMonth,
+  selectedWeek: propWeek,
+  onMonthChange,
+  onWeekChange,
+}: AnalisisViewProps) {
+  const [localMonth, setLocalMonth] = useState<string>("ALL");
+  const [localWeek, setLocalWeek] = useState<string>("ALL");
+  const [statusScope, setStatusScope] = useState<"ALL" | "VALID" | "RESOLVED" | "OPEN" | "REJECT">("ALL");
 
-    const defaultMaiReasons: Record<string, number> = {
-      "Fisik yang dikirim kurang": 30,
-      "Fisik yang dikirim salah": 22,
-      "Fisik yang dikirim tidak ada": 8,
-      "Fisik yang dikirim lebih": 5,
-    };
-    const defaultMaiRoots: Record<string, number> = {
-      "Human Error": 62,
-      "Delivery Issue": 1,
-      "Tidak Diketahui": 1,
-      "Ops Issue": 1,
-    };
-    const defaultMbiReasons: Record<string, number> = {
-      "Fisik yang dikirim salah": 624,
-      "Fisik yang dikirim kurang": 429,
-      "Fisik yang dikirim lebih": 195,
-      "Fisik yang dikirim tidak ada": 156,
-    };
-    const defaultMbiRoots: Record<string, number> = {
-      "Human Error": 1311,
-      "Ops Issue": 47,
-      "Oracle Issue": 43,
-      "Delivery Issue": 2,
-      "System Issue": 1,
-    };
+  const activeMonth = propMonth !== undefined ? propMonth : localMonth;
+  const activeWeek = propWeek !== undefined ? propWeek : localWeek;
 
-    const mai = {
-      reasons: (hasLiveReturns ? {} : { ...defaultMaiReasons }) as Record<string, number>,
-      roots: (hasLiveReturns ? {} : { ...defaultMaiRoots }) as Record<string, number>,
-      totalApproved: hasLiveReturns ? 0 : 65,
-    };
-    const mbi = {
-      reasons: (hasLiveReturns ? {} : { ...defaultMbiReasons }) as Record<string, number>,
-      roots: (hasLiveReturns ? {} : { ...defaultMbiRoots }) as Record<string, number>,
-      totalApproved: hasLiveReturns ? 0 : 1404,
-    };
+  const handleMonthSelect = (val: string) => {
+    setLocalMonth(val);
+    if (onMonthChange) onMonthChange(val);
+  };
 
-    if (hasLiveReturns) {
-      for (const r of returns) {
-        const pbf = (r.pbf || "MBI").toUpperCase();
-        const target = pbf.includes("MAI") ? mai : mbi;
-        target.totalApproved++;
+  const handleWeekSelect = (val: string) => {
+    setLocalWeek(val);
+    if (onWeekChange) onWeekChange(val);
+  };
 
-        // Reason / Jenis Error
-        let rz = (r.reason || "Lainnya").trim();
-        if (!rz || rz === "-" || rz === "#N/A") rz = "Lainnya";
-        target.reasons[rz] = (target.reasons[rz] || 0) + 1;
+  // Compute counts per month and available weeks from real returns data
+  const { monthCounts, weekCounts, availableWeeksList } = useMemo(() => {
+    const mCounts: Record<number, number> = {};
+    const wCounts: Record<number, number> = {};
+    const weeksSet = new Set<number>();
 
-        // Root Cause
-        let rc = (r.root_cause || "Human error").trim();
-        if (!rc || rc === "-" || rc === "#N/A") rc = "Tidak Diketahui";
-        const normalizedRc = rc.charAt(0).toUpperCase() + rc.slice(1);
-        target.roots[normalizedRc] = (target.roots[normalizedRc] || 0) + 1;
+    const filterM = activeMonth !== "ALL" ? Number(activeMonth) : 0;
+
+    for (const r of returns) {
+      const m = extractMonthFromRecord(r);
+      const w = extractWeekFromRecord(r);
+
+      if (m >= 1 && m <= 12) {
+        mCounts[m] = (mCounts[m] || 0) + 1;
+      }
+      if (w > 0) {
+        weeksSet.add(w);
+        if (!filterM || m === filterM) {
+          wCounts[w] = (wCounts[w] || 0) + 1;
+        }
       }
     }
 
-    const formatList = (recordMap: Record<string, number>, limit = 6) => {
+    const maxWeek = Math.max(45, ...Array.from(weeksSet));
+    const list: number[] = [];
+    for (let w = maxWeek; w >= 1; w--) {
+      if (weeksSet.has(w) || w <= 45) {
+        list.push(w);
+      }
+    }
+
+    return {
+      monthCounts: mCounts,
+      weekCounts: wCounts,
+      availableWeeksList: list,
+    };
+  }, [returns, activeMonth]);
+
+  // Aggregate real data by PBF according to active Month, Week, and Status filters
+  const stats = useMemo(() => {
+    const filterM = activeMonth !== "ALL" ? Number(activeMonth) : 0;
+    const filterW = activeWeek !== "ALL" ? Number(String(activeWeek).replace(/[^0-9]/g, "")) : 0;
+
+    const mai = {
+      reasons: {} as Record<string, number>,
+      roots: {} as Record<string, number>,
+      total: 0,
+      validCount: 0,
+      rejectCount: 0,
+      openCount: 0,
+    };
+    const mbi = {
+      reasons: {} as Record<string, number>,
+      roots: {} as Record<string, number>,
+      total: 0,
+      validCount: 0,
+      rejectCount: 0,
+      openCount: 0,
+    };
+
+    for (const r of returns) {
+      if (filterM > 0) {
+        const m = extractMonthFromRecord(r);
+        if (m !== filterM) continue;
+      }
+      if (filterW > 0) {
+        const w = extractWeekFromRecord(r);
+        if (w !== filterW) continue;
+      }
+
+      const st = (r.status || "").toLowerCase();
+      const conf = (r.confirm || "").toLowerCase();
+      const isRej = conf.includes("reject") || conf.includes("tolak") || st.includes("reject");
+      const isRes = st.includes("resolved") || st.includes("selesai");
+
+      if (statusScope === "VALID" && isRej) continue;
+      if (statusScope === "REJECT" && !isRej) continue;
+      if (statusScope === "RESOLVED" && (!isRes || isRej)) continue;
+      if (statusScope === "OPEN" && (isRes || isRej)) continue;
+
+      const pbf = (r.pbf || "MBI").toUpperCase();
+      const target = pbf.includes("MAI") ? mai : mbi;
+      target.total++;
+      if (isRej) target.rejectCount++;
+      else {
+        target.validCount++;
+        if (!isRes) target.openCount++;
+      }
+
+      // 1. Reason / Jenis Error (100% Real Data)
+      const rz = normalizeReasonName(r.reason);
+      target.reasons[rz] = (target.reasons[rz] || 0) + 1;
+
+      // 2. Root Cause (100% Real Data — empty root_cause is NOT forced into Human Error)
+      const rc = normalizeRootCauseName(r.root_cause);
+      target.roots[rc] = (target.roots[rc] || 0) + 1;
+    }
+
+    const formatReasons = (recordMap: Record<string, number>) => {
       const total = Object.values(recordMap).reduce((a, b) => a + b, 0);
       return Object.entries(recordMap)
+        .sort((a, b) => b[1] - a[1])
         .map(([name, count], index) => ({
           name,
           count,
           pct: total > 0 ? Number(((count / total) * 100).toFixed(1)) : 0,
-          color: COLOR_PALETTE[index % COLOR_PALETTE.length],
-        }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, limit);
+          color: REASON_COLOR_MAP[name] || COLOR_PALETTE[index % COLOR_PALETTE.length],
+        }));
+    };
+
+    const formatRoots = (recordMap: Record<string, number>) => {
+      const total = Object.values(recordMap).reduce((a, b) => a + b, 0);
+      return Object.entries(recordMap)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({
+          name,
+          count,
+          pct: total > 0 ? Number(((count / total) * 100).toFixed(1)) : 0,
+        }));
     };
 
     return {
       mai: {
-        total: mai.totalApproved,
-        reasons: formatList(mai.reasons, 5),
-        roots: formatList(mai.roots, 6),
+        total: mai.total,
+        validCount: mai.validCount,
+        rejectCount: mai.rejectCount,
+        openCount: mai.openCount,
+        reasons: formatReasons(mai.reasons),
+        roots: formatRoots(mai.roots),
       },
       mbi: {
-        total: mbi.totalApproved,
-        reasons: formatList(mbi.reasons, 5),
-        roots: formatList(mbi.roots, 6),
+        total: mbi.total,
+        validCount: mbi.validCount,
+        rejectCount: mbi.rejectCount,
+        openCount: mbi.openCount,
+        reasons: formatReasons(mbi.reasons),
+        roots: formatRoots(mbi.roots),
       },
     };
-  }, [returns]);
+  }, [returns, activeMonth, activeWeek, statusScope]);
 
-  // Render SVG Donut
-  const renderDonut = (items: { name: string; count: number; pct: number; color: string }[], totalCount: number) => {
+  const activePeriodLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (activeMonth !== "ALL") {
+      parts.push(MONTH_NAMES[Number(activeMonth)] || `Bulan ${activeMonth}`);
+    }
+    if (activeWeek !== "ALL") {
+      parts.push(`Week W${String(activeWeek).replace(/[^0-9]/g, "")}`);
+    }
+    if (statusScope !== "ALL") {
+      const scopeLabels: Record<string, string> = {
+        VALID: "Kasus Valid (Non-Reject)",
+        RESOLVED: "Resolved Saja",
+        OPEN: "In Progress / Pending",
+        REJECT: "Kasus Reject",
+      };
+      parts.push(scopeLabels[statusScope] || statusScope);
+    }
+    return parts.length > 0 ? parts.join(" • ") : "Semua periode (Real-Time Database)";
+  }, [activeMonth, activeWeek, statusScope]);
+
+  // Render SVG Donut (100% aligned between SVG slices and label positions)
+  const renderDonut = (
+    items: { name: string; count: number; pct: number; color: string }[],
+    totalCount: number
+  ) => {
     if (items.length === 0 || totalCount === 0) {
       return (
-        <div className="h-56 flex items-center justify-center text-xs text-zinc-400">
-          Belum ada data distribusi
+        <div className="h-64 flex flex-col items-center justify-center text-xs text-zinc-400 gap-1">
+          <span>Tidak ada data kasus pada filter periode ini</span>
         </div>
       );
     }
@@ -171,35 +354,48 @@ export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
       const endAngle = currentAngle + sliceAngle;
       currentAngle = endAngle;
 
-      // Position for label inside slice
+      // Midpoint angle for label inside slice (polarToCartesian already uses 0 deg = 12 o'clock)
       const midAngle = startAngle + sliceAngle / 2;
-      const labelPos = polarToCartesian(120, 120, 78, midAngle);
+      const labelPos = polarToCartesian(120, 120, 75, midAngle);
 
       return {
         ...item,
-        path: describeDonutSlice(120, 120, 95, 55, startAngle, endAngle),
+        path: describeDonutSlice(120, 120, 96, 54, startAngle, endAngle),
         labelPos,
-        showLabel: item.pct >= 4,
+        showLabel: sliceAngle >= 12, // Only show inside donut when slice is wide enough not to overlap
       };
     });
 
     return (
       <div className="flex flex-col items-center">
         <div className="relative w-64 h-64 flex items-center justify-center">
-          <svg viewBox="0 0 240 240" className="w-full h-full transform -rotate-90">
+          {/* DO NOT add -rotate-90 here because polarToCartesian already sets 0 deg at 12 o'clock! */}
+          <svg viewBox="0 0 240 240" className="w-full h-full">
             {slices.map((s, idx) => (
               <path
                 key={idx}
                 d={s.path}
                 fill={s.color}
+                stroke="rgba(15, 23, 42, 0.35)"
+                strokeWidth="1"
                 className="transition-all duration-300 hover:opacity-85 cursor-pointer"
               >
-                <title>{`${s.name}: ${s.count} (${s.pct}%)`}</title>
+                <title>{`${s.name}: ${s.count.toLocaleString("id-ID")} kasus (${s.pct}%)`}</title>
               </path>
             ))}
           </svg>
 
-          {/* Slices count labels overlay */}
+          {/* Center total label */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-slate-400">
+              Total
+            </span>
+            <span className="text-lg font-black font-mono text-zinc-900 dark:text-white leading-tight">
+              {totalCount.toLocaleString("id-ID")}
+            </span>
+          </div>
+
+          {/* Slices count labels overlay (100% aligned with SVG coordinates) */}
           <div className="absolute inset-0 pointer-events-none">
             {slices.map((s, idx) =>
               s.showLabel ? (
@@ -209,21 +405,42 @@ export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
                     left: `${(s.labelPos.x / 240) * 100}%`,
                     top: `${(s.labelPos.y / 240) * 100}%`,
                   }}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 text-[11px] font-bold text-white drop-shadow-md font-mono"
+                  className="absolute -translate-x-1/2 -translate-y-1/2 text-[11px] font-extrabold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)] font-mono px-1 rounded"
                 >
-                  {s.count}
+                  {s.count.toLocaleString("id-ID")}
                 </span>
               ) : null
             )}
           </div>
         </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 mt-2 px-2">
+        {/* Legend with Real Counts & Percentages */}
+        <div className="w-full mt-3 pt-3 border-t border-zinc-100 dark:border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 px-1">
           {items.map((item, idx) => (
-            <div key={idx} className="flex items-center gap-1.5 text-xs text-zinc-700 dark:text-zinc-300 font-medium">
-              <span className="w-3.5 h-3.5 rounded-sm shrink-0" style={{ backgroundColor: item.color }} />
-              <span className="truncate max-w-[150px]">{item.name}</span>
+            <div
+              key={idx}
+              className="flex items-center justify-between gap-2 text-xs py-0.5 px-1.5 rounded-lg hover:bg-zinc-50 dark:hover:bg-slate-800/50 transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span
+                  className="w-3 h-3 rounded-sm shrink-0 shadow-2xs"
+                  style={{ backgroundColor: item.color }}
+                />
+                <span
+                  className="truncate text-zinc-700 dark:text-zinc-300 font-medium"
+                  title={item.name}
+                >
+                  {item.name}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0 font-mono">
+                <span className="font-bold text-zinc-900 dark:text-white">
+                  {item.count.toLocaleString("id-ID")}
+                </span>
+                <span className="text-[10px] text-zinc-400 dark:text-slate-400">
+                  ({item.pct}%)
+                </span>
+              </div>
             </div>
           ))}
         </div>
@@ -237,24 +454,47 @@ export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
     barColor: string,
     maxScale: number
   ) => {
+    if (items.length === 0) {
+      return (
+        <div className="h-64 flex items-center justify-center text-xs text-zinc-400">
+          Tidak ada data root cause pada filter periode ini
+        </div>
+      );
+    }
+
     return (
       <div className="h-full flex flex-col justify-between py-2">
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           {items.map((item, idx) => {
-            const barWidth = Math.max(1, (item.count / maxScale) * 100);
+            const isPendingRoot = item.name.includes("Belum Diisi");
+            const barWidth = Math.max(1.5, Math.min(100, (item.count / maxScale) * 100));
             return (
               <div key={idx} className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-zinc-700 dark:text-zinc-300 truncate max-w-[200px]">
+                  <span
+                    className={`font-semibold truncate max-w-[230px] ${
+                      isPendingRoot
+                        ? "text-amber-600 dark:text-amber-400 italic"
+                        : "text-zinc-700 dark:text-zinc-300"
+                    }`}
+                  >
                     {item.name}
                   </span>
-                  <span className="font-mono font-bold text-zinc-900 dark:text-white">
-                    {item.count.toLocaleString("id-ID")}
-                  </span>
+                  <div className="flex items-center gap-1.5 font-mono">
+                    <span className="font-bold text-zinc-900 dark:text-white">
+                      {item.count.toLocaleString("id-ID")}
+                    </span>
+                    <span className="text-[10px] text-zinc-400 dark:text-slate-400">
+                      ({item.pct}%)
+                    </span>
+                  </div>
                 </div>
                 <div className="w-full bg-zinc-100 dark:bg-slate-800 rounded-full h-3 overflow-hidden">
                   <div
-                    style={{ width: `${barWidth}%`, backgroundColor: barColor }}
+                    style={{
+                      width: `${barWidth}%`,
+                      backgroundColor: isPendingRoot ? "#f59e0b" : barColor,
+                    }}
                     className="h-full rounded-full transition-all duration-500"
                   />
                 </div>
@@ -264,7 +504,7 @@ export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
         </div>
 
         {/* X-axis ticks */}
-        <div className="pt-4 border-t border-zinc-100 dark:border-slate-800 flex justify-between text-[10px] text-zinc-400 font-mono">
+        <div className="pt-4 mt-4 border-t border-zinc-100 dark:border-slate-800 flex justify-between text-[10px] text-zinc-400 font-mono">
           <span>0</span>
           <span>{Math.round(maxScale * 0.25).toLocaleString("id-ID")}</span>
           <span>{Math.round(maxScale * 0.5).toLocaleString("id-ID")}</span>
@@ -281,24 +521,161 @@ export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
   }, [stats.mai.roots]);
 
   const mbiMaxRoot = useMemo(() => {
-    const maxVal = Math.max(...stats.mbi.roots.map((r) => r.count), 100);
+    const maxVal = Math.max(...stats.mbi.roots.map((r) => r.count), 10);
+    if (maxVal <= 50) return Math.ceil(maxVal / 10) * 10;
+    if (maxVal <= 200) return Math.ceil(maxVal / 50) * 50;
     return Math.ceil(maxVal / 200) * 200;
   }, [stats.mbi.roots]);
 
+  const hasActiveFilter =
+    activeMonth !== "ALL" || activeWeek !== "ALL" || statusScope !== "ALL";
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-200">
+    <div className="space-y-6 animate-in fade-in duration-200">
+      {/* =========================================
+          FILTER BAR: PER BULAN, PER WEEK & STATUS
+      ========================================= */}
+      <div className="p-3.5 bg-white dark:bg-slate-900 rounded-2xl border border-zinc-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-700 dark:text-slate-200 mr-1">
+            <Filter className="w-4 h-4 text-purple-500" />
+            <span>Filter Analisis:</span>
+          </div>
+
+          {/* Filter Bulan */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-50 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
+            <Calendar className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+            <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+              Bulan:
+            </span>
+            <select
+              value={activeMonth}
+              onChange={(e) => handleMonthSelect(e.target.value)}
+              className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
+            >
+              <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">
+                Semua Bulan ({returns.length.toLocaleString("id-ID")} Kasus)
+              </option>
+              {[12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((m) => {
+                const cnt = monthCounts[m] || 0;
+                return (
+                  <option
+                    key={m}
+                    value={String(m)}
+                    className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white"
+                  >
+                    {MONTH_NAMES[m]} ({cnt.toLocaleString("id-ID")} Kasus)
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Filter Week */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-50 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
+            <CalendarRange className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+            <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+              Week:
+            </span>
+            <select
+              value={activeWeek}
+              onChange={(e) => handleWeekSelect(e.target.value)}
+              className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
+            >
+              <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">
+                Semua Week (W1 - W{availableWeeksList[0] || 45})
+              </option>
+              {availableWeeksList.map((w) => {
+                const cnt = weekCounts[w] || 0;
+                if (activeMonth !== "ALL" && cnt === 0) return null;
+                return (
+                  <option
+                    key={w}
+                    value={String(w)}
+                    className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white"
+                  >
+                    Week W{w} ({cnt.toLocaleString("id-ID")} Kasus)
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Filter Status Kasus */}
+          <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
+            {[
+              { id: "ALL", label: "Semua Kasus" },
+              { id: "VALID", label: "Valid (Non-Reject)" },
+              { id: "RESOLVED", label: "Resolved" },
+              { id: "OPEN", label: "In Progress" },
+              { id: "REJECT", label: "Reject" },
+            ].map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setStatusScope(s.id as typeof statusScope)}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer text-[11px] ${
+                  statusScope === s.id
+                    ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                    : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          {hasActiveFilter && (
+            <button
+              type="button"
+              onClick={() => {
+                handleMonthSelect("ALL");
+                handleWeekSelect("ALL");
+                setStatusScope("ALL");
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset Filter</span>
+            </button>
+          )}
+        </div>
+
+        {/* Summary Pill */}
+        <div className="flex items-center gap-2 text-xs font-mono">
+          <span className="px-2.5 py-1 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-800/60 font-bold">
+            MAI: {stats.mai.total.toLocaleString("id-ID")}
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 font-bold">
+            MBI: {stats.mbi.total.toLocaleString("id-ID")}
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-zinc-100 dark:bg-slate-800 text-zinc-700 dark:text-slate-200 font-bold">
+            Total: {(stats.mai.total + stats.mbi.total).toLocaleString("id-ID")}
+          </span>
+        </div>
+      </div>
+
       {/* =========================================
           SECTION 1: BREAKDOWN MAI
       ========================================= */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-4 bg-red-500 rounded-full" />
-          <h2 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-white">
-            Breakdown MAI
-          </h2>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 font-bold">
-            PT Medika Akses Investama
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-4 bg-red-500 rounded-full" />
+            <h2 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-white">
+              Breakdown MAI
+            </h2>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 font-bold">
+              PT Medika Akses Investama
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500 dark:text-slate-400">
+            <span>Valid: <strong className="text-emerald-600 dark:text-emerald-400">{stats.mai.validCount}</strong></span>
+            <span>•</span>
+            <span>In Progress: <strong className="text-amber-500">{stats.mai.openCount}</strong></span>
+            <span>•</span>
+            <span>Reject: <strong className="text-rose-500">{stats.mai.rejectCount}</strong></span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -315,11 +692,11 @@ export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
                   </span>
                 </div>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Distribusi tipe kesalahan — semua periode
+                  Distribusi tipe kesalahan — {activePeriodLabel}
                 </p>
               </div>
               <span className="text-xs font-mono font-bold text-zinc-500">
-                Total: {stats.mai.total}
+                Total: {stats.mai.total.toLocaleString("id-ID")}
               </span>
             </div>
 
@@ -339,9 +716,12 @@ export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
                   </span>
                 </div>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Akar penyebab
+                  Akar penyebab — {activePeriodLabel}
                 </p>
               </div>
+              <span className="text-xs font-mono font-bold text-zinc-500">
+                Total: {stats.mai.total.toLocaleString("id-ID")}
+              </span>
             </div>
 
             {renderHorizontalBars(stats.mai.roots, "#ef4444", maiMaxRoot)}
@@ -353,14 +733,23 @@ export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
           SECTION 2: BREAKDOWN MBI
       ========================================= */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-4 bg-blue-500 rounded-full" />
-          <h2 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-white">
-            Breakdown MBI
-          </h2>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-bold">
-            PT Medika Bina Investama
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-4 bg-blue-500 rounded-full" />
+            <h2 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-white">
+              Breakdown MBI
+            </h2>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-bold">
+              PT Medika Bina Investama
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500 dark:text-slate-400">
+            <span>Valid: <strong className="text-emerald-600 dark:text-emerald-400">{stats.mbi.validCount.toLocaleString("id-ID")}</strong></span>
+            <span>•</span>
+            <span>In Progress: <strong className="text-amber-500">{stats.mbi.openCount.toLocaleString("id-ID")}</strong></span>
+            <span>•</span>
+            <span>Reject: <strong className="text-rose-500">{stats.mbi.rejectCount.toLocaleString("id-ID")}</strong></span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -377,11 +766,11 @@ export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
                   </span>
                 </div>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Distribusi tipe kesalahan — semua periode
+                  Distribusi tipe kesalahan — {activePeriodLabel}
                 </p>
               </div>
               <span className="text-xs font-mono font-bold text-zinc-500">
-                Total: {stats.mbi.total}
+                Total: {stats.mbi.total.toLocaleString("id-ID")}
               </span>
             </div>
 
@@ -401,9 +790,12 @@ export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
                   </span>
                 </div>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Akar penyebab
+                  Akar penyebab — {activePeriodLabel}
                 </p>
               </div>
+              <span className="text-xs font-mono font-bold text-zinc-500">
+                Total: {stats.mbi.total.toLocaleString("id-ID")}
+              </span>
             </div>
 
             {renderHorizontalBars(stats.mbi.roots, "#3b82f6", mbiMaxRoot)}
@@ -460,7 +852,7 @@ export default function AnalisisView({ returns = [] }: AnalisisViewProps) {
                 <span>Sinkronisasi Oracle & Ops</span>
               </div>
               <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
-                Tercatat 90+ insiden terkait sistem dan operasional di MBI. Lakukan sinkronisasi master konversi satuan (strip/box/botol) antara sistem WMS dan Oracle sebelum faktur dicetak.
+                Tercatat 100+ insiden terkait sistem dan operasional di MBI. Lakukan sinkronisasi master konversi satuan (strip/box/botol) antara sistem WMS dan Oracle sebelum faktur dicetak.
               </p>
             </div>
           </div>
