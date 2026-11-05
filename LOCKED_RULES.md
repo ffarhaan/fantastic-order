@@ -337,7 +337,8 @@ Aturan ini mengunci secara mutlak arsitektur integrasi data petugas gudang (Chec
      - Setiap file Excel yang diunggah WAJIB dibaca secara utuh baris demi baris, kolom demi kolom, sel demi sel.
      - DILARANG KERAS menggunakan asumsi, menebak pola, memotong pembacaan baris, atau menahan nilai lama dari memori/riwayat.
    - **Data Utama Faktur (100% Hak File Excel Upload)**:
-     - Nomor SO (`Order Number`), Nomor Faktur (`No Invoice AR`), **Nama Apotek / Pelanggan** (`Nama Pelanggan` / `Nama Lokasi`), Tanggal Order (`Order Date`), Kategori Produk (Farma/Alkes), PBF (MAI/MBI), Kategori Apotek (1P/2P/3P), dan Nominal Harga **WAJIB 100% MURNI BERSUMBER DARI FILE EXCEL YANG DIUNGGAH OPERATOR**.
+     - **Entity** (`MBI LE` vs `MAI LE`), Nomor SO (`Order Number`), Nomor Faktur (`No Invoice AR`), **Nama Apotek / Pelanggan** (`Nama Pelanggan` / `Nama Lokasi`), Tanggal Order (`Order Date`), Kategori Produk (Farma/Alkes), PBF (MAI/MBI), Kategori Apotek (1P/2P/3P), dan Nominal Harga **WAJIB 100% MURNI BERSUMBER DARI FILE EXCEL YANG DIUNGGAH OPERATOR**.
+     - Wajib membaca kolom **Entity / Business Unit** dan metadata header untuk memastikan transaksi masuk ke gudang yang tepat (`MBI` atau `MAI`) dan ditolak jika salah gudang.
      - Google Sheet DILARANG KERAS menimpa, mengganti, atau merusak data utama faktur maupun Nama Apotek.
    - **Data Google Sheet QC (HANYA 3 Atribut Tambahan)**:
      - Google Sheet QC secara eksklusif HANYA memasok: **Nama Checker**, **Nama Packer**, dan **Nama Picker**.

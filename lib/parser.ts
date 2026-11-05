@@ -690,9 +690,9 @@ function parseXXCUST(
 
     const rawEntity = (val(idx.entity) || val(idx.businessUnit) || fileEntity || "").toUpperCase();
     let rowEntity: "MAI" | "MBI" = "MBI";
-    if (rawEntity.includes("MAI")) {
+    if (rawEntity.includes("MAI") || rawEntity.includes("ALKESINDO")) {
       rowEntity = "MAI";
-    } else if (rawEntity.includes("MBI")) {
+    } else if (rawEntity.includes("MBI") || rawEntity.includes("INVESTAMA")) {
       rowEntity = "MBI";
     }
 
