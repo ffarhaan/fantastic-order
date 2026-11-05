@@ -53,7 +53,7 @@ function onEditReportQcMBI(e) {
     var actualStart = Math.max(2, startRow);
     var actualNumRows = (startRow + numRows - 1) - actualStart + 1;
 
-    var lastCol = sheet.getLastColumn();
+    var lastCol = Math.max(15, sheet.getLastColumn());
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var colMap = detectColumns(headers);
 
@@ -64,18 +64,37 @@ function onEditReportQcMBI(e) {
       var row = dataRange[r];
       var soVal = String(row[colMap.so] || "").trim();
       var noDoVal = colMap.noDo >= 0 ? String(row[colMap.noDo] || "").trim() : "";
-      var custVal = colMap.customer >= 0 ? String(row[colMap.customer] || "").trim() : "";
+      
+      // Apotek / Customer (Prioritas colMap, Fallback Kolom D index 3)
+      var custVal = (colMap.customer >= 0 && String(row[colMap.customer] || "").trim())
+        ? String(row[colMap.customer] || "").trim()
+        : (row.length > 3 ? String(row[3] || "").trim() : "");
+
       var tglSoVal = colMap.soDate >= 0 ? String(row[colMap.soDate] || "").trim() : "";
       var waktuKirimVal = colMap.waktuKirim >= 0 ? String(row[colMap.waktuKirim] || "").trim() : "";
       var checkerVal = colMap.checker >= 0 ? String(row[colMap.checker] || "").trim() : "";
       var packerVal = colMap.packer >= 0 ? String(row[colMap.packer] || "").trim() : "";
       var pickerVal = colMap.picker >= 0 ? String(row[colMap.picker] || "").trim() : "";
       var katVal = colMap.kategori >= 0 ? String(row[colMap.kategori] || "").trim() : "";
-      var katProdVal = colMap.kategoriProduk >= 0 ? String(row[colMap.kategoriProduk] || "").trim() : "";
+
+      // Kategori Produk ALKES / FARMA (Prioritas colMap, Fallback Kolom L index 11)
+      var katProdVal = (colMap.kategoriProduk >= 0 && String(row[colMap.kategoriProduk] || "").trim())
+        ? String(row[colMap.kategoriProduk] || "").trim()
+        : (row.length > 11 ? String(row[11] || "").trim() : "");
+
       var totalItemVal = colMap.totalItem >= 0 ? Number(row[colMap.totalItem]) || 0 : 0;
       var totalQtyVal = colMap.totalQty >= 0 ? Number(row[colMap.totalQty]) || 0 : 0;
       var barangCatatanVal = colMap.barangCatatan >= 0 ? Number(row[colMap.barangCatatan]) || 0 : 0;
-      var doneVal = colMap.done >= 0 ? String(row[colMap.done] || "").trim() : "";
+
+      // Status DONE: Dropdown hijau berada di Kolom N (index 13)!
+      var doneVal = "";
+      if (row.length > 13 && String(row[13] || "").trim()) {
+        doneVal = String(row[13] || "").trim();
+      } else if (colMap.done >= 0 && String(row[colMap.done] || "").trim()) {
+        doneVal = String(row[colMap.done] || "").trim();
+      } else if (row.length > 12 && String(row[12] || "").trim()) {
+        doneVal = String(row[12] || "").trim();
+      }
 
       packerVal = cleanStaffName(packerVal);
       pickerVal = cleanStaffName(pickerVal);
@@ -129,7 +148,7 @@ function syncReportQcMBI() {
       return;
     }
 
-    var lastCol = sheet.getLastColumn();
+    var lastCol = Math.max(15, sheet.getLastColumn());
     var maxRows = sheet.getLastRow();
     if (maxRows <= 1 || lastCol <= 1) return;
 
@@ -159,18 +178,37 @@ function syncReportQcMBI() {
       var row = dataRange[r];
       var soVal = String(row[colMap.so] || "").trim();
       var noDoVal = colMap.noDo >= 0 ? String(row[colMap.noDo] || "").trim() : "";
-      var custVal = colMap.customer >= 0 ? String(row[colMap.customer] || "").trim() : "";
+      
+      // Apotek / Customer (Prioritas colMap, Fallback Kolom D index 3)
+      var custVal = (colMap.customer >= 0 && String(row[colMap.customer] || "").trim())
+        ? String(row[colMap.customer] || "").trim()
+        : (row.length > 3 ? String(row[3] || "").trim() : "");
+
       var tglSoVal = colMap.soDate >= 0 ? String(row[colMap.soDate] || "").trim() : "";
       var waktuKirimVal = colMap.waktuKirim >= 0 ? String(row[colMap.waktuKirim] || "").trim() : "";
       var checkerVal = colMap.checker >= 0 ? String(row[colMap.checker] || "").trim() : "";
       var packerVal = colMap.packer >= 0 ? String(row[colMap.packer] || "").trim() : "";
       var pickerVal = colMap.picker >= 0 ? String(row[colMap.picker] || "").trim() : "";
       var katVal = colMap.kategori >= 0 ? String(row[colMap.kategori] || "").trim() : "";
-      var katProdVal = colMap.kategoriProduk >= 0 ? String(row[colMap.kategoriProduk] || "").trim() : "";
+
+      // Kategori Produk ALKES / FARMA (Prioritas colMap, Fallback Kolom L index 11)
+      var katProdVal = (colMap.kategoriProduk >= 0 && String(row[colMap.kategoriProduk] || "").trim())
+        ? String(row[colMap.kategoriProduk] || "").trim()
+        : (row.length > 11 ? String(row[11] || "").trim() : "");
+
       var totalItemVal = colMap.totalItem >= 0 ? Number(row[colMap.totalItem]) || 0 : 0;
       var totalQtyVal = colMap.totalQty >= 0 ? Number(row[colMap.totalQty]) || 0 : 0;
       var barangCatatanVal = colMap.barangCatatan >= 0 ? Number(row[colMap.barangCatatan]) || 0 : 0;
-      var doneVal = colMap.done >= 0 ? String(row[colMap.done] || "").trim() : "";
+
+      // Status DONE: Dropdown hijau berada di Kolom N (index 13)!
+      var doneVal = "";
+      if (row.length > 13 && String(row[13] || "").trim()) {
+        doneVal = String(row[13] || "").trim();
+      } else if (colMap.done >= 0 && String(row[colMap.done] || "").trim()) {
+        doneVal = String(row[colMap.done] || "").trim();
+      } else if (row.length > 12 && String(row[12] || "").trim()) {
+        doneVal = String(row[12] || "").trim();
+      }
 
       packerVal = cleanStaffName(packerVal);
       pickerVal = cleanStaffName(pickerVal);
@@ -259,14 +297,19 @@ function detectColumns(headers) {
 
     if (map.waktuKirim < 0 && (h.indexOf("waktu kirim") !== -1 || h.indexOf("waktu") !== -1 || h.indexOf("jam") !== -1)) map.waktuKirim = i;
     if (map.noDo < 0 && (h.indexOf("no do") !== -1 || h.indexOf("no. do") !== -1 || h === "do")) map.noDo = i;
-    if (map.customer < 0 && (h.indexOf("apotek") !== -1 || h.indexOf("pelanggan") !== -1 || h.indexOf("customer") !== -1)) map.customer = i;
-    if (map.soDate < 0 && (h.indexOf("tanggal so") !== -1 || h.indexOf("tgl so") !== -1 || h.indexOf("tanggal order") !== -1 || h.indexOf("tgl order") !== -1)) map.soDate = i;
-    if (map.kategoriProduk < 0 && (h.indexOf("kategori produk") !== -1 || h.indexOf("kat produk") !== -1)) map.kategoriProduk = i;
+    if (map.customer < 0 && (h.indexOf("apotek") !== -1 || h.indexOf("pelanggan") !== -1 || h.indexOf("customer") !== -1 || h.indexOf("nama apotek") !== -1)) map.customer = i;
+    if (map.soDate < 0 && (h.indexOf("tanggal so") !== -1 || h.indexOf("tgl so") !== -1 || h.indexOf("tanggal order") !== -1 || h.indexOf("tgl order") !== -1 || h.indexOf("order date") !== -1)) map.soDate = i;
+    if (map.kategoriProduk < 0 && (h.indexOf("kategori produk") !== -1 || h.indexOf("kat produk") !== -1 || h.indexOf("produk") !== -1)) map.kategoriProduk = i;
     if (map.kategori < 0 && (h === "kategori" || h === "kat")) map.kategori = i;
     if (map.totalItem < 0 && (h.indexOf("total item") !== -1 || h.indexOf("item") !== -1)) map.totalItem = i;
     if (map.totalQty < 0 && (h.indexOf("total qty") !== -1 || h.indexOf("qty") !== -1)) map.totalQty = i;
     if (map.barangCatatan < 0 && (h.indexOf("barang c") !== -1 || h.indexOf("catatan") !== -1 || h.indexOf("brg c") !== -1)) map.barangCatatan = i;
-    if (map.done < 0 && (h === "done" || h.indexOf("done") !== -1 || h === "status")) map.done = i;
+
+    // Deteksi DONE: Kolom N (index 13) adalah posisi resmi dropdown hijau DONE.
+    // Jika ada lebih dari satu kolom bertuliskan DONE (misal Col M dan Col N), SELALU ambil kolom paling kanan (Kolom N).
+    if (h === "done" || h.indexOf("done") !== -1 || h.indexOf("status qc") !== -1 || h === "status") {
+      map.done = i;
+    }
 
     if (h.indexOf("tanggal") !== -1 || h.indexOf("tgl") !== -1 || h.indexOf("date") !== -1) {
       continue;

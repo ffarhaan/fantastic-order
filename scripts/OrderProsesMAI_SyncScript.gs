@@ -70,7 +70,7 @@ function onEditSyncMAI(e) {
     var actualStart = Math.max(2, startRow);
     var actualNumRows = (startRow + numRows - 1) - actualStart + 1;
 
-    var lastCol = sheet.getLastColumn();
+    var lastCol = Math.max(15, sheet.getLastColumn());
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var colMap = detectColumnsMAI(headers);
 
@@ -80,20 +80,50 @@ function onEditSyncMAI(e) {
     for (var r = 0; r < dataRange.length; r++) {
       var row = dataRange[r];
       var soVal = String(row[colMap.so] || "").trim();
+      var noDoVal = colMap.noDo >= 0 ? String(row[colMap.noDo] || "").trim() : "";
+      var custVal = colMap.customer >= 0 ? String(row[colMap.customer] || "").trim() : "";
+      var tglSoVal = colMap.soDate >= 0 ? String(row[colMap.soDate] || "").trim() : "";
+      var waktuKirimVal = colMap.waktuKirim >= 0 ? String(row[colMap.waktuKirim] || "").trim() : "";
       var checkerVal = colMap.checker >= 0 ? String(row[colMap.checker] || "").trim() : "";
       var packerVal = colMap.packer >= 0 ? String(row[colMap.packer] || "").trim() : "";
       var pickerVal = colMap.picker >= 0 ? String(row[colMap.picker] || "").trim() : "";
+      var katVal = colMap.kategori >= 0 ? String(row[colMap.kategori] || "").trim() : "";
+      var katProdVal = colMap.kategoriProduk >= 0 ? String(row[colMap.kategoriProduk] || "").trim() : "";
+      var totalItemVal = colMap.totalItem >= 0 ? Number(row[colMap.totalItem]) || 0 : 0;
+      var totalQtyVal = colMap.totalQty >= 0 ? Number(row[colMap.totalQty]) || 0 : 0;
+      var barangCatatanVal = colMap.barangCatatan >= 0 ? Number(row[colMap.barangCatatan]) || 0 : 0;
+
+      // Status DONE: cek kolom N (13), colMap.done, atau kolom M (12)
+      var doneVal = "";
+      if (row.length > 13 && String(row[13] || "").trim()) {
+        doneVal = String(row[13] || "").trim();
+      } else if (colMap.done >= 0 && String(row[colMap.done] || "").trim()) {
+        doneVal = String(row[colMap.done] || "").trim();
+      } else if (row.length > 12 && String(row[12] || "").trim()) {
+        doneVal = String(row[12] || "").trim();
+      }
 
       // Sanitasi nilai agar tidak salah ambil nama apotek atau jam
       packerVal = cleanStaffNameMAI(packerVal);
       pickerVal = cleanStaffNameMAI(pickerVal);
 
-      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal)) {
+      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal || custVal || doneVal || barangCatatanVal > 0)) {
         itemsToSend.push({
           so: soVal,
+          no_do: noDoVal,
+          customer: custVal,
+          so_date: tglSoVal,
+          waktu_kirim: waktuKirimVal,
           checker: checkerVal,
           packer: packerVal,
-          picker: pickerVal
+          picker: pickerVal,
+          kategori: katVal,
+          kategori_produk: katProdVal,
+          total_item: totalItemVal,
+          total_qty: totalQtyVal,
+          barang_catatan: barangCatatanVal,
+          is_done: doneVal,
+          warehouse: "MAI"
         });
       }
     }
@@ -126,7 +156,7 @@ function autoSyncCheckersMAI() {
       return;
     }
 
-    var lastCol = sheet.getLastColumn();
+    var lastCol = Math.max(15, sheet.getLastColumn());
     var maxRows = sheet.getLastRow();
     if (maxRows <= 1 || lastCol <= 1) return;
 
@@ -155,20 +185,50 @@ function autoSyncCheckersMAI() {
     for (var r = 0; r < dataRange.length; r++) {
       var row = dataRange[r];
       var soVal = String(row[colMap.so] || "").trim();
+      var noDoVal = colMap.noDo >= 0 ? String(row[colMap.noDo] || "").trim() : "";
+      var custVal = colMap.customer >= 0 ? String(row[colMap.customer] || "").trim() : "";
+      var tglSoVal = colMap.soDate >= 0 ? String(row[colMap.soDate] || "").trim() : "";
+      var waktuKirimVal = colMap.waktuKirim >= 0 ? String(row[colMap.waktuKirim] || "").trim() : "";
       var checkerVal = colMap.checker >= 0 ? String(row[colMap.checker] || "").trim() : "";
       var packerVal = colMap.packer >= 0 ? String(row[colMap.packer] || "").trim() : "";
       var pickerVal = colMap.picker >= 0 ? String(row[colMap.picker] || "").trim() : "";
+      var katVal = colMap.kategori >= 0 ? String(row[colMap.kategori] || "").trim() : "";
+      var katProdVal = colMap.kategoriProduk >= 0 ? String(row[colMap.kategoriProduk] || "").trim() : "";
+      var totalItemVal = colMap.totalItem >= 0 ? Number(row[colMap.totalItem]) || 0 : 0;
+      var totalQtyVal = colMap.totalQty >= 0 ? Number(row[colMap.totalQty]) || 0 : 0;
+      var barangCatatanVal = colMap.barangCatatan >= 0 ? Number(row[colMap.barangCatatan]) || 0 : 0;
+
+      // Status DONE: cek kolom N (13), colMap.done, atau kolom M (12)
+      var doneVal = "";
+      if (row.length > 13 && String(row[13] || "").trim()) {
+        doneVal = String(row[13] || "").trim();
+      } else if (colMap.done >= 0 && String(row[colMap.done] || "").trim()) {
+        doneVal = String(row[colMap.done] || "").trim();
+      } else if (row.length > 12 && String(row[12] || "").trim()) {
+        doneVal = String(row[12] || "").trim();
+      }
 
       // Sanitasi nilai
       packerVal = cleanStaffNameMAI(packerVal);
       pickerVal = cleanStaffNameMAI(pickerVal);
 
-      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal)) {
+      if (soVal && soVal !== "-" && soVal !== "#N/A" && (checkerVal || packerVal || pickerVal || custVal || doneVal || barangCatatanVal > 0)) {
         itemsToSend.push({
           so: soVal,
+          no_do: noDoVal,
+          customer: custVal,
+          so_date: tglSoVal,
+          waktu_kirim: waktuKirimVal,
           checker: checkerVal,
           packer: packerVal,
-          picker: pickerVal
+          picker: pickerVal,
+          kategori: katVal,
+          kategori_produk: katProdVal,
+          total_item: totalItemVal,
+          total_qty: totalQtyVal,
+          barang_catatan: barangCatatanVal,
+          is_done: doneVal,
+          warehouse: "MAI"
         });
       }
     }
@@ -216,10 +276,34 @@ function cleanStaffNameMAI(name) {
  * Kolom E (4) = Packer
  */
 function detectColumnsMAI(headers) {
-  var map = { so: -1, picker: -1, checker: -1, packer: -1 };
+  var map = {
+    so: -1, picker: -1, checker: -1, packer: -1,
+    customer: -1, soDate: -1, waktuKirim: -1, noDo: -1,
+    kategori: -1, kategoriProduk: -1, totalItem: -1, totalQty: -1,
+    barangCatatan: -1, done: -1
+  };
 
   for (var i = 0; i < headers.length; i++) {
     var h = String(headers[i] || "").toLowerCase().trim();
+
+    if (map.waktuKirim < 0 && (h.indexOf("waktu kirim") !== -1 || h.indexOf("waktu") !== -1 || h.indexOf("jam") !== -1)) map.waktuKirim = i;
+    if (map.noDo < 0 && (h.indexOf("no do") !== -1 || h.indexOf("no. do") !== -1 || h === "do")) map.noDo = i;
+    if (map.customer < 0 && (h.indexOf("apotek") !== -1 || h.indexOf("pelanggan") !== -1 || h.indexOf("customer") !== -1 || h.indexOf("nama apotek") !== -1)) map.customer = i;
+    if (map.kategoriProduk < 0 && (h.indexOf("kategori produk") !== -1 || h.indexOf("kat produk") !== -1 || h.indexOf("produk") !== -1)) map.kategoriProduk = i;
+    if (map.kategori < 0 && (h === "kategori" || h === "kat")) map.kategori = i;
+    if (map.totalItem < 0 && (h.indexOf("total item") !== -1 || h.indexOf("item") !== -1)) map.totalItem = i;
+    if (map.totalQty < 0 && (h.indexOf("total qty") !== -1 || h.indexOf("qty") !== -1)) map.totalQty = i;
+    if (map.barangCatatan < 0 && (h.indexOf("barang c") !== -1 || h.indexOf("catatan") !== -1 || h.indexOf("brg c") !== -1)) map.barangCatatan = i;
+
+    // Status DONE (dropdown hijau)
+    if (h === "done" || h.indexOf("done") !== -1 || h.indexOf("status qc") !== -1 || h === "status") {
+      map.done = i;
+    }
+
+    if (map.soDate < 0 && (h.indexOf("tanggal so") !== -1 || h.indexOf("tgl so") !== -1 || h.indexOf("tanggal order") !== -1 || h.indexOf("tgl order") !== -1 || h.indexOf("order date") !== -1)) {
+      map.soDate = i;
+    }
+
     if (h.indexOf("tanggal") !== -1 || h.indexOf("tgl") !== -1 || h.indexOf("date") !== -1) {
       continue;
     }
@@ -238,8 +322,9 @@ function detectColumnsMAI(headers) {
     }
   }
 
-  // Fallback persis urutan kolom Report QC MAI:
-  // B = No SO (1), C = Picker (2), D = Checker (3), E = Packer (4)
+  // Fallback standar Report QC MAI:
+  // Col A = Tanggal SO (0), Col B = No SO (1), Col C = Picker (2), Col D = Checker (3), Col E = Packer (4)
+  if (map.soDate < 0) map.soDate = 0;
   if (map.so < 0) map.so = 1;
   if (map.picker < 0) map.picker = 2;
   if (map.checker < 0) map.checker = 3;
