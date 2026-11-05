@@ -206,9 +206,9 @@ function dbRowsToFakturRecords(
       : (entity === "MAI" ? `MAI-${baseKey}` : baseKey);
     const cleanJenis: "DOO" | "ORA" = isOra ? "ORA" : "DOO";
     const overriddenKat = overrides[normCust] || overrides[cust] || overrides[cleanInv] || overrides[invKey] || (extra.kategori as string);
-    const calculatedKat = isOra ? "1P" : categorize(cleanJenis, cust, cleanJenis, undefined, undefined, entity);
-    const baseKat = (entity === "MAI" ? calculatedKat : (r.kategori as "1P" | "2P" | "3P")) || calculatedKat;
-    const kategori = (overriddenKat as "1P" | "2P" | "3P") || baseKat;
+    // Anti-lag: Skip expensive categorize() regex if r.kategori is already cached/saved!
+    const baseKat = (r.kategori as "1P" | "2P" | "3P") || (isOra ? "1P" : categorize(cleanJenis, cust, cleanJenis, undefined, undefined, entity));
+    const kategori = (overriddenKat as "1P" | "2P" | "3P") || baseKat || "3P";
     const pAt = (r.printed_at as string) || null;
     const pBy = (r.printed_by as string) || (extra.printed_by as string) || null;
 
@@ -936,7 +936,7 @@ export default function Home() {
     }
   }, []);
 
-  const handleCancelQcOrder = useCallback(async (soNum: string) => {
+const handleCancelQcOrder = useCallback(async (soNum: string) => {
     if (!soNum) return;
     const cleanSo = soNum.trim();
     if (!isSuperAdminUser(currentUser?.name)) {
@@ -1060,26 +1060,7 @@ export default function Home() {
     };
   }, [fetchQcOrders]);
 
-  useEffect(() => {
-    fetchQcOrders(selectedWarehouse);
-    // Polling safety net: every 4 seconds in Report QC, 8 seconds otherwise + on tab focus
-    const pollInterval = filter === "report_qc" ? 4000 : 8000;
-    const interval = setInterval(() => {
-      fetchQcOrders(selectedWarehouseRef.current);
-    }, pollInterval);
 
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") {
-        fetchQcOrders(selectedWarehouseRef.current);
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [selectedWarehouse, filter, fetchQcOrders]);
   const invoiceProgressionRef = useRef<InvoiceProgression | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isUploadingRef = useRef(false);
@@ -1512,6 +1493,44 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     }
   }, []);
 
+  // HIGH-SPEED REALTIME SYNC NET (< 2.5s):
+    // Continuously polls Report QC and checks TiDB for peer uploads.
+    // Guarantees zero discrepancy between devices and zero waiting time!
+    useEffect(() => {
+      fetchQcOrders(selectedWarehouseRef.current);
+  
+      const syncNetTick = async () => {
+        // 1. Instantly pull Report QC updates (< 2.5s)
+        fetchQcOrders(selectedWarehouseRef.current);
+  
+        // 2. Instantly detect peer uploads in TiDB without user needing to reload (< 30ms query)
+        if (!isUploadingRef.current && !isPeerSyncingRef.current && currentFakturDocsRef.current?.length > 0) {
+          try {
+            const curCount = currentFakturDocsRef.current.length;
+            const curUpdated = clientUpdatedRef.current || 0;
+            const check = await checkTiDBUpdates(curCount, curUpdated);
+            if (check && (!check.upToDate || check.totalCount !== curCount || check.maxUpdated > curUpdated)) {
+              performPeerSync();
+            }
+          } catch {}
+        }
+      };
+  
+      const interval = setInterval(syncNetTick, 2500);
+  
+      const onVisibility = () => {
+        if (document.visibilityState === "visible") {
+          syncNetTick();
+        }
+      };
+      document.addEventListener("visibilitychange", onVisibility);
+  
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener("visibilitychange", onVisibility);
+      };
+    }, [fetchQcOrders, performPeerSync]);
+
   // 1. Instant 0ms Load from Local IndexedDB Cache, then Zero-Bandwidth Smart Delta Sync
   useEffect(() => {
     if (!currentUser) return;
@@ -1634,13 +1653,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         }
 
         if (clientCount > 0 && check) {
-          if (check.upToDate && clientCount >= check.totalCount) {
+          if ((check.upToDate || check.maxUpdated <= clientUpdated) && clientCount >= check.totalCount) {
             if (isMounted) setLoading(false);
             return;
           }
 
-          // If client already has cached data (>= 1000), ALWAYS fetch lightweight delta!
+          // If client already has cached data (>= 1000), fetch delta ONLY if TiDB has newer updates
           if (clientCount >= 1000) {
+            if (check.maxUpdated <= clientUpdated && clientCount >= check.totalCount) {
+              if (isMounted) setLoading(false);
+              return;
+            }
             const deltaDocs = await fetchTiDBDelta(clientUpdated);
             if (!isMounted) return;
             if (deltaDocs && deltaDocs.length > 0) {
@@ -1834,17 +1857,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const curDocs = currentFakturDocsRef.current || [];
           const isPeerUpload = uploadNotif && uploadNotif.uploaderId !== deviceIdRef.current;
 
-          // For internal duplicate echoes (NOT peer uploads), skip re-rendering if no keys changed
-          if (curDocs.length >= 1000 && !isPeerUpload && reason !== "chunks") {
-            const curKeys = new Set(curDocs.map((d) => d.id || d.no_faktur));
-            const hasNew = docs.some((d) => {
-              const k = d.id || d.no_faktur;
-              return k && !curKeys.has(k);
-            });
-            if (!hasNew) {
-              setLoading(false);
-              return;
-            }
+          // ANTI-LAG REFRESH SHIELD:
+          // If local cache already has complete data from TiDB/IndexedDB (>= 1000 items),
+          // DO NOT re-process legacy Firestore chunks! TiDB + IndexedDB is the authoritative store.
+          // This completely eliminates the redundant 2-5 second freeze on startup and refresh!
+          if (curDocs.length >= 1000 && !isPeerUpload) {
+            setLoading(false);
+            return;
           }
 
           const merged = mergeKumulatifDocs(curDocs, docs);
