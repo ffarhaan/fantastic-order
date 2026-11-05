@@ -45,6 +45,7 @@ export async function syncFaktursToTiDB(
 
     const CONCURRENCY = 3;
     let processedCount = 0;
+    let lastErrorText = "";
     for (let i = 0; i < slices.length; i += CONCURRENCY) {
       const batch = slices.slice(i, i + CONCURRENCY);
       await Promise.all(
@@ -67,7 +68,10 @@ export async function syncFaktursToTiDB(
                 }
                 break;
               }
+              lastErrorText = `HTTP ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}`;
+              console.error(`[TiDB Sync] Upsert attempt ${attempts + 1} rejected:`, lastErrorText);
             } catch (err) {
+              lastErrorText = String(err);
               console.warn(`[TiDB Sync] Upsert attempt ${attempts + 1} failed:`, err);
             }
             attempts++;
@@ -78,8 +82,15 @@ export async function syncFaktursToTiDB(
     }
     // Notify all connected browsers/devices that TiDB has finished writing all chunks!
     await broadcastRealtimeSignal("fakturs");
+
+    // NEVER fail silently: if any slice was rejected, peers cannot see those invoices.
+    const failedCount = payload.length - processedCount;
+    if (failedCount > 0) {
+      throw new Error(`${failedCount} dari ${payload.length} faktur GAGAL tersimpan ke database (${lastErrorText})`);
+    }
   } catch (err) {
-    console.warn("[TiDB Sync] Error syncing to TiDB:", err);
+    console.error("[TiDB Sync] Error syncing to TiDB:", err);
+    throw err;
   }
 }
 
@@ -91,7 +102,7 @@ export function syncFaktursToTiDBBackground(
 
   // Run in next tick / microtask to ensure zero interference with current call stack
   setTimeout(async () => {
-    await syncFaktursToTiDB(fakturs, onProgress);
+    await syncFaktursToTiDB(fakturs, onProgress).catch((err) => console.error("[TiDB Sync] Background sync failed:", err));
   }, 50);
 }
 

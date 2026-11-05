@@ -3786,11 +3786,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           .filter(Boolean) as FirestoreFakturDoc[];
 
         // 6. Save directly to TiDB FIRST (< 800ms) so rows exist in DB BEFORE peers are notified!
-        await syncFaktursToTiDB(uploadedDocs, (done, total) => {
-          if (total > 250) {
-            showToast(`💾 Menyimpan ke database: ${done} / ${total} faktur (${Math.round((done / total) * 100)}%)...`);
-          }
-        });
+        try {
+          await syncFaktursToTiDB(uploadedDocs, (done, total) => {
+            if (total > 250) {
+              showToast(`💾 Menyimpan ke database: ${done} / ${total} faktur (${Math.round((done / total) * 100)}%)...`);
+            }
+          });
+        } catch (dbErr) {
+          // Loud failure: if TiDB rejects the write, other devices will NOT see these invoices.
+          console.error("[Upload] TiDB save failed:", dbErr);
+          showToast(`⚠️ GAGAL simpan ke database — device lain belum bisa lihat faktur ini. Coba upload ulang. (${String((dbErr as Error)?.message || dbErr).slice(0, 160)})`);
+        }
 
         // 7. Broadcast uploaded documents immediately via Firebase for 0ms Real-Time sync to all peer devices!
         await broadcastRecentUpload(
