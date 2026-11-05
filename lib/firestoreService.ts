@@ -95,8 +95,22 @@ export function isStalePrintTimestamp(
 ): boolean {
   if (!printedAt) return false;
   if (!orderDate || orderDate === "-") return false;
-  const pDate = new Date(printedAt);
-  if (isNaN(pDate.getTime())) return false;
+  let pDate: Date | null = null;
+  const pTrim = String(printedAt).trim();
+  const mId = pTrim.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (mId && Number(mId[1]) <= 31 && Number(mId[2]) <= 12) {
+    pDate = new Date(
+      Number(mId[3]),
+      Number(mId[2]) - 1,
+      Number(mId[1]),
+      Number(mId[4] || 0),
+      Number(mId[5] || 0),
+      Number(mId[6] || 0)
+    );
+  } else {
+    pDate = new Date(pTrim);
+  }
+  if (!pDate || isNaN(pDate.getTime())) return false;
 
   const parts = String(orderDate).trim().split(/[\/\-]/);
   let oDate: Date | null = null;

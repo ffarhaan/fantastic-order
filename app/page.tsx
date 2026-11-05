@@ -1391,7 +1391,7 @@ function sanitizeDuplicateCompositeDocs(docs: FirestoreFakturDoc[]): FirestoreFa
     const cleanInv = prefix.replace(/^MAI-/i, "").replace(/-1P$/i, "");
     const isMai = k.startsWith("MAI-") || d.entity === "MAI";
     const cust = String(d.customer_name || d.extra?.nama_pelanggan || "");
-    const isOra = d.jenis_transaksi === "ORA" || isOraCustomer(cust);
+    const isOra = prefix.toUpperCase().endsWith("-1P") || d.jenis_transaksi === "ORA" || isOraCustomer(cust);
     const canonicalBaseKey = isMai ? (isOra ? `MAI-${cleanInv}-1P` : `MAI-${cleanInv}`) : (isOra ? `${cleanInv}-1P` : cleanInv);
 
     const existingBase = byKey.get(canonicalBaseKey);
@@ -1646,9 +1646,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
       // Step 1: Read local IndexedDB cache INSTANTLY (0–10ms!)
       try {
-        if (typeof window !== "undefined" && localStorage.getItem("faktur_cache_schema_v") !== "tidb_clean_v3_20261106") {
+        if (typeof window !== "undefined" && localStorage.getItem("faktur_cache_schema_v") !== "tidb_clean_v4_20261106") {
           await clearLocalCachedFakturs().catch(() => {});
-          localStorage.setItem("faktur_cache_schema_v", "tidb_clean_v3_20261106");
+          localStorage.setItem("faktur_cache_schema_v", "tidb_clean_v4_20261106");
         }
         const cached = await getLocalCachedFakturs();
         if (cached && cached.fakturs && cached.fakturs.length > 0 && isMounted) {
@@ -3394,9 +3394,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
           const pCandidate = (row.printed_at as string) || livePrintedAtMap[targetKey];
           const isStale = isStalePrintTimestamp(pCandidate, (row.order_date as string) || (extra.order_date as string));
-          const isDocPrinted = !isStale && Boolean(
+          const isDocPrinted = Boolean(
             row.status_cetak ||
-            livePrintedKeys.has(targetKey)
+            (!isStale && livePrintedKeys.has(targetKey))
           );
           if (isDocPrinted) {
             livePrintedKeys.add(targetKey);
@@ -3449,9 +3449,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const k = doc.id || doc.no_faktur;
           const pCandidate = doc.printed_at || livePrintedAtMap[k];
           const isStale = isStalePrintTimestamp(pCandidate, doc.order_date || (doc.extra && (doc.extra.order_date as string)));
-          const isDocPrinted = !isStale && Boolean(
+          const isDocPrinted = Boolean(
             doc.status_cetak ||
-            livePrintedKeys.has(k)
+            (!isStale && livePrintedKeys.has(k))
           );
           if (isDocPrinted) {
             livePrintedKeys.add(k);
@@ -3548,11 +3548,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
           // PERMANENT PRINT RETENTION & UNPRINTED GUARANTEE (LOCKED_RULES.md Sec 1.B & 1.D):
           // Check if marked printed in ANY authoritative source (print_state_partitions, local memory, DB)
-          const wasPrinted = !isStale && Boolean(
-            mergedPrintedSet.has(targetKey) ||
+          const wasPrinted = Boolean(
             (existingEntry && existingEntry.status_cetak) ||
             (prevInfo && prevInfo.status_cetak) ||
-            (isSameSO && (mergedPrintedSet.has(baseTargetKey) || (existingEntryCandidate && existingEntryCandidate.status_cetak) || (prevInfoCandidate && prevInfoCandidate.status_cetak)))
+            (isSameSO && ((existingEntryCandidate && existingEntryCandidate.status_cetak) || (prevInfoCandidate && prevInfoCandidate.status_cetak))) ||
+            (!isStale && (mergedPrintedSet.has(targetKey) || (isSameSO && mergedPrintedSet.has(baseTargetKey))))
           );
 
           if (wasPrinted) {
