@@ -349,8 +349,30 @@ Aturan ini mengunci secara mutlak arsitektur integrasi data petugas gudang (Chec
      1. Pencocokan langsung via Nomor SO (`so_number`).
      2. Pencocokan langsung via Nomor Faktur (`invoice_number` / `invoice_key`).
      3. Normalisasi ekuivalen huruf besar `O` dan digit angka `0` (contoh: `OY99DY` $\leftrightarrow$ `0Y99DY`).
-     4. Pencocokan suffix faktur (contoh: `-3580`).
+   - DILARANG KERAS melakukan tebakan suffix 4 digit semata yang berisiko salah memasangkan nama petugas gudang. Pencocokan WAJIB 1:1 terhadap No SO lengkap atau No Faktur lengkap.
    - Dengan sistem pencocokan ini, nama Checker, Packer, dan Picker akan selalu ditemukan dan ditampilkan di tabel Fantastic Order tanpa merubah data No SO atau Nama Apotek asli yang diupload.
+
+7. **Jaminan Kelengkapan Ingesti File & Integritas SO-Invoice Antara Report QC dan Daftar Faktur (Full-File Ingestion & SO-Invoice Integrity Guarantee - LOCKED TOTAL & PERMANEN)**:
+   - **Latar Belakang & Larangan Masalah Berulang**:
+     Dilarang keras terjadi kendala di mana suatu Sales Order (SO) yang sebenarnya sudah memiliki nomor faktur di file Oracle yang diunggah (contoh: `WY3M0L-1461` atau `WY3M0L-1015`) tertahan di antrean Report QC dengan label "Menunggu Faktur". Setiap SO yang fakturnya sudah terbit wajib otomatis keluar dari antrean Report QC dan langsung tampil di Daftar Faktur / Belum Terprint.
+   - **Aturan 1: Larangan Mutlak Pembuangan No SO pada Transaksi ORA / Export (Zero SO Stripping)**:
+     - DILARANG KERAS membuang, mengosongkan, atau mengubah Nomor Sales Order menjadi `"-"` pada transaksi apa pun, termasuk transaksi ORA atau transfer internal apotek.
+     - Kode seperti `const finalSO = isOra ? "-" : ...` DIHARAMKAN SECARA TOTAL. Nilai No SO dari file export wajib dipertahankan murni apa adanya (`finalSO = soVal || "-"`).
+   - **Aturan 2: Pembacaan Penuh Seluruh Sheet Workbook (Full Multi-Sheet Workbook Ingestion)**:
+     - Parser file Excel (`parseExcelFile`) WAJIB mengekstrak seluruh tab/sheet yang memuat tabel transaksi (bukan hanya berhenti/return pada sheet pertama).
+     - Data transaksi dari semua sheet yang valid wajib digabungkan secara kumulatif (`allRecords.push(...parsed)`).
+   - **Aturan 3: Pewarisan No SO Multi-Baris & Fallback Kolom Referensi (Multi-Line SO Persistence & Reference Fallback)**:
+     - Pada faktur dengan banyak baris item, jika sel No SO hanya tertulis di baris pertama, sistem WAJIB mewariskan (*carry forward*) No SO tersebut ke baris-baris item berikutnya dalam faktur yang sama, dan DILARANG KERAS menimpa memori No SO menjadi `"-"`.
+     - Jika kolom `Order Number` kosong, sistem wajib memeriksa kolom fallback: `Reference Order Number`, `Ref Order No`, atau `No Ref Order`.
+   - **Aturan 4: Deteksi Multi-Dimensi Antrean Report QC (`pendingQcList`)**:
+     - Sistem mencocokkan No SO yang sudah memiliki faktur Oracle secara komprehensif:
+       1. Pencocokan teks langsung (`trim().toUpperCase()`).
+       2. Normalisasi alfanumerik bebas tanda hubung/spasi (`WY3M0L-1461` $\leftrightarrow$ `WY3M0L1461`).
+       3. Pencocokan No SO yang tercatat di tingkat rincian item (`g.items`).
+       4. Pemecahan No SO gabungan (koma, garis miring, spasi).
+     - Jika sebuah SO sudah memiliki faktur di gudang yang aktif, SO tersebut 100% otomatis keluar dari antrean Report QC (*Menunggu Faktur*).
+   - **Aturan 5: Dekopeling Status Selesai QC dari Google Sheet**:
+     - Status QC pada tabel Report QC adalah kontrol operasional mandiri (toggle interaktif `⏳ PROSES` / `✓ DONE`) untuk mempermudah admin, dan TIDAK bergantung pada status sinkronisasi realtime Google Sheet.
 
 ---
 
@@ -371,4 +393,7 @@ Aturan ini mengunci secara mutlak arsitektur integrasi data petugas gudang (Chec
 > 11. Integrasi QC Checker, Packer, & Picker: Tab Rekap Lengkap, aturan wajib kosong jika tanpa nama, dan sanitasi mutlak anti-bocor.
 > 12. Proteksi Kedaulatan Data Upload: Nomor SO, Nomor Faktur, dan Nama Apotek 100% dari file Excel yang diunggah, Google Sheet hanya memasok Checker, Packer, dan Picker via Smart Multi-Key Matcher.
 > 13. Larangan Mutlak Asumsi & Tebakan: Wajib membaca fisik file Excel secara lengkap baris demi baris (`Order Number`, `No Invoice AR`, `Nama Pelanggan`, `Order Date`) tanpa jalan pintas atau pemotongan data.
+> 14. Jaminan Kelengkapan Ingesti File: Wajib membaca seluruh sheet workbook Excel tanpa ada yang terpotong.
+> 15. Jaminan Zero SO Stripping: Dilarang membuang No SO pada ORA / export. No SO wajib dipertahankan utuh.
+> 16. Integritas SO-Invoice Report QC: SO yang sudah memiliki faktur wajib otomatis keluar dari antrean Menunggu Faktur detik itu juga melalui pencocokan multi-dimensi.
 
