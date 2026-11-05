@@ -919,6 +919,7 @@ export default function Home() {
   }, [checkerMapMbi, checkerMapMai]);
 
   // Fetch QC Reports (GSheet Rekap Lengkap / Rekap SO queue waiting for Oracle invoice)
+  const lastQcSigRef = useRef<Record<string, string>>({});
   const fetchQcOrders = useCallback(async (wh: "MBI" | "MAI") => {
     try {
       const res = await fetch(`/api/tidb?action=qc_reports&warehouse=${wh}&_t=${Date.now()}`, {
@@ -928,7 +929,13 @@ export default function Home() {
       const d = await res.json();
       if (d && d.success && Array.isArray(d.data)) {
         if (wh === selectedWarehouseRef.current) {
-          setQcOrders(d.data);
+          const sig = d.data
+            .map((r: any) => `${r.so_number}:${r.is_done}:${r.status}:${r.checker_name}:${r.packer_name}:${r.picker_name}:${r.barang_catatan}:${r.updated_at}`)
+            .join("|");
+          if (lastQcSigRef.current[wh] !== sig) {
+            lastQcSigRef.current[wh] = sig;
+            setQcOrders(d.data);
+          }
         }
       }
     } catch (e) {
@@ -991,9 +998,21 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
     }
 
     const unsubMbi = subscribeToCheckers((map) => {
-      setCheckerMapMbi((prev) => ({ ...prev, ...map }));
-      checkerMapMbiRef.current = { ...checkerMapMbiRef.current, ...map };
-      // Real-time trigger: Only fetch MBI if currently viewing MBI
+      let hasChange = false;
+      const cur = checkerMapMbiRef.current;
+      for (const k of Object.keys(map)) {
+        const a = cur[k];
+        const b = map[k];
+        if (!a || a.checker !== b?.checker || a.packer !== b?.packer || a.picker !== b?.picker) {
+          hasChange = true;
+          break;
+        }
+      }
+      if (hasChange) {
+        const next = { ...cur, ...map };
+        checkerMapMbiRef.current = next;
+        setCheckerMapMbi(next);
+      }
       if (selectedWarehouseRef.current === "MBI") {
         fetchQcOrders("MBI");
       }
@@ -1025,9 +1044,21 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
     }
 
     const unsubMai = subscribeToCheckers((map) => {
-      setCheckerMapMai((prev) => ({ ...prev, ...map }));
-      checkerMapMaiRef.current = { ...checkerMapMaiRef.current, ...map };
-      // Real-time trigger: Only fetch MAI if currently viewing MAI
+      let hasChange = false;
+      const cur = checkerMapMaiRef.current;
+      for (const k of Object.keys(map)) {
+        const a = cur[k];
+        const b = map[k];
+        if (!a || a.checker !== b?.checker || a.packer !== b?.packer || a.picker !== b?.picker) {
+          hasChange = true;
+          break;
+        }
+      }
+      if (hasChange) {
+        const next = { ...cur, ...map };
+        checkerMapMaiRef.current = next;
+        setCheckerMapMai(next);
+      }
       if (selectedWarehouseRef.current === "MAI") {
         fetchQcOrders("MAI");
       }
@@ -1392,12 +1423,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   return Array.from(map.values());
 }
 
+  const lastSyncedServerCountRef = useRef<number>(0);
+  const lastSyncedServerUpdatedRef = useRef<number>(0);
+  const lastProcessedUploadMsRef = useRef<number>(0);
+
   // Unified Peer Sync Controller: Prioritizes Delta Sync (< 15KB) over full archive download (20MB)
   // Single-flight with concurrency lock to avoid duplicate parallel downloads across tabs/broadcasts
-  const performPeerSync = useCallback(async () => {
+  const performPeerSync = useCallback(async (forceSync: boolean = false) => {
     if (isUploadingRef.current) return;
     if (isPeerSyncingRef.current) {
-      pendingPeerSyncRef.current = true;
+      if (forceSync) pendingPeerSyncRef.current = true;
       return;
     }
     isPeerSyncingRef.current = true;
@@ -1413,7 +1448,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         if (fullRes && fullRes.fakturs && fullRes.fakturs.length > 0) {
           const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], fullRes.fakturs);
           currentFakturDocsRef.current = merged;
-          clientUpdatedRef.current = fullRes.maxUpdated || curUpdated;
+          clientUpdatedRef.current = Math.max(curUpdated, fullRes.maxUpdated || 0);
+          lastSyncedServerCountRef.current = fullRes.fakturs.length;
+          lastSyncedServerUpdatedRef.current = clientUpdatedRef.current;
           const { records: recs } = dbRowsToFakturRecords(
             merged as unknown as Array<Record<string, unknown>>,
             productOverridesRef.current,
@@ -1430,51 +1467,51 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         return;
       }
 
-      // 2. Normal operational sync: ALWAYS prioritize Delta Sync (super light, < 15KB!)
-      // Fetches ONLY rows updated in TiDB since clientUpdated (with 10-second overlap window)
-      const deltaDocs = await fetchTiDBDelta(Math.max(0, curUpdated - 30));
+      // 2. Normal operational sync: Fetch ONLY rows updated since curUpdated (or curUpdated - 15s on explicit signal)
+      const sinceTs = forceSync ? Math.max(0, curUpdated - 15) : curUpdated;
+      const deltaDocs = await fetchTiDBDelta(sinceTs);
       if (deltaDocs && deltaDocs.length > 0) {
         const deltaMax = (deltaDocs as any).maxUpdated || curUpdated;
-        if (deltaMax > curUpdated) {
-          clientUpdatedRef.current = deltaMax;
+        clientUpdatedRef.current = Math.max(curUpdated, deltaMax, Math.floor(Date.now() / 1000));
+        lastSyncedServerUpdatedRef.current = clientUpdatedRef.current;
+
+        // Check if any doc in deltaDocs is actually new or modified compared to local state
+        const existingMap = new Map<string, FirestoreFakturDoc>();
+        for (const d of currentFakturDocsRef.current || []) {
+          if (d?.id) existingMap.set(d.id, d);
         }
-        const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], deltaDocs);
-        currentFakturDocsRef.current = merged;
-        const { records: recs } = dbRowsToFakturRecords(
-          merged as unknown as Array<Record<string, unknown>>,
-          productOverridesRef.current,
-          printedInvoicesRef.current,
-          categoryOverridesRef.current
-        );
-        setRecords(recs);
-        setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
-          printedKeys: Array.from(printedInvoicesRef.current || []),
-          printedAtMap: printedAtMapRef.current || {},
-          printedByMap: printedByMapRef.current || {},
-        });
-      } else {
-        // Delta was empty, double check if there is an extreme count discrepancy (> 1000 missing)
-        const check = await checkTiDBUpdates(curCount, curUpdated);
-        if (check && check.totalCount && check.totalCount > curCount) {
-          const recentDelta = await fetchTiDBDelta(Math.max(0, curUpdated - 600));
-          if (recentDelta && recentDelta.length > 0) {
-            const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], recentDelta);
-            currentFakturDocsRef.current = merged;
-            const deltaMax = (recentDelta as any).maxUpdated || curUpdated;
-            if (deltaMax > curUpdated) clientUpdatedRef.current = deltaMax;
-            const { records: recs } = dbRowsToFakturRecords(
-              merged as unknown as Array<Record<string, unknown>>,
-              productOverridesRef.current,
-              printedInvoicesRef.current,
-              categoryOverridesRef.current
-            );
-            setRecords(recs);
-            setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
-              printedKeys: Array.from(printedInvoicesRef.current || []),
-              printedAtMap: printedAtMapRef.current || {},
-              printedByMap: printedByMapRef.current || {},
-            });
+        let hasMeaningfulChange = false;
+        for (const d of deltaDocs) {
+          if (!d?.id) continue;
+          const prev = existingMap.get(d.id);
+          if (
+            !prev ||
+            Boolean(prev.status_cetak) !== Boolean(d.status_cetak) ||
+            prev.kategori !== d.kategori ||
+            prev.no_sales_order !== d.no_sales_order ||
+            prev.customer_name !== d.customer_name ||
+            (d.extra?.items?.length || 0) !== (prev.extra?.items?.length || 0)
+          ) {
+            hasMeaningfulChange = true;
+            break;
           }
+        }
+
+        if (hasMeaningfulChange) {
+          const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], deltaDocs);
+          currentFakturDocsRef.current = merged;
+          const { records: recs } = dbRowsToFakturRecords(
+            merged as unknown as Array<Record<string, unknown>>,
+            productOverridesRef.current,
+            printedInvoicesRef.current,
+            categoryOverridesRef.current
+          );
+          setRecords(recs);
+          setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
+            printedKeys: Array.from(printedInvoicesRef.current || []),
+            printedAtMap: printedAtMapRef.current || {},
+            printedByMap: printedByMapRef.current || {},
+          });
         }
       }
     } catch (err) {
@@ -1483,48 +1520,54 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       isPeerSyncingRef.current = false;
       if (pendingPeerSyncRef.current) {
         pendingPeerSyncRef.current = false;
-        setTimeout(() => performPeerSync(), 500);
+        setTimeout(() => performPeerSync(true), 500);
       }
     }
   }, []);
 
-  // HIGH-SPEED REALTIME SYNC NET (< 2.5s):
-    // Continuously polls Report QC and checks TiDB for peer uploads.
-    // Guarantees zero discrepancy between devices and zero waiting time!
-    useEffect(() => {
+  // HIGH-SPEED REALTIME SYNC NET (Smooth 4s interval + Zero Redundant Re-Renders):
+  // Continuously polls Report QC and checks TiDB for peer uploads without blocking main thread.
+  useEffect(() => {
+    fetchQcOrders(selectedWarehouseRef.current);
+
+    const syncNetTick = async () => {
+      // 1. Pull Report QC updates (only triggers React state update if data signature changed)
       fetchQcOrders(selectedWarehouseRef.current);
-  
-      const syncNetTick = async () => {
-        // 1. Instantly pull Report QC updates (< 2.5s)
-        fetchQcOrders(selectedWarehouseRef.current);
-  
-        // 2. Instantly detect peer uploads in TiDB without user needing to reload (< 30ms query)
-        if (!isUploadingRef.current && !isPeerSyncingRef.current && currentFakturDocsRef.current?.length > 0) {
-          try {
-            const curCount = currentFakturDocsRef.current.length;
-            const curUpdated = clientUpdatedRef.current || 0;
-            const check = await checkTiDBUpdates(curCount, curUpdated);
-            if (check && (!check.upToDate || check.totalCount !== curCount || check.maxUpdated > curUpdated)) {
-              performPeerSync();
+
+      // 2. Detect peer uploads in TiDB only when server maxUpdated advances or server count increases
+      if (!isUploadingRef.current && !isPeerSyncingRef.current && currentFakturDocsRef.current?.length > 0) {
+        try {
+          const curCount = currentFakturDocsRef.current.length;
+          const curUpdated = clientUpdatedRef.current || 0;
+          const check = await checkTiDBUpdates(curCount, curUpdated);
+          if (check) {
+            const hasNewerTimestamp = check.maxUpdated > curUpdated && check.maxUpdated > lastSyncedServerUpdatedRef.current;
+            const hasMoreServerRows = check.totalCount > curCount && check.totalCount !== lastSyncedServerCountRef.current;
+            if (hasNewerTimestamp || hasMoreServerRows) {
+              lastSyncedServerCountRef.current = check.totalCount;
+              lastSyncedServerUpdatedRef.current = Math.max(curUpdated, check.maxUpdated || 0);
+              clientUpdatedRef.current = Math.max(curUpdated, check.maxUpdated || 0);
+              performPeerSync(true);
             }
-          } catch {}
-        }
-      };
-  
-      const interval = setInterval(syncNetTick, 2000);
-  
-      const onVisibility = () => {
-        if (document.visibilityState === "visible") {
-          syncNetTick();
-        }
-      };
-      document.addEventListener("visibilitychange", onVisibility);
-  
-      return () => {
-        clearInterval(interval);
-        document.removeEventListener("visibilitychange", onVisibility);
-      };
-    }, [fetchQcOrders, performPeerSync]);
+          }
+        } catch {}
+      }
+    };
+
+    const interval = setInterval(syncNetTick, 4000);
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        syncNetTick();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [fetchQcOrders, performPeerSync]);
 
   // 1. Instant 0ms Load from Local IndexedDB Cache, then Zero-Bandwidth Smart Delta Sync
   useEffect(() => {
@@ -1799,50 +1842,71 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const newKeys = printState.printedKeys || [];
           const newMap = printState.printedAtMap || {};
           const newByMap = printState.printedByMap || {};
-          const nextKeys = new Set<string>(newKeys);
 
-          setPrintedInvoices(nextKeys);
-          printedInvoicesRef.current = nextKeys;
-          setPrintedAtMap(newMap);
-          printedAtMapRef.current = newMap;
-          setPrintedByMap(newByMap);
-          printedByMapRef.current = newByMap;
-
-          // Update currentFakturDocsRef in-place so status_cetak stays 100% in sync
-          if (currentFakturDocsRef.current) {
-            currentFakturDocsRef.current.forEach((d) => {
-              const k = d.id || d.no_faktur;
-              if (k) {
-                const isP = nextKeys.has(k);
-                d.status_cetak = isP;
-                d.printed_at = isP ? (newMap[k] || null) : null;
-                d.printed_by = isP ? (newByMap[k] || null) : null;
+          // Fast equality check: only trigger React state re-render if printed keys actually changed!
+          const curSet = printedInvoicesRef.current;
+          let hasPrintChange = newKeys.length !== curSet.size;
+          if (!hasPrintChange) {
+            for (let i = 0; i < newKeys.length; i++) {
+              if (!curSet.has(newKeys[i])) {
+                hasPrintChange = true;
+                break;
               }
+            }
+          }
+
+          if (hasPrintChange) {
+            const nextKeys = new Set<string>(newKeys);
+            setPrintedInvoices(nextKeys);
+            printedInvoicesRef.current = nextKeys;
+            setPrintedAtMap(newMap);
+            printedAtMapRef.current = newMap;
+            setPrintedByMap(newByMap);
+            printedByMapRef.current = newByMap;
+
+            // Update currentFakturDocsRef in-place so status_cetak stays 100% in sync
+            if (currentFakturDocsRef.current) {
+              for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
+                const d = currentFakturDocsRef.current[i];
+                const k = d.id || d.no_faktur;
+                if (k) {
+                  const isP = nextKeys.has(k);
+                  d.status_cetak = isP;
+                  d.printed_at = isP ? (newMap[k] || null) : null;
+                  d.printed_by = isP ? (newByMap[k] || null) : null;
+                }
+              }
+            }
+
+            // Cache print state locally into IndexedDB for instant 0ms reload
+            setLocalCachedPrintState({
+              printedKeys: newKeys,
+              printedAtMap: newMap,
+              printedByMap: newByMap,
             });
           }
-
-          // Cache print state locally into IndexedDB for instant 0ms reload
-          setLocalCachedPrintState({
-            printedKeys: newKeys,
-            printedAtMap: newMap,
-            printedByMap: newByMap,
-          });
         }
 
-        // Real-time Upload Broadcast to all other devices!
-        if (uploadNotif && uploadNotif.uploaderId !== deviceIdRef.current) {
-          const isFresh = uploadNotif.uploadedAtMs ? (Math.abs(Date.now() - uploadNotif.uploadedAtMs) < 60000) : true;
-          if (isFresh) {
-            setUploadNotification(uploadNotif);
-            showToast(`📤 File baru diunggah rekan: ${uploadNotif.fileName} (${uploadNotif.newUnprinted} faktur baru)`);
-          }
+        // Real-time Upload Broadcast to all other devices (strictly deduplicated & fresh < 45s)
+        const uploadTs = uploadNotif?.uploadedAtMs || 0;
+        const isFreshPeerUpload = Boolean(
+          uploadNotif &&
+          uploadNotif.uploaderId !== deviceIdRef.current &&
+          uploadTs > 0 &&
+          Math.abs(Date.now() - uploadTs) < 45000 &&
+          uploadTs !== lastProcessedUploadMsRef.current
+        );
 
+        if (isFreshPeerUpload && uploadNotif) {
+          lastProcessedUploadMsRef.current = uploadTs;
+          setUploadNotification(uploadNotif);
+          showToast(`📤 File baru diunggah rekan: ${uploadNotif.fileName} (${uploadNotif.newUnprinted} faktur baru)`);
           // Trigger lightweight Delta Sync (< 15KB) across peer devices
-          performPeerSync();
+          performPeerSync(true);
         }
 
         if (reason === "print" || reason === "meta") {
-          // In-place print state update is already completed (<50ms).
+          // In-place print state update is already completed (<5ms).
           // Do NOT pull full TiDB archive!
           setLoading(false);
           return;
@@ -1850,32 +1914,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
         if (docs.length > 0) {
           const curDocs = currentFakturDocsRef.current || [];
-          const isPeerUpload = uploadNotif && uploadNotif.uploaderId !== deviceIdRef.current;
 
           // ANTI-LAG REFRESH SHIELD:
           // If local cache already has complete data from TiDB/IndexedDB (>= 1000 items),
-          // DO NOT re-process legacy Firestore chunks! TiDB + IndexedDB is the authoritative store.
-          // This completely eliminates the redundant 2-5 second freeze on startup and refresh!
-          if (curDocs.length >= 1000 && !isPeerUpload) {
+          // DO NOT re-process legacy/stale Firestore chunks unless this is a genuinely fresh peer upload!
+          if (curDocs.length >= 1000 && !isFreshPeerUpload) {
             setLoading(false);
             return;
           }
 
           const merged = mergeKumulatifDocs(curDocs, docs);
           currentFakturDocsRef.current = merged;
-
-          // Ensure incoming unprinted docs from peer upload are purged from local printed set
-          if (isPeerUpload) {
-            const nextPrinted = new Set(printedInvoicesRef.current);
-            docs.forEach((d) => {
-              const k = d.id || d.no_faktur;
-              if (k && !d.status_cetak) {
-                nextPrinted.delete(k);
-              }
-            });
-            printedInvoicesRef.current = nextPrinted;
-            setPrintedInvoices(nextPrinted);
-          }
 
           const { records: recs } = dbRowsToFakturRecords(
             merged as unknown as Array<Record<string, unknown>>,
@@ -1884,16 +1933,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             categoryOverridesRef.current
           );
           setRecords(recs);
-
-          if (printState?.printedKeys && printState.printedKeys.length > 0) {
-            const next = new Set<string>(printState.printedKeys);
-            setPrintedInvoices(next);
-            printedInvoicesRef.current = next;
-            setPrintedAtMap(printState.printedAtMap || {});
-            printedAtMapRef.current = printState.printedAtMap || {};
-            setPrintedByMap(printState.printedByMap || {});
-            printedByMapRef.current = printState.printedByMap || {};
-          }
 
           // Persist merged peer documents to local IndexedDB cache so refresh retains peer state
           setLocalCachedFakturs(merged, clientUpdatedRef.current || Math.floor(Date.now() / 1000), {
@@ -1914,7 +1953,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     // Subscribe to TiDB completion signal so peer browsers pull 100% of newly committed TiDB rows immediately
     const unsubTiDBSignal = subscribeToRealtimeSignal("fakturs", async () => {
       if (isUploadingRef.current) return;
-      setTimeout(() => performPeerSync(), 250);
+      setTimeout(() => performPeerSync(true), 250);
     });
 
     // Subscribe to Real-Time Total Reset signal from Owner so ALL browsers/devices wipe to 0 immediately
@@ -2551,45 +2590,53 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     };
   }, [mainView, grouped, dashboardDateBasis, dashboardStartDate, dashboardEndDate, dashboardWarehouseFilter]);
 
-  // Pending QC Queue: Orders physically checked in warehouse (GSheet Rekap Lengkap)
-  // that do NOT yet have an Oracle invoice uploaded in the current warehouse.
-  const pendingQcList = useMemo(() => {
-    const existingSOSet = new Set<string>();
+  // Precomputed SO Set per Warehouse: Depends ONLY on baseGroups and selectedWarehouse!
+  // Decoupled from printedInvoices and qcOrders so polling QC or toggling print takes < 0.05ms instead of scanning 247,286 items!
+  const existingSOSet = useMemo(() => {
+    const set = new Set<string>();
     const normalizeSO = (soStr: string) => soStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-    for (let i = 0; i < grouped.length; i++) {
-      const g = grouped[i];
+    for (let i = 0; i < baseGroups.length; i++) {
+      const g = baseGroups[i];
       if ((g.entity || "MBI") === selectedWarehouse) {
         if (g.so && g.so !== "-") {
           const rawSo = g.so.trim().toUpperCase();
-          existingSOSet.add(rawSo);
+          set.add(rawSo);
           const normSo = normalizeSO(rawSo);
-          if (normSo) existingSOSet.add(normSo);
+          if (normSo) set.add(normSo);
 
-          // Handle multiple SOs separated by comma, slash, space, semicolon
-          const parts = rawSo.split(/[,;\/\s\n\r]+/).filter(Boolean);
-          for (const p of parts) {
-            existingSOSet.add(p);
-            const np = normalizeSO(p);
-            if (np) existingSOSet.add(np);
+          if (rawSo.length > 8 && /[,;\/\s\n\r]/.test(rawSo)) {
+            const parts = rawSo.split(/[,;\/\s\n\r]+/).filter(Boolean);
+            for (const p of parts) {
+              set.add(p);
+              const np = normalizeSO(p);
+              if (np) set.add(np);
+            }
           }
         }
 
-        // Also check all item-level orderNumbers in case it was stored at the item level
+        // Check item-level orderNumbers only when different from group SO
         if (Array.isArray(g.items)) {
-          for (const it of g.items) {
-            const itSO = it.orderNumber || (it as any).no_sales_order || (it as any).order_number;
-            if (itSO && itSO !== "-") {
+          for (let j = 0; j < g.items.length; j++) {
+            const it = g.items[j];
+            const itSO = it.orderNumber;
+            if (itSO && itSO !== "-" && itSO !== g.so) {
               const rawItSO = String(itSO).trim().toUpperCase();
-              existingSOSet.add(rawItSO);
+              set.add(rawItSO);
               const normIt = normalizeSO(rawItSO);
-              if (normIt) existingSOSet.add(normIt);
+              if (normIt) set.add(normIt);
             }
           }
         }
       }
     }
+    return set;
+  }, [baseGroups, selectedWarehouse]);
 
+  // Pending QC Queue: Orders physically checked in warehouse (GSheet Rekap Lengkap)
+  // that do NOT yet have an Oracle invoice uploaded in the current warehouse.
+  const pendingQcList = useMemo(() => {
+    const normalizeSO = (soStr: string) => soStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
     return qcOrders.filter((qc) => {
       if (!qc.so_number || qc.so_number === "-" || qc.so_number === "#N/A") return false;
       // STRICT ISOLATION per LOCKED_RULES.md: MBI only sees MBI, MAI only sees MAI
@@ -2599,7 +2646,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       // If Oracle already has this SO uploaded, it automatically exits Report QC and moves into Belum Terprint!
       return !existingSOSet.has(cleanSo) && !existingSOSet.has(normSo);
     });
-  }, [qcOrders, grouped, selectedWarehouse]);
+  }, [qcOrders, existingSOSet, selectedWarehouse]);
 
   const pendingQcGroups = useMemo<FakturGroup[]>(() => {
     // Sort so newest arrived orders from GSheet (latest updated_at and highest sheet_row) are ALWAYS AT THE VERY TOP!
@@ -2658,29 +2705,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     });
   }, [pendingQcList, selectedWarehouse, qcDoneLocalMap]);
 
-  // 6. Filtered Faktur Groups (Instant single-string matching & 0ms numeric sorting)
-  const filtered = useMemo(() => {
-    if (filter === "report_qc") {
-      let qcRes = pendingQcGroups;
-      if (deferredSearch.trim()) {
-        const s = deferredSearch.toLowerCase().trim();
-        qcRes = qcRes.filter((g) =>
-          (g.searchStr || "").includes(s) ||
-          g.so.toLowerCase().includes(s) ||
-          g.customerName.toLowerCase().includes(s) ||
-          (g.checker || "").toLowerCase().includes(s) ||
-          (g.packer || "").toLowerCase().includes(s) ||
-          (g.picker || "").toLowerCase().includes(s)
-        );
-      }
-      return qcRes;
-    }
+  // 6A. Filtered Invoice Groups (Completely decoupled from pendingQcGroups so QC updates never re-filter 20,500 invoices!)
+  const invoiceFiltered = useMemo(() => {
+    if (filter === "report_qc") return [];
 
     let result = grouped.filter((g) => (g.entity || "MBI") === selectedWarehouse);
 
     if (deferredSearch.trim()) {
       const s = deferredSearch.toLowerCase().trim();
-      // Auto-strip _1P / _2P / _3P suffix so searching '29013_1P' instantly matches '29013' or 'INV/2026/10/29013'
       const cleanS = s.replace(/_(1p|2p|3p)$/i, "").trim();
 
       result = result.filter((g) => {
@@ -2732,10 +2764,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     else if (klasFilter === "alkes") result = result.filter((g) => g.hasAlkes);
     else if (klasFilter === "farma") result = result.filter((g) => g.hasFarma);
 
-    // In tab 'Semua' ('all'):
-    // 1. Invoices that are NOT YET PRINTED stay on top (sorted by invoice number descending)
-    // 2. Invoices that are ALREADY PRINTED flow below, sorted by Done Print timestamp descending (newest print first)
-    // Pure integer subtraction = 3ms execution instead of 2,500ms regex overhead!
     if (filter === "all") {
       result = [...result].sort((a, b) => {
         if (!a.allPrinted && b.allPrinted) return -1;
@@ -2755,7 +2783,27 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     }
 
     return result;
-  }, [grouped, selectedWarehouse, filter, katFilter, dklkFilter, jenisFilter, klasFilter, txDateFilter, orderDateFilter, deferredSearch, pendingQcGroups]);
+  }, [grouped, selectedWarehouse, filter, katFilter, dklkFilter, jenisFilter, klasFilter, txDateFilter, orderDateFilter, deferredSearch]);
+
+  // 6B. Filtered Faktur Groups (Instant single-string matching & 0ms numeric sorting)
+  const filtered = useMemo(() => {
+    if (filter === "report_qc") {
+      let qcRes = pendingQcGroups;
+      if (deferredSearch.trim()) {
+        const s = deferredSearch.toLowerCase().trim();
+        qcRes = qcRes.filter((g) =>
+          (g.searchStr || "").includes(s) ||
+          g.so.toLowerCase().includes(s) ||
+          g.customerName.toLowerCase().includes(s) ||
+          (g.checker || "").toLowerCase().includes(s) ||
+          (g.packer || "").toLowerCase().includes(s) ||
+          (g.picker || "").toLowerCase().includes(s)
+        );
+      }
+      return qcRes;
+    }
+    return invoiceFiltered;
+  }, [filter, pendingQcGroups, deferredSearch, invoiceFiltered]);
 
   const totalPages = Math.ceil(filtered.length / ROWS_PER_PAGE);
   const pageData = filtered.slice(page * ROWS_PER_PAGE, (page + 1) * ROWS_PER_PAGE);

@@ -404,26 +404,40 @@ export async function getLocalCachedFakturs(): Promise<LocalCachedFaktursResult 
   }
 }
 
+let cachedFaktursTimer: NodeJS.Timeout | null = null;
+let pendingCachedFaktursPayload: {
+  fakturs: FirestoreFakturDoc[];
+  maxUpdated: number;
+  printState?: CachedPrintState;
+} | null = null;
+
 export async function setLocalCachedFakturs(
   fakturs: FirestoreFakturDoc[],
   maxUpdated: number = 0,
   printState?: CachedPrintState
 ): Promise<void> {
   if (!fakturs || fakturs.length === 0) return;
-  try {
-    const db = await openCacheDB();
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    const store = tx.objectStore(STORE_NAME);
-    store.put(fakturs, KEY);
-    if (maxUpdated > 0) {
-      store.put(maxUpdated, META_KEY);
+  pendingCachedFaktursPayload = { fakturs, maxUpdated, printState };
+
+  if (cachedFaktursTimer) clearTimeout(cachedFaktursTimer);
+  cachedFaktursTimer = setTimeout(async () => {
+    try {
+      const payload = pendingCachedFaktursPayload;
+      if (!payload || !payload.fakturs || payload.fakturs.length === 0) return;
+      const db = await openCacheDB();
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      store.put(payload.fakturs, KEY);
+      if (payload.maxUpdated > 0) {
+        store.put(payload.maxUpdated, META_KEY);
+      }
+      if (payload.printState && Array.isArray(payload.printState.printedKeys) && payload.printState.printedKeys.length > 0) {
+        store.put(payload.printState, PRINT_STATE_KEY);
+      }
+    } catch {
+      // Non-blocking fail-safe
     }
-    if (printState && Array.isArray(printState.printedKeys) && printState.printedKeys.length > 0) {
-      store.put(printState, PRINT_STATE_KEY);
-    }
-  } catch {
-    // Non-blocking fail-safe
-  }
+  }, 1500);
 }
 
 let cachedPrintTimer: NodeJS.Timeout | null = null;
