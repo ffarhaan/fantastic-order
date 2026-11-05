@@ -444,13 +444,28 @@ export function subscribeToFakturs(
   const unsubPartitions = onSnapshot(
     collection(db, PRINT_PARTITIONS_COLLECTION),
     (snap) => {
+      const removedFromPartitions: string[] = [];
       snap.docChanges().forEach((change) => {
         if (change.type === "removed") {
+          const prev = globalPartitionMap.get(change.doc.id);
+          if (prev?.printedKeys) {
+            prev.printedKeys.forEach((k) => removedFromPartitions.push(k));
+          }
           globalPartitionMap.delete(change.doc.id);
         } else {
+          const prev = globalPartitionMap.get(change.doc.id);
           const data = change.doc.data();
+          const newKeys = (data.printedKeys as string[]) || [];
+          if (prev?.printedKeys && prev.printedKeys.length > 0) {
+            const newKeySet = new Set(newKeys);
+            for (const oldK of prev.printedKeys) {
+              if (!newKeySet.has(oldK)) {
+                removedFromPartitions.push(oldK);
+              }
+            }
+          }
           const pEntry = {
-            printedKeys: (data.printedKeys as string[]) || [],
+            printedKeys: newKeys,
             printedAtMap: (data.printedAtMap as Record<string, string>) || {},
             printedByMap: (data.printedByMap as Record<string, string>) || {},
           };
@@ -462,7 +477,11 @@ export function subscribeToFakturs(
       if (!hasEmittedInitialPayload) {
         tryInitialEmit();
       } else {
-        debouncedEmitPrint();
+        if (printEmitTimer) clearTimeout(printEmitTimer);
+        if (currentPrintState && removedFromPartitions.length > 0) {
+          (currentPrintState as PrintState & { explicitlyUnprintedKeys?: string[] }).explicitlyUnprintedKeys = removedFromPartitions;
+        }
+        onData([], currentProgression, currentPrintState, currentCategoryOverrides, null, "print", currentProductCategoryOverrides);
       }
     },
     (err) => console.warn("Print partitions sync warning:", err)
@@ -850,15 +869,22 @@ export async function saveFaktursBatch(
   livePrintedKeys.forEach((k) => registerPrintKeyVariants(k, livePrintedAtMap[k], unifiedPrintedSet, unifiedPrintedAtMap));
   localPrintedKeys.forEach((k) => registerPrintKeyVariants(k, existingPrintState?.printedAtMap?.[k], unifiedPrintedSet, unifiedPrintedAtMap));
 
+  const staleKeysToPurge = new Set<string>();
+
   for (const item of fakturs) {
     const key = item.id || item.no_faktur;
     if (key) {
       const orderDate = item.order_date || item.extra?.order_date || item.extra?.accounting_date;
       const candidatePAt = unifiedPrintedAtMap[key] || item.printed_at;
       const isStale = isStalePrintTimestamp(candidatePAt, orderDate);
-      const isExplicitlyNewUnprinted = newUnprintedSet.has(key) || isStale;
+      if (isStale) {
+        staleKeysToPurge.add(key);
+        unifiedPrintedSet.delete(key);
+      }
 
-      const isPrinted = !isExplicitlyNewUnprinted && Boolean(
+      // LOCKED_RULES.md 1.D: Once printed in unifiedPrintedSet or item.status_cetak (and not stale),
+      // uploading files MUST NEVER un-print or delete it from the printed set!
+      const isPrinted = !isStale && Boolean(
         item.status_cetak ||
         unifiedPrintedSet.has(key)
       );
@@ -870,9 +896,6 @@ export async function saveFaktursBatch(
       } else {
         item.status_cetak = false;
         item.printed_at = null;
-        if (isExplicitlyNewUnprinted) {
-          unifiedPrintedSet.delete(key);
-        }
       }
     }
   }
@@ -899,11 +922,11 @@ export async function saveFaktursBatch(
     };
   });
 
-  // Sync print state across partitions + dual write legacy doc in parallel (purging unprinted keys)
+  // Sync print state across partitions + dual write legacy doc in parallel (only purging stale cross-month keys)
   const printStatePromise = updatePrintState(
     Array.from(unifiedPrintedSet),
     unifiedPrintedAtMap,
-    Array.from(newUnprintedSet)
+    Array.from(staleKeysToPurge)
   );
 
   // Execute writes in parallel for atomic, instantaneous sync across devices (< 200ms total)
@@ -1162,7 +1185,7 @@ export async function updateFaktursPrintStatusBatch(
 }
 
 /**
- * Update Category (1P / 2P / 3P) for an invoice in Firestore chunks
+ * Update Category (1P / 2P / 3P) for an invoice in Firestore (< 30ms instant broadcast)
  */
 export async function updateFakturCategory(
   invoiceKey: string,
@@ -1173,61 +1196,58 @@ export async function updateFakturCategory(
   const cleanCust = customerName ? customerName.trim() : "";
   const normCust = cleanCust ? normalize(cleanCust) : "";
 
-  // 1. Save customer & invoice override directly to Firestore
-  const overrideDocRef = doc(db, APP_DATA_COLLECTION, CATEGORY_OVERRIDES_DOC);
-  const overrideSnap = await getDoc(overrideDocRef).catch(() => null);
-  const existingOverrides = (overrideSnap && overrideSnap.exists()) ? overrideSnap.data() : {};
-
   const updates: Record<string, string> = {};
   if (normCust) updates[normCust] = newKategori;
   if (cleanCust) updates[cleanCust] = newKategori;
   if (cleanInv) updates[cleanInv] = newKategori;
 
+  if (globalCategoryOverrides) {
+    Object.assign(globalCategoryOverrides, updates);
+  } else {
+    globalCategoryOverrides = { ...updates };
+  }
+
+  const overrideDocRef = doc(db, APP_DATA_COLLECTION, CATEGORY_OVERRIDES_DOC);
   await setDoc(
     overrideDocRef,
-    { ...existingOverrides, ...updates, updatedAt: new Date().toISOString() },
+    { ...updates, updatedAt: new Date().toISOString() },
     { merge: true }
   );
-
-  // 2. Update matching items across chunks in Firestore
-  const metaSnap = await getDoc(doc(db, APP_DATA_COLLECTION, METADATA_DOC));
-  const chunkIds = (metaSnap.exists() ? (metaSnap.data().chunkIds as string[]) : []) || [];
-
-  for (const chunkId of chunkIds) {
-    const chunkRef = doc(db, CHUNKS_COLLECTION, chunkId);
-    const cSnap = await getDoc(chunkRef);
-    if (cSnap.exists()) {
-      const data = cSnap.data();
-      let updated = false;
-      const items = (data.items as FirestoreFakturDoc[]) || [];
-      for (const item of items) {
-        const k = item.id || item.no_faktur || "";
-        const itemCleanK = k.replace(/-1P$/i, "");
-        const itemCust = String(item.customer_name || item.extra?.nama_pelanggan || "").trim();
-        const itemNormCust = itemCust ? normalize(itemCust) : "";
-
-        const isMatch =
-          k === invoiceKey ||
-          itemCleanK === cleanInv ||
-          (normCust && itemNormCust === normCust) ||
-          (cleanCust && itemCust === cleanCust);
-
-        if (isMatch && item.jenis_transaksi !== "ORA") {
-          item.kategori = newKategori;
-          if (item.extra) item.extra.kategori = newKategori;
-          updated = true;
-        }
-      }
-      if (updated) {
-        await setDoc(chunkRef, { ...data, items, updatedAt: new Date().toISOString() });
-      }
-    }
-  }
 }
 
 /**
- * Update Product Category (FARMA / ALKES / CCP / PREKURSOR / OOT) in Firestore
- * Persists to product_category_overrides doc and updates matching items across all chunks
+ * Update DK / LK override for a customer/invoice in Firestore (< 30ms instant broadcast)
+ */
+export async function updateFakturDkLkOverride(
+  invoiceKey: string,
+  newDkLk: "DK" | "LK",
+  customerName?: string
+): Promise<void> {
+  const cleanInv = invoiceKey.replace(/-1P$/i, "");
+  const cleanCust = customerName ? customerName.trim() : "";
+  const normCust = cleanCust ? normalize(cleanCust) : "";
+
+  const updates: Record<string, string> = {};
+  if (normCust) updates[`dklk:${normCust}`] = newDkLk;
+  if (cleanCust) updates[`dklk:${cleanCust}`] = newDkLk;
+  if (cleanInv) updates[`dklk:${cleanInv}`] = newDkLk;
+
+  if (globalCategoryOverrides) {
+    Object.assign(globalCategoryOverrides, updates);
+  } else {
+    globalCategoryOverrides = { ...updates };
+  }
+
+  const overrideDocRef = doc(db, APP_DATA_COLLECTION, CATEGORY_OVERRIDES_DOC);
+  await setDoc(
+    overrideDocRef,
+    { ...updates, updatedAt: new Date().toISOString() },
+    { merge: true }
+  );
+}
+
+/**
+ * Update Product Category (FARMA / ALKES / CCP / PREKURSOR / OOT) in Firestore (< 30ms instant broadcast)
  */
 export async function updateProductCategoryOverride(
   productCode: string,
@@ -1239,63 +1259,24 @@ export async function updateProductCategoryOverride(
   const cleanName = productName ? productName.trim() : "";
   const normName = cleanName ? normalize(cleanName) : "";
 
-  // 1. Save product category override directly to Firestore
-  const overrideDocRef = doc(db, APP_DATA_COLLECTION, PRODUCT_CATEGORY_OVERRIDES_DOC);
-  const overrideSnap = await getDoc(overrideDocRef).catch(() => null);
-  const existingOverrides = (overrideSnap && overrideSnap.exists()) ? overrideSnap.data() : {};
-
   const updates: Record<string, string> = {};
   if (cleanCode && cleanCode !== "-") updates[cleanCode] = newCategory;
   if (numOnly) updates[numOnly] = newCategory;
   if (cleanName && cleanName !== "-") updates[cleanName] = newCategory;
   if (normName) updates[normName] = newCategory;
 
+  if (globalProductCategoryOverrides) {
+    Object.assign(globalProductCategoryOverrides, updates);
+  } else {
+    globalProductCategoryOverrides = { ...updates };
+  }
+
+  const overrideDocRef = doc(db, APP_DATA_COLLECTION, PRODUCT_CATEGORY_OVERRIDES_DOC);
   await setDoc(
     overrideDocRef,
-    { ...existingOverrides, ...updates, updatedAt: new Date().toISOString() },
+    { ...updates, updatedAt: new Date().toISOString() },
     { merge: true }
   );
-
-  // 2. Update matching items across chunks in Firestore
-  const metaSnap = await getDoc(doc(db, APP_DATA_COLLECTION, METADATA_DOC));
-  const chunkIds = (metaSnap.exists() ? (metaSnap.data().chunkIds as string[]) : []) || [];
-
-  for (const chunkId of chunkIds) {
-    const chunkRef = doc(db, CHUNKS_COLLECTION, chunkId);
-    const cSnap = await getDoc(chunkRef);
-    if (cSnap.exists()) {
-      const data = cSnap.data();
-      let updated = false;
-      const items = (data.items as FirestoreFakturDoc[]) || [];
-      for (const item of items) {
-        if (Array.isArray(item.extra?.items)) {
-          for (const lineItem of item.extra.items) {
-            const lCode = String(lineItem.item_code || "").trim();
-            const lDesc = String(lineItem.item_description || "").trim();
-            const lNorm = lDesc ? normalize(lDesc) : "";
-            const isMatch =
-              (cleanCode && cleanCode !== "-" && lCode === cleanCode) ||
-              (normName && lNorm === normName) ||
-              (cleanName && cleanName !== "-" && lDesc === cleanName);
-            if (isMatch) {
-              lineItem.kategori_produk = newCategory;
-              if (newCategory === "PREKURSOR" || newCategory === "Prekursor") {
-                lineItem.klasifikasi_obat = "Prekursor";
-              } else if (newCategory === "OOT") {
-                lineItem.klasifikasi_obat = "OOT";
-              } else {
-                delete lineItem.klasifikasi_obat;
-              }
-              updated = true;
-            }
-          }
-        }
-      }
-      if (updated) {
-        await setDoc(chunkRef, { ...data, items, updatedAt: new Date().toISOString() });
-      }
-    }
-  }
 }
 
 /**

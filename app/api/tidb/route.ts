@@ -3061,109 +3061,114 @@ export async function POST(req: Request) {
         return Response.json({ success: true, count: 0 });
       }
 
-      const CHUNK_SIZE = 50;
+      const CHUNK_SIZE = 125;
+      const sqlSlices: any[][] = [];
       for (let i = 0; i < fakturs.length; i += CHUNK_SIZE) {
         const slice = fakturs
           .slice(i, i + CHUNK_SIZE)
           .filter((item: any) => Boolean(String(item.invoice_key || item.invoiceKey || item.no_faktur || item.invoiceNumber || "").trim()));
-        if (slice.length === 0) continue;
-
-        const placeholders = slice.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
-        const params: (string | number | null)[] = [];
-
-        for (const item of slice) {
-          let invKey = String(item.invoice_key || item.invoiceKey || item.no_faktur || item.invoiceNumber || "").trim();
-          const noFaktur = String(item.no_faktur || item.invoiceNumber || invKey).trim();
-          const noSO = String(item.no_sales_order || item.so || "-").trim();
-          const cust = String(item.customer_name || item.customerName || "-").trim();
-          const oDate = String(item.order_date || item.orderDate || "-").trim();
-          const txDate = String(item.transaction_date || item.transactionDate || oDate || "-").trim();
-
-          const jenis = String(item.jenis_transaksi || item.jenisTransaksi || "DOO").trim();
-          const isOraItem = jenis === "ORA" || cust.toUpperCase().startsWith("HAK") || cust.toUpperCase().startsWith("IHC") || cust.toUpperCase().includes("HELIOS");
-          // Ensure ORA keys ALWAYS retain their -1P suffix per LOCKED_RULES.md Sec 1.A.2
-          if (isOraItem && !invKey.includes("__") && !invKey.endsWith("-1P")) {
-            invKey = `${invKey}-1P`;
-          }
-          const kat = String(item.kategori || "3P").trim();
-          let katProd = String(item.kategori_produk || item.kategoriProduk || "").trim();
-          if (Array.isArray(item.items) && item.items.length > 0) {
-            katProd = calculateDominantCategory(item.items);
-          } else if (!katProd) {
-            katProd = "FARMA";
-          }
-          const isPrinted = item.status_cetak ? 1 : 0;
-          const pAt = item.printed_at || null;
-          const pBy = item.printed_by || null;
-          const totalHarga = Number(item.total_harga || item.totalHarga || 0);
-          const itemsJson = Array.isArray(item.items) && item.items.length > 0 ? JSON.stringify(item.items) : null;
-
-          params.push(
-            invKey,
-            noFaktur,
-            noSO,
-            cust,
-            oDate,
-            txDate,
-            jenis,
-            kat,
-            katProd,
-            isPrinted,
-            pAt,
-            pBy,
-            totalHarga,
-            itemsJson
-          );
-        }
-
-        await conn.execute(
-          `INSERT INTO fakturs_archive (
-            invoice_key, no_faktur, no_sales_order, customer_name,
-            order_date, transaction_date, jenis_transaksi, kategori,
-            kategori_produk, status_cetak, printed_at, printed_by,
-            total_harga, items_json
-          ) VALUES ${placeholders}
-          ON DUPLICATE KEY UPDATE
-            no_sales_order = IF(
-              LOCATE('__', fakturs_archive.invoice_key) = 0 AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
-              fakturs_archive.no_sales_order,
-              IF(VALUES(no_sales_order) IS NOT NULL AND CHAR_LENGTH(VALUES(no_sales_order)) > 1, VALUES(no_sales_order), fakturs_archive.no_sales_order)
-            ),
-            customer_name = IF(
-              LOCATE('__', fakturs_archive.invoice_key) = 0 AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
-              fakturs_archive.customer_name,
-              IF(
-                VALUES(customer_name) IS NOT NULL AND CHAR_LENGTH(VALUES(customer_name)) > 1
-                  AND NOT (
-                    (UPPER(VALUES(customer_name)) LIKE _utf8mb4 '%HELIOS%' COLLATE utf8mb4_unicode_ci OR VALUES(customer_name) = _utf8mb4 '1001' COLLATE utf8mb4_unicode_ci)
-                    AND fakturs_archive.customer_name IS NOT NULL
-                    AND CHAR_LENGTH(fakturs_archive.customer_name) > 1
-                    AND UPPER(fakturs_archive.customer_name) NOT LIKE _utf8mb4 '%HELIOS%' COLLATE utf8mb4_unicode_ci
-                    AND fakturs_archive.customer_name <> _utf8mb4 '1001' COLLATE utf8mb4_unicode_ci
-                  ),
-                VALUES(customer_name),
-                fakturs_archive.customer_name
-              )
-            ),
-            transaction_date = IF(
-              LOCATE('__', fakturs_archive.invoice_key) = 0 AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
-              fakturs_archive.transaction_date,
-              IF(VALUES(transaction_date) IS NOT NULL AND CHAR_LENGTH(VALUES(transaction_date)) > 1, VALUES(transaction_date), fakturs_archive.transaction_date)
-            ),
-            kategori = VALUES(kategori),
-            kategori_produk = IF(VALUES(items_json) IS NOT NULL, VALUES(kategori_produk), fakturs_archive.kategori_produk),
-            status_cetak = IF(fakturs_archive.status_cetak = 1, 1, VALUES(status_cetak)),
-            printed_at = IF(fakturs_archive.status_cetak = 1, fakturs_archive.printed_at, VALUES(printed_at)),
-            printed_by = IF(fakturs_archive.status_cetak = 1, fakturs_archive.printed_by, VALUES(printed_by)),
-            total_harga = IF(VALUES(items_json) IS NOT NULL OR VALUES(total_harga) <> 0, VALUES(total_harga), fakturs_archive.total_harga),
-            items_json = IF(
-              LOCATE('__', fakturs_archive.invoice_key) = 0 AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
-              fakturs_archive.items_json,
-              IF(VALUES(items_json) IS NOT NULL, VALUES(items_json), fakturs_archive.items_json)
-            );`,
-          params
-        );
+        if (slice.length > 0) sqlSlices.push(slice);
       }
+
+      await Promise.all(
+        sqlSlices.map(async (slice) => {
+          const placeholders = slice.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+          const params: (string | number | null)[] = [];
+
+          for (const item of slice) {
+            let invKey = String(item.invoice_key || item.invoiceKey || item.no_faktur || item.invoiceNumber || "").trim();
+            const noFaktur = String(item.no_faktur || item.invoiceNumber || invKey).trim();
+            const noSO = String(item.no_sales_order || item.so || "-").trim();
+            const cust = String(item.customer_name || item.customerName || "-").trim();
+            const oDate = String(item.order_date || item.orderDate || "-").trim();
+            const txDate = String(item.transaction_date || item.transactionDate || oDate || "-").trim();
+
+            const jenis = String(item.jenis_transaksi || item.jenisTransaksi || "DOO").trim();
+            const isOraItem = jenis === "ORA" || cust.toUpperCase().startsWith("HAK") || cust.toUpperCase().startsWith("IHC") || cust.toUpperCase().includes("HELIOS");
+            // Ensure ORA keys ALWAYS retain their -1P suffix per LOCKED_RULES.md Sec 1.A.2
+            if (isOraItem && !invKey.includes("__") && !invKey.endsWith("-1P")) {
+              invKey = `${invKey}-1P`;
+            }
+            const kat = String(item.kategori || "3P").trim();
+            let katProd = String(item.kategori_produk || item.kategoriProduk || "").trim();
+            if (Array.isArray(item.items) && item.items.length > 0) {
+              katProd = calculateDominantCategory(item.items);
+            } else if (!katProd) {
+              katProd = "FARMA";
+            }
+            const isPrinted = item.status_cetak ? 1 : 0;
+            const pAt = item.printed_at || null;
+            const pBy = item.printed_by || null;
+            const totalHarga = Number(item.total_harga || item.totalHarga || 0);
+            const itemsJson = Array.isArray(item.items) && item.items.length > 0 ? JSON.stringify(item.items) : null;
+
+            params.push(
+              invKey,
+              noFaktur,
+              noSO,
+              cust,
+              oDate,
+              txDate,
+              jenis,
+              kat,
+              katProd,
+              isPrinted,
+              pAt,
+              pBy,
+              totalHarga,
+              itemsJson
+            );
+          }
+
+          await conn.execute(
+            `INSERT INTO fakturs_archive (
+              invoice_key, no_faktur, no_sales_order, customer_name,
+              order_date, transaction_date, jenis_transaksi, kategori,
+              kategori_produk, status_cetak, printed_at, printed_by,
+              total_harga, items_json
+            ) VALUES ${placeholders}
+            ON DUPLICATE KEY UPDATE
+              no_sales_order = IF(
+                LOCATE('__', fakturs_archive.invoice_key) = 0 AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
+                fakturs_archive.no_sales_order,
+                IF(VALUES(no_sales_order) IS NOT NULL AND CHAR_LENGTH(VALUES(no_sales_order)) > 1, VALUES(no_sales_order), fakturs_archive.no_sales_order)
+              ),
+              customer_name = IF(
+                LOCATE('__', fakturs_archive.invoice_key) = 0 AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
+                fakturs_archive.customer_name,
+                IF(
+                  VALUES(customer_name) IS NOT NULL AND CHAR_LENGTH(VALUES(customer_name)) > 1
+                    AND NOT (
+                      (UPPER(VALUES(customer_name)) LIKE _utf8mb4 '%HELIOS%' COLLATE utf8mb4_unicode_ci OR VALUES(customer_name) = _utf8mb4 '1001' COLLATE utf8mb4_unicode_ci)
+                      AND fakturs_archive.customer_name IS NOT NULL
+                      AND CHAR_LENGTH(fakturs_archive.customer_name) > 1
+                      AND UPPER(fakturs_archive.customer_name) NOT LIKE _utf8mb4 '%HELIOS%' COLLATE utf8mb4_unicode_ci
+                      AND fakturs_archive.customer_name <> _utf8mb4 '1001' COLLATE utf8mb4_unicode_ci
+                    ),
+                  VALUES(customer_name),
+                  fakturs_archive.customer_name
+                )
+              ),
+              transaction_date = IF(
+                LOCATE('__', fakturs_archive.invoice_key) = 0 AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
+                fakturs_archive.transaction_date,
+                IF(VALUES(transaction_date) IS NOT NULL AND CHAR_LENGTH(VALUES(transaction_date)) > 1, VALUES(transaction_date), fakturs_archive.transaction_date)
+              ),
+              kategori = VALUES(kategori),
+              kategori_produk = IF(VALUES(items_json) IS NOT NULL, VALUES(kategori_produk), fakturs_archive.kategori_produk),
+              status_cetak = IF(fakturs_archive.status_cetak = 1, 1, VALUES(status_cetak)),
+              printed_at = IF(fakturs_archive.status_cetak = 1, fakturs_archive.printed_at, VALUES(printed_at)),
+              printed_by = IF(fakturs_archive.status_cetak = 1, fakturs_archive.printed_by, VALUES(printed_by)),
+              total_harga = IF(VALUES(items_json) IS NOT NULL OR VALUES(total_harga) <> 0, VALUES(total_harga), fakturs_archive.total_harga),
+              items_json = IF(
+                LOCATE('__', fakturs_archive.invoice_key) = 0 AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
+                fakturs_archive.items_json,
+                IF(VALUES(items_json) IS NOT NULL, VALUES(items_json), fakturs_archive.items_json)
+              );`,
+            params
+          );
+        })
+      );
 
       return Response.json({ success: true, count: fakturs.length, processed: fakturs.length });
     }

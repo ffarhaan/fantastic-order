@@ -11,11 +11,20 @@ import masterApotekListMBI from "./masterApotekList.json";
 const apotekMap = masterApotek as Record<string, string>;
 const apotekMapMAI: Record<string, string> = { ...(masterApotekMAI as Record<string, string>) };
 
+const normalizeCache = new Map<string, string>();
+
 export function normalize(s: string): string {
-  return String(s || "")
+  if (!s) return "";
+  const raw = String(s);
+  const cached = normalizeCache.get(raw);
+  if (cached !== undefined) return cached;
+  const res = raw
     .toLowerCase()
     .replace(/apotik/g, "apotek")
     .replace(/[^a-z0-9]/g, "");
+  if (normalizeCache.size > 50000) normalizeCache.clear();
+  normalizeCache.set(raw, res);
+  return res;
 }
 
 const normMap: Record<string, string> = {};
@@ -51,32 +60,42 @@ const normDklkMapMBI: Record<string, "DK" | "LK"> = {};
   }
 });
 
+const dklkCache = new Map<string, "DK" | "LK" | "-">();
+
 export function getDkLk(customerName?: string, entity: "MBI" | "MAI" = "MBI"): "DK" | "LK" | "-" {
   if (!customerName) return "-";
+  const cacheKey = `${entity}|${customerName}`;
+  const cached = dklkCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
   const c = customerName.toLowerCase().trim();
   const n = normalize(c);
   const upper = customerName.toUpperCase().trim();
 
+  let result: "DK" | "LK" | "-" = "-";
+
   // === MAI WAREHOUSE ===
   if (entity === "MAI") {
-    if (dklkMapMAI[c]) return dklkMapMAI[c];
-    if (normDklkMapMAI[n]) return normDklkMapMAI[n];
-
-    if (upper.startsWith("HAK ") || upper.startsWith("HAK-")) {
+    if (dklkMapMAI[c]) result = dklkMapMAI[c];
+    else if (normDklkMapMAI[n]) result = normDklkMapMAI[n];
+    else if (upper.startsWith("HAK ") || upper.startsWith("HAK-")) {
       const branch = upper.replace(/^HAK[\s-]+/, "").toLowerCase().trim();
       for (const [k, v] of Object.entries(dklkMapMAI)) {
-        if (k.includes(branch)) return v;
+        if (k.includes(branch)) {
+          result = v;
+          break;
+        }
       }
     }
-    return "-";
+    if (dklkCache.size > 30000) dklkCache.clear();
+    dklkCache.set(cacheKey, result);
+    return result;
   }
 
   // === MBI WAREHOUSE (DEFAULT) ===
-  if (dklkMapMBI[c]) return dklkMapMBI[c];
-  if (normDklkMapMBI[n]) return normDklkMapMBI[n];
-
-  // Match HAK (Apotek Halomedika) in MBI
-  if (upper.startsWith("HAK ") || upper.startsWith("HAK-")) {
+  if (dklkMapMBI[c]) result = dklkMapMBI[c];
+  else if (normDklkMapMBI[n]) result = normDklkMapMBI[n];
+  else if (upper.startsWith("HAK ") || upper.startsWith("HAK-")) {
     const branch = upper.replace(/^HAK[\s-]+/, "").toLowerCase().trim();
     if (
       branch.includes("tirta raya") ||
@@ -88,19 +107,25 @@ export function getDkLk(customerName?: string, entity: "MBI" | "MAI" = "MBI"): "
       branch.includes("rancasari") ||
       branch.includes("medan baru")
     ) {
-      return "LK";
+      result = "LK";
+    } else {
+      result = "DK";
+      for (const [k, v] of Object.entries(dklkMapMBI)) {
+        if (k.includes(branch)) {
+          result = v;
+          break;
+        }
+      }
     }
-    for (const [k, v] of Object.entries(dklkMapMBI)) {
-      if (k.includes(branch)) return v;
-    }
-    return "DK";
+  } else if (dklkMapMAI[c]) {
+    result = dklkMapMAI[c];
+  } else if (normDklkMapMAI[n]) {
+    result = normDklkMapMAI[n];
   }
 
-  // Fallback to MAI map if exists
-  if (dklkMapMAI[c]) return dklkMapMAI[c];
-  if (normDklkMapMAI[n]) return normDklkMapMAI[n];
-
-  return "-";
+  if (dklkCache.size > 30000) dklkCache.clear();
+  dklkCache.set(cacheKey, result);
+  return result;
 }
 
 for (const [k, v] of Object.entries(masterApotekMAI as Record<string, string>)) {
@@ -158,91 +183,105 @@ const productList: Array<{ norm: string; cat: string }> = [];
   }
 });
 
-export function getPrekursorOOTClassification(itemDescription?: string, itemCode?: string): "Prekursor" | "OOT" | null {
-  if (itemCode) {
-    const cleanCode = String(itemCode).trim();
-    const cat = productCodeMap[cleanCode] || productCodeMap[cleanCode.replace(/[^0-9]/g, "")];
-    if (cat === "PREKURSOR") return "Prekursor";
-    if (cat === "OOT") return "OOT";
-    if (cat === "FARMA" || cat === "ALKES" || cat === "CCP") return null;
-  }
+const prekOotCache = new Map<string, "Prekursor" | "OOT" | null>();
+const baseProductCategoryCache = new Map<string, string>();
 
-  if (itemDescription) {
-    const norm = normalize(itemDescription);
-    if (productNameMap[norm]) {
-      const cat = productNameMap[norm];
+export function getPrekursorOOTClassification(itemDescription?: string, itemCode?: string): "Prekursor" | "OOT" | null {
+  const cacheKey = `${itemCode || ""}|${itemDescription || ""}`;
+  const cached = prekOotCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const compute = (): "Prekursor" | "OOT" | null => {
+    if (itemCode) {
+      const cleanCode = String(itemCode).trim();
+      const cat = productCodeMap[cleanCode] || productCodeMap[cleanCode.replace(/[^0-9]/g, "")];
       if (cat === "PREKURSOR") return "Prekursor";
       if (cat === "OOT") return "OOT";
       if (cat === "FARMA" || cat === "ALKES" || cat === "CCP") return null;
     }
-  }
 
-  if (!itemDescription || itemDescription === "-" || itemDescription === "Data DOO") return null;
-  const s = " " + String(itemDescription).toUpperCase().replace(/[\t\r\n\s]+/g, " ") + " ";
+    if (itemDescription) {
+      const norm = normalize(itemDescription);
+      if (productNameMap[norm]) {
+        const cat = productNameMap[norm];
+        if (cat === "PREKURSOR") return "Prekursor";
+        if (cat === "OOT") return "OOT";
+        if (cat === "FARMA" || cat === "ALKES" || cat === "CCP") return null;
+      }
+    }
 
-  // OOT Matchers
-  if (/\bLAPISIV[- ]?T\b/.test(s)) return "OOT";
-  if (/\bSILADEX\s+(ANTITUSSIVE|DMP)\b/.test(s)) return "OOT";
-  if (/\bPANADOL\s+(FLU\s*(&|\+|DAN)\s*BATUK|BATUK\s*(&|\+|DAN)\s*FLU)\b/.test(s)) return "OOT";
-  if (/\bWOODS(\s+PEPPERMINT)?\s+ANTITUSSIVE\b/.test(s)) return "OOT";
-  if (/\bOB[H]?\s+COMBI\s+ANTITUSSIVE\b/.test(s)) return "OOT";
-  if (/\b(GRANTUSIF|IFARSYL|PROMEDEX|LODECON\s+FORTE)\b/.test(s)) return "OOT";
-  if (/\bBODREX\s+FLU\s+(DAN|&|\+)\s*BATUK\b/.test(s)) return "OOT";
-  if (/\bMIXAGRIP\s+FLU\s+(DAN|&|\+)\s*BATUK\b/.test(s)) return "OOT";
-  if (/\bPROCOLD\s+FLU\s+(DAN|&|\+)\s*BATUK\b/.test(s)) return "OOT";
-  if (/\bVICKS\s+FORMULA\s+44\b/.test(s) || /\bFORMULA\s+44\b/.test(s)) return "OOT";
-  if (/\bKONIDIN\b/.test(s) && !/\bANAKONIDIN\b/.test(s)) return "OOT";
+    if (!itemDescription || itemDescription === "-" || itemDescription === "Data DOO") return null;
+    const s = " " + String(itemDescription).toUpperCase().replace(/[\t\r\n\s]+/g, " ") + " ";
 
-  // Prekursor Matchers
-  if (/\bACTIFED\b/.test(s)) return "Prekursor";
-  if (/\bALCO\b(?!\s*(HOL|KOHOL|N\b))/.test(s) && !/\bVALCOR\b/.test(s) && !/\bALCON\b/.test(s)) return "Prekursor";
-  if (/\bALLERIN\b/.test(s)) return "Prekursor";
-  if (/\bALPARA\b/.test(s)) return "Prekursor";
-  if (/\bANADEX\b/.test(s) && !/\bLANADEXON\b/.test(s)) return "Prekursor";
-  if (/\bANAKONIDIN\b/.test(s)) return "Prekursor";
-  if (/\bCALORTUSIN\b/.test(s)) return "Prekursor";
-  if (/\bCOPARCETIN\b/.test(s)) return "Prekursor";
-  if (/\bDEMACOLIN\b/.test(s)) return "Prekursor";
-  if (/\bDICOM\b/.test(s)) return "Prekursor";
-  if (/\bDISUDRIN\b/.test(s)) return "Prekursor";
-  if (/\bFLUTOP\b/.test(s)) return "Prekursor";
-  if (/\bFLUVIR\b/.test(s)) return "Prekursor";
-  if (/\bCROFED\b/.test(s)) return "Prekursor";
-  if (/\bDECOLGEN\b/.test(s)) return "Prekursor";
-  if (/\bINTUNAL\b/.test(s)) return "Prekursor";
-  if (/\bLACOLDIN\b/.test(s)) return "Prekursor";
-  if (/\bLANOS\b/.test(s) && !/\bLANOXIN\b/.test(s)) return "Prekursor";
-  if (/\bDEXTRAL\b/.test(s) && !/\bDEXTROSE\b/.test(s)) return "Prekursor";
-  if (/\bLAPIFED\b/.test(s)) return "Prekursor";
-  if (/\bLAPISIV\b/.test(s) && !/\bLAPISIV[- ]?T\b/.test(s)) return "Prekursor";
-  if (/\bMOLEXFLU\b/.test(s)) return "Prekursor";
-  if (/\bFLUCADEX\b/.test(s)) return "Prekursor";
-  if (/\bNEOZEP\b/.test(s)) return "Prekursor";
-  if (/\bOBH\s+COMBI\b/.test(s) && /\b(BATUK\s*(PLUS|\&|\+)\s*FLU|BATUK\s*FLU|FLU)\b/.test(s)) return "Prekursor";
-  if (/\bPANADOL\b.*\bCOLD\b/.test(s)) return "Prekursor";
-  if (/\bPARATUSIN\b/.test(s)) return "Prekursor";
-  if (/\bHUFAGRIPP\b.*\b(BP|BATUK\s*BERDAHAK\s*&\s*PILEK|BATUK\s*KERING\s*&\s*PILEK|FLU|PILEK)\b/.test(s)) return "Prekursor";
-  if (/\bRHINOFED\b/.test(s)) return "Prekursor";
-  if (/\bRHINOS\b/.test(s)) return "Prekursor";
-  if (/\bRYVEL\s+PLUS\b/.test(s)) return "Prekursor";
-  if (/\bSILADEX\b.*\b(COUGH\s*(&|\+|AND)\s*(COLD|FLU)|FLU)\b/.test(s) && !/\bHERBAL\b/.test(s)) return "Prekursor";
-  if (/\bTELFAST\s+PLUS\b/.test(s)) return "Prekursor";
-  if (/\bTRIAMINIC\b/.test(s)) return "Prekursor";
-  if (/\bTRIFED\b/.test(s)) return "Prekursor";
-  if (/\bTRIFEDRIN\b/.test(s)) return "Prekursor";
-  if (/\bNALGESTAN\b/.test(s)) return "Prekursor";
-  if (/\bSTOP\s+COLD\b/.test(s)) return "Prekursor";
-  if (/\bDECOLSIN\b/.test(s)) return "Prekursor";
-  if (/\bPIM[- ]?TRA[- ]?KOL\b/.test(s)) return "Prekursor";
-  if (/\bFLUTROP\b/.test(s)) return "Prekursor";
-  if (/\bNOZA\b/.test(s)) return "Prekursor";
-  if (/\bINZA\b/.test(s)) return "Prekursor";
-  if (/\bCOMTUSI\b.*\b(PILEK|ALERGI)\b/.test(s)) return "Prekursor";
-  if (/\bEFLIN\b/.test(s)) return "Prekursor";
-  if (/\bERICAF\b/.test(s)) return "Prekursor";
-  if (/\bTERA[- ]?F\b/.test(s)) return "Prekursor";
+    // OOT Matchers
+    if (/\bLAPISIV[- ]?T\b/.test(s)) return "OOT";
+    if (/\bSILADEX\s+(ANTITUSSIVE|DMP)\b/.test(s)) return "OOT";
+    if (/\bPANADOL\s+(FLU\s*(&|\+|DAN)\s*BATUK|BATUK\s*(&|\+|DAN)\s*FLU)\b/.test(s)) return "OOT";
+    if (/\bWOODS(\s+PEPPERMINT)?\s+ANTITUSSIVE\b/.test(s)) return "OOT";
+    if (/\bOB[H]?\s+COMBI\s+ANTITUSSIVE\b/.test(s)) return "OOT";
+    if (/\b(GRANTUSIF|IFARSYL|PROMEDEX|LODECON\s+FORTE)\b/.test(s)) return "OOT";
+    if (/\bBODREX\s+FLU\s+(DAN|&|\+)\s*BATUK\b/.test(s)) return "OOT";
+    if (/\bMIXAGRIP\s+FLU\s+(DAN|&|\+)\s*BATUK\b/.test(s)) return "OOT";
+    if (/\bPROCOLD\s+FLU\s+(DAN|&|\+)\s*BATUK\b/.test(s)) return "OOT";
+    if (/\bVICKS\s+FORMULA\s+44\b/.test(s) || /\bFORMULA\s+44\b/.test(s)) return "OOT";
+    if (/\bKONIDIN\b/.test(s) && !/\bANAKONIDIN\b/.test(s)) return "OOT";
 
-  return null;
+    // Prekursor Matchers
+    if (/\bACTIFED\b/.test(s)) return "Prekursor";
+    if (/\bALCO\b(?!\s*(HOL|KOHOL|N\b))/.test(s) && !/\bVALCOR\b/.test(s) && !/\bALCON\b/.test(s)) return "Prekursor";
+    if (/\bALLERIN\b/.test(s)) return "Prekursor";
+    if (/\bALPARA\b/.test(s)) return "Prekursor";
+    if (/\bANADEX\b/.test(s) && !/\bLANADEXON\b/.test(s)) return "Prekursor";
+    if (/\bANAKONIDIN\b/.test(s)) return "Prekursor";
+    if (/\bCALORTUSIN\b/.test(s)) return "Prekursor";
+    if (/\bCOPARCETIN\b/.test(s)) return "Prekursor";
+    if (/\bDEMACOLIN\b/.test(s)) return "Prekursor";
+    if (/\bDICOM\b/.test(s)) return "Prekursor";
+    if (/\bDISUDRIN\b/.test(s)) return "Prekursor";
+    if (/\bFLUTOP\b/.test(s)) return "Prekursor";
+    if (/\bFLUVIR\b/.test(s)) return "Prekursor";
+    if (/\bCROFED\b/.test(s)) return "Prekursor";
+    if (/\bDECOLGEN\b/.test(s)) return "Prekursor";
+    if (/\bINTUNAL\b/.test(s)) return "Prekursor";
+    if (/\bLACOLDIN\b/.test(s)) return "Prekursor";
+    if (/\bLANOS\b/.test(s) && !/\bLANOXIN\b/.test(s)) return "Prekursor";
+    if (/\bDEXTRAL\b/.test(s) && !/\bDEXTROSE\b/.test(s)) return "Prekursor";
+    if (/\bLAPIFED\b/.test(s)) return "Prekursor";
+    if (/\bLAPISIV\b/.test(s) && !/\bLAPISIV[- ]?T\b/.test(s)) return "Prekursor";
+    if (/\bMOLEXFLU\b/.test(s)) return "Prekursor";
+    if (/\bFLUCADEX\b/.test(s)) return "Prekursor";
+    if (/\bNEOZEP\b/.test(s)) return "Prekursor";
+    if (/\bOBH\s+COMBI\b/.test(s) && /\b(BATUK\s*(PLUS|\&|\+)\s*FLU|BATUK\s*FLU|FLU)\b/.test(s)) return "Prekursor";
+    if (/\bPANADOL\b.*\bCOLD\b/.test(s)) return "Prekursor";
+    if (/\bPARATUSIN\b/.test(s)) return "Prekursor";
+    if (/\bHUFAGRIPP\b.*\b(BP|BATUK\s*BERDAHAK\s*&\s*PILEK|BATUK\s*KERING\s*&\s*PILEK|FLU|PILEK)\b/.test(s)) return "Prekursor";
+    if (/\bRHINOFED\b/.test(s)) return "Prekursor";
+    if (/\bRHINOS\b/.test(s)) return "Prekursor";
+    if (/\bRYVEL\s+PLUS\b/.test(s)) return "Prekursor";
+    if (/\bSILADEX\b.*\b(COUGH\s*(&|\+|AND)\s*(COLD|FLU)|FLU)\b/.test(s) && !/\bHERBAL\b/.test(s)) return "Prekursor";
+    if (/\bTELFAST\s+PLUS\b/.test(s)) return "Prekursor";
+    if (/\bTRIAMINIC\b/.test(s)) return "Prekursor";
+    if (/\bTRIFED\b/.test(s)) return "Prekursor";
+    if (/\bTRIFEDRIN\b/.test(s)) return "Prekursor";
+    if (/\bNALGESTAN\b/.test(s)) return "Prekursor";
+    if (/\bSTOP\s+COLD\b/.test(s)) return "Prekursor";
+    if (/\bDECOLSIN\b/.test(s)) return "Prekursor";
+    if (/\bPIM[- ]?TRA[- ]?KOL\b/.test(s)) return "Prekursor";
+    if (/\bFLUTROP\b/.test(s)) return "Prekursor";
+    if (/\bNOZA\b/.test(s)) return "Prekursor";
+    if (/\bINZA\b/.test(s)) return "Prekursor";
+    if (/\bCOMTUSI\b.*\b(PILEK|ALERGI)\b/.test(s)) return "Prekursor";
+    if (/\bEFLIN\b/.test(s)) return "Prekursor";
+    if (/\bERICAF\b/.test(s)) return "Prekursor";
+    if (/\bTERA[- ]?F\b/.test(s)) return "Prekursor";
+
+    return null;
+  };
+
+  const res = compute();
+  if (prekOotCache.size > 40000) prekOotCache.clear();
+  prekOotCache.set(cacheKey, res);
+  return res;
 }
 
 export function getProductCategory(
@@ -250,7 +289,7 @@ export function getProductCategory(
   itemDescription?: string,
   productOverrides?: Record<string, string>
 ): string {
-  if (productOverrides && Object.keys(productOverrides).length > 0) {
+  if (productOverrides) {
     if (itemCode) {
       const cleanCode = String(itemCode).trim();
       if (productOverrides[cleanCode]) return productOverrides[cleanCode].toUpperCase();
@@ -265,44 +304,55 @@ export function getProductCategory(
     }
   }
 
-  if (itemCode) {
-    const cleanCode = String(itemCode).trim();
-    if (productCodeMap[cleanCode]) return productCodeMap[cleanCode];
-    const numOnly = cleanCode.replace(/[^0-9]/g, "");
-    if (numOnly && productCodeMap[numOnly]) return productCodeMap[numOnly];
-  }
+  const cacheKey = `${itemCode || ""}|${itemDescription || ""}`;
+  const cached = baseProductCategoryCache.get(cacheKey);
+  if (cached !== undefined) return cached;
 
-  if (itemDescription) {
-    const normDesc = normalize(itemDescription);
-    if (productNameMap[normDesc]) return productNameMap[normDesc];
-  }
+  const computeBase = (): string => {
+    if (itemCode) {
+      const cleanCode = String(itemCode).trim();
+      if (productCodeMap[cleanCode]) return productCodeMap[cleanCode];
+      const numOnly = cleanCode.replace(/[^0-9]/g, "");
+      if (numOnly && productCodeMap[numOnly]) return productCodeMap[numOnly];
+    }
 
-  if (itemDescription || itemCode) {
-    const prekOot = getPrekursorOOTClassification(itemDescription, itemCode);
-    if (prekOot === "Prekursor") return "PREKURSOR";
-    if (prekOot === "OOT") return "OOT";
-  }
+    if (itemDescription) {
+      const normDesc = normalize(itemDescription);
+      if (productNameMap[normDesc]) return productNameMap[normDesc];
+    }
 
-  if (itemDescription) {
-    const normDesc = normalize(itemDescription);
-    if (normDesc.length >= 8) {
-      for (const item of productList) {
-        if (normDesc.includes(item.norm) || item.norm.includes(normDesc)) {
-          return item.cat;
+    if (itemDescription || itemCode) {
+      const prekOot = getPrekursorOOTClassification(itemDescription, itemCode);
+      if (prekOot === "Prekursor") return "PREKURSOR";
+      if (prekOot === "OOT") return "OOT";
+    }
+
+    if (itemDescription) {
+      const normDesc = normalize(itemDescription);
+      if (normDesc.length >= 8) {
+        for (const item of productList) {
+          if (normDesc.includes(item.norm) || item.norm.includes(normDesc)) {
+            return item.cat;
+          }
         }
+      }
+
+      const s = " " + String(itemDescription).toUpperCase() + " ";
+      if (/\b(TABLET|TAB\b|KAPSUL|CAPSUL|CAP\b|KAPLET|PIL\b|SIRUP|SYRUP|DROP|DROPS|INJEKSI|INJ\b|CREAM|KRIM|SALEP|OINTMENT|SUSPENSI|EMULSI|SUSP\b|LARUTAN|INFUS\b|PULVIS|SACHET|GEL\b|LOTION|OBAT|VITAMIN|SUPLEMEN)\b/.test(s)) {
+        return "FARMA";
+      }
+      if (/\b(ALCOHOL|ALKOHOL|KASA|SPUIT|SYRINGE|JARUM|UNDERPAD|MASKER|INFUSION\s+SET|IV\s+CATHETER|HANDSCOON|GLOVES|TEST\s+PACK|URINE\s+BAG|THERMOMETER|TENSIMETER|SURGICAL|COTTON\s+BALL|KAPAS\s+PEMBALUT|SAFETY\s+BOX|ABOCATH|WINGS\s+NEEDLE|SURGICAL\s+TAPE|DERMAFIX|HYPAFIX|MICROPORE|KONDOM|LUBRICANT|LUBE\b|PLESTER|PATCH|TES\s+KEHAMILAN|RAPID\s+TEST|SWAB\b|LANCET|LANCETS|NEBULIZER|SUCTION|CATHETER|STETOSKOP|CORONG|URINAL|POPOK|DIAPER|HOT\s*\/?\s*COLD\s*PACK|ICE\s*BAG)\b/.test(s)) {
+        return "ALKES";
       }
     }
 
-    const s = " " + String(itemDescription).toUpperCase() + " ";
-    if (/\b(TABLET|TAB\b|KAPSUL|CAPSUL|CAP\b|KAPLET|PIL\b|SIRUP|SYRUP|DROP|DROPS|INJEKSI|INJ\b|CREAM|KRIM|SALEP|OINTMENT|SUSPENSI|EMULSI|SUSP\b|LARUTAN|INFUS\b|PULVIS|SACHET|GEL\b|LOTION|OBAT|VITAMIN|SUPLEMEN)\b/.test(s)) {
-      return "FARMA";
-    }
-    if (/\b(ALCOHOL|ALKOHOL|KASA|SPUIT|SYRINGE|JARUM|UNDERPAD|MASKER|INFUSION\s+SET|IV\s+CATHETER|HANDSCOON|GLOVES|TEST\s+PACK|URINE\s+BAG|THERMOMETER|TENSIMETER|SURGICAL|COTTON\s+BALL|KAPAS\s+PEMBALUT|SAFETY\s+BOX|ABOCATH|WINGS\s+NEEDLE|SURGICAL\s+TAPE|DERMAFIX|HYPAFIX|MICROPORE|KONDOM|LUBRICANT|LUBE\b|PLESTER|PATCH|TES\s+KEHAMILAN|RAPID\s+TEST|SWAB\b|LANCET|LANCETS|NEBULIZER|SUCTION|CATHETER|STETOSKOP|CORONG|URINAL|POPOK|DIAPER|HOT\s*\/?\s*COLD\s*PACK|ICE\s*BAG)\b/.test(s)) {
-      return "ALKES";
-    }
-  }
+    return "FARMA";
+  };
 
-  return "FARMA";
+  const res = computeBase();
+  if (baseProductCategoryCache.size > 40000) baseProductCategoryCache.clear();
+  baseProductCategoryCache.set(cacheKey, res);
+  return res;
 }
 
 /**
@@ -351,15 +401,22 @@ export function calculateDominantCategory(
  * - ORA: HANYA untuk PT Helios Alchemist Kesehatan / HAK / 1001.
  * - DOO: Semua transaksi reguler DOO.
  */
+const isOraCache = new Map<string, boolean>();
+
 export function isOraCustomer(customerName?: string): boolean {
-  const upperCust = String(customerName || "").toUpperCase().trim();
-  return (
+  if (!customerName) return false;
+  const cached = isOraCache.get(customerName);
+  if (cached !== undefined) return cached;
+  const upperCust = String(customerName).toUpperCase().trim();
+  const res =
     upperCust.includes("HELIOS") ||
     upperCust.startsWith("HAK") ||
     upperCust.startsWith("IHC") ||
     upperCust.includes("CA-900001") ||
-    upperCust === "1001"
-  );
+    upperCust === "1001";
+  if (isOraCache.size > 30000) isOraCache.clear();
+  isOraCache.set(customerName, res);
+  return res;
 }
 
 /**
@@ -372,6 +429,8 @@ export function isOraCustomer(customerName?: string): boolean {
  * - Jika entity === "MAI": dievaluasi strictly menggunakan Master Apotek MAI.
  * - Jika entity === "MBI" (default): dievaluasi strictly menggunakan Master Apotek MBI.
  */
+const categorizeCache = new Map<string, "1P" | "2P" | "3P">();
+
 export function categorize(
   jenisTransaksi: string,
   customerName: string,
@@ -380,69 +439,80 @@ export function categorize(
   billToSite?: string,
   entity?: "MBI" | "MAI"
 ): "1P" | "2P" | "3P" {
-  const cust = String(customerName || "").trim();
-  const upper = cust.toUpperCase();
-  const rawJenis = String(jenisTransaksi || "").toUpperCase();
-  const rawSource = String(sourceFile || "").toUpperCase();
+  const cacheKey = `${entity || "MBI"}|${jenisTransaksi || ""}|${customerName || ""}|${sourceFile || ""}|${shipToSite || ""}|${billToSite || ""}`;
+  const cached = categorizeCache.get(cacheKey);
+  if (cached !== undefined) return cached;
 
-  // 1P: Konsorsium Helios/ORA + Pelanggan DOO 1P Prioritas
-  if (
-    rawSource.includes("ORA") ||
-    rawJenis === "ORA" ||
-    upper.includes("HELIOS") ||
-    upper.startsWith("HAK") ||
-    upper.startsWith("IHC") ||
-    upper.includes("CA-900001") ||
-    upper === "1001" ||
-    upper.includes("HALOMEDIKA") ||
-    upper.includes("MEDIKA PRIMA") ||
-    upper.includes("MEDIKA RAYA INDONESIA") ||
-    upper.startsWith("MRI") ||
-    upper.includes(" MRI") ||
-    upper === "MRI" ||
-    upper.includes("SBS") ||
-    upper.includes("SEHAT BAKTI SENTOSA") ||
-    upper.includes("PASTI HEMAT") ||
-    upper.includes("MEDIKA AKSES")
-  ) {
-    return "1P";
-  }
+  const computeKat = (): "1P" | "2P" | "3P" => {
+    const cust = String(customerName || "").trim();
+    const upper = cust.toUpperCase();
+    const rawJenis = String(jenisTransaksi || "").toUpperCase();
+    const rawSource = String(sourceFile || "").toUpperCase();
 
-  const normCust = normalize(cust);
+    // 1P: Konsorsium Helios/ORA + Pelanggan DOO 1P Prioritas
+    if (
+      rawSource.includes("ORA") ||
+      rawJenis === "ORA" ||
+      upper.includes("HELIOS") ||
+      upper.startsWith("HAK") ||
+      upper.startsWith("IHC") ||
+      upper.includes("CA-900001") ||
+      upper === "1001" ||
+      upper.includes("HALOMEDIKA") ||
+      upper.includes("MEDIKA PRIMA") ||
+      upper.includes("MEDIKA RAYA INDONESIA") ||
+      upper.startsWith("MRI") ||
+      upper.includes(" MRI") ||
+      upper === "MRI" ||
+      upper.includes("SBS") ||
+      upper.includes("SEHAT BAKTI SENTOSA") ||
+      upper.includes("PASTI HEMAT") ||
+      upper.includes("MEDIKA AKSES")
+    ) {
+      return "1P";
+    }
 
-  // === MAI WAREHOUSE ISOLATION ===
-  if (entity === "MAI") {
-    const exactMAI = apotekMapMAI[cust.toLowerCase()];
-    if (exactMAI) return (exactMAI.replace(/\s*\(.*?\)/, "").trim() as "1P" | "2P" | "3P") || "3P";
+    const normCust = normalize(cust);
 
-    const normMAI = normMapMAI[normCust];
-    if (normMAI) return (normMAI.replace(/\s*\(.*?\)/, "").trim() as "1P" | "2P" | "3P") || "3P";
+    // === MAI WAREHOUSE ISOLATION ===
+    if (entity === "MAI") {
+      const exactMAI = apotekMapMAI[cust.toLowerCase()];
+      if (exactMAI) return (exactMAI.replace(/\s*\(.*?\)/, "").trim() as "1P" | "2P" | "3P") || "3P";
 
-    if (master2PNameSetMAI.has(normCust)) return "2P";
+      const normMAI = normMapMAI[normCust];
+      if (normMAI) return (normMAI.replace(/\s*\(.*?\)/, "").trim() as "1P" | "2P" | "3P") || "3P";
+
+      if (master2PNameSetMAI.has(normCust)) return "2P";
+
+      return "3P";
+    }
+
+    // === MBI WAREHOUSE (DEFAULT) ===
+    if (shipToSite) {
+      const num = String(shipToSite).replace(/[^0-9]/g, "").replace(/^0+/, "");
+      if (num && master2PCodeMap.has(num)) return "2P";
+    }
+
+    if (billToSite) {
+      const num = String(billToSite).replace(/[^0-9]/g, "").replace(/^0+/, "");
+      if (num && master2PCodeMap.has(num)) return "2P";
+    }
+
+    if (master2PNameSet.has(normCust)) return "2P";
+
+    const exact = apotekMap[cust.toLowerCase()];
+    if (exact) return (exact as "1P" | "2P" | "3P") || "3P";
+
+    const norm = normMap[normCust];
+    if (norm) return (norm as "1P" | "2P" | "3P") || "3P";
 
     return "3P";
-  }
+  };
 
-  // === MBI WAREHOUSE (DEFAULT) ===
-  if (shipToSite) {
-    const num = String(shipToSite).replace(/[^0-9]/g, "").replace(/^0+/, "");
-    if (num && master2PCodeMap.has(num)) return "2P";
-  }
-
-  if (billToSite) {
-    const num = String(billToSite).replace(/[^0-9]/g, "").replace(/^0+/, "");
-    if (num && master2PCodeMap.has(num)) return "2P";
-  }
-
-  if (master2PNameSet.has(normCust)) return "2P";
-
-  const exact = apotekMap[cust.toLowerCase()];
-  if (exact) return (exact as "1P" | "2P" | "3P") || "3P";
-
-  const norm = normMap[normCust];
-  if (norm) return (norm as "1P" | "2P" | "3P") || "3P";
-
-  return "3P";
+  const res = computeKat();
+  if (categorizeCache.size > 30000) categorizeCache.clear();
+  categorizeCache.set(cacheKey, res);
+  return res;
 }
 
 function detectDoubleInvoices(records: FakturRecord[]): void {
@@ -496,50 +566,64 @@ export function parseNumeric(val: unknown): number {
   return isNegative ? -Math.abs(n) : n;
 }
 
+const dateStrCache = new Map<string | number, string>();
+
 export function normalizeDateStr(v: unknown): string {
   if (!v) return "-";
-  if (typeof v === "number") {
-    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
-    if (!isNaN(d.getTime())) {
-      const pad = (n: number) => String(n).padStart(2, "0");
-      return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+  if (typeof v === "number" || typeof v === "string") {
+    const cached = dateStrCache.get(v);
+    if (cached !== undefined) return cached;
+  }
+  const computeDate = (): string => {
+    if (typeof v === "number") {
+      const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+      if (!isNaN(d.getTime())) {
+        const pad = (n: number) => String(n).padStart(2, "0");
+        return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+      }
     }
+    const s = String(v).trim();
+    if (!s || s === "-" || s === "0") return "-";
+    const mIso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (mIso) {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${pad(Number(mIso[3]))}/${pad(Number(mIso[2]))}/${mIso[1]}`;
+    }
+    const mSlash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (mSlash) {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${pad(Number(mSlash[1]))}/${pad(Number(mSlash[2]))}/${mSlash[3]}`;
+    }
+    const mDash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
+    if (mDash) {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${pad(Number(mDash[1]))}/${pad(Number(mDash[2]))}/${mDash[3]}`;
+    }
+    const mMon = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/);
+    if (mMon) {
+      const months: Record<string, string> = {
+        jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+        jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+        mei: "05", ags: "08", agu: "08", okt: "10", des: "12"
+      };
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const mon = months[mMon[2].toLowerCase()] || "01";
+      return `${pad(Number(mMon[1]))}/${mon}/${mMon[3]}`;
+    }
+    const m2Digit = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2})$/);
+    if (m2Digit) {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const yr = Number(m2Digit[3]) < 70 ? `20${m2Digit[3]}` : `19${m2Digit[3]}`;
+      return `${pad(Number(m2Digit[1]))}/${pad(Number(m2Digit[2]))}/${yr}`;
+    }
+    return s;
+  };
+  const res = computeDate();
+  if (typeof v === "number" || typeof v === "string") {
+    if (dateStrCache.size > 10000) dateStrCache.clear();
+    dateStrCache.set(v, res);
   }
-  let s = String(v).trim();
-  if (!s || s === "-" || s === "0") return "-";
-  const mIso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (mIso) {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${pad(Number(mIso[3]))}/${pad(Number(mIso[2]))}/${mIso[1]}`;
-  }
-  const mSlash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (mSlash) {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${pad(Number(mSlash[1]))}/${pad(Number(mSlash[2]))}/${mSlash[3]}`;
-  }
-  const mDash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
-  if (mDash) {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${pad(Number(mDash[1]))}/${pad(Number(mDash[2]))}/${mDash[3]}`;
-  }
-  const mMon = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/);
-  if (mMon) {
-    const months: Record<string, string> = {
-      jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
-      jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
-      mei: "05", ags: "08", agu: "08", okt: "10", des: "12"
-    };
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const mon = months[mMon[2].toLowerCase()] || "01";
-    return `${pad(Number(mMon[1]))}/${mon}/${mMon[3]}`;
-  }
-  const m2Digit = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2})$/);
-  if (m2Digit) {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const yr = Number(m2Digit[3]) < 70 ? `20${m2Digit[3]}` : `19${m2Digit[3]}`;
-    return `${pad(Number(m2Digit[1]))}/${pad(Number(m2Digit[2]))}/${yr}`;
-  }
-  return s;
+  return res;
 }
 
 function parseXXCUST(
