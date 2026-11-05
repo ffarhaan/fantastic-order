@@ -2574,7 +2574,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         totalHarga: 0,
         totalItems: qc.total_item ? Number(qc.total_item) : (qc.total_qty ? Number(qc.total_qty) : 0),
         barangCatatan: Number(qc.barang_catatan) || 0,
-        isQcDone: String(qc.is_done || qc.status || "").trim().toUpperCase() === "DONE",
+        isQcDone: String(qc.is_done || "").trim().toUpperCase().includes("DONE"),
         qcDoneStatus: String(qc.is_done || "").trim(),
         entity: selectedWarehouse,
         allPrinted: false,
