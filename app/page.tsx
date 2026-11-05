@@ -2637,8 +2637,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         totalHarga: 0,
         totalItems: qc.total_item ? Number(qc.total_item) : (qc.total_qty ? Number(qc.total_qty) : 0),
         barangCatatan: Number(qc.barang_catatan) || 0,
-        isQcDone: Boolean(qcDoneLocalMap[soClean]),
-        qcDoneStatus: qcDoneLocalMap[soClean] ? "DONE" : "PROSES",
+        isQcDone: qcDoneLocalMap[soClean] !== undefined ? Boolean(qcDoneLocalMap[soClean]) : String(qc.is_done || "").trim().toUpperCase() === "DONE",
+        qcDoneStatus: (qcDoneLocalMap[soClean] !== undefined ? Boolean(qcDoneLocalMap[soClean]) : String(qc.is_done || "").trim().toUpperCase() === "DONE") ? "DONE" : "PROSES",
         entity: selectedWarehouse,
         allPrinted: false,
         printedAt: null,
@@ -3409,36 +3409,30 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             (prevInfo && prevInfo.printed_at);
           const isStale = isStalePrintTimestamp(candidatePAt, r.orderDate);
 
-          if (isExistingInDB && !isStale) {
-            // Already in database: check if it was marked printed
-            const wasPrinted = Boolean(
-              (existingEntry && existingEntry.status_cetak) ||
-              mergedPrintedSet.has(targetKey) ||
-              (prevInfo && prevInfo.status_cetak)
-            );
+          // PERMANENT PRINT RETENTION & UNPRINTED GUARANTEE (LOCKED_RULES.md Sec 1.B & 1.D):
+          // Check if marked printed in ANY authoritative source (print_state_partitions, local memory, DB)
+          const wasPrinted = !isStale && Boolean(
+            mergedPrintedSet.has(targetKey) ||
+            (existingEntry && existingEntry.status_cetak) ||
+            (prevInfo && prevInfo.status_cetak)
+          );
 
-            if (wasPrinted) {
-              // Permanently preserve printed status (Anti-Reappearance Guaranteed)
-              isPrinted = true;
-              printedAt = candidatePAt || new Date().toISOString();
-              mergedPrintedSet.add(targetKey);
-              mergedPrintedAtMap[targetKey] = printedAt;
-              newUnprintedKeysSet.delete(targetKey);
-            } else {
-              // Already in database but unprinted: keep unprinted
-              isPrinted = false;
-              printedAt = null;
-              newUnprintedKeysSet.add(targetKey);
-            }
+          if (wasPrinted) {
+            // Permanently preserve printed status (Anti-Reappearance Guaranteed)
+            isPrinted = true;
+            printedAt = candidatePAt || new Date().toISOString();
+            mergedPrintedSet.add(targetKey);
+            mergedPrintedAtMap[targetKey] = printedAt;
+            newUnprintedKeysSet.delete(targetKey);
+            brandNewUnprintedKeysSet.delete(targetKey);
           } else {
-            // BRAND NEW INVOICE NOT YET IN DATABASE (OR STALE COLLISION FROM PAST CYCLE):
-            // WAJIB masuk ke "Belum Terprint" (Unprinted Guarantee)
+            // Truly unprinted invoice: keep in Belum Terprint
             isPrinted = false;
             printedAt = null;
             newUnprintedKeysSet.add(targetKey);
-            brandNewUnprintedKeysSet.add(targetKey);
-            // Ensure clean state: purge any accidental partition key for this brand new invoice
-            mergedPrintedSet.delete(targetKey);
+            if (!isExistingInDB) {
+              brandNewUnprintedKeysSet.add(targetKey);
+            }
           }
 
           const rawCust = String(r.customerName || "-").trim();
