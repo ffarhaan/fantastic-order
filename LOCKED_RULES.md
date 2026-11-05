@@ -37,7 +37,8 @@ Dokumen ini adalah acuan baku dan permanen untuk seluruh pengembangan, pemelihar
    - **Latar Belakang & Masalah**: Di sistem Oracle atau lintas siklus waktu/bulan, nomor invoice (faktur) dapat dipakai ulang atau di-reset untuk Sales Order (SO) yang sama sekali berbeda di bulan berikutnya (contoh riil: Invoice `27189` terbit pada Oktober untuk SO `ELZDZ2-6968` / `Apotek Sawarna Farma`, dan terbit kembali pada November untuk SO `1710443` / `Apotek Halomedika Cempaka Putih`).
    - **Evaluasi Dua Dimensi: Tanggal Order (Bulan) & No SO**:
      - Sistem wajib mengevaluasi **Tanggal Order (`order_date`)** selain No SO (`no_sales_order`).
-     - Jika sebuah transaksi baru memiliki nomor faktur yang sama TETAPI Tanggal Order berbeda bulan (misal `10/2026` vs `11/2026`) ATAU memiliki No SO yang berbeda, transaksi baru tersebut WAJIB 100% dialokasikan kunci unik mandiri (`${cleanInv}__${cleanSO}`, contoh: `27189__1710443`).
+     - Jika sebuah transaksi baru memiliki nomor faktur yang sama TETAPI Tanggal Order berbeda bulan (misal `10/2026` vs `11/2026`) dengan No SO yang berbeda, transaksi baru tersebut WAJIB 100% dialokasikan kunci unik mandiri (`${cleanInv}__${cleanSO}`, contoh: `27189__1710443`).
+     - Sebaliknya, pada bulan yang sama (`same month`), satu nomor faktur yang memiliki selisih hari antara *Order Date* dan *Transaction Date* atau memiliki beberapa baris item/SO dalam satu faktur yang sama DILARANG KERAS dipecah menjadi baris duplikat `__`.
    - **Larangan Mutlak Penimpaan & Jaminan Anti-Tercemar (Zero Contamination)**:
      - DILARANG KERAS menimpa data lama atau mencampur transaksi berbeda hanya karena nomor invoicenya sama.
      - No SO DOO unik (misal `ELZDZ2-6968` milik Apotek Sawarna Farma) TIDAK BOLEH ditimpa oleh No SO ORA/November (misal `1710443` milik Cempaka Putih), dan sebaliknya.
@@ -51,10 +52,18 @@ Dokumen ini adalah acuan baku dan permanen untuk seluruh pengembangan, pemelihar
    - **Independensi Status Cetak**: Menandai Done Print pada satu transaksi tidak akan pernah mempengaruhi status cetak transaksi lainnya. Partisi Firestore bucket (`getPrintPartitionId`) memisahkan suffix `__` sehingga kedua transaksi tersimpan aman di bucket yang tepat tanpa overflow.
    - **Double-Layer Titanium Shield (Database Backend & Client-Side Parser - PERMANEN)**:
      - **TiDB Backend (`app/api/tidb/route.ts`)**: Klausul `ON DUPLICATE KEY UPDATE` pada tabel `fakturs_archive` dilengkapi pelindung SQL multi-bulan: jika baris di database memiliki bulan berbeda dari data yang masuk, database MENOLAK menimpa `no_sales_order`, `customer_name`, `items_json`, dan `transaction_date` pada kunci dasar.
-     - **Auto-Split Key di Backend**: Jika ada upload yang mengirimkan faktur bernomor Oktober (27169-27418) pada transaksi ber-Order Date November tanpa kunci komposit, backend TiDB otomatis mengubah `invoice_key` menjadi `${noFaktur}__${noSO}` sehingga baris dasar Oktober secara fisik mustahil tertimpa.
+     - **Larangan Hardcode Rentang Nomor Faktur di Backend**: Backend DILARANG KERAS menebak atau memaksa pembuatan key `__` berdasarkan rentang angka nomor faktur (misal `24000-38500`), dan wajib memastikan faktur ORA selalu mempertahankan suffix `-1P`.
      - **Client-Side Item Guard (`dbRowsToFakturRecords`)**: Jika tanggal transaksi ber-Order Date Oktober, parser dilarang keras membaca `it.order_number` yang numerik (`170%` / `171%`) dari sisa rincian barang November. Nilai No SO wajib terkunci ke `r.no_sales_order` DOO asli (`ELZDZ2-...`).
      - **Client-Side Merge Guard (`mergeKumulatifDocs`)**: Saat sinkronisasi delta, baris dengan beda bulan dilarang mewariskan list `items` lama ke baris baru.
      - **Self-Healing Otomatis Cache**: Saat inisialisasi IndexedDB, jika terdeteksi baris Order Date Oktober yang masih menyimpan SO numerik November, cache lokal seketika dihapus otomatis dan menyinkronkan ulang data bersih dari TiDB.
+9. **Kewajiban Membaca File Upload Secara Lengkap & Larangan Mutlak Berasumsi / Menebak (Full-Read & Zero-Assumption Mandate - LOCKED TOTAL)**:
+   - **Wajib Membaca Lengkap 100% Isi File**: Sistem wajib membaca secara utuh, teliti, dan lengkap seluruh lembar (*sheets*), baris, dan kolom dari file yang diupload (`No Invoice AR`, `Order Number`, `Reference Order Number`, `Nama Pelanggan`, `Kode Pelanggan`, `Entity / Business Unit`, `Jenis Transaksi / Source`, `Order Date`, `Transaction Date`, `Item Code`, `Item Description`, `Qty`, `UOM`, `Lot Number`, `Total Harga`, `Segmentation`, dan `Nama Kategori Product`).
+   - **Dilarang Keras Berasumsi atau Menebak (Zero Guessing)**:
+     - Sistem DILARANG KERAS berasumsi atau menebak data di luar apa yang tertulis secara eksplisit di dalam file yang diupload dan aturan baku di dokumen ini.
+     - DILARANG menebak jenis transaksi atau membuat kunci komposit (`__`) berdasarkan asumsi rentang nomor invoice.
+     - DILARANG menebak status cetak berdasarkan nomor urut invoice.
+     - DILARANG memecah satu nomor faktur pada bulan yang sama menjadi dua baris terpisah.
+   - **Kepatuhan Mutlak**: Seluruh modul aplikasi (`lib/parser.ts`, `app/page.tsx`, `lib/firestoreService.ts`, `app/api/tidb/route.ts`) WAJIB tunduk 100% pada aturan yang telah ditetapkan di `LOCKED_RULES.md`.
 
 #### B. Jaminan Status Faktur Baru & Retensi Faktur Belum Dicetak (Unprinted Guarantee - LOCKED TOTAL)
 1. **Aturan Mutlak Faktur Baru**:

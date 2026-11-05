@@ -3523,10 +3523,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             !touchedInvoiceInThisUpload.has(baseTargetKey) &&
             incomingSO &&
             incomingSO !== "-" &&
-            (
-              (existingSO && existingSO !== "-" && existingSO !== incomingSO && (!isOra || isDifferentMonth)) ||
-              (isDifferentMonth && existingSO !== incomingSO)
-            )
+            isDifferentMonth &&
+            existingSO !== incomingSO
           ) {
             targetKey = `${baseTargetKey}__${incomingSO}`;
           }
@@ -3623,7 +3621,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
           // First time seeing this invoice in THIS upload: reset its items and total_harga for clean update
           // (Backup previous items/total so files WITHOUT item details never wipe XXCUST items - LOCKED_RULES A.7 Anti-Downgrade)
-          if (!touchedInvoiceInThisUpload.has(targetKey)) {
+          const isFirstTouchForTarget = !touchedInvoiceInThisUpload.has(targetKey);
+          if (isFirstTouchForTarget) {
             touchedInvoiceInThisUpload.add(targetKey);
             if (Array.isArray(entry.extra.items) && entry.extra.items.length > 0) {
               prevItemsBackup.set(targetKey, {
@@ -3657,8 +3656,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             if (entry.extra) entry.extra.kategori = finalKat;
           }
 
-          // Authoritative Sales Order: Always honor orderNumber from the uploaded file (LOCKED_RULES.md Sec 6.5)
-          if (r.orderNumber && r.orderNumber !== "-") {
+          // Authoritative Sales Order: Honor orderNumber from the uploaded file without flip-flopping on multi-SO lines (LOCKED_RULES.md Sec 1.A.8 & 1.A.9)
+          if (r.orderNumber && r.orderNumber !== "-" && (isFirstTouchForTarget || !entry.no_sales_order || entry.no_sales_order === "-")) {
             entry.no_sales_order = r.orderNumber;
           }
 

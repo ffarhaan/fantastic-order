@@ -706,7 +706,13 @@ function parseXXCUST(
       rowEntity = "MBI";
     }
 
-    const isOra = isOraCustomer(customerName) || isOraCustomer(customerCode) || customerCode === "CA-900001";
+    const rawJenisCol = val(idx.jenisTransaksi).toUpperCase().trim();
+    const isOra =
+      rawJenisCol === "ORA" ||
+      rawJenisCol.includes("ORA_") ||
+      isOraCustomer(customerName) ||
+      isOraCustomer(customerCode) ||
+      customerCode === "CA-900001";
     const jenisTransaksi: "ORA" | "DOO" = isOra ? "ORA" : "DOO";
     const kategori = categorize(jenisTransaksi, customerName, jenisTransaksi, undefined, undefined, rowEntity);
 
