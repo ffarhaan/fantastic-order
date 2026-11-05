@@ -1000,21 +1000,18 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
     }, "MBI");
 
     try {
-      const hasLocalMbi = typeof window !== "undefined" && Boolean(localStorage.getItem("fantastic_so_checkers_cache_v2"));
-      if (!hasLocalMbi) {
-        fetch("/api/tidb?action=get_checkers&warehouse=MBI")
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.success && d.data) {
-              setCheckerMapMbi((prev) => ({ ...prev, ...d.data }));
-              checkerMapMbiRef.current = { ...checkerMapMbiRef.current, ...d.data };
-              try {
-                localStorage.setItem("fantastic_so_checkers_cache_v2", JSON.stringify(d.data));
-              } catch {}
-            }
-          })
-          .catch(() => {});
-      }
+      fetch("/api/tidb?action=get_checkers&warehouse=MBI&_t=" + Date.now())
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && d.data) {
+            setCheckerMapMbi((prev) => ({ ...prev, ...d.data }));
+            checkerMapMbiRef.current = { ...checkerMapMbiRef.current, ...d.data };
+            try {
+              localStorage.setItem("fantastic_so_checkers_cache_v2", JSON.stringify(d.data));
+            } catch {}
+          }
+        })
+        .catch(() => {});
     } catch {}
 
     // 2. MAI Checkers Subscription
@@ -1037,21 +1034,18 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
     }, "MAI");
 
     try {
-      const hasLocalMai = typeof window !== "undefined" && Boolean(localStorage.getItem("fantastic_so_checkers_cache_mai_v2"));
-      if (!hasLocalMai) {
-        fetch("/api/tidb?action=get_checkers&warehouse=MAI")
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.success && d.data) {
-              setCheckerMapMai((prev) => ({ ...prev, ...d.data }));
-              checkerMapMaiRef.current = { ...checkerMapMaiRef.current, ...d.data };
-              try {
-                localStorage.setItem("fantastic_so_checkers_cache_mai_v2", JSON.stringify(d.data));
-              } catch {}
-            }
-          })
-          .catch(() => {});
-      }
+      fetch("/api/tidb?action=get_checkers&warehouse=MAI&_t=" + Date.now())
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && d.data) {
+            setCheckerMapMai((prev) => ({ ...prev, ...d.data }));
+            checkerMapMaiRef.current = { ...checkerMapMaiRef.current, ...d.data };
+            try {
+              localStorage.setItem("fantastic_so_checkers_cache_mai_v2", JSON.stringify(d.data));
+            } catch {}
+          }
+        })
+        .catch(() => {});
     } catch {}
 
     return () => {
