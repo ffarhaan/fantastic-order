@@ -3079,16 +3079,12 @@ export async function POST(req: Request) {
           const oDate = String(item.order_date || item.orderDate || "-").trim();
           const txDate = String(item.transaction_date || item.transactionDate || oDate || "-").trim();
 
-          // Server-side Multi-Month & Different SO Titanium Shield (LOCKED_RULES A.8):
-          // Invoices from October re-used in November must ALWAYS be isolated with composite key `${noFaktur}__${noSO}`
-          // Strictly protect MAI keys so their "MAI-" prefix is NEVER stripped!
-          if (!invKey.startsWith("MAI-") && !invKey.includes("__") && noSO && noSO !== "-" && (oDate.includes("/11/") || oDate.includes("-11-") || txDate.includes("/11/") || txDate.includes("-11-"))) {
-            const num = parseInt(noFaktur, 10);
-            if (!isNaN(num) && num >= 24000 && num <= 38500) {
-              invKey = `${noFaktur}__${noSO}`;
-            }
-          }
           const jenis = String(item.jenis_transaksi || item.jenisTransaksi || "DOO").trim();
+          const isOraItem = jenis === "ORA" || cust.toUpperCase().startsWith("HAK") || cust.toUpperCase().startsWith("IHC") || cust.toUpperCase().includes("HELIOS");
+          // Ensure ORA keys ALWAYS retain their -1P suffix per LOCKED_RULES.md Sec 1.A.2
+          if (isOraItem && !invKey.includes("__") && !invKey.endsWith("-1P")) {
+            invKey = `${invKey}-1P`;
+          }
           const kat = String(item.kategori || "3P").trim();
           let katProd = String(item.kategori_produk || item.kategoriProduk || "").trim();
           if (Array.isArray(item.items) && item.items.length > 0) {
@@ -3355,6 +3351,102 @@ export async function POST(req: Request) {
       return Response.json({
         success: true,
         message: `Status berhasil diubah ke: ${newStatus}`,
+      });
+    }
+
+    if (action === "deduplicate_fakturs") {
+      const allRows = (await conn.execute(
+        "SELECT invoice_key, no_faktur, no_sales_order, customer_name, order_date, transaction_date, jenis_transaksi, kategori, kategori_produk, status_cetak, printed_at, printed_by, total_harga, items_json FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
+      )) as any[];
+
+      const byKey = new Map<string, any>();
+      for (const r of allRows) byKey.set(String(r.invoice_key), r);
+
+      const keysToDelete: string[] = [];
+      const rowsToUpsert: any[] = [];
+      const keysToMarkPrinted: string[] = [];
+
+      for (const r of allRows) {
+        const k = String(r.invoice_key || "");
+        if (!k.includes("__")) continue;
+
+        const [prefix] = k.split("__");
+        const cleanInv = prefix.replace(/^MAI-/i, "").replace(/-1P$/i, "");
+        const isMai = k.startsWith("MAI-");
+        const custUpper = String(r.customer_name || "").toUpperCase();
+        const isOra = r.jenis_transaksi === "ORA" || custUpper.startsWith("HAK") || custUpper.startsWith("IHC") || custUpper.includes("HELIOS");
+        const canonicalBaseKey = isMai ? (isOra ? `MAI-${cleanInv}-1P` : `MAI-${cleanInv}`) : (isOra ? `${cleanInv}-1P` : cleanInv);
+
+        const existingBase = byKey.get(canonicalBaseKey);
+        if (existingBase) {
+          const baseSO = String(existingBase.no_sales_order || "").trim();
+          const compSO = String(r.no_sales_order || "").trim();
+          const baseDate = String(existingBase.order_date || existingBase.transaction_date || "").trim();
+          const compDate = String(r.order_date || r.transaction_date || "").trim();
+          const isDiffMonth = baseDate.length >= 7 && compDate.length >= 7 && baseDate.slice(-7) !== compDate.slice(-7);
+
+          if (baseSO === compSO || !isDiffMonth) {
+            // Same transaction / same month duplicate -> delete the composite ghost and preserve printed status on base!
+            keysToDelete.push(k);
+            if (Number(r.status_cetak) === 1 && Number(existingBase.status_cetak) !== 1) {
+              keysToMarkPrinted.push(canonicalBaseKey);
+            }
+          }
+        } else {
+          // Canonical base key (e.g. 28136-1P) does not exist because old bug stripped -1P into 28136__1765462!
+          // Migrate row to canonicalBaseKey and delete the __ row!
+          keysToDelete.push(k);
+          rowsToUpsert.push({
+            ...r,
+            invoice_key: canonicalBaseKey,
+            jenis_transaksi: isOra ? "ORA" : r.jenis_transaksi,
+          });
+          byKey.set(canonicalBaseKey, r);
+        }
+      }
+
+      for (const up of rowsToUpsert) {
+        await conn.execute(
+          `INSERT INTO fakturs_archive (
+            invoice_key, no_faktur, no_sales_order, customer_name,
+            order_date, transaction_date, jenis_transaksi, kategori,
+            kategori_produk, status_cetak, printed_at, printed_by,
+            total_harga, items_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            no_sales_order = VALUES(no_sales_order),
+            customer_name = VALUES(customer_name),
+            status_cetak = IF(fakturs_archive.status_cetak = 1, 1, VALUES(status_cetak)),
+            printed_at = COALESCE(fakturs_archive.printed_at, VALUES(printed_at)),
+            printed_by = COALESCE(fakturs_archive.printed_by, VALUES(printed_by)),
+            total_harga = VALUES(total_harga),
+            items_json = COALESCE(VALUES(items_json), fakturs_archive.items_json)`,
+          [
+            up.invoice_key, up.no_faktur, up.no_sales_order, up.customer_name,
+            up.order_date, up.transaction_date, up.jenis_transaksi, up.kategori,
+            up.kategori_produk, up.status_cetak, up.printed_at, up.printed_by,
+            up.total_harga, up.items_json
+          ]
+        );
+      }
+
+      if (keysToMarkPrinted.length > 0) {
+        const ph = keysToMarkPrinted.map(() => "?").join(", ");
+        await conn.execute(`UPDATE fakturs_archive SET status_cetak = 1 WHERE invoice_key IN (${ph})`, keysToMarkPrinted);
+      }
+
+      const CHUNK = 100;
+      for (let i = 0; i < keysToDelete.length; i += CHUNK) {
+        const slice = keysToDelete.slice(i, i + CHUNK);
+        const ph = slice.map(() => "?").join(", ");
+        await conn.execute(`DELETE FROM fakturs_archive WHERE invoice_key IN (${ph})`, slice);
+      }
+
+      return Response.json({
+        success: true,
+        deletedDuplicates: keysToDelete.length,
+        migratedTo1P: rowsToUpsert.length,
+        markedPrinted: keysToMarkPrinted.length,
       });
     }
 

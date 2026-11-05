@@ -1371,6 +1371,72 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
     [currentUser, showToast]
   );
 
+// Sanitize & Deduplicate ghost composite keys (e.g., 25000-1P + 25000-1P__1607220 or 28136__1765462 for ORA 28136-1P)
+// Strictly preserves LOCKED_RULES.md Sec 1.A (DOO vs ORA -1P isolation & Cross-Month collision isolation)
+function sanitizeDuplicateCompositeDocs(docs: FirestoreFakturDoc[]): FirestoreFakturDoc[] {
+  const byKey = new Map<string, FirestoreFakturDoc>();
+  for (const d of docs) {
+    const k = d?.id || d?.no_faktur;
+    if (k && !k.startsWith("TEST-")) byKey.set(k, d);
+  }
+
+  const keysToRemove = new Set<string>();
+  const migratedDocs: FirestoreFakturDoc[] = [];
+
+  for (const d of byKey.values()) {
+    const k = String(d.id || d.no_faktur || "");
+    if (!k.includes("__")) continue;
+
+    const [prefix] = k.split("__");
+    const cleanInv = prefix.replace(/^MAI-/i, "").replace(/-1P$/i, "");
+    const isMai = k.startsWith("MAI-") || d.entity === "MAI";
+    const cust = String(d.customer_name || d.extra?.nama_pelanggan || "");
+    const isOra = d.jenis_transaksi === "ORA" || isOraCustomer(cust);
+    const canonicalBaseKey = isMai ? (isOra ? `MAI-${cleanInv}-1P` : `MAI-${cleanInv}`) : (isOra ? `${cleanInv}-1P` : cleanInv);
+
+    const existingBase = byKey.get(canonicalBaseKey);
+    if (existingBase) {
+      const baseSO = String(existingBase.no_sales_order || "").trim();
+      const compSO = String(d.no_sales_order || "").trim();
+      const baseDate = String(existingBase.order_date || existingBase.transaction_date || existingBase.extra?.order_date || "").trim();
+      const compDate = String(d.order_date || d.transaction_date || d.extra?.order_date || "").trim();
+      const isDiffMonth = Boolean(baseDate.length >= 7 && compDate.length >= 7 && baseDate.slice(-7) !== compDate.slice(-7));
+
+      // If same SO OR same month, this __ entry is a redundant ghost duplicate of canonicalBaseKey!
+      if (baseSO === compSO || !isDiffMonth) {
+        keysToRemove.add(k);
+        if (d.status_cetak && !existingBase.status_cetak) {
+          existingBase.status_cetak = true;
+          existingBase.printed_at = existingBase.printed_at || d.printed_at || new Date().toISOString();
+          existingBase.printed_by = existingBase.printed_by || d.printed_by || null;
+        }
+        if ((!baseSO || baseSO === "-") && compSO && compSO !== "-") {
+          existingBase.no_sales_order = compSO;
+        }
+      }
+    } else {
+      // Canonical base key (e.g., 28136-1P for ORA) does not exist because legacy bug stripped -1P into 28136__1765462!
+      keysToRemove.add(k);
+      const migrated: FirestoreFakturDoc = {
+        ...d,
+        id: canonicalBaseKey,
+        jenis_transaksi: isOra ? "ORA" : d.jenis_transaksi,
+      };
+      migratedDocs.push(migrated);
+      byKey.set(canonicalBaseKey, migrated);
+    }
+  }
+
+  for (const rem of keysToRemove) {
+    byKey.delete(rem);
+  }
+  for (const m of migratedDocs) {
+    byKey.set(m.id, m);
+  }
+
+  return Array.from(byKey.values());
+}
+
 // Kumulatif Merge Docs adhering 100% to LOCKED_RULES.md (Zero Data Loss & Anti-Downgrade)
 function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreFakturDoc[]): FirestoreFakturDoc[] {
   const map = new Map<string, FirestoreFakturDoc>();
@@ -1420,7 +1486,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       });
     }
   }
-  return Array.from(map.values());
+  return sanitizeDuplicateCompositeDocs(Array.from(map.values()));
 }
 
   const lastSyncedServerCountRef = useRef<number>(0);
@@ -1580,11 +1646,21 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
       // Step 1: Read local IndexedDB cache INSTANTLY (0–10ms!)
       try {
+        if (typeof window !== "undefined" && localStorage.getItem("faktur_cache_schema_v") !== "tidb_clean_v3_20261106") {
+          await clearLocalCachedFakturs().catch(() => {});
+          localStorage.setItem("faktur_cache_schema_v", "tidb_clean_v3_20261106");
+        }
         const cached = await getLocalCachedFakturs();
         if (cached && cached.fakturs && cached.fakturs.length > 0 && isMounted) {
-          cached.fakturs = cached.fakturs.filter(
-            (f) => !String(f.id || f.no_faktur || "").startsWith("TEST-")
+          const prevLen = cached.fakturs.length;
+          cached.fakturs = sanitizeDuplicateCompositeDocs(
+            cached.fakturs.filter(
+              (f) => !String(f.id || f.no_faktur || "").startsWith("TEST-")
+            )
           );
+          if (cached.fakturs.length !== prevLen) {
+            setLocalCachedFakturs(cached.fakturs, cached.maxUpdated || 0, cached.printState);
+          }
 
           // Self-Healing Cache: Automatically detect and purge contaminated collision cache (e.g. October rows corrupted with November SOs)
           const hasStaleCollisionCache = cached.fakturs.some((f) => {
@@ -1684,11 +1760,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
         }
 
-        // If this browser has MORE complete data in IndexedDB than TiDB (e.g. 17,309 vs 17,304),
-        // automatically heal TiDB with ONLY the missing rows (< 50ms) so all other browsers/devices receive 100% parity!
-        if (check && check.totalCount > 1000 && clientCount > check.totalCount && currentFakturDocsRef.current.length > check.totalCount) {
-          syncMissingFaktursToTiDB(currentFakturDocsRef.current);
-        }
+
 
         if (clientCount > 0 && check) {
           if ((check.upToDate || check.maxUpdated <= clientUpdated) && clientCount >= check.totalCount) {
@@ -1843,12 +1915,24 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const newMap = printState.printedAtMap || {};
           const newByMap = printState.printedByMap || {};
 
-          // Fast equality check: only trigger React state re-render if printed keys actually changed!
+          // Permanent Print Retention (LOCKED_RULES.md Sec 1.D & 1.G):
+          // Merge printState keys with authoritative TiDB status_cetak so streaming partitions NEVER unprint printed TiDB rows!
+          const mergedSet = new Set<string>(newKeys);
+          if (currentFakturDocsRef.current) {
+            for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
+              const d = currentFakturDocsRef.current[i];
+              const k = d.id || d.no_faktur;
+              if (k && d.status_cetak) {
+                mergedSet.add(k);
+              }
+            }
+          }
+
           const curSet = printedInvoicesRef.current;
-          let hasPrintChange = newKeys.length !== curSet.size;
+          let hasPrintChange = mergedSet.size !== curSet.size;
           if (!hasPrintChange) {
-            for (let i = 0; i < newKeys.length; i++) {
-              if (!curSet.has(newKeys[i])) {
+            for (const k of mergedSet) {
+              if (!curSet.has(k)) {
                 hasPrintChange = true;
                 break;
               }
@@ -1856,33 +1940,31 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
 
           if (hasPrintChange) {
-            const nextKeys = new Set<string>(newKeys);
-            setPrintedInvoices(nextKeys);
-            printedInvoicesRef.current = nextKeys;
-            setPrintedAtMap(newMap);
-            printedAtMapRef.current = newMap;
-            setPrintedByMap(newByMap);
-            printedByMapRef.current = newByMap;
+            const combinedAt = { ...printedAtMapRef.current, ...newMap };
+            const combinedBy = { ...printedByMapRef.current, ...newByMap };
+            setPrintedInvoices(mergedSet);
+            printedInvoicesRef.current = mergedSet;
+            setPrintedAtMap(combinedAt);
+            printedAtMapRef.current = combinedAt;
+            setPrintedByMap(combinedBy);
+            printedByMapRef.current = combinedBy;
 
-            // Update currentFakturDocsRef in-place so status_cetak stays 100% in sync
             if (currentFakturDocsRef.current) {
               for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
                 const d = currentFakturDocsRef.current[i];
                 const k = d.id || d.no_faktur;
-                if (k) {
-                  const isP = nextKeys.has(k);
-                  d.status_cetak = isP;
-                  d.printed_at = isP ? (newMap[k] || null) : null;
-                  d.printed_by = isP ? (newByMap[k] || null) : null;
+                if (k && mergedSet.has(k)) {
+                  d.status_cetak = true;
+                  d.printed_at = d.printed_at || combinedAt[k] || null;
+                  d.printed_by = d.printed_by || combinedBy[k] || null;
                 }
               }
             }
 
-            // Cache print state locally into IndexedDB for instant 0ms reload
             setLocalCachedPrintState({
-              printedKeys: newKeys,
-              printedAtMap: newMap,
-              printedByMap: newByMap,
+              printedKeys: Array.from(mergedSet),
+              printedAtMap: combinedAt,
+              printedByMap: combinedBy,
             });
           }
         }
@@ -3249,7 +3331,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const k = d.id || d.no_faktur;
           if (k) combinedExistingMap.set(k, d);
         });
-        const existingDBDocsUnified = Array.from(combinedExistingMap.values());
+        const existingDBDocsUnified = sanitizeDuplicateCompositeDocs(Array.from(combinedExistingMap.values()));
 
         const existingDB = existingDBDocsUnified as unknown as Array<Record<string, unknown>>;
 
@@ -3431,13 +3513,19 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             existingDate.length >= 7 && incomingDate.length >= 7 &&
             existingDate.slice(-7) !== incomingDate.slice(-7)
           );
+          const isSameSO = Boolean(existingSO && existingSO !== "-" && incomingSO && incomingSO !== "-" && existingSO === incomingSO);
 
+          // Zero Collision Guarantee & Multi-Month Isolation (LOCKED_RULES A.8):
+          // ONLY allocate a composite __ key if it is a genuinely DIFFERENT SO (not same SO, and not a multi-SO line on the same ORA invoice in the same upload)
+          // OR if it is a DIFFERENT month with a different SO!
           if (
+            !isSameSO &&
+            !touchedInvoiceInThisUpload.has(baseTargetKey) &&
             incomingSO &&
             incomingSO !== "-" &&
             (
-              (existingSO && existingSO !== "-" && existingSO !== incomingSO) ||
-              isDifferentMonth
+              (existingSO && existingSO !== "-" && existingSO !== incomingSO && (!isOra || isDifferentMonth)) ||
+              (isDifferentMonth && existingSO !== incomingSO)
             )
           ) {
             targetKey = `${baseTargetKey}__${incomingSO}`;
@@ -3447,14 +3535,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const existingEntry = invMap.get(targetKey);
 
           // Determine if this invoice already exists in the database
-          const isExistingInDB = existingEntry !== undefined || prevInfo !== undefined;
+          const isExistingInDB = existingEntry !== undefined || prevInfo !== undefined || (isSameSO && (existingEntryCandidate !== undefined || prevInfoCandidate !== undefined));
 
           let isPrinted = false;
           let printedAt: string | null = null;
 
           const candidatePAt = (existingEntry && existingEntry.printed_at) ||
             mergedPrintedAtMap[targetKey] ||
-            (prevInfo && prevInfo.printed_at);
+            (prevInfo && prevInfo.printed_at) ||
+            (isSameSO ? ((existingEntryCandidate && existingEntryCandidate.printed_at) || mergedPrintedAtMap[baseTargetKey] || (prevInfoCandidate && prevInfoCandidate.printed_at)) : null);
           const isStale = isStalePrintTimestamp(candidatePAt, r.orderDate);
 
           // PERMANENT PRINT RETENTION & UNPRINTED GUARANTEE (LOCKED_RULES.md Sec 1.B & 1.D):
@@ -3462,7 +3551,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const wasPrinted = !isStale && Boolean(
             mergedPrintedSet.has(targetKey) ||
             (existingEntry && existingEntry.status_cetak) ||
-            (prevInfo && prevInfo.status_cetak)
+            (prevInfo && prevInfo.status_cetak) ||
+            (isSameSO && (mergedPrintedSet.has(baseTargetKey) || (existingEntryCandidate && existingEntryCandidate.status_cetak) || (prevInfoCandidate && prevInfoCandidate.status_cetak)))
           );
 
           if (wasPrinted) {
