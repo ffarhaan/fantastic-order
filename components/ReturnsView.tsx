@@ -1094,6 +1094,42 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   };
 
+  const handleDirectApprove = (r: ShipmentReturnRecord) => {
+    if (!canEditReturns) {
+      setValidationModal({
+        isOpen: true,
+        title: "Mode Hanya Lihat",
+        message: "Akun Anda tidak memiliki hak akses mengubah modul Shipment Error. Hubungi Administrator untuk meminta akses.",
+        type: "warning",
+      });
+      return;
+    }
+    setSelectedReturn(r);
+    setEditForm({
+      pbf: r.pbf || "MBI",
+      customer_name: r.customer_name || "",
+      invoice_no: r.invoice_no || "",
+      so_no: r.so_no || "",
+      product_name: r.product_name || "",
+      qty: r.qty || 1,
+      batch_no: r.batch_no || "",
+      expiry_date: r.expiry_date || "",
+      reason: r.reason || "",
+      invoice_date: r.invoice_date || "",
+      report_date: r.report_date ? r.report_date.split("T")[0] : "",
+      category: r.category || "",
+      confirm: "Approve",
+      action: r.action || "",
+      nota_retur_no: r.nota_retur_no || "",
+      resolved_date: r.resolved_date || "",
+      status: "In Progress",
+      note: r.note || "",
+      person: r.person || "",
+      root_cause: r.root_cause || "",
+    });
+    setShowConfirmApproveModal(true);
+  };
+
   // Handler sebelum konfirmasi selesai: WAJIB periksa kelengkapan Tindakan, Penyebab, & Personil
   const handleRequestResolveReturn = (item: ShipmentReturnRecord) => {
     if (!canEditReturns) {
@@ -2991,24 +3027,27 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       <div className="hidden md:block rounded-2xl border border-zinc-300 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
         {tableViewMode === "smart" ? (
           /* ══════════════════════════════════════════════════════════════════════ */
-          /* ── SMART MODE: Pas 100% di layar, ZERO Horizontal Scroll (5 Kolom) ── */
+          /* ── SMART MODE: Pas 100% di layar, ZERO Horizontal Scroll (6 Kolom) ── */
           /* ══════════════════════════════════════════════════════════════════════ */
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-zinc-100 dark:bg-[#070b14] border-b-2 border-zinc-300 dark:border-zinc-800 text-[11px] font-black text-black dark:text-slate-400 uppercase tracking-wider select-none">
-                <th className="py-3 px-4 w-[28%] border-r border-zinc-200 dark:border-zinc-800">
+                <th className="py-3 px-3 w-[10%] text-center border-r border-zinc-200 dark:border-zinc-800">
+                  ACC / Selesai
+                </th>
+                <th className="py-3 px-4 w-[25%] border-r border-zinc-200 dark:border-zinc-800">
                   Faktur & Pelanggan
                 </th>
-                <th className="py-3 px-4 w-[26%] border-r border-zinc-200 dark:border-zinc-800">
+                <th className="py-3 px-4 w-[24%] border-r border-zinc-200 dark:border-zinc-800">
                   Produk & Fisik
                 </th>
-                <th className="py-3 px-4 w-[24%] border-r border-zinc-200 dark:border-zinc-800">
+                <th className="py-3 px-4 w-[22%] border-r border-zinc-200 dark:border-zinc-800">
                   Kendala & Penyebab
                 </th>
-                <th className="py-3 px-3 w-[14%] text-center border-r border-zinc-200 dark:border-zinc-800">
+                <th className="py-3 px-3 w-[12%] text-center border-r border-zinc-200 dark:border-zinc-800">
                   Status & Timeline
                 </th>
-                <th className="py-3 px-3 w-[8%] text-center">
+                <th className="py-3 px-3 w-[7%] text-center">
                   Aksi
                 </th>
               </tr>
@@ -3016,14 +3055,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <tbody className="divide-y divide-zinc-200/80 dark:divide-slate-800/50 bg-white dark:bg-[#0a0f1c]">
               {loading && returns.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center text-zinc-400">
+                  <td colSpan={6} className="py-16 text-center text-zinc-400">
                     <RefreshCw className="w-7 h-7 animate-spin mx-auto text-indigo-500 mb-2" />
                     <span className="font-semibold text-sm">Memuat data tiket komplain & retur...</span>
                   </td>
                 </tr>
               ) : returns.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center text-zinc-400">
+                  <td colSpan={6} className="py-16 text-center text-zinc-400">
                     <RotateCcw className="w-8 h-8 mx-auto text-zinc-400 mb-2 opacity-50" />
                     <p className="font-semibold text-sm text-zinc-600 dark:text-slate-400">Tidak ada tiket komplain/retur yang cocok</p>
                     <p className="text-xs text-zinc-400 dark:text-slate-500 mt-1">Gunakan kata kunci lain atau ubah status filter.</p>
@@ -3045,7 +3084,53 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                             : ""
                         }`}
                       >
-                        {/* 1. Faktur & Pelanggan */}
+                        {/* 1. ACC / Selesai (Eksekusi Cepat Langsung di Depan) */}
+                        <td
+                          className="py-3 px-2 text-center align-middle border-r border-zinc-200 dark:border-zinc-800/80"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {r.status === "Pending" ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDirectApprove(r);
+                              }}
+                              className="w-full py-1.5 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-[11px] inline-flex items-center justify-center gap-1 shadow-xs transition-all cursor-pointer"
+                              title="ACC Komplain ini (Proses ke In Progress)"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>ACC</span>
+                            </button>
+                          ) : r.status === "In Progress" ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRequestResolveReturn(r);
+                              }}
+                              className="w-full py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-[11px] inline-flex items-center justify-center gap-1 shadow-xs transition-all cursor-pointer"
+                              title="Tandai kasus ini selesai (Resolved)"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Selesaikan</span>
+                            </button>
+                          ) : isResolved ? (
+                            <span className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md text-[10px] font-extrabold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800/60 shadow-2xs">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                              <span>Selesai</span>
+                            </span>
+                          ) : (r.status || "").toLowerCase().includes("reject") ? (
+                            <span className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md text-[10px] font-extrabold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800/60 shadow-2xs">
+                              <XCircle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                              <span>Ditolak</span>
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-zinc-400 font-bold">-</span>
+                          )}
+                        </td>
+
+                        {/* 2. Faktur & Pelanggan */}
                         <td className="py-3 px-4 border-r border-zinc-200 dark:border-zinc-800/80 align-top">
                           <div className="flex items-center gap-1.5 flex-wrap mb-1">
                             <span
@@ -3221,45 +3306,29 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                           )}
                         </td>
 
-                        {/* 5. Aksi */}
-                        <td className="py-3 px-3 text-center align-middle whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1.5">
-                            {r.status === "In Progress" && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRequestResolveReturn(r);
-                                }}
-                                className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] inline-flex items-center gap-1 shadow-xs transition-all cursor-pointer"
-                                title="Tandai kasus ini selesai (Resolved)"
-                              >
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Selesaikan</span>
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedReturn((prev) => (prev?.id === r.id ? null : r));
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all shadow-xs cursor-pointer ${
-                                isExpanded
-                                  ? "bg-black text-white dark:bg-indigo-600 border-black dark:border-indigo-500 shadow-sm"
-                                  : "bg-zinc-100 hover:bg-zinc-200 text-black border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
-                              }`}
-                            >
-                              {isExpanded ? "Tutup" : "Tindakan"}
-                            </button>
-                          </div>
+                        {/* 6. Aksi */}
+                        <td className="py-3 px-2 text-center align-middle whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedReturn((prev) => (prev?.id === r.id ? null : r));
+                            }}
+                            className={`w-full max-w-[85px] py-1.5 px-2 rounded-lg text-[11px] font-bold border transition-all shadow-xs cursor-pointer ${
+                              isExpanded
+                                ? "bg-black text-white dark:bg-indigo-600 border-black dark:border-indigo-500 shadow-sm"
+                                : "bg-zinc-100 hover:bg-zinc-200 text-black border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
+                            }`}
+                          >
+                            {isExpanded ? "Tutup" : "Tindakan"}
+                          </button>
                         </td>
                       </tr>
 
                       {/* Expandable Accordion Row (Smart Mode) */}
                       {isExpanded && (
                         <tr className="bg-zinc-100/90 dark:bg-[#070b16] border-y-2 border-indigo-500/50 animate-in fade-in duration-150">
-                          <td colSpan={5} className="p-2 sm:p-3">
+                          <td colSpan={6} className="p-2 sm:p-3">
                             {renderAccordionContent(r)}
                           </td>
                         </tr>
@@ -3706,36 +3775,20 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
                         {/* Aksi (Sticky Right) */}
                         <td className="py-2.5 px-3 text-center whitespace-nowrap sticky right-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50/70 dark:group-hover:bg-slate-800/60 border-l border-zinc-200 dark:border-zinc-800 shadow-[-3px_0_6px_rgba(0,0,0,0.06)]">
-                          <div className="flex items-center justify-center gap-1.5">
-                            {r.status === "In Progress" && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRequestResolveReturn(r);
-                                }}
-                                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] inline-flex items-center gap-1 shadow-xs transition-all cursor-pointer"
-                                title="Tandai kasus ini selesai (Resolved)"
-                              >
-                                <CheckCircle2 className="w-3 h-3" />
-                                <span>Selesaikan</span>
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedReturn((prev) => (prev?.id === r.id ? null : r));
-                              }}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all shadow-xs cursor-pointer ${
-                                isExpanded
-                                  ? "bg-black text-white dark:bg-indigo-600 border-black dark:border-indigo-500"
-                                  : "bg-zinc-100 hover:bg-zinc-200 text-black border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
-                              }`}
-                            >
-                              {isExpanded ? "Tutup" : "Edit / Tindakan"}
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedReturn((prev) => (prev?.id === r.id ? null : r));
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all shadow-xs cursor-pointer ${
+                              isExpanded
+                                ? "bg-black text-white dark:bg-indigo-600 border-black dark:border-indigo-500"
+                                : "bg-zinc-100 hover:bg-zinc-200 text-black border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
+                            }`}
+                          >
+                            {isExpanded ? "Tutup" : "Edit / Tindakan"}
+                          </button>
                         </td>
                       </tr>
 
