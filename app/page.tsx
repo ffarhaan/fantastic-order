@@ -960,8 +960,19 @@ export default function Home() {
     const targetMap = isMai ? checkerMapMaiRef.current : checkerMapMbiRef.current;
     if (!targetMap) return null;
 
-    // STRICT MATCHING BY NO SO ONLY (Per operational instruction, do NOT match against invoice number or loose suffixes)
-    if (!so || so === "-" || so === "#N/A") return null;
+    // SMART MULTI-KEY MATCHER (LOCKED_RULES.md Section 6.6):
+    // 1. Pencocokan langsung via Nomor SO (so_number) -> misal "WY3M0L-5281"
+    // 2. Normalisasi bebas tanda hubung: "WY3M0L-5281" <-> "WY3M0L5281"
+    // 3. Normalisasi huruf O <-> angka 0
+    // 4. Fallback pencocokan via invoice_number jika SO gagal
+    if (!so || so === "-" || so === "#N/A") {
+      // Jika tidak ada SO, coba fallback via invoiceNo jika tersedia
+      if (invoiceNo) {
+        const invStr = String(Array.isArray(invoiceNo) ? invoiceNo[0] : invoiceNo).trim();
+        if (invStr && targetMap[invStr]) return targetMap[invStr];
+      }
+      return null;
+    }
     const cleanSo = String(so).trim();
     if (!cleanSo) return null;
     const rawCandidates: string[] = [cleanSo];
@@ -973,21 +984,30 @@ export default function Home() {
       const noSpace = raw.replace(/\s+/g, "");
       const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 
-      // 1. Direct match
+      // 1. Direct match (WY3M0L-5281 / WY3M0L5281)
       entry = targetMap[raw] || targetMap[noSpace] || targetMap[alpha];
       if (entry) break;
 
-      // 2. 0 <-> O variations (handling '0Y99DY-3580' vs 'OY99DY-3580')
+      // 2. 0 <-> O variations (handling '0Y99DY-3580' vs 'OY99DY-3580' / 'WY3M0L' vs 'WY3MOL')
       const oVar1 = raw.replace(/^0/i, "O");
       const oVar2 = raw.replace(/^O/i, "0");
       const oVarAll1 = raw.replace(/0/g, "O");
       const oVarAll2 = raw.replace(/O/gi, "0");
+      const oVarAlpha1 = alpha.replace(/0/g, "O");
+      const oVarAlpha2 = alpha.replace(/O/g, "0");
 
       entry = targetMap[oVar1] || targetMap[oVar2] || targetMap[oVarAll1] || targetMap[oVarAll2] ||
-              targetMap[oVar1.replace(/\s+/g, "")] || targetMap[oVar2.replace(/\s+/g, "")];
+              targetMap[oVar1.replace(/\s+/g, "")] || targetMap[oVar2.replace(/\s+/g, "")] ||
+              targetMap[oVarAlpha1] || targetMap[oVarAlpha2];
       if (entry) break;
+    }
 
-      // Strict No-Suffix: SO must match in its entirety, suffix matching is disabled
+    // Fallback: jika SO tidak cocok, coba cari via invoice number (LOCKED_RULES.md Section 6.6 poin 2)
+    if (!entry && invoiceNo) {
+      const invStr = String(Array.isArray(invoiceNo) ? invoiceNo[0] : invoiceNo).trim();
+      if (invStr && invStr !== "-" && targetMap[invStr]) {
+        entry = targetMap[invStr];
+      }
     }
 
     if (!entry) return null;
@@ -1088,12 +1108,13 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
 
   // Real-time direct Firebase Firestore subscription (0 byte on Vercel, <100ms sync)
   useEffect(() => {
-    // 1. MBI Checkers Subscription
+    // 1. MBI Checkers Subscription (v3: clean truncated legacy caches)
     if (typeof window !== "undefined") {
       try {
-        const cached = localStorage.getItem("fantastic_so_checkers_cache_v2");
+        localStorage.removeItem("fantastic_so_checkers_cache_v2");
+        const cached = localStorage.getItem("fantastic_so_checkers_cache_v3");
         if (cached && (cached.includes("Apotek") || cached.includes("00:00:00") || cached.includes("GMT"))) {
-          localStorage.removeItem("fantastic_so_checkers_cache_v2");
+          localStorage.removeItem("fantastic_so_checkers_cache_v3");
         }
       } catch {}
     }
@@ -1120,26 +1141,27 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
     }, "MBI");
 
     try {
-      fetch("/api/tidb?action=get_checkers&warehouse=MBI&_t=" + Date.now())
+      fetch("/api/tidb?action=get_checkers&warehouse=MBI&fresh=true&_t=" + Date.now())
         .then((r) => r.json())
         .then((d) => {
           if (d.success && d.data) {
             setCheckerMapMbi((prev) => ({ ...prev, ...d.data }));
             checkerMapMbiRef.current = { ...checkerMapMbiRef.current, ...d.data };
             try {
-              localStorage.setItem("fantastic_so_checkers_cache_v2", JSON.stringify(d.data));
+              localStorage.setItem("fantastic_so_checkers_cache_v3", JSON.stringify(d.data));
             } catch {}
           }
         })
         .catch(() => {});
     } catch {}
 
-    // 2. MAI Checkers Subscription
+    // 2. MAI Checkers Subscription (v3: clean truncated legacy caches)
     if (typeof window !== "undefined") {
       try {
-        const cached = localStorage.getItem("fantastic_so_checkers_cache_mai_v2");
+        localStorage.removeItem("fantastic_so_checkers_cache_mai_v2");
+        const cached = localStorage.getItem("fantastic_so_checkers_cache_mai_v3");
         if (cached && (cached.includes("Apotek") || cached.includes("00:00:00") || cached.includes("GMT"))) {
-          localStorage.removeItem("fantastic_so_checkers_cache_mai_v2");
+          localStorage.removeItem("fantastic_so_checkers_cache_mai_v3");
         }
       } catch {}
     }
@@ -1166,14 +1188,14 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
     }, "MAI");
 
     try {
-      fetch("/api/tidb?action=get_checkers&warehouse=MAI&_t=" + Date.now())
+      fetch("/api/tidb?action=get_checkers&warehouse=MAI&fresh=true&_t=" + Date.now())
         .then((r) => r.json())
         .then((d) => {
           if (d.success && d.data) {
             setCheckerMapMai((prev) => ({ ...prev, ...d.data }));
             checkerMapMaiRef.current = { ...checkerMapMaiRef.current, ...d.data };
             try {
-              localStorage.setItem("fantastic_so_checkers_cache_mai_v2", JSON.stringify(d.data));
+              localStorage.setItem("fantastic_so_checkers_cache_mai_v3", JSON.stringify(d.data));
             } catch {}
           }
         })
@@ -2402,6 +2424,26 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         }
         showToast(`✓ Data sudah paling baru (${currentCount.toLocaleString("id-ID")} faktur sinkron).`);
       }
+
+      // Refresh checkers mapping (MBI & MAI) from TiDB live (LOCKED_RULES.md Section 6)
+      fetch("/api/tidb?action=get_checkers&warehouse=MBI&fresh=true&_t=" + Date.now())
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && d.data) {
+            setCheckerMapMbi((prev) => ({ ...prev, ...d.data }));
+            checkerMapMbiRef.current = { ...checkerMapMbiRef.current, ...d.data };
+          }
+        })
+        .catch(() => {});
+      fetch("/api/tidb?action=get_checkers&warehouse=MAI&fresh=true&_t=" + Date.now())
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && d.data) {
+            setCheckerMapMai((prev) => ({ ...prev, ...d.data }));
+            checkerMapMaiRef.current = { ...checkerMapMaiRef.current, ...d.data };
+          }
+        })
+        .catch(() => {});
     } catch (err) {
       console.error("Refresh error:", err);
       setError("Gagal memperbarui data.");

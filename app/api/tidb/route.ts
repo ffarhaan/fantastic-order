@@ -398,7 +398,8 @@ export async function GET(req: Request) {
     if (action === "get_checkers") {
       const warehouse = (searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
       const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
-      const rows = (await conn.execute(`SELECT so_number, checker_name, packer_name, picker_name FROM ${tableName}`)) as Array<{
+      // LOCKED_RULES.md Section 6: WAJIB ORDER BY updated_at DESC agar seluruh data terbaru (termasuk WY3M0L-*) tidak terpotong default limit
+      const rows = (await conn.execute(`SELECT so_number, checker_name, packer_name, picker_name FROM ${tableName} ORDER BY updated_at DESC LIMIT 30000`)) as Array<{
         so_number: string;
         checker_name: string;
         packer_name: string;
@@ -436,18 +437,35 @@ export async function GET(req: Request) {
             const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
             if (noSpace && !map[noSpace]) map[noSpace] = val;
             if (alpha && !map[alpha]) map[alpha] = val;
+
+            // Smart Multi-Key Matcher: 0 <-> O variations (LOCKED_RULES.md Section 6.6)
+            const oVar1 = raw.replace(/^0/i, "O");
+            const oVar2 = raw.replace(/^O/i, "0");
+            const oVarAll1 = raw.replace(/0/g, "O");
+            const oVarAll2 = raw.replace(/O/gi, "0");
+            if (oVar1 && !map[oVar1]) map[oVar1] = val;
+            if (oVar2 && !map[oVar2]) map[oVar2] = val;
+            if (oVarAll1 && !map[oVarAll1]) map[oVarAll1] = val;
+            if (oVarAll2 && !map[oVarAll2]) map[oVarAll2] = val;
             // Strict No-Suffix: prevents cross-SO collision (e.g. -1048)
           }
         }
       }
+      const isFresh = searchParams.get("fresh") === "true" || searchParams.has("_t");
       return compressedJsonResponse(
         req, 
         { success: true, data: map },
-        {
-          "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
-          "CDN-Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
-        }
+        isFresh
+          ? {
+              "Cache-Control": "no-store, no-cache, must-revalidate",
+              "CDN-Cache-Control": "no-store",
+              "Vercel-CDN-Cache-Control": "no-store",
+            }
+          : {
+              "Cache-Control": "public, max-age=60, stale-while-revalidate=180",
+              "CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=180",
+              "Vercel-CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=180",
+            }
       );
     }
 

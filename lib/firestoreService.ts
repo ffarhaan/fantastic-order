@@ -2131,13 +2131,17 @@ export function subscribeToCheckers(
   const isMai = warehouse === "MAI";
   const masterDocName = isMai ? "so_checkers_mai" : SO_CHECKERS_DOC;
   const recentDocName = isMai ? "so_checkers_recent_mai" : SO_CHECKERS_RECENT_DOC;
-  const cacheKey = isMai ? "fantastic_so_checkers_cache_mai_v2" : "fantastic_so_checkers_cache_v2";
+  const cacheKey = isMai ? "fantastic_so_checkers_cache_mai_v3" : "fantastic_so_checkers_cache_v3";
 
   let inMemoryMap: Record<string, { checker: string; packer: string; picker: string }> = {};
 
   // 1. Initial quick load from localStorage for 0ms startup
   if (typeof window !== "undefined") {
     try {
+      // Clean legacy corrupted/truncated v2 caches
+      localStorage.removeItem("fantastic_so_checkers_cache_v2");
+      localStorage.removeItem("fantastic_so_checkers_cache_mai_v2");
+
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         if (cached.includes("Apotek") || cached.includes("00:00:00") || cached.includes("GMT")) {
