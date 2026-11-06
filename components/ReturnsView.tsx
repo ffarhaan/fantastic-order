@@ -332,16 +332,26 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   } | null>(null);
 
   // One-time onboarding workflow popup
+  const [showSopAnnouncement, setShowSopAnnouncement] = useState(false);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       try {
-        const seen = localStorage.getItem("has_seen_shipment_workflow_v2");
+        const seen = localStorage.getItem("has_seen_shipment_sop_announcement_v3");
         if (!seen) {
-          setShowHowToUse(true);
+          setShowSopAnnouncement(true);
         }
       } catch {}
     }
   }, []);
+
+  const handleDismissSopAnnouncement = () => {
+    setShowSopAnnouncement(false);
+    try {
+      localStorage.setItem("has_seen_shipment_sop_announcement_v3", "true");
+      localStorage.setItem("has_seen_shipment_workflow_v2", "true");
+    } catch {}
+  };
 
   // Master Customer & Apotek suggestions
   const [masterCustNames, setMasterCustNames] = useState<string[]>([]);
@@ -4759,6 +4769,104 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               >
                 <Check className="w-3.5 h-3.5 stroke-[3]" />
                 <span>{validationModal.onConfirmText || "Mengerti & Lengkapi Data"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL ANNOUNCEMENT ONETIME: SOP UPDATE SHIPMENT ERROR ─── */}
+      {showSopAnnouncement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#0c1222] border-2 border-indigo-500/80 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-4 bg-gradient-to-r from-indigo-900/40 via-blue-900/30 to-purple-900/30 border-b border-indigo-500/30 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">🚨</span>
+                <div>
+                  <h3 className="text-sm font-black text-zinc-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                    <span>Update Penting Tracker</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500 text-white animate-pulse">
+                      Wajib Baca
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">
+                    Pembaruan alur operasional Shipment Error
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleDismissSopAnnouncement}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-4 sm:p-5 space-y-3 overflow-y-auto max-h-[75vh] text-xs">
+              <p className="font-semibold text-zinc-700 dark:text-slate-300">
+                Guys, ada update alur baru di sistem:
+              </p>
+
+              {/* Point 1 */}
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800/60 space-y-1.5">
+                <div className="font-black text-amber-800 dark:text-amber-400 flex items-center gap-1.5 text-xs">
+                  <span>1.</span>
+                  <span>CEK FOTO PACKING PBF DULU!</span>
+                </div>
+                <ul className="space-y-1 pl-4 list-disc text-amber-950 dark:text-amber-200/90 text-[11px] leading-relaxed font-medium">
+                  <li>Buka foto packingan gudang &amp; foto bukti komplain apotek.</li>
+                  <li>
+                    Kalo <strong>BUKAN salah gudang</strong> ➔ Klik <strong>[ Tindakan ]</strong> di kanan, isi Validitas Komplain jadi <strong className="text-rose-600 dark:text-rose-400">REJECT</strong> + wajib tulis alasannya.
+                  </li>
+                  <li>
+                    Kalo <strong>FIX salah gudang</strong> ➔ Langsung klik tombol biru <strong className="text-blue-600 dark:text-blue-400">[ ACC ]</strong> di kolom paling kiri.
+                  </li>
+                </ul>
+              </div>
+
+              {/* Point 2 */}
+              <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-800/60 space-y-1.5">
+                <div className="font-black text-blue-800 dark:text-blue-400 flex items-center gap-1.5 text-xs">
+                  <span>2.</span>
+                  <span>IN PROGRESS WAJIB 2 STEP (DIKUNCI SISTEM):</span>
+                </div>
+                <ul className="space-y-1 pl-4 list-disc text-blue-950 dark:text-blue-200/90 text-[11px] leading-relaxed font-medium">
+                  <li>
+                    <strong>Step 1 (Investigasi):</strong> Wajib isi Tindakan, Penyebab, &amp; Personilnya siapa. Kalo gak lengkap, gak bisa disimpan!
+                  </li>
+                  <li>
+                    <strong>Step 2 (Penerimaan):</strong> Kirim barang pengganti. Kalo barang udah beneran nyampe di apotek, baru klik tombol ijo <strong className="text-emerald-600 dark:text-emerald-400">[ Selesaikan ]</strong>.
+                  </li>
+                </ul>
+              </div>
+
+              {/* Point 3 */}
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800/60 space-y-1.5">
+                <div className="font-black text-emerald-800 dark:text-emerald-400 flex items-center gap-1.5 text-xs">
+                  <span>3.</span>
+                  <span>DATA GAK HILANG:</span>
+                </div>
+                <p className="pl-4 text-emerald-950 dark:text-emerald-200/90 text-[11px] leading-relaxed font-medium">
+                  Kalo data keliatan dikit, itu karena filter bulannya lagi <strong>"November 2026"</strong>. Tinggal ganti filternya ke <strong>"Semua Bulan"</strong> biar 1.800+ datanya muncul semua.
+                </p>
+              </div>
+
+              <div className="pt-1 text-center text-[11px] text-zinc-500 dark:text-zinc-400 font-bold">
+                Langsung terapin mulai sekarang ya. Thank you! 🔥
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-3.5 bg-zinc-50 dark:bg-[#070b14] border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleDismissSopAnnouncement}
+                className="w-full py-2.5 px-4 rounded-xl font-black text-xs text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>Siap, Mengerti &amp; Terapkan ➔</span>
               </button>
             </div>
           </div>
