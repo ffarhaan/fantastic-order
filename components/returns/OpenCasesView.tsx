@@ -141,6 +141,31 @@ export default function OpenCasesView({
     });
   }, [openCases, filterTier, searchQuery]);
 
+  // Handler sebelum konfirmasi selesai: WAJIB periksa kelengkapan Tindakan, Penyebab, & Personil
+  const handleRequestResolve = (row: ShipmentReturnRecord) => {
+    const hasAction = row.action && row.action.trim() && row.action !== "-" && row.action !== "#N/A";
+    const hasRootCause = row.root_cause && row.root_cause.trim() && row.root_cause !== "-" && row.root_cause !== "#N/A";
+    const hasPerson = row.person && row.person.trim() && row.person !== "-" && row.person !== "#N/A";
+
+    if (!hasAction || !hasRootCause || !hasPerson) {
+      const missing: string[] = [];
+      if (!hasAction) missing.push("1. Tindakan Solusi Gudang (Action)");
+      if (!hasRootCause) missing.push("2. Penyebab Kesalahan (Root Cause)");
+      if (!hasPerson) missing.push("3. Personil Terkait (Picker / Checker)");
+
+      alert(
+        `⚠️ Tiket Faktur #${row.invoice_no || row.id} belum bisa diselesaikan!\n\n` +
+        `Pada tahap In Progress, Anda wajib melengkapi data investigasi berikut terlebih dahulu:\n` +
+        missing.join("\n") +
+        `\n\nSilakan klik tiket ini untuk melengkapi data sebelum menyelesaikannya.`
+      );
+      if (onSelectReturn) onSelectReturn(row);
+      return;
+    }
+
+    setConfirmResolveCase(row);
+  };
+
   // One-click mark resolved with confirmation modal
   const handleExecuteResolve = async () => {
     if (!confirmResolveCase) return;
@@ -368,7 +393,7 @@ export default function OpenCasesView({
                   <button
                     type="button"
                     disabled={updatingId === row.id}
-                    onClick={() => setConfirmResolveCase(row)}
+                    onClick={() => handleRequestResolve(row)}
                     className="w-full h-9 py-2 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white flex items-center justify-center gap-1.5 shadow-xs transition-all touch-manipulation cursor-pointer disabled:opacity-50"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
@@ -479,7 +504,7 @@ export default function OpenCasesView({
                         <button
                           type="button"
                           disabled={updatingId === row.id}
-                          onClick={() => setConfirmResolveCase(row)}
+                          onClick={() => handleRequestResolve(row)}
                           className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 mx-auto cursor-pointer shadow-xs transition-all disabled:opacity-50"
                           title="Tandai kasus ini selesai (barang pengganti sudah sampai di apotek)"
                         >
@@ -525,7 +550,7 @@ export default function OpenCasesView({
             </div>
 
             <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/60 text-xs text-emerald-900 dark:text-emerald-200 font-medium leading-relaxed">
-              Apakah barang ini sudah benar-benar sampai dan diterima dengan baik oleh pihak apotek?
+              Apakah fisik barang pengganti sudah benar-benar sampai dan diterima dengan baik oleh pihak apotek?
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
@@ -542,7 +567,7 @@ export default function OpenCasesView({
                 className="px-4 py-1.5 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>Ya, Sudah Sampai &amp; Selesai ✓</span>
+                <span>Ya, Fisik Sudah Sampai &amp; Selesai ✓</span>
               </button>
             </div>
           </div>

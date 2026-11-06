@@ -938,11 +938,55 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       return;
     }
 
-    // Form Guard Tahap 3: RESOLVED konfirmasi penerimaan barang di apotek
+    // Form Guard Tahap 2 (Proses 1): Tiket yang SEDANG In Progress wajib lengkapi investigasi gudang
+    const isCurrentlyInProgress = selectedReturn.status === "In Progress" && editForm.status === "In Progress";
+    if (isCurrentlyInProgress) {
+      const hasAction = editForm.action && editForm.action.trim() && editForm.action !== "-" && editForm.action !== "#N/A";
+      const hasRootCause = editForm.root_cause && editForm.root_cause.trim() && editForm.root_cause !== "-" && editForm.root_cause !== "#N/A";
+      const hasPerson = editForm.person && editForm.person.trim() && editForm.person !== "-" && editForm.person !== "#N/A";
+
+      if (!hasAction || !hasRootCause || !hasPerson) {
+        const missing: string[] = [];
+        if (!hasAction) missing.push("1. Tindakan Solusi Gudang (Action)");
+        if (!hasRootCause) missing.push("2. Penyebab Kesalahan (Root Cause)");
+        if (!hasPerson) missing.push("3. Personil Terkait (Picker / Checker)");
+
+        alert(
+          `⚠️ Tahap In Progress (Proses 1 - Investigasi & Penyiapan Barang):\n\n` +
+          `Untuk menyimpan tiket yang sedang diproses, Anda wajib melengkapi data investigasi gudang berikut:\n` +
+          missing.join("\n") +
+          `\n\nSetelah ketiga data ini lengkap, fisik barang pengganti dapat disiapkan dan dikirim ke apotek.`
+        );
+        return;
+      }
+    }
+
+    // Form Guard Tahap 3 (Proses 2): RESOLVED konfirmasi penerimaan barang di apotek & kelengkapan investigasi
     const isResolving = editForm.status === "Resolved";
-    if (isResolving && !skipDeliveryConfirm && selectedReturn.status !== "Resolved") {
-      setConfirmResolveItem({ ...selectedReturn, ...editForm });
-      return;
+    if (isResolving) {
+      const hasAction = editForm.action && editForm.action.trim() && editForm.action !== "-" && editForm.action !== "#N/A";
+      const hasRootCause = editForm.root_cause && editForm.root_cause.trim() && editForm.root_cause !== "-" && editForm.root_cause !== "#N/A";
+      const hasPerson = editForm.person && editForm.person.trim() && editForm.person !== "-" && editForm.person !== "#N/A";
+
+      if (!hasAction || !hasRootCause || !hasPerson) {
+        const missing: string[] = [];
+        if (!hasAction) missing.push("1. Tindakan Solusi Gudang (Action)");
+        if (!hasRootCause) missing.push("2. Penyebab Kesalahan (Root Cause)");
+        if (!hasPerson) missing.push("3. Personil Terkait (Picker / Checker)");
+
+        alert(
+          `⚠️ Tiket Faktur #${editForm.invoice_no || selectedReturn.invoice_no} belum bisa diselesaikan!\n\n` +
+          `Pada tahap In Progress (Proses 1), Anda wajib melengkapi data investigasi berikut terlebih dahulu:\n` +
+          missing.join("\n") +
+          `\n\nTiket hanya dapat diselesaikan setelah data lengkap dan barang pengganti telah sampai di apotek.`
+        );
+        return;
+      }
+
+      if (!skipDeliveryConfirm && selectedReturn.status !== "Resolved") {
+        setConfirmResolveItem({ ...selectedReturn, ...editForm });
+        return;
+      }
     }
 
     setIsUpdating(true);
@@ -1016,6 +1060,35 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   };
 
+  // Handler sebelum konfirmasi selesai: WAJIB periksa kelengkapan Tindakan, Penyebab, & Personil
+  const handleRequestResolveReturn = (item: ShipmentReturnRecord) => {
+    if (!canEditReturns) {
+      alert("Akses Ditolak: Akun Anda tidak memiliki hak akses mengubah Shipment Error.");
+      return;
+    }
+    const hasAction = item.action && item.action.trim() && item.action !== "-" && item.action !== "#N/A";
+    const hasRootCause = item.root_cause && item.root_cause.trim() && item.root_cause !== "-" && item.root_cause !== "#N/A";
+    const hasPerson = item.person && item.person.trim() && item.person !== "-" && item.person !== "#N/A";
+
+    if (!hasAction || !hasRootCause || !hasPerson) {
+      const missing: string[] = [];
+      if (!hasAction) missing.push("1. Tindakan Solusi Gudang (Action)");
+      if (!hasRootCause) missing.push("2. Penyebab Kesalahan (Root Cause)");
+      if (!hasPerson) missing.push("3. Personil Terkait (Picker / Checker)");
+
+      alert(
+        `⚠️ Tiket Faktur #${item.invoice_no || item.id} belum bisa diselesaikan!\n\n` +
+        `Pada tahap In Progress (Proses 1), Anda wajib melengkapi data investigasi berikut terlebih dahulu:\n` +
+        missing.join("\n") +
+        `\n\nSilakan isi data investigasi pada detail tiket sebelum menyelesaikannya.`
+      );
+      setSelectedReturn(item);
+      return;
+    }
+
+    setConfirmResolveItem(item);
+  };
+
   // Direct Resolve Handler with Optimistic Local Update (<50ms)
   const handleDirectResolve = async (item: ShipmentReturnRecord) => {
     setConfirmResolveItem(null);
@@ -1027,6 +1100,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         r.id === item.id
           ? {
               ...r,
+              ...item,
               status: "Resolved",
               resolved_date: today,
             }
@@ -1035,16 +1109,24 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     );
 
     try {
+      const payload: any = {
+        id: item.id,
+        status: "Resolved",
+        resolved_date: today,
+        user_name: currentUser?.name || "Admin",
+        user_email: currentUser?.email || "",
+      };
+      if (item.action) payload.action = item.action;
+      if (item.root_cause) payload.root_cause = item.root_cause;
+      if (item.person) payload.person = item.person;
+      if (item.nota_retur_no) payload.nota_retur_no = item.nota_retur_no;
+      if (item.confirm) payload.confirm = item.confirm;
+      if (item.note) payload.note = item.note;
+
       const res = await fetch("/api/tidb?action=update_return", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: item.id,
-          status: "Resolved",
-          resolved_date: today,
-          user_name: currentUser?.name || "Admin",
-          user_email: currentUser?.email || "",
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
@@ -2825,7 +2907,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setConfirmResolveItem(r);
+                          handleRequestResolveReturn(r);
                         }}
                         className="h-9 py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-xs transition-all touch-manipulation cursor-pointer"
                         title="Tandai kasus ini selesai (Resolved)"
@@ -3102,7 +3184,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setConfirmResolveItem(r);
+                                  handleRequestResolveReturn(r);
                                 }}
                                 className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] inline-flex items-center gap-1 shadow-xs transition-all cursor-pointer"
                                 title="Tandai kasus ini selesai (Resolved)"
@@ -3585,7 +3667,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setConfirmResolveItem(r);
+                                  handleRequestResolveReturn(r);
                                 }}
                                 className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] inline-flex items-center gap-1 shadow-xs transition-all cursor-pointer"
                                 title="Tandai kasus ini selesai (Resolved)"
@@ -4490,7 +4572,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             </div>
 
             <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/60 text-xs text-emerald-900 dark:text-emerald-200 font-medium leading-relaxed">
-              Apakah barang ini sudah benar-benar sampai dan diterima dengan baik oleh pihak apotek?
+              Apakah fisik barang pengganti sudah benar-benar sampai dan diterima dengan baik oleh pihak apotek?
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
@@ -4507,7 +4589,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 className="px-4 py-1.5 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>Ya, Sudah Sampai &amp; Selesai ✓</span>
+                <span>Ya, Fisik Sudah Sampai &amp; Selesai ✓</span>
               </button>
             </div>
           </div>
