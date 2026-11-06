@@ -832,16 +832,17 @@ export async function GET(req: Request) {
       const [stats] = (await conn.execute(`
         SELECT 
           COUNT(*) as totalAll,
-          SUM(CASE WHEN (status = 'Resolved' OR status LIKE '%Resolved%') AND status NOT LIKE '%Reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as totalResolved,
-          SUM(CASE WHEN status NOT LIKE '%Resolved%' AND status NOT LIKE '%Reject%' AND (confirm != 'Reject' OR confirm IS NULL) AND status != '' THEN 1 ELSE 0 END) as totalPending,
+          SUM(CASE WHEN (LOWER(status) = 'resolved' OR LOWER(status) LIKE '%resolved%') AND LOWER(status) NOT LIKE '%reject%' AND LOWER(COALESCE(confirm, '')) NOT LIKE '%reject%' THEN 1 ELSE 0 END) as totalResolved,
+          SUM(CASE WHEN LOWER(status) = 'pending' OR status IS NULL OR status = '' THEN 1 ELSE 0 END) as totalPending,
+          SUM(CASE WHEN (LOWER(status) = 'in progress' OR LOWER(status) = 'approved' OR LOWER(status) = 'dikonfirmasi' OR LOWER(confirm) = 'approve') AND LOWER(status) NOT LIKE '%reject%' AND LOWER(status) NOT LIKE '%resolved%' THEN 1 ELSE 0 END) as totalInProgress,
           SUM(CASE WHEN pbf = 'MBI' THEN 1 ELSE 0 END) as totalMbi,
           SUM(CASE WHEN pbf = 'MAI' THEN 1 ELSE 0 END) as totalMai,
-          SUM(CASE WHEN pbf = 'MBI' AND status NOT LIKE '%Reject%' AND (confirm = 'Approve' OR confirm = '' OR confirm IS NULL) THEN 1 ELSE 0 END) as mbiApproved,
-          SUM(CASE WHEN pbf = 'MAI' AND status NOT LIKE '%Reject%' AND (confirm = 'Approve' OR confirm = '' OR confirm IS NULL) THEN 1 ELSE 0 END) as maiApproved,
-          SUM(CASE WHEN pbf = 'MBI' AND status NOT LIKE '%Resolved%' AND status NOT LIKE '%Reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as openMbi,
-          SUM(CASE WHEN pbf = 'MAI' AND status NOT LIKE '%Resolved%' AND status NOT LIKE '%Reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as openMai,
-          SUM(CASE WHEN status NOT LIKE '%Resolved%' AND status NOT LIKE '%Reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as totalOpen,
-          SUM(CASE WHEN status LIKE '%Reject%' OR confirm = 'Reject' THEN 1 ELSE 0 END) as totalReject
+          SUM(CASE WHEN pbf = 'MBI' AND LOWER(status) NOT LIKE '%reject%' AND (confirm = 'Approve' OR confirm = '' OR confirm IS NULL) THEN 1 ELSE 0 END) as mbiApproved,
+          SUM(CASE WHEN pbf = 'MAI' AND LOWER(status) NOT LIKE '%reject%' AND (confirm = 'Approve' OR confirm = '' OR confirm IS NULL) THEN 1 ELSE 0 END) as maiApproved,
+          SUM(CASE WHEN pbf = 'MBI' AND LOWER(status) NOT LIKE '%resolved%' AND LOWER(status) NOT LIKE '%reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as openMbi,
+          SUM(CASE WHEN pbf = 'MAI' AND LOWER(status) NOT LIKE '%resolved%' AND LOWER(status) NOT LIKE '%reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as openMai,
+          SUM(CASE WHEN LOWER(status) NOT LIKE '%resolved%' AND LOWER(status) NOT LIKE '%reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as totalOpen,
+          SUM(CASE WHEN LOWER(status) LIKE '%reject%' OR LOWER(COALESCE(confirm, '')) LIKE '%reject%' OR LOWER(status) LIKE '%tolak%' THEN 1 ELSE 0 END) as totalReject
         FROM shipment_returns ${statsCondition};
       `, statsQueryParams)) as any[];
 
@@ -856,6 +857,7 @@ export async function GET(req: Request) {
             totalAll: Number(stats?.totalAll || 0),
             totalResolved: Number(stats?.totalResolved || 0),
             totalPending: Number(stats?.totalPending || 0),
+            totalInProgress: Number(stats?.totalInProgress || 0),
             totalMbi: Number(stats?.totalMbi || 0),
             totalMai: Number(stats?.totalMai || 0),
             mbiApproved: Number(stats?.mbiApproved || 0),
@@ -2846,6 +2848,22 @@ export async function POST(req: Request) {
       }
 
       return Response.json({ success: true, deletedInvoice: targetInvoice });
+    }
+
+    // 2.5b. Migrate historical shipment returns status workflow
+    if (action === "migrate_returns_workflow") {
+      await conn.execute(`
+        UPDATE shipment_returns 
+        SET status = 'Rejected' 
+        WHERE (LOWER(confirm) LIKE '%reject%' OR LOWER(confirm) LIKE '%tolak%') 
+          AND LOWER(status) = 'resolved';
+      `);
+      await conn.execute("UPDATE shipment_returns SET status = 'Pending' WHERE LOWER(status) = 'pending';");
+      await conn.execute("UPDATE shipment_returns SET status = 'In Progress' WHERE LOWER(status) = 'in progress';");
+      await conn.execute("UPDATE shipment_returns SET status = 'Resolved' WHERE LOWER(status) = 'resolved';");
+      await conn.execute("UPDATE shipment_returns SET status = 'Rejected' WHERE LOWER(status) = 'rejected';");
+
+      return Response.json({ success: true, message: "Migration of shipment returns workflow completed successfully." });
     }
 
     // 2.6. Batch Import shipment returns from Excel

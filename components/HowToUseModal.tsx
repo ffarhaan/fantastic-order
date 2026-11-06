@@ -19,6 +19,7 @@ interface HowToUseModalProps {
   onClose: () => void;
   isDarkMode?: boolean;
   initialTab?: "quick" | "workspace" | "returns" | "apotek" | "produk" | "shortcuts";
+  onAcknowledgeWorkflow?: () => void;
 }
 
 export default function HowToUseModal({
@@ -26,6 +27,7 @@ export default function HowToUseModal({
   onClose,
   isDarkMode: propIsDarkMode,
   initialTab = "quick",
+  onAcknowledgeWorkflow,
 }: HowToUseModalProps) {
   const [activeTab, setActiveTab] = useState<
     "quick" | "workspace" | "returns" | "apotek" | "produk" | "shortcuts"
@@ -372,105 +374,125 @@ export default function HowToUseModal({
               }`}>
                 <h3 className={`font-extrabold text-sm mb-1 flex items-center gap-2 ${isDark ? "text-amber-300" : "text-amber-900"}`}>
                   <RotateCcw className="w-4 h-4 text-amber-500" />
-                  Overview Modul Shipment Error &amp; Logistik Retur
+                  Alur Operasional Baku 4 Status Tiket Komplain Retur
                 </h3>
                 <p className={`text-xs font-medium leading-relaxed ${isDark ? "text-amber-200/90" : "text-amber-900"}`}>
-                  Modul ini memantau seluruh kendala distribusi barang fisik (selisih koli, barang rusak, fisik kurang, salah kirim, ED dekat) dan mengukur KPI performa logistik gudang MBI &amp; MAI secara real-time.
+                  Setiap komplain barang (selisih koli, barang rusak, fisik kurang, salah barang, ED dekat) wajib melalui 4 tahapan baku berikut untuk menjamin integritas logistik gudang MBI &amp; MAI.
                 </p>
               </div>
 
-              {/* Rumus Error Rate & KPI */}
-              <div className={`p-4 rounded-xl border shadow-xs ${
-                isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
-              }`}>
-                <h4 className={`font-extrabold text-xs mb-2 flex items-center gap-2 ${isDark ? "text-rose-400" : "text-rose-700"}`}>
-                  <span>📊</span>
-                  Formula Error Rate &amp; Pengukuran KPI Logistik
-                </h4>
-                <p className={`text-xs leading-relaxed mb-3 ${isDark ? "text-slate-300" : "text-slate-600"}`}>
-                  Angka <strong>Error Rate (%)</strong> yang tampil di kartu metrik atas dihitung secara akurat berdasarkan rasio kasus kesalahan yang telah diverifikasi (Approve Only) terhadap total faktur yang terbit pada periode tersebut:
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                  <div className={`p-3 rounded-xl border font-mono text-xs ${
-                    isDark ? "bg-[#0e1628] border-slate-800 text-slate-200" : "bg-slate-50 border-slate-200 text-slate-800"
-                  }`}>
-                    <div className="font-bold text-[11px] text-blue-500 font-sans mb-1">Rumus Error Rate Gudang:</div>
-                    <div className="p-2 rounded bg-white dark:bg-[#080d17] border border-slate-200 dark:border-slate-800 text-center font-bold text-rose-600 dark:text-rose-400">
-                      Error Rate (%) = (Kasus Disetujui ÷ Benchmark Total Faktur) × 100%
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-1 font-sans">
-                      *Benchmark: Standar total faktur bulanan resmi (contoh: MBI ~8.000–10.000 faktur/bulan, MAI ~5.000–6.500 faktur/bulan).
-                    </div>
-                  </div>
-
-                  <div className={`p-3 rounded-xl border font-mono text-xs ${
-                    isDark ? "bg-[#0e1628] border-slate-800 text-slate-200" : "bg-slate-50 border-slate-200 text-slate-800"
-                  }`}>
-                    <div className="font-bold text-[11px] text-emerald-500 font-sans mb-1">Rumus Resolution Rate:</div>
-                    <div className="p-2 rounded bg-white dark:bg-[#080d17] border border-slate-200 dark:border-slate-800 text-center font-bold text-emerald-600 dark:text-emerald-400">
-                      Resolution Rate (%) = (Kasus Resolved ÷ Total Kasus Approved) × 100%
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-1 font-sans">
-                      Mengukur kecepatan tim menyelesaikan komplain hingga nota retur atau penggantian barang selesai.
-                    </div>
-                  </div>
-                </div>
-
-                <div className={`p-2.5 rounded-lg border text-[11px] flex items-center gap-2 ${
-                  isDark ? "bg-blue-950/40 border-blue-800 text-blue-300" : "bg-blue-50 border-blue-200 text-blue-800"
+              {/* 4 Tahapan Workflow Baku */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* 1. PENDING */}
+                <div className={`p-3.5 rounded-xl border shadow-xs space-y-2 ${
+                  isDark ? "bg-[#142038] border-amber-800/60" : "bg-white border-amber-200"
                 }`}>
-                  <span className="font-bold">🎯 Target KPI Logistik:</span>
-                  <span>Error Rate ideal di bawah <strong>1,00%</strong> per bulan. Jika angka naik, tim checker dan pengemasan wajib melakukan investigasi double-check.</span>
+                  <div className="flex items-center justify-between border-b border-amber-200/50 dark:border-amber-900/50 pb-2">
+                    <span className="font-extrabold text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                      1. TAHAP PENDING (Pengecekan Komplain Baru)
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                      Tahap Awal
+                    </span>
+                  </div>
+                  <ul className="text-xs space-y-1.5 leading-relaxed text-zinc-700 dark:text-slate-300 list-disc list-inside">
+                    <li>Setiap tiket baru yang dikirim dari form apotek/sales otomatis masuk berstatus <strong>Pending</strong>.</li>
+                    <li>Admin/CS memeriksa rincian kendala beserta foto bukti komplain dan foto packingan tim gudang.</li>
+                    <li>Di modal tindakan, tentukan <strong>Validitas Komplain</strong>:
+                      <div className="mt-1 pl-4 space-y-1">
+                        <div className="text-blue-600 dark:text-blue-400 font-bold">
+                          • Valid (Kesalahan PBF): Kesalahan murni tim gudang. Tiket otomatis lanjut ke <strong>IN PROGRESS</strong>.
+                        </div>
+                        <div className="text-rose-600 dark:text-rose-400 font-bold">
+                          • Reject (Bukan Kesalahan PBF): Bukan kesalahan gudang. Tiket otomatis berstatus <strong>REJECTED</strong>.
+                        </div>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* 2. IN PROGRESS */}
+                <div className={`p-3.5 rounded-xl border shadow-xs space-y-2 ${
+                  isDark ? "bg-[#142038] border-blue-800/60" : "bg-white border-blue-200"
+                }`}>
+                  <div className="flex items-center justify-between border-b border-blue-200/50 dark:border-blue-900/50 pb-2">
+                    <span className="font-extrabold text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                      2. TAHAP IN PROGRESS (Penyiapan Fisik)
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                      Gudang Aktif
+                    </span>
+                  </div>
+                  <ul className="text-xs space-y-1.5 leading-relaxed text-zinc-700 dark:text-slate-300 list-disc list-inside">
+                    <li><strong className="text-red-500">Form Guard:</strong> Wajib mengisi 3 kolom solusi sebelum simpan:
+                      <div className="mt-1 pl-4 space-y-0.5 font-medium">
+                        <div>1. <strong>Tindakan</strong>: Solusi fisik (Tukar fisik / Kirim susulan / Nota retur).</div>
+                        <div>2. <strong>Akar Masalah (Root Cause)</strong>: Penyebab human error / sistem.</div>
+                        <div>3. <strong>Personil</strong>: Petugas Picker / Checker yang bertugas.</div>
+                      </div>
+                    </li>
+                    <li><strong>Konfirmasi Pengiriman</strong>: Pop-up pengingat memastikan fisik barang sudah siap di area logistik untuk diantar driver.</li>
+                  </ul>
+                </div>
+
+                {/* 3. RESOLVED */}
+                <div className={`p-3.5 rounded-xl border shadow-xs space-y-2 ${
+                  isDark ? "bg-[#142038] border-emerald-800/60" : "bg-white border-emerald-200"
+                }`}>
+                  <div className="flex items-center justify-between border-b border-emerald-200/50 dark:border-emerald-900/50 pb-2">
+                    <span className="font-extrabold text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                      3. TAHAP RESOLVED (Selesai Diterima Apotek)
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                      Tuntas 100%
+                    </span>
+                  </div>
+                  <ul className="text-xs space-y-1.5 leading-relaxed text-zinc-700 dark:text-slate-300 list-disc list-inside">
+                    <li>Pada kartu atau baris tiket In Progress, klik tombol hijau <strong>"Selesaikan"</strong>.</li>
+                    <li>Sistem memunculkan pop-up konfirmasi penerimaan fisik:
+                      <div className="p-2 mt-1 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 text-[11px] font-medium">
+                        <em>"Apakah barang ini sudah benar-benar sampai dan diterima dengan baik oleh pihak apotek?"</em>
+                      </div>
+                    </li>
+                    <li>Saat dikonfirmasi, tanggal penyelesaian (<code>resolved_date</code>) otomatis diisi hari ini dan tiket tuntas keluar dari antrean aktif.</li>
+                  </ul>
+                </div>
+
+                {/* 4. REJECTED */}
+                <div className={`p-3.5 rounded-xl border shadow-xs space-y-2 ${
+                  isDark ? "bg-[#142038] border-rose-800/60" : "bg-white border-rose-200"
+                }`}>
+                  <div className="flex items-center justify-between border-b border-rose-200/50 dark:border-rose-900/50 pb-2">
+                    <span className="font-extrabold text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                      4. TAHAP REJECTED (Tiket Ditolak)
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                      Bukan Kesalahan PBF
+                    </span>
+                  </div>
+                  <ul className="text-xs space-y-1.5 leading-relaxed text-zinc-700 dark:text-slate-300 list-disc list-inside">
+                    <li>Dipilih jika hasil investigasi membuktikan kesalahan berasal dari pihak pemesan (salah pesan sales/apotek, klaim fiktif, dsb).</li>
+                    <li><strong className="text-red-500">Wajib Mengisi Alasan:</strong> Kolom catatan balasan logistik (<code>note</code>) 100% wajib diisi alasan penolakannya.</li>
+                    <li><strong>Transparansi Publik:</strong> Alasan penolakan ini otomatis tampil dalam banner merah di halaman pelacak komplain publik (<code>/komplain</code>) agar apotek pelapor membaca alasannya secara jelas.</li>
+                  </ul>
                 </div>
               </div>
 
-              {/* Status Siklus Kasus */}
-              <div className={`p-4 rounded-xl border shadow-xs ${
-                isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
-              }`}>
-                <h4 className={`font-bold text-xs mb-2.5 ${isDark ? "text-white" : "text-slate-900"}`}>
-                  Siklus Status Kasus Shipment Error:
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
-                  <div className={`p-2.5 rounded-lg border ${
-                    isDark ? "bg-amber-950/30 border-amber-800/80 text-amber-300" : "bg-amber-50 border-amber-200 text-amber-800"
-                  }`}>
-                    <strong className="block font-bold">1. Pending</strong>
-                    <span className="text-[11px]">Laporan baru masuk dari sales/apotek, menunggu verifikasi admin gudang.</span>
-                  </div>
-                  <div className={`p-2.5 rounded-lg border ${
-                    isDark ? "bg-blue-950/30 border-blue-800/80 text-blue-300" : "bg-blue-50 border-blue-200 text-blue-800"
-                  }`}>
-                    <strong className="block font-bold">2. In Progress</strong>
-                    <span className="text-[11px]">Sedang diinvestigasi fisik di gudang / proses penarikan barang ekspedisi.</span>
-                  </div>
-                  <div className={`p-2.5 rounded-lg border ${
-                    isDark ? "bg-emerald-950/30 border-emerald-800/80 text-emerald-300" : "bg-emerald-50 border-emerald-200 text-emerald-800"
-                  }`}>
-                    <strong className="block font-bold">3. Resolved</strong>
-                    <span className="text-[11px]">Selesai: Barang pengganti sudah dikirim atau Nota Retur resmi telah diterbitkan.</span>
-                  </div>
-                  <div className={`p-2.5 rounded-lg border ${
-                    isDark ? "bg-rose-950/30 border-rose-800/80 text-rose-300" : "bg-rose-50 border-rose-200 text-rose-800"
-                  }`}>
-                    <strong className="block font-bold">4. Reject</strong>
-                    <span className="text-[11px]">Ditolak: Klaim tidak valid setelah pengecekan rekaman CCTV atau data ekspedisi.</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Fitur Khusus */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Fitur Interaktif Tambahan */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className={`p-3.5 rounded-xl border shadow-xs ${
                   isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
                 }`}>
                   <h4 className={`font-bold text-xs flex items-center gap-1.5 mb-1.5 ${isDark ? "text-blue-300" : "text-blue-700"}`}>
                     <ExternalLink className="w-4 h-4" />
-                    Loncat ke Faktur (Keep-Alive)
+                    Link Cepat Nomor Faktur (Keep-Alive)
                   </h4>
                   <p className={`text-[11px] leading-relaxed ${isDark ? "text-slate-200" : "text-slate-600"}`}>
-                    Klik nomor invoice (contoh: <code>16180 ↗</code>) untuk langsung membuka faktur tersebut di Daftar Faktur tanpa reload!
+                    Klik langsung nomor invoice pada tabel (contoh: <code>#16180 ↗</code>) untuk langsung berpindah ke tab <strong>Daftar Faktur</strong> dan otomatis memfilter faktur tersebut tanpa perlu reload halaman.
                   </p>
                 </div>
 
@@ -479,22 +501,10 @@ export default function HowToUseModal({
                 }`}>
                   <h4 className={`font-bold text-xs flex items-center gap-1.5 mb-1.5 ${isDark ? "text-emerald-300" : "text-emerald-700"}`}>
                     <CheckCircle2 className="w-4 h-4" />
-                    Filter Minggu (W-Week)
+                    Interaktivitas 4 Kartu Status
                   </h4>
                   <p className={`text-[11px] leading-relaxed ${isDark ? "text-slate-200" : "text-slate-600"}`}>
-                    Filter berdasarkan minggu kalender (contoh: <code>W44</code>, <code>W43</code>) untuk evaluasi performa mingguan logistik.
-                  </p>
-                </div>
-
-                <div className={`p-3.5 rounded-xl border shadow-xs ${
-                  isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
-                }`}>
-                  <h4 className={`font-bold text-xs flex items-center gap-1.5 mb-1.5 ${isDark ? "text-purple-300" : "text-purple-700"}`}>
-                    <Layers className="w-4 h-4" />
-                    Freeze Column (Pin)
-                  </h4>
-                  <p className={`text-[11px] leading-relaxed ${isDark ? "text-slate-200" : "text-slate-600"}`}>
-                    Kunci 1–3 kolom utama agar tetap terlihat saat menggeser tabel ke samping, mirip fitur Freeze Panes di Microsoft Excel.
+                    Klik kartu status di baris atas (Pending, In Progress, Resolved, Rejected) untuk memfilter antrean tabel seketika. Klik sekali lagi pada kartu yang sedang aktif untuk me-reset filter kembali ke "Semua Status".
                   </p>
                 </div>
               </div>
@@ -640,21 +650,40 @@ export default function HowToUseModal({
 
         {/* Modal Footer */}
         <div
-          className={`px-5 py-3 border-t flex items-center justify-between text-xs ${
+          className={`px-5 py-3 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
             isDark ? "bg-[#142038] border-slate-700 text-slate-300" : "bg-slate-50 border-slate-200 text-slate-700 font-medium"
           }`}
         >
-          <span className="text-[11px]">
+          <span className="text-[11px] text-zinc-500 dark:text-slate-400">
             Sistem Fantastic Order · PT Medikabina Investama &amp; PT Medika Akses Investama
           </span>
-          <button
-            onClick={onClose}
-            className={`px-4 py-1.5 rounded-xl font-bold text-white transition-all shadow-xs cursor-pointer ${
-              isDark ? "bg-blue-600 hover:bg-blue-500" : "bg-slate-900 hover:bg-slate-800"
-            }`}
-          >
-            Tutup Panduan
-          </button>
+          <div className="flex items-center gap-2">
+            {activeTab === "returns" && (
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    localStorage.setItem("has_seen_shipment_workflow_v2", "true");
+                  } catch {}
+                  if (onAcknowledgeWorkflow) onAcknowledgeWorkflow();
+                  onClose();
+                }}
+                className="px-4 py-1.5 rounded-xl font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Paham, Mulai Bekerja ✓</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className={`px-4 py-1.5 rounded-xl font-bold transition-all shadow-xs cursor-pointer ${
+                isDark ? "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700" : "bg-white hover:bg-slate-100 text-slate-800 border border-slate-300"
+              }`}
+            >
+              Tutup Panduan
+            </button>
+          </div>
         </div>
       </div>
     </div>

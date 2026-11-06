@@ -1045,31 +1045,23 @@ ${photoStatus}
                       </div>
 
                       {/* Notes / Alasan Resmi dari Tim Logistik */}
-                      {item.note && item.note.trim() ? (
-                        <div
-                          className={`p-3 rounded-xl border space-y-1 ${
-                            isReject
-                              ? "bg-red-50/80 dark:bg-red-950/30 border-red-200 dark:border-red-900/50"
-                              : "bg-blue-50/60 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/40"
-                          }`}
-                        >
-                          <div
-                            className={`flex items-center gap-1.5 text-xs font-bold ${
-                              isReject ? "text-red-700 dark:text-red-300" : "text-blue-700 dark:text-blue-300"
-                            }`}
-                          >
-                            {isReject ? (
-                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                            ) : (
-                              <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                            )}
-                            <span>{isReject ? "Alasan & Catatan Tim Logistik:" : "Catatan Tim Logistik:"}</span>
+                      {isReject ? (
+                        <div className="p-3.5 rounded-xl border border-red-300 dark:border-red-900/80 bg-red-50 dark:bg-red-950/40 shadow-xs space-y-1.5 animate-in fade-in">
+                          <div className="flex items-center gap-2 text-xs font-black text-red-700 dark:text-red-300">
+                            <AlertCircle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400" />
+                            <span>Alasan Penolakan Komplain (Bukan Kesalahan PBF):</span>
                           </div>
-                          <p
-                            className={`text-xs font-medium pl-5 whitespace-pre-wrap ${
-                              isReject ? "text-red-800 dark:text-red-200" : "text-zinc-800 dark:text-zinc-200"
-                            }`}
-                          >
+                          <p className="text-xs font-bold pl-6 whitespace-pre-wrap text-red-900 dark:text-red-200 leading-relaxed">
+                            {item.note && item.note.trim() ? item.note : "Pengajuan komplain ditolak karena tidak memenuhi kriteria kesalahan pihak PBF."}
+                          </p>
+                        </div>
+                      ) : item.note && item.note.trim() ? (
+                        <div className="p-3 rounded-xl border bg-blue-50/60 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/40 space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
+                            <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                            <span>Catatan Tim Logistik:</span>
+                          </div>
+                          <p className="text-xs font-medium pl-5 whitespace-pre-wrap text-zinc-800 dark:text-zinc-200">
                             {item.note}
                           </p>
                         </div>

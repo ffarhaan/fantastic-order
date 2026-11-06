@@ -13,21 +13,27 @@ import {
   Calendar,
   Layers,
   ArrowRight,
+  ExternalLink,
+  Package,
 } from "lucide-react";
 import { ShipmentReturnRecord } from "@/lib/types";
+import { broadcastRealtimeSignal } from "@/lib/firestoreService";
 
 interface OpenCasesViewProps {
   returns: ShipmentReturnRecord[];
   onRefreshParentReturns?: () => void;
+  onSelectInvoice?: (invoiceNo: string) => void;
 }
 
 export default function OpenCasesView({
   returns = [],
   onRefreshParentReturns,
+  onSelectInvoice,
 }: OpenCasesViewProps) {
   const [filterTier, setFilterTier] = useState<"ALL" | "kritis" | "tinggi" | "sedang" | "normal">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [confirmResolveCase, setConfirmResolveCase] = useState<ShipmentReturnRecord | null>(null);
 
   // Parse days open
   const openCases = useMemo(() => {
@@ -125,23 +131,26 @@ export default function OpenCasesView({
     });
   }, [openCases, filterTier, searchQuery]);
 
-  // One-click mark resolved
-  const handleMarkResolved = async (id: number) => {
-    if (!confirm("Tandai kasus ini sebagai Selesai / Resolved?")) return;
-    setUpdatingId(id);
+  // One-click mark resolved with confirmation modal
+  const handleExecuteResolve = async () => {
+    if (!confirmResolveCase) return;
+    const target = confirmResolveCase;
+    setUpdatingId(target.id);
+    setConfirmResolveCase(null);
     try {
       const today = new Date().toISOString().split("T")[0];
       const res = await fetch("/api/tidb?action=update_return", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id,
+          id: target.id,
           status: "Resolved",
           resolved_date: today,
         }),
       });
       const json = await res.json();
       if (json.success) {
+        broadcastRealtimeSignal("returns");
         if (onRefreshParentReturns) onRefreshParentReturns();
       } else {
         alert(json.error || "Gagal memperbarui status.");
@@ -300,7 +309,19 @@ export default function OpenCasesView({
                       </span>
                     </td>
                     <td className="py-3 px-3 font-mono font-bold text-zinc-900 dark:text-white">
-                      {row.invoice_no || "-"}
+                      {row.invoice_no && row.invoice_no !== "-" && row.invoice_no !== "#N/A" && onSelectInvoice ? (
+                        <button
+                          type="button"
+                          onClick={() => onSelectInvoice(row.invoice_no)}
+                          className="font-mono font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                          title="Buka Faktur Terkait di Daftar Faktur"
+                        >
+                          <span>#{row.invoice_no}</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </button>
+                      ) : (
+                        <span>{row.invoice_no || "-"}</span>
+                      )}
                     </td>
                     <td className="py-3 px-3 font-semibold text-zinc-900 dark:text-zinc-100 max-w-[200px] truncate">
                       {row.customer_name || "-"}
@@ -318,7 +339,7 @@ export default function OpenCasesView({
                       <button
                         type="button"
                         disabled={updatingId === row.id}
-                        onClick={() => handleMarkResolved(row.id)}
+                        onClick={() => setConfirmResolveCase(row)}
                         className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 mx-auto cursor-pointer shadow-2xs transition-all disabled:opacity-50"
                         title="Tandai kasus ini selesai"
                       >
@@ -333,6 +354,49 @@ export default function OpenCasesView({
           </table>
         </div>
       </div>
+
+      {/* Pop-up Konfirmasi Akhir Penerimaan Barang */}
+      {confirmResolveCase && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-emerald-300 dark:border-emerald-800 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-lg shrink-0">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-zinc-900 dark:text-white">
+                  Konfirmasi Penerimaan Barang
+                </h3>
+                <p className="text-[11px] text-zinc-500 font-medium">
+                  Faktur #{confirmResolveCase.invoice_no} • {confirmResolveCase.customer_name}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/60 text-xs text-emerald-900 dark:text-emerald-200 font-medium leading-relaxed">
+              Apakah barang ini sudah benar-benar sampai dan diterima dengan baik oleh pihak apotek?
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setConfirmResolveCase(null)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 transition-all cursor-pointer"
+              >
+                Belum Sampai
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteResolve}
+                className="px-4 py-1.5 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Ya, Sudah Sampai &amp; Selesai ✓</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

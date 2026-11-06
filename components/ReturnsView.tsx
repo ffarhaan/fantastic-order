@@ -296,6 +296,20 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [linkCopied, setLinkCopied] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [confirmResolveItem, setConfirmResolveItem] = useState<ShipmentReturnRecord | null>(null);
+  const [showDeliveryPrepModal, setShowDeliveryPrepModal] = useState(false);
+
+  // One-time onboarding workflow popup
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const seen = localStorage.getItem("has_seen_shipment_workflow_v2");
+        if (!seen) {
+          setShowHowToUse(true);
+        }
+      } catch {}
+    }
+  }, []);
 
   // Master Customer & Apotek suggestions
   const [masterCustNames, setMasterCustNames] = useState<string[]>([]);
@@ -384,23 +398,39 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   }, []);
 
-  const openCasesCount = useMemo(() => {
+  // Single-pass O(N) memoized statistics for extreme performance (<1ms)
+  const statusMetrics = useMemo(() => {
     const list = allReturns.length > 0 ? allReturns : returns;
-    return list.filter((r) => {
-      const st = (r.status || "").toLowerCase();
-      const conf = (r.confirm || "").toLowerCase();
-      return !st.includes("resolved") && !conf.includes("reject") && !st.includes("reject");
-    }).length;
+    let pending = 0;
+    let inProgress = 0;
+    let resolved = 0;
+    let rejected = 0;
+
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i];
+      const st = (r.status || "").trim().toLowerCase();
+      const conf = (r.confirm || "").trim().toLowerCase();
+
+      if (st === "rejected" || conf === "reject" || st.includes("reject") || st.includes("tolak") || conf.includes("tolak")) {
+        rejected++;
+      } else if (st === "resolved" || st.includes("selesai")) {
+        resolved++;
+      } else if (st === "in progress" || conf === "approve" || conf.includes("valid") || st.includes("progress")) {
+        inProgress++;
+      } else {
+        pending++;
+      }
+    }
+
+    return { pending, inProgress, resolved, rejected, total: list.length };
   }, [allReturns, returns]);
 
-  const rejectCasesCount = useMemo(() => {
-    const list = allReturns.length > 0 ? allReturns : returns;
-    return list.filter((r) => {
-      const st = (r.status || "").toLowerCase();
-      const conf = (r.confirm || "").toLowerCase();
-      return conf.includes("reject") || conf.includes("tolak") || st.includes("reject");
-    }).length;
-  }, [allReturns, returns]);
+  const openCasesCount = statusMetrics.inProgress;
+  const rejectCasesCount = statusMetrics.rejected;
+  const pendingCasesCount = stats.totalPending || statusMetrics.pending;
+  const inProgressCasesCount = (stats as any).totalInProgress || statusMetrics.inProgress;
+  const resolvedCasesCount = stats.totalResolved || statusMetrics.resolved;
+  const rejectedCasesCount = stats.totalReject || statusMetrics.rejected;
 
   // Fetch all returns for analytic tabs (always real-time fresh from TiDB)
   const fetchAllReturns = useCallback(async (_forceFresh = true) => {
@@ -731,15 +761,20 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   }, [debouncedSearch, statusFilter, pbfFilter, categoryFilter, monthFilter, weekFilter, page]);
 
-  // Real-time Firestore cross-browser signal (0 Byte on Vercel Origin, WebSocket Push)
+  // Real-time Firestore cross-browser signal (0 Byte on Vercel Origin, WebSocket Push) with 300ms debounce
   useEffect(() => {
     const hasCache = Boolean(cachedReturnsData && cachedReturnsData.length > 0);
     fetchReturns(hasCache);
     fetchAllReturns(hasCache);
+
+    let debounceTimer: any = null;
     const unsubRealtime = subscribeToRealtimeSignal("returns", () => {
-      fetchReturns(true, true);
-      fetchAllReturns(true);
-      fetchPersonnelStats();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchReturns(true, true);
+        fetchAllReturns(true);
+        fetchPersonnelStats();
+      }, 300);
     });
     // ZERO-ORIGIN-DRAIN: Removed polling interval. Realtime updates are delivered instantly via Firebase push signal!
     const onFocus = () => {
@@ -752,6 +787,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     };
     window.addEventListener("focus", onFocus);
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       unsubRealtime();
       window.removeEventListener("focus", onFocus);
     };
@@ -855,13 +891,48 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   };
 
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = async (param?: boolean | React.MouseEvent) => {
+    const skipDeliveryConfirm = param === true;
     if (!selectedReturn) return;
     if (!canEditReturns) {
       alert("Akses Ditolak: Akun Anda tidak memiliki hak akses mengubah Shipment Error.");
       return;
     }
+
+    // Form Guard Tahap 4: REJECTED wajib sertakan alasan penolakan
+    const isRejecting = editForm.status === "Rejected" || editForm.confirm === "Reject";
+    if (isRejecting) {
+      if (!editForm.note || !editForm.note.trim()) {
+        alert("⚠️ Validasi Form: Kolom Catatan Balasan Logistik / Alasan Penolakan wajib diisi untuk tiket yang ditolak (Reject)!");
+        return;
+      }
+    }
+
+    // Form Guard Tahap 2: IN PROGRESS wajib isi 3 kolom utama
+    const isInProgress = editForm.status === "In Progress";
+    if (isInProgress) {
+      if (!editForm.action || !editForm.action.trim()) {
+        alert("⚠️ Validasi Form: Kolom Tindakan Solusi Gudang wajib diisi untuk tiket In Progress!");
+        return;
+      }
+      if (!editForm.root_cause || !editForm.root_cause.trim()) {
+        alert("⚠️ Validasi Form: Kolom Penyebab Kesalahan (Root Cause) wajib diisi untuk tiket In Progress!");
+        return;
+      }
+      if (!editForm.person || !editForm.person.trim()) {
+        alert("⚠️ Validasi Form: Kolom Personil Terkait (Picker / Checker) wajib diisi untuk tiket In Progress!");
+        return;
+      }
+
+      // Pop-up Konfirmasi Kesiapan Pengiriman
+      if (!skipDeliveryConfirm) {
+        setShowDeliveryPrepModal(true);
+        return;
+      }
+    }
+
     setIsUpdating(true);
+    setShowDeliveryPrepModal(false);
     try {
       const isResolved = editForm.status === "Resolved";
       const resolvedDate = isResolved
@@ -876,7 +947,20 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         user_email: currentUser?.email || "",
       };
 
-      // 1. Update TiDB Cloud Database
+      // Optimistic local update (<50ms)
+      setReturns((prev) =>
+        prev.map((r) =>
+          r.id === selectedReturn.id
+            ? {
+                ...r,
+                ...editForm,
+                resolved_date: resolvedDate,
+              }
+            : r
+        )
+      );
+
+      // 1. Update TiDB Cloud Database in background
       const res = await fetch("/api/tidb?action=update_return", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -885,17 +969,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       const data = await res.json();
 
       if (data.success) {
-        setReturns((prev) =>
-          prev.map((r) =>
-            r.id === selectedReturn.id
-              ? {
-                  ...r,
-                  ...editForm,
-                  resolved_date: resolvedDate,
-                }
-              : r
-          )
-        );
         setSelectedReturn(null);
         fetchReturns(true, true);
         fetchAllReturns(true);
@@ -917,11 +990,70 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         });
       } else {
         alert("Gagal update data: " + (data.error || "Unknown error"));
+        fetchReturns(true, true);
       }
     } catch (err) {
       alert("Error update: " + err);
+      fetchReturns(true, true);
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  // Direct Resolve Handler with Optimistic Local Update (<50ms)
+  const handleDirectResolve = async (item: ShipmentReturnRecord) => {
+    setConfirmResolveItem(null);
+    const today = new Date().toISOString().split("T")[0];
+
+    // Optimistic local update (<50ms)
+    setReturns((prev) =>
+      prev.map((r) =>
+        r.id === item.id
+          ? {
+              ...r,
+              status: "Resolved",
+              resolved_date: today,
+            }
+          : r
+      )
+    );
+
+    try {
+      const res = await fetch("/api/tidb?action=update_return", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: item.id,
+          status: "Resolved",
+          resolved_date: today,
+          user_name: currentUser?.name || "Admin",
+          user_email: currentUser?.email || "",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        broadcastRealtimeSignal("returns");
+        fetchReturns(true, true);
+        fetchAllReturns(true);
+        await recordActivityLog({
+          action_type: "RESOLVE_RETURN",
+          module: "SHIPMENT_ERROR",
+          target_id: String(item.id),
+          details: `Menyelesaikan (Resolve) komplain faktur #${item.invoice_no || item.id} (${item.customer_name || ""})`,
+          metadata: {
+            id: item.id,
+            invoice_no: item.invoice_no,
+            status: "Resolved",
+            resolved_date: today,
+          },
+        });
+      } else {
+        alert("Gagal menyelesaikan tiket: " + (data.error || "Unknown error"));
+        fetchReturns(true, true);
+      }
+    } catch (err: any) {
+      alert("Error: " + err?.message);
+      fetchReturns(true, true);
     }
   };
 
@@ -1398,7 +1530,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 border-t border-blue-100 dark:border-slate-800/80">
             <div>
               <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
-                1. Konfirmasi (Confirm)
+                1. Validitas Komplain
               </label>
               <select
                 value={editForm.confirm}
@@ -1406,30 +1538,26 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   const val = e.target.value;
                   const updates: any = { confirm: val };
                   if (val === "Approve") {
-                    if (editForm.status === "Pending" || editForm.status === "Rejected") {
-                      updates.status = "In Progress";
-                    }
+                    updates.status = "In Progress";
                   } else if (val === "Reject") {
                     updates.status = "Rejected";
                     updates.resolved_date = "";
-                  } else if (val === "Pending") {
+                  } else {
                     updates.status = "Pending";
                   }
                   setEditForm({ ...editForm, ...updates });
                 }}
                 className={`w-full border rounded-lg p-1.5 font-bold transition-colors ${
                   editForm.confirm === "Approve"
-                    ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-400 text-emerald-800 dark:text-emerald-300"
+                    ? "bg-blue-50 dark:bg-blue-950/60 border-blue-400 text-blue-800 dark:text-blue-300"
                     : editForm.confirm === "Reject"
                     ? "bg-rose-50 dark:bg-rose-950/60 border-rose-400 text-rose-800 dark:text-rose-300"
                     : "bg-white dark:bg-slate-900 border-zinc-300 dark:border-slate-700 text-black dark:text-white"
                 }`}
               >
                 <option value="">-- Belum Ditentukan --</option>
-                <option value="Approve">✅ Approve (Disetujui)</option>
-                <option value="Reject">❌ Reject (Ditolak)</option>
-                <option value="Pending">🟡 Pending (Menunggu Verifikasi)</option>
-                <option value="Review">🔍 Review (Pemeriksaan Ulang)</option>
+                <option value="Approve">🔵 Valid (Kesalahan PBF)</option>
+                <option value="Reject">🔴 Reject (Bukan Kesalahan PBF)</option>
               </select>
             </div>
 
@@ -1453,7 +1581,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     }
                     if (editForm.confirm !== "Approve") updates.confirm = "Approve";
                   } else if (val === "Pending") {
-                    updates.confirm = "Pending";
+                    updates.confirm = "";
                   }
                   setEditForm({ ...editForm, ...updates });
                 }}
@@ -1467,9 +1595,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     : "bg-amber-50 dark:bg-amber-950/60 border-amber-300 text-amber-800 dark:text-amber-300"
                 }`}
               >
-                <option value="Pending">🟡 Pending — Menunggu Konfirmasi</option>
-                <option value="In Progress">🔵 In Progress — Diproses Gudang</option>
-                <option value="Resolved">🟢 Resolved — Selesai</option>
+                <option value="Pending">🟡 Pending — Menunggu Validitas</option>
+                <option value="In Progress">🔵 In Progress — Penyiapan Fisik</option>
+                <option value="Resolved">🟢 Resolved — Selesai Diterima</option>
                 <option value="Rejected">🔴 Rejected — Ditolak</option>
               </select>
             </div>
@@ -1531,7 +1659,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           {canEditReturns ? (
             <button
               type="button"
-              onClick={handleSaveEdit}
+              onClick={() => handleSaveEdit(false)}
               disabled={isUpdating}
               className="px-4 py-1.5 bg-black hover:bg-zinc-800 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50 cursor-pointer"
             >
@@ -1772,6 +1900,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             fetchReturns(true, true);
             fetchAllReturns(true);
           }}
+          onSelectInvoice={onSelectInvoice}
         />
       )}
 
@@ -1785,171 +1914,228 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         <div className="space-y-4 animate-in fade-in duration-150">
           {/* Top 6 Metric Cards matching Apps Script layout */}
           {showKpiSummary && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5">
-              {/* Card 1: TOTAL CASES MAI */}
-              <div
-                onClick={() => {
-                  setPbfFilter(pbfFilter === "MAI" ? "ALL" : "MAI");
-                  setPage(0);
-                }}
-                className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
-                  pbfFilter === "MAI"
-                    ? "border-red-500 ring-2 ring-red-500/20 bg-red-50/20 dark:bg-red-950/20"
-                    : "border-slate-200 dark:border-slate-800 hover:border-red-300 dark:hover:border-red-800"
-                }`}
-                title="Klik untuk filter PBF MAI"
-              >
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500" />
-                <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
-                  TOTAL CASES MAI
+            <div className="space-y-2.5">
+              {/* 4 Status Workflow Metric Cards (Symmetrical 4-Column Grid) */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+                {/* 1. PENDING */}
+                <div
+                  onClick={() => {
+                    setStatusFilter(statusFilter === "Pending" ? "ALL" : "Pending");
+                    setPage(0);
+                  }}
+                  className={`relative overflow-hidden rounded-2xl border bg-white dark:bg-slate-900 shadow-2xs p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                    statusFilter === "Pending"
+                      ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/40 dark:bg-amber-950/30 shadow-sm"
+                      : "border-slate-200 dark:border-slate-800 hover:border-amber-300 dark:hover:border-amber-800"
+                  }`}
+                  title="Klik untuk filter tiket Pending (Menunggu Validitas). Klik lagi untuk reset."
+                >
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500" />
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="text-[11px] font-mono font-bold tracking-wider text-amber-600 dark:text-amber-400 uppercase flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>PENDING</span>
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                      Tahap 1
+                    </span>
+                  </div>
+                  <div className="my-1">
+                    <span className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 font-mono tracking-tight">
+                      {pendingCasesCount.toLocaleString("id-ID")}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                    Pengecekan bukti &amp; validitas
+                  </div>
                 </div>
-                <div className="my-0.5">
-                  <span className="text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400 font-mono">
-                    {(stats.maiApproved || stats.totalMai).toLocaleString("id-ID")}
-                  </span>
+
+                {/* 2. IN PROGRESS */}
+                <div
+                  onClick={() => {
+                    setStatusFilter(statusFilter === "In Progress" ? "ALL" : "In Progress");
+                    setPage(0);
+                  }}
+                  className={`relative overflow-hidden rounded-2xl border bg-white dark:bg-slate-900 shadow-2xs p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                    statusFilter === "In Progress"
+                      ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/40 dark:bg-blue-950/30 shadow-sm"
+                      : "border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-800"
+                  }`}
+                  title="Klik untuk filter tiket In Progress (Penyiapan Fisik & Pengantaran). Klik lagi untuk reset."
+                >
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500" />
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="text-[11px] font-mono font-bold tracking-wider text-blue-600 dark:text-blue-400 uppercase flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5" />
+                      <span>IN PROGRESS</span>
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                      Tahap 2
+                    </span>
+                  </div>
+                  <div className="my-1">
+                    <span className="text-2xl sm:text-3xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tight">
+                      {inProgressCasesCount.toLocaleString("id-ID")}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                    Penyiapan fisik &amp; antar driver
+                  </div>
                 </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                  dari {maiInvoiceCount.toLocaleString("id-ID")} inv
+
+                {/* 3. RESOLVED */}
+                <div
+                  onClick={() => {
+                    setStatusFilter(statusFilter === "Resolved" ? "ALL" : "Resolved");
+                    setPage(0);
+                  }}
+                  className={`relative overflow-hidden rounded-2xl border bg-white dark:bg-slate-900 shadow-2xs p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                    statusFilter === "Resolved"
+                      ? "border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/40 dark:bg-emerald-950/30 shadow-sm"
+                      : "border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-800"
+                  }`}
+                  title="Klik untuk filter tiket Selesai (Resolved). Klik lagi untuk reset."
+                >
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500" />
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="text-[11px] font-mono font-bold tracking-wider text-emerald-600 dark:text-emerald-400 uppercase flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>RESOLVED</span>
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                      Tahap 3
+                    </span>
+                  </div>
+                  <div className="my-1">
+                    <span className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tight">
+                      {resolvedCasesCount.toLocaleString("id-ID")}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                    {resolutionRate}% tuntas diterima apotek
+                  </div>
+                </div>
+
+                {/* 4. REJECTED */}
+                <div
+                  onClick={() => {
+                    setStatusFilter(statusFilter === "Rejected" ? "ALL" : "Rejected");
+                    setPage(0);
+                  }}
+                  className={`relative overflow-hidden rounded-2xl border bg-white dark:bg-slate-900 shadow-2xs p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                    statusFilter === "Rejected"
+                      ? "border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/40 dark:bg-rose-950/30 shadow-sm"
+                      : "border-slate-200 dark:border-slate-800 hover:border-rose-300 dark:hover:border-rose-800"
+                  }`}
+                  title="Klik untuk filter tiket Ditolak (Rejected). Klik lagi untuk reset."
+                >
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-rose-500" />
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="text-[11px] font-mono font-bold tracking-wider text-rose-600 dark:text-rose-400 uppercase flex items-center gap-1.5">
+                      <XCircle className="w-3.5 h-3.5" />
+                      <span>REJECTED</span>
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                      Tahap 4
+                    </span>
+                  </div>
+                  <div className="my-1">
+                    <span className="text-2xl sm:text-3xl font-black text-rose-600 dark:text-rose-400 font-mono tracking-tight">
+                      {rejectedCasesCount.toLocaleString("id-ID")}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                    Bukan kesalahan pihak PBF
+                  </div>
                 </div>
               </div>
 
-              {/* Card 2: TOTAL CASES MBI */}
-              <div
-                onClick={() => {
-                  setPbfFilter(pbfFilter === "MBI" ? "ALL" : "MBI");
-                  setPage(0);
-                }}
-                className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
-                  pbfFilter === "MBI"
-                    ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20 dark:bg-blue-950/20"
-                    : "border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-800"
-                }`}
-                title="Klik untuk filter PBF MBI"
-              >
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500" />
-                <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
-                  TOTAL CASES MBI
+              {/* Secondary PBF Cases & Error Rate Metrics */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+                {/* TOTAL CASES MAI */}
+                <div
+                  onClick={() => {
+                    setPbfFilter(pbfFilter === "MAI" ? "ALL" : "MAI");
+                    setPage(0);
+                  }}
+                  className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                    pbfFilter === "MAI"
+                      ? "border-red-500 ring-2 ring-red-500/20 bg-red-50/20 dark:bg-red-950/20"
+                      : "border-slate-200 dark:border-slate-800 hover:border-red-300 dark:hover:border-red-800"
+                  }`}
+                  title="Klik untuk filter PBF MAI"
+                >
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500" />
+                  <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
+                    TOTAL CASES MAI
+                  </div>
+                  <div className="my-0.5">
+                    <span className="text-base sm:text-lg font-black text-rose-600 dark:text-rose-400 font-mono">
+                      {(stats.maiApproved || stats.totalMai).toLocaleString("id-ID")}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                    dari {maiInvoiceCount.toLocaleString("id-ID")} inv
+                  </div>
                 </div>
-                <div className="my-0.5">
-                  <span className="text-lg sm:text-xl font-black text-blue-600 dark:text-blue-400 font-mono">
-                    {(stats.mbiApproved || stats.totalMbi).toLocaleString("id-ID")}
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                  dari {mbiInvoiceCount.toLocaleString("id-ID")} inv
-                </div>
-              </div>
 
-              {/* Card 3: ERROR RATE MAI */}
-              <div className="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between">
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500" />
-                <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
-                  ERROR RATE MAI
+                {/* TOTAL CASES MBI */}
+                <div
+                  onClick={() => {
+                    setPbfFilter(pbfFilter === "MBI" ? "ALL" : "MBI");
+                    setPage(0);
+                  }}
+                  className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                    pbfFilter === "MBI"
+                      ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20 dark:bg-blue-950/20"
+                      : "border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-800"
+                  }`}
+                  title="Klik untuk filter PBF MBI"
+                >
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500" />
+                  <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
+                    TOTAL CASES MBI
+                  </div>
+                  <div className="my-0.5">
+                    <span className="text-base sm:text-lg font-black text-blue-600 dark:text-blue-400 font-mono">
+                      {(stats.mbiApproved || stats.totalMbi).toLocaleString("id-ID")}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                    dari {mbiInvoiceCount.toLocaleString("id-ID")} inv
+                  </div>
                 </div>
-                <div className="my-0.5">
-                  <span className="text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400 font-mono">
-                    {errorRateMai}%
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                  Approve only
-                </div>
-              </div>
 
-              {/* Card 4: ERROR RATE MBI */}
-              <div className="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between">
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500" />
-                <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
-                  ERROR RATE MBI
+                {/* ERROR RATE MAI */}
+                <div className="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between">
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500" />
+                  <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
+                    ERROR RATE MAI
+                  </div>
+                  <div className="my-0.5">
+                    <span className="text-base sm:text-lg font-black text-rose-600 dark:text-rose-400 font-mono">
+                      {errorRateMai}%
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                    Approve only
+                  </div>
                 </div>
-                <div className="my-0.5">
-                  <span className="text-lg sm:text-xl font-black text-blue-600 dark:text-blue-400 font-mono">
-                    {errorRateMbi}%
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                  Approve only
-                </div>
-              </div>
 
-              {/* Card 5: IN PROGRESS */}
-              <div
-                onClick={() => {
-                  setStatusFilter(statusFilter === "In Progress" || statusFilter === "Pending" ? "ALL" : "In Progress");
-                  setPage(0);
-                }}
-                className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
-                  statusFilter === "Pending" || statusFilter === "In Progress" || statusFilter === "Open case"
-                    ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/20 dark:bg-amber-950/20"
-                    : "border-slate-200 dark:border-slate-800 hover:border-amber-300 dark:hover:border-amber-800"
-                }`}
-                title="Klik untuk filter kasus In Progress (Sedang Diproses)"
-              >
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-amber-500" />
-                <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
-                  IN PROGRESS
-                </div>
-                <div className="my-0.5">
-                  <span className="text-lg sm:text-xl font-black text-amber-500 dark:text-amber-400 font-mono">
-                    {openCasesCount}
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                  MAI: {stats.openMai} - MBI: {stats.openMbi}
-                </div>
-              </div>
-
-              {/* Card 6: RESOLVED */}
-              <div
-                onClick={() => {
-                  setStatusFilter(statusFilter === "Resolved" ? "ALL" : "Resolved");
-                  setPage(0);
-                }}
-                className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
-                  statusFilter === "Resolved"
-                    ? "border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/20 dark:bg-emerald-950/20"
-                    : "border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-800"
-                }`}
-                title="Klik untuk filter kasus Selesai (Resolved)"
-              >
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-emerald-500" />
-                <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
-                  RESOLVED
-                </div>
-                <div className="my-0.5">
-                  <span className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                    {stats.totalResolved.toLocaleString("id-ID")}
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                  {resolutionRate}% resolved
-                </div>
-              </div>
-
-              {/* Card 7: REJECTED */}
-              <div
-                onClick={() => {
-                  setStatusFilter(statusFilter === "Rejected" ? "ALL" : "Rejected");
-                  setPage(0);
-                }}
-                className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
-                  statusFilter === "Rejected"
-                    ? "border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/20 dark:bg-rose-950/20"
-                    : "border-slate-200 dark:border-slate-800 hover:border-rose-300 dark:hover:border-rose-800"
-                }`}
-                title="Klik untuk filter kasus Ditolak (Rejected)"
-              >
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-rose-500" />
-                <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
-                  REJECTED
-                </div>
-                <div className="my-0.5">
-                  <span className="text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400 font-mono">
-                    {(stats.totalReject || rejectCasesCount || 0).toLocaleString("id-ID")}
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                  Tiket Ditolak / Gugur
+                {/* ERROR RATE MBI */}
+                <div className="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between">
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500" />
+                  <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
+                    ERROR RATE MBI
+                  </div>
+                  <div className="my-0.5">
+                    <span className="text-base sm:text-lg font-black text-blue-600 dark:text-blue-400 font-mono">
+                      {errorRateMbi}%
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                    Approve only
+                  </div>
                 </div>
               </div>
             </div>
@@ -2093,10 +2279,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
             >
               <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Status</option>
-              <option value="Pending" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Pending (Menunggu Konfirmasi)</option>
-              <option value="In Progress" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">In Progress (Diproses Gudang)</option>
-              <option value="Resolved" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Resolved (Selesai)</option>
-              <option value="Rejected" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Rejected (Ditolak)</option>
+              <option value="Pending" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">🟡 Pending (Menunggu Validitas)</option>
+              <option value="In Progress" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">🔵 In Progress (Penyiapan Fisik)</option>
+              <option value="Resolved" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">🟢 Resolved (Selesai Diterima)</option>
+              <option value="Rejected" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">🔴 Rejected (Ditolak)</option>
             </select>
           </div>
 
@@ -2474,17 +2660,33 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     <span />
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => setSelectedReturn((prev) => (prev?.id === r.id ? null : r))}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      isExpanded
-                        ? "bg-black text-white dark:bg-indigo-600"
-                        : "bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-100 dark:border-zinc-700"
-                    }`}
-                  >
-                    {isExpanded ? "Tutup Detail" : "Edit & Tindakan"}
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {r.status === "In Progress" && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmResolveItem(r);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                        title="Tandai kasus ini selesai (Resolved)"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Selesaikan</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedReturn((prev) => (prev?.id === r.id ? null : r))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        isExpanded
+                          ? "bg-black text-white dark:bg-indigo-600"
+                          : "bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-100 dark:border-zinc-700"
+                      }`}
+                    >
+                      {isExpanded ? "Tutup Detail" : "Edit & Tindakan"}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Mobile Expanded Form */}
@@ -2734,21 +2936,37 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                         </td>
 
                         {/* 5. Aksi */}
-                        <td className="py-3 px-3 text-center align-middle">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedReturn((prev) => (prev?.id === r.id ? null : r));
-                            }}
-                            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all shadow-xs cursor-pointer ${
-                              isExpanded
-                                ? "bg-black text-white dark:bg-indigo-600 border-black dark:border-indigo-500 shadow-sm"
-                                : "bg-zinc-100 hover:bg-zinc-200 text-black border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
-                            }`}
-                          >
-                            {isExpanded ? "Tutup" : "Tindakan"}
-                          </button>
+                        <td className="py-3 px-3 text-center align-middle whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {r.status === "In Progress" && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmResolveItem(r);
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] inline-flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                                title="Tandai kasus ini selesai (Resolved)"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Selesaikan</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedReturn((prev) => (prev?.id === r.id ? null : r));
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all shadow-xs cursor-pointer ${
+                                isExpanded
+                                  ? "bg-black text-white dark:bg-indigo-600 border-black dark:border-indigo-500 shadow-sm"
+                                  : "bg-zinc-100 hover:bg-zinc-200 text-black border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
+                              }`}
+                            >
+                              {isExpanded ? "Tutup" : "Tindakan"}
+                            </button>
+                          </div>
                         </td>
                       </tr>
 
@@ -3202,20 +3420,36 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
                         {/* Aksi (Sticky Right) */}
                         <td className="py-2.5 px-3 text-center whitespace-nowrap sticky right-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50/70 dark:group-hover:bg-slate-800/60 border-l border-zinc-200 dark:border-zinc-800 shadow-[-3px_0_6px_rgba(0,0,0,0.06)]">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedReturn((prev) => (prev?.id === r.id ? null : r));
-                            }}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all shadow-xs ${
-                              isExpanded
-                                ? "bg-black text-white dark:bg-indigo-600 border-black dark:border-indigo-500"
-                                : "bg-zinc-100 hover:bg-zinc-200 text-black border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
-                            }`}
-                          >
-                            {isExpanded ? "Tutup" : "Edit / Tindakan"}
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            {r.status === "In Progress" && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmResolveItem(r);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] inline-flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                                title="Tandai kasus ini selesai (Resolved)"
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Selesaikan</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedReturn((prev) => (prev?.id === r.id ? null : r));
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all shadow-xs cursor-pointer ${
+                                isExpanded
+                                  ? "bg-black text-white dark:bg-indigo-600 border-black dark:border-indigo-500"
+                                  : "bg-zinc-100 hover:bg-zinc-200 text-black border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
+                              }`}
+                            >
+                              {isExpanded ? "Tutup" : "Edit / Tindakan"}
+                            </button>
+                          </div>
                         </td>
                       </tr>
 
@@ -3986,11 +4220,101 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         </div>
       )}
 
+      {/* ─── MODAL KONFIRMASI: KESIAPAN PENGIRIMAN LOGISTIK ─── */}
+      {showDeliveryPrepModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-blue-300 dark:border-blue-800 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-lg shrink-0">
+                🚚
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-zinc-900 dark:text-white">
+                  Konfirmasi Kesiapan Pengiriman
+                </h3>
+                <p className="text-[11px] text-zinc-500 font-medium">
+                  Validasi Fisik Barang Pengganti
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 text-xs text-blue-900 dark:text-blue-200 font-medium leading-relaxed">
+              Apakah fisik barang pengganti sudah benar-benar disiapkan di area logistik untuk diantar oleh driver?
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setShowDeliveryPrepModal(false)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 transition-all cursor-pointer"
+              >
+                Periksa Dulu
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveEdit(true)}
+                className="px-4 py-1.5 rounded-xl text-xs font-black text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Ya, Barang Sudah Siap ➔</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL KONFIRMASI: PENERIMAAN BARANG DI APOTEK (RESOLVED) ─── */}
+      {confirmResolveItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-emerald-300 dark:border-emerald-800 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-lg shrink-0">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-zinc-900 dark:text-white">
+                  Konfirmasi Penerimaan Barang
+                </h3>
+                <p className="text-[11px] text-zinc-500 font-medium">
+                  Faktur #{confirmResolveItem.invoice_no} • {confirmResolveItem.customer_name}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/60 text-xs text-emerald-900 dark:text-emerald-200 font-medium leading-relaxed">
+              Apakah barang ini sudah benar-benar sampai dan diterima dengan baik oleh pihak apotek?
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setConfirmResolveItem(null)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 transition-all cursor-pointer"
+              >
+                Belum Sampai
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDirectResolve(confirmResolveItem)}
+                className="px-4 py-1.5 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Ya, Sudah Sampai &amp; Selesai ✓</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* How To Use Modal */}
       <HowToUseModal
         isOpen={showHowToUse}
         onClose={() => setShowHowToUse(false)}
         initialTab="returns"
+        onAcknowledgeWorkflow={() => {
+          try {
+            localStorage.setItem("has_seen_shipment_workflow_v2", "true");
+          } catch {}
+        }}
       />
     </div>
   );
