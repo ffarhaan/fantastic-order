@@ -2526,6 +2526,13 @@ export async function POST(req: Request) {
         products, // multi-product array
       } = body;
 
+      if (!customer_name?.trim() || !invoice_no?.trim() || !so_no?.trim()) {
+        return Response.json(
+          { success: false, error: "Nama apotek, nomor invoice (faktur), dan nomor Sales Order (SO) wajib diisi." },
+          { status: 400 }
+        );
+      }
+
       const items =
         Array.isArray(products) && products.length > 0
           ? products

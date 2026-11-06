@@ -467,6 +467,10 @@ ${photoStatus}
       setErrorMessage("Nomor Invoice / Faktur wajib diisi.");
       return;
     }
+    if (!headerData.so_no.trim()) {
+      setErrorMessage("Nomor Sales Order (SO) wajib diisi.");
+      return;
+    }
 
     // Validate products
     for (let i = 0; i < products.length; i++) {
@@ -1229,7 +1233,7 @@ ${photoStatus}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider">
-                      No. Sales Order (SO)
+                      No. Sales Order (SO) <span className="text-red-500">*</span>
                     </label>
                     <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
                       (Baris &quot;Reference No.&quot;)
@@ -1237,10 +1241,11 @@ ${photoStatus}
                   </div>
                   <input
                     type="text"
+                    required
                     value={headerData.so_no}
                     onChange={(e) => setHeaderData({ ...headerData, so_no: e.target.value })}
-                    placeholder="Contoh: 160XXXX atau 8YRVXX-XXXX (opsional)"
-                    className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white transition-all"
+                    placeholder="Contoh: 160XXXX atau 8YRVXX-XXXX (Wajib diisi)"
+                    className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono font-bold text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black dark:focus:ring-white transition-all"
                   />
                 </div>
               </div>
