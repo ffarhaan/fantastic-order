@@ -48,6 +48,8 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
+  LayoutGrid,
+  Table,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import OverviewKpiView from "./returns/OverviewKpiView";
@@ -219,6 +221,22 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       } catch {}
       return next;
     });
+  };
+
+  const [tableViewMode, setTableViewMode] = useState<"smart" | "spreadsheet">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("ret_table_view_mode") as "smart" | "spreadsheet") || "smart";
+    }
+    return "smart";
+  });
+
+  const handleTableViewModeChange = (mode: "smart" | "spreadsheet") => {
+    setTableViewMode(mode);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("ret_table_view_mode", mode);
+      } catch {}
+    }
   };
 
   const [freezeColLevel, setFreezeColLevel] = useState<string>(() => {
@@ -2054,92 +2072,127 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             </select>
           </div>
 
-          {/* ─── Spreadsheet Freeze Selector ─── */}
-          <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-slate-700/60 rounded-xl px-2.5 py-1">
-            <Pin className="w-3.5 h-3.5 text-blue-500" />
-            <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-medium">Freeze:</span>
-            <select
-              value={freezeColLevel}
-              onChange={(e) => handleFreezeChange(e.target.value)}
-              className="bg-transparent border-none text-xs font-bold text-blue-600 dark:text-blue-400 dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
-              title="Kunci kolom di sisi kiri seperti Excel/Google Sheets"
-            >
-              <option value="none" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Bebas (Tanpa Freeze)</option>
-              <option value="1" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">1. Kolom PBF</option>
-              <option value="2" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">2. PBF + Apotek</option>
-              <option value="3" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">3. Sampai No. Faktur</option>
-            </select>
-          </div>
-
-          {/* ─── Column Visibility Dropdown Toggle ─── */}
-          <div className="relative">
+          {/* ─── Mode Tampilan Switcher (Smart vs Spreadsheet) ─── */}
+          <div className="flex items-center bg-zinc-100 dark:bg-[#070b13] p-0.5 rounded-xl border border-zinc-200 dark:border-slate-700/60 shadow-xs">
             <button
               type="button"
-              onClick={() => setShowColMenu((v) => !v)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                showColMenu || hiddenCols.length > 0
-                  ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800"
-                  : "bg-zinc-50 dark:bg-[#070b13] text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-700/60 hover:bg-zinc-100"
+              onClick={() => handleTableViewModeChange("smart")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                tableViewMode === "smart"
+                  ? "bg-white dark:bg-blue-600 text-blue-700 dark:text-white shadow-xs"
+                  : "text-zinc-600 dark:text-slate-400 hover:text-zinc-900 dark:hover:text-white"
               }`}
-              title="Atur kolom yang ingin ditampilkan / disembunyikan"
+              title="Tampilan Pintar (0 Scroll): Seluruh 14 informasi diringkas dalam 5 kolom rapi dan pas 100% di layar tanpa geser horizontal"
             >
-              <Columns className="w-3.5 h-3.5 text-blue-500" />
-              <span>Kolom {hiddenCols.length > 0 ? `(${13 - hiddenCols.length}/13)` : ""}</span>
+              <LayoutGrid className="w-3.5 h-3.5 text-blue-500 dark:text-white" />
+              <span>Ringkas (0 Scroll)</span>
             </button>
-
-            {showColMenu && (
-              <div className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl bg-white dark:bg-[#0c1222] border border-zinc-200 dark:border-zinc-700 shadow-xl p-3 text-xs space-y-2 animate-in fade-in zoom-in-95 duration-100">
-                <div className="flex items-center justify-between pb-1.5 border-b border-zinc-200 dark:border-zinc-800 font-bold text-zinc-800 dark:text-zinc-200">
-                  <span>Pilih Kolom Tampil</span>
-                  {hiddenCols.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setHiddenCols([]);
-                        if (typeof window !== "undefined") localStorage.removeItem("ret_hidden_cols");
-                      }}
-                      className="text-[10px] text-blue-600 hover:underline cursor-pointer"
-                    >
-                      Reset Semua
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                  {[
-                    { id: "pbf", label: "PBF & Week" },
-                    { id: "apotek", label: "Nama Apotek", locked: true },
-                    { id: "no_faktur", label: "No. Faktur" },
-                    { id: "status", label: "Status Tiket" },
-                    { id: "tgl_faktur", label: "Tgl Faktur" },
-                    { id: "tgl_lapor", label: "Tgl Lapor" },
-                    { id: "no_so", label: "No. SO" },
-                    { id: "produk", label: "Nama Produk & Qty" },
-                    { id: "alasan", label: "Alasan (Reason)" },
-                    { id: "tgl_selesai", label: "Tgl Selesai" },
-                    { id: "days_today", label: "Days Today" },
-                    { id: "days_close", label: "Days Until Close" },
-                    { id: "tindakan", label: "Tindakan" },
-                  ].map((col) => (
-                    <label
-                      key={col.id}
-                      className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={col.locked || isColVisible(col.id)}
-                        disabled={col.locked}
-                        onChange={() => !col.locked && handleToggleCol(col.id)}
-                        className="accent-blue-600 rounded cursor-pointer w-3.5 h-3.5"
-                      />
-                      <span className={col.locked ? "font-bold text-blue-600 dark:text-blue-400" : ""}>
-                        {col.label} {col.locked ? "(Wajib)" : ""}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => handleTableViewModeChange("spreadsheet")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                tableViewMode === "spreadsheet"
+                  ? "bg-white dark:bg-blue-600 text-blue-700 dark:text-white shadow-xs"
+                  : "text-zinc-600 dark:text-slate-400 hover:text-zinc-900 dark:hover:text-white"
+              }`}
+              title="Tampilan Spreadsheet: 14 kolom terpisah seperti Excel lengkap dengan fitur Freeze & Hide Kolom"
+            >
+              <Table className="w-3.5 h-3.5 text-indigo-500 dark:text-white" />
+              <span>Spreadsheet Lebar</span>
+            </button>
           </div>
+
+          {/* ─── Spreadsheet Freeze & Column Selector (Hanya saat mode Spreadsheet) ─── */}
+          {tableViewMode === "spreadsheet" && (
+            <>
+              {/* Spreadsheet Freeze Selector */}
+              <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-slate-700/60 rounded-xl px-2.5 py-1">
+                <Pin className="w-3.5 h-3.5 text-blue-500" />
+                <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-medium">Freeze:</span>
+                <select
+                  value={freezeColLevel}
+                  onChange={(e) => handleFreezeChange(e.target.value)}
+                  className="bg-transparent border-none text-xs font-bold text-blue-600 dark:text-blue-400 dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
+                  title="Kunci kolom di sisi kiri seperti Excel/Google Sheets"
+                >
+                  <option value="none" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Bebas (Tanpa Freeze)</option>
+                  <option value="1" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">1. Kolom PBF</option>
+                  <option value="2" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">2. PBF + Apotek</option>
+                  <option value="3" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">3. Sampai No. Faktur</option>
+                </select>
+              </div>
+
+              {/* Column Visibility Dropdown Toggle */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowColMenu((v) => !v)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                    showColMenu || hiddenCols.length > 0
+                      ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800"
+                      : "bg-zinc-50 dark:bg-[#070b13] text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-700/60 hover:bg-zinc-100"
+                  }`}
+                  title="Atur kolom yang ingin ditampilkan / disembunyikan"
+                >
+                  <Columns className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Kolom {hiddenCols.length > 0 ? `(${13 - hiddenCols.length}/13)` : ""}</span>
+                </button>
+
+                {showColMenu && (
+                  <div className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl bg-white dark:bg-[#0c1222] border border-zinc-200 dark:border-zinc-700 shadow-xl p-3 text-xs space-y-2 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-zinc-200 dark:border-zinc-800 font-bold text-zinc-800 dark:text-zinc-200">
+                      <span>Pilih Kolom Tampil</span>
+                      {hiddenCols.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHiddenCols([]);
+                            if (typeof window !== "undefined") localStorage.removeItem("ret_hidden_cols");
+                          }}
+                          className="text-[10px] text-blue-600 hover:underline cursor-pointer"
+                        >
+                          Reset Semua
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                      {[
+                        { id: "pbf", label: "PBF & Week" },
+                        { id: "apotek", label: "Nama Apotek", locked: true },
+                        { id: "no_faktur", label: "No. Faktur" },
+                        { id: "status", label: "Status Tiket" },
+                        { id: "tgl_faktur", label: "Tgl Faktur" },
+                        { id: "tgl_lapor", label: "Tgl Lapor" },
+                        { id: "no_so", label: "No. SO" },
+                        { id: "produk", label: "Nama Produk & Qty" },
+                        { id: "alasan", label: "Alasan (Reason)" },
+                        { id: "tgl_selesai", label: "Tgl Selesai" },
+                        { id: "days_today", label: "Days Today" },
+                        { id: "days_close", label: "Days Until Close" },
+                        { id: "tindakan", label: "Tindakan" },
+                      ].map((col) => (
+                        <label
+                          key={col.id}
+                          className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={col.locked || isColVisible(col.id)}
+                            disabled={col.locked}
+                            onChange={() => !col.locked && handleToggleCol(col.id)}
+                            className="accent-blue-600 rounded cursor-pointer w-3.5 h-3.5"
+                          />
+                          <span className={col.locked ? "font-bold text-blue-600 dark:text-blue-400" : ""}>
+                            {col.label} {col.locked ? "(Wajib)" : ""}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           <button
             type="button"
@@ -2330,7 +2383,273 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* ─── Enterprise Returns Table (Desktop & Tablet) ─── */}
       <div className="hidden md:block rounded-2xl border border-zinc-300 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
+        {tableViewMode === "smart" ? (
+          /* ══════════════════════════════════════════════════════════════════════ */
+          /* ── SMART MODE: Pas 100% di layar, ZERO Horizontal Scroll (5 Kolom) ── */
+          /* ══════════════════════════════════════════════════════════════════════ */
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-zinc-100 dark:bg-[#070b14] border-b-2 border-zinc-300 dark:border-zinc-800 text-[11px] font-black text-black dark:text-slate-400 uppercase tracking-wider select-none">
+                <th className="py-3 px-4 w-[28%] border-r border-zinc-200 dark:border-zinc-800">
+                  Faktur & Pelanggan
+                </th>
+                <th className="py-3 px-4 w-[26%] border-r border-zinc-200 dark:border-zinc-800">
+                  Produk & Fisik
+                </th>
+                <th className="py-3 px-4 w-[24%] border-r border-zinc-200 dark:border-zinc-800">
+                  Kendala & Penyebab
+                </th>
+                <th className="py-3 px-3 w-[14%] text-center border-r border-zinc-200 dark:border-zinc-800">
+                  Status & Timeline
+                </th>
+                <th className="py-3 px-3 w-[8%] text-center">
+                  Aksi
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-200/80 dark:divide-slate-800/50 bg-white dark:bg-[#0a0f1c]">
+              {loading && returns.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-16 text-center text-zinc-400">
+                    <RefreshCw className="w-7 h-7 animate-spin mx-auto text-indigo-500 mb-2" />
+                    <span className="font-semibold text-sm">Memuat data tiket komplain & retur...</span>
+                  </td>
+                </tr>
+              ) : returns.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-16 text-center text-zinc-400">
+                    <RotateCcw className="w-8 h-8 mx-auto text-zinc-400 mb-2 opacity-50" />
+                    <p className="font-semibold text-sm text-zinc-600 dark:text-slate-400">Tidak ada tiket komplain/retur yang cocok</p>
+                    <p className="text-xs text-zinc-400 dark:text-slate-500 mt-1">Gunakan kata kunci lain atau ubah status filter.</p>
+                  </td>
+                </tr>
+              ) : (
+                returns.map((r) => {
+                  const isResolved = (r.status || "").toLowerCase().includes("resolved");
+                  const isPending = (r.status || "").toLowerCase().includes("pending");
+                  const isExpanded = selectedReturn?.id === r.id;
+
+                  return (
+                    <Fragment key={r.id}>
+                      <tr
+                        onClick={() => setSelectedReturn((prev) => (prev?.id === r.id ? null : r))}
+                        className={`group hover:bg-zinc-100/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer ${
+                          isExpanded
+                            ? "bg-indigo-50/70 dark:bg-slate-800/60 font-semibold border-l-4 border-l-indigo-600 dark:border-l-indigo-500"
+                            : ""
+                        }`}
+                      >
+                        {/* 1. Faktur & Pelanggan */}
+                        <td className="py-3 px-4 border-r border-zinc-200 dark:border-zinc-800/80 align-top">
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                                r.pbf === "MAI"
+                                  ? "bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30"
+                                  : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
+                              }`}
+                            >
+                              {r.pbf && r.pbf !== "#N/A" ? r.pbf : "MBI"}
+                            </span>
+                            {r.week ? (
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/60 cursor-pointer hover:bg-emerald-200"
+                                title={`Klik untuk filter ke Week ${r.week}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setWeekFilter(String(r.week));
+                                  setPage(0);
+                                }}
+                              >
+                                W{r.week}
+                              </span>
+                            ) : null}
+                            {r.category && r.category !== "#N/A" && (
+                              <span
+                                className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                                  r.category === "1P"
+                                    ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300"
+                                    : r.category === "2P"
+                                    ? "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/50 dark:text-cyan-300"
+                                    : "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300"
+                                }`}
+                              >
+                                {r.category}
+                              </span>
+                            )}
+                          </div>
+                          <div className="font-bold text-[13px] text-zinc-900 dark:text-slate-100 leading-snug break-words" title={r.customer_name}>
+                            {r.customer_name && r.customer_name !== "#N/A" ? r.customer_name : "-"}
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap text-[11px] mt-1 font-mono">
+                            {r.invoice_no && r.invoice_no !== "#N/A" ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (onSelectInvoice) onSelectInvoice(r.invoice_no);
+                                }}
+                                className="font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5"
+                                title="Buka Faktur Terkait"
+                              >
+                                <span>{r.invoice_no}</span>
+                                <ExternalLink className="w-2.5 h-2.5" />
+                              </button>
+                            ) : (
+                              <span className="text-zinc-400 dark:text-slate-600">-</span>
+                            )}
+                            {r.so_no && r.so_no !== "#N/A" && (
+                              <span className="text-zinc-500 dark:text-slate-400 text-[10px]">
+                                SO: <strong className="text-zinc-700 dark:text-slate-300">{r.so_no}</strong>
+                              </span>
+                            )}
+                            {getInvoiceDate(r) && (
+                              <span className="text-[10px] text-zinc-400 dark:text-slate-500 flex items-center gap-0.5" title="Tanggal Faktur">
+                                <Calendar className="w-2.5 h-2.5" />
+                                {formatDate(getInvoiceDate(r))}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 2. Produk & Fisik */}
+                        <td className="py-3 px-4 border-r border-zinc-200 dark:border-zinc-800/80 align-top">
+                          <p className="font-bold text-[12px] text-zinc-900 dark:text-slate-100 leading-snug break-words" title={r.product_name}>
+                            {r.product_name && r.product_name !== "#N/A" ? r.product_name : "-"}
+                          </p>
+                          <div className="flex items-center gap-2 flex-wrap text-[11px] text-zinc-600 dark:text-slate-400 mt-1">
+                            <span className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-slate-800 text-zinc-800 dark:text-slate-200 font-bold text-[10px] border border-zinc-200 dark:border-slate-700">
+                              Qty: {r.qty || 1}
+                            </span>
+                            {r.batch_no && r.batch_no !== "#N/A" && (
+                              <span className="font-mono text-[10px] text-zinc-500 dark:text-slate-400">
+                                Batch: <strong className="text-zinc-700 dark:text-slate-300">{r.batch_no}</strong>
+                              </span>
+                            )}
+                          </div>
+                          {(r.photo_url || (r as any).has_photo) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePreviewPhoto(r);
+                              }}
+                              disabled={loadingPhotoId === r.id}
+                              className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-300 border border-violet-200 dark:border-violet-700 hover:scale-105 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                              title="Lihat foto bukti kerusakan dari apotek"
+                            >
+                              <Camera className="w-3 h-3 text-violet-600 dark:text-violet-400" />
+                              <span>{loadingPhotoId === r.id ? "Memuat..." : "Foto Bukti"}</span>
+                            </button>
+                          )}
+                        </td>
+
+                        {/* 3. Kendala & Penyebab */}
+                        <td className="py-3 px-4 border-r border-zinc-200 dark:border-zinc-800/80 align-top">
+                          <div className="font-semibold text-zinc-900 dark:text-slate-200 leading-snug break-words text-[11px]" title={r.reason}>
+                            {r.reason && r.reason !== "#N/A" ? r.reason : "-"}
+                          </div>
+                          {r.root_cause && r.root_cause !== "#N/A" && (
+                            <div className="text-[10px] text-zinc-500 dark:text-slate-400 mt-1 break-words">
+                              Penyebab: <strong className="text-zinc-700 dark:text-slate-300">{r.root_cause}</strong>
+                            </div>
+                          )}
+                          {r.person && r.person !== "#N/A" && (
+                            <div className="mt-1">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/60">
+                                Pelaku: {r.person}
+                              </span>
+                            </div>
+                          )}
+                          {r.action && r.action !== "#N/A" && (
+                            <div className="text-[10px] text-zinc-500 dark:text-slate-400 mt-1 italic break-words">
+                              Tindakan: {r.action}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 4. Status & Timeline */}
+                        <td className="py-3 px-3 text-center border-r border-zinc-200 dark:border-zinc-800/80 align-top">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              isResolved
+                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30"
+                                : isPending
+                                ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
+                                : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/30"
+                            }`}
+                          >
+                            {isResolved ? (
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                            ) : (
+                              <Clock className="w-2.5 h-2.5" />
+                            )}
+                            <span>{r.status || "Pending"}</span>
+                          </span>
+                          <div className="text-[10px] text-zinc-600 dark:text-slate-400 font-mono mt-1.5 flex items-center justify-center gap-1" title="Tanggal Dilaporkan">
+                            <Calendar className="w-3 h-3 text-rose-500 shrink-0" />
+                            <span>Lapor: {r.report_date && r.report_date !== "#N/A" ? formatDate(r.report_date) : r.created_at ? formatDate(r.created_at.split(" ")[0]) : "-"}</span>
+                          </div>
+                          {isResolved ? (
+                            <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium mt-1">
+                              {(() => {
+                                const d = calculateDaysUntilClose(r.report_date, r.resolved_date, r.status);
+                                return (
+                                  <span className="inline-flex items-center gap-0.5 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/60">
+                                    Selesai {d !== "#N/A" ? `(${d} hr)` : ""}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-zinc-500 dark:text-slate-400 font-medium mt-1">
+                              {(() => {
+                                const d = calculateDaysUntilToday(r.report_date);
+                                return d !== "-" ? (
+                                  <span className="inline-flex items-center gap-0.5 bg-zinc-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-zinc-200 dark:border-slate-700">
+                                    Berjalan {d} hr
+                                  </span>
+                                ) : null;
+                              })()}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 5. Aksi */}
+                        <td className="py-3 px-3 text-center align-middle">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedReturn((prev) => (prev?.id === r.id ? null : r));
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all shadow-xs cursor-pointer ${
+                              isExpanded
+                                ? "bg-black text-white dark:bg-indigo-600 border-black dark:border-indigo-500 shadow-sm"
+                                : "bg-zinc-100 hover:bg-zinc-200 text-black border-zinc-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
+                            }`}
+                          >
+                            {isExpanded ? "Tutup" : "Tindakan"}
+                          </button>
+                        </td>
+                      </tr>
+
+                      {/* Expandable Accordion Row (Smart Mode) */}
+                      {isExpanded && (
+                        <tr className="bg-zinc-100/90 dark:bg-[#070b16] border-y-2 border-indigo-500/50 animate-in fade-in duration-150">
+                          <td colSpan={5} className="p-2 sm:p-3">
+                            {renderAccordionContent(r)}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse min-w-[1250px]">
             <thead>
               <tr className="bg-zinc-100 dark:bg-[#070b14] border-b-2 border-zinc-300 dark:border-zinc-800 text-[11px] font-black text-black dark:text-slate-400 uppercase tracking-wider select-none">
@@ -2798,6 +3117,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             </tbody>
           </table>
         </div>
+        )}
 
         {/* Datalist Auto-suggestions for Person (Pelaku Kesalahan) */}
         
