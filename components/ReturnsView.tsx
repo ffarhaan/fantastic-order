@@ -1248,13 +1248,48 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     <div className="bg-white dark:bg-[#0d1424] border border-zinc-300 dark:border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm space-y-3 text-left">
       {/* Header Bar */}
       <div className="flex flex-wrap items-center justify-between border-b border-zinc-200 dark:border-slate-800 pb-2.5 gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 dark:bg-indigo-400"></span>
           <h4 className="font-bold text-xs sm:text-sm text-black dark:text-white">
             Tiket #{r.id} - Faktur {r.invoice_no || "-"}
           </h4>
           <span className="text-xs text-zinc-500 dark:text-slate-400 font-semibold truncate">
-            ({r.customer_name})
+            ({editForm.customer_name || r.customer_name})
+          </span>
+
+          {/* Status Tiket (Hanya Teks/Badge Otomatis di Sebelah Nama Apotek) */}
+          <span
+            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold transition-all shadow-2xs ${
+              editForm.status === "In Progress"
+                ? "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800"
+                : editForm.status === "Resolved"
+                ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-800"
+                : editForm.status === "Rejected"
+                ? "bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-950/80 dark:text-rose-300 dark:border-rose-800"
+                : "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800"
+            }`}
+          >
+            {editForm.status === "In Progress" ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                <span>In Progress</span>
+              </>
+            ) : editForm.status === "Resolved" ? (
+              <>
+                <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                <span>Resolved</span>
+              </>
+            ) : editForm.status === "Rejected" ? (
+              <>
+                <XCircle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                <span>Rejected</span>
+              </>
+            ) : (
+              <>
+                <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                <span>Pending</span>
+              </>
+            )}
           </span>
         </div>
 
@@ -1286,7 +1321,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
             {/* Nama Apotek with Suggestion */}
-            <div className="relative sm:col-span-2">
+            <div className="relative sm:col-span-3">
               <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
                 Nama Apotek / Merchant
               </label>
@@ -1322,48 +1357,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   ))}
                 </div>
               )}
-            </div>
-
-            {/* Status Tiket (Pindah ke atas sebelah Nama Apotek) */}
-            <div className="sm:col-span-1">
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
-                Status Tiket
-              </label>
-              <select
-                value={editForm.status}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const updates: any = { status: val };
-                  if (val === "Rejected") {
-                    updates.confirm = "Reject";
-                    updates.resolved_date = "";
-                  } else if (val === "In Progress") {
-                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
-                  } else if (val === "Resolved") {
-                    if (!editForm.resolved_date) {
-                      updates.resolved_date = new Date().toISOString().split("T")[0];
-                    }
-                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
-                  } else if (val === "Pending") {
-                    updates.confirm = "";
-                  }
-                  setEditForm({ ...editForm, ...updates });
-                }}
-                className={`w-full border rounded-lg p-1.5 font-bold transition-colors ${
-                  editForm.status === "In Progress"
-                    ? "bg-blue-50 dark:bg-blue-950/60 border-blue-400 text-blue-800 dark:text-blue-300"
-                    : editForm.status === "Resolved"
-                    ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-400 text-emerald-800 dark:text-emerald-300"
-                    : editForm.status === "Rejected"
-                    ? "bg-rose-50 dark:bg-rose-950/60 border-rose-400 text-rose-800 dark:text-rose-300"
-                    : "bg-amber-50 dark:bg-amber-950/60 border-amber-300 text-amber-800 dark:text-amber-300"
-                }`}
-              >
-                <option value="Pending">🟡 Pending</option>
-                <option value="In Progress">🔵 In Progress</option>
-                <option value="Resolved">🟢 Resolved</option>
-                <option value="Rejected">🔴 Rejected</option>
-              </select>
             </div>
 
             <div>
