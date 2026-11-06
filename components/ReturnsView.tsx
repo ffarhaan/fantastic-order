@@ -1278,7 +1278,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
             {/* Nama Apotek with Suggestion */}
-            <div className="relative sm:col-span-3">
+            <div className="relative sm:col-span-2">
               <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
                 Nama Apotek / Merchant
               </label>
@@ -1314,6 +1314,48 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Status Tiket (Pindah ke atas sebelah Nama Apotek) */}
+            <div className="sm:col-span-1">
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
+                Status Tiket
+              </label>
+              <select
+                value={editForm.status}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const updates: any = { status: val };
+                  if (val === "Rejected") {
+                    updates.confirm = "Reject";
+                    updates.resolved_date = "";
+                  } else if (val === "In Progress") {
+                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
+                  } else if (val === "Resolved") {
+                    if (!editForm.resolved_date) {
+                      updates.resolved_date = new Date().toISOString().split("T")[0];
+                    }
+                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
+                  } else if (val === "Pending") {
+                    updates.confirm = "";
+                  }
+                  setEditForm({ ...editForm, ...updates });
+                }}
+                className={`w-full border rounded-lg p-1.5 font-bold transition-colors ${
+                  editForm.status === "In Progress"
+                    ? "bg-blue-50 dark:bg-blue-950/60 border-blue-400 text-blue-800 dark:text-blue-300"
+                    : editForm.status === "Resolved"
+                    ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-400 text-emerald-800 dark:text-emerald-300"
+                    : editForm.status === "Rejected"
+                    ? "bg-rose-50 dark:bg-rose-950/60 border-rose-400 text-rose-800 dark:text-rose-300"
+                    : "bg-amber-50 dark:bg-amber-950/60 border-amber-300 text-amber-800 dark:text-amber-300"
+                }`}
+              >
+                <option value="Pending">🟡 Pending</option>
+                <option value="In Progress">🔵 In Progress</option>
+                <option value="Resolved">🟢 Resolved</option>
+                <option value="Rejected">🔴 Rejected</option>
+              </select>
             </div>
 
             <div>
@@ -1525,7 +1567,15 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               <input
                 type="text"
                 value={editForm.person}
-                onChange={(e) => setEditForm({ ...editForm, person: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const updates: any = { person: val };
+                  if (val.trim() && (editForm.status === "Pending" || !editForm.status)) {
+                    updates.status = "In Progress";
+                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
+                  }
+                  setEditForm({ ...editForm, ...updates });
+                }}
                 placeholder="Nama picker / checker bersangkutan"
                 className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
               />
@@ -1544,7 +1594,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           </div>
 
           {/* Baris 3.2: Konfirmasi & Status Keputusan Tiket */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 border-t border-blue-100 dark:border-slate-800/80">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-blue-100 dark:border-slate-800/80">
             <div>
               <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
                 1. Validitas Komplain
@@ -1575,47 +1625,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 <option value="">-- Belum Ditentukan --</option>
                 <option value="Approve">🔵 Valid (Kesalahan PBF)</option>
                 <option value="Reject">🔴 Reject (Bukan Kesalahan PBF)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
-                2. Status Tiket Komplain
-              </label>
-              <select
-                value={editForm.status}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const updates: any = { status: val };
-                  if (val === "Rejected") {
-                    updates.confirm = "Reject";
-                    updates.resolved_date = "";
-                  } else if (val === "In Progress") {
-                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
-                  } else if (val === "Resolved") {
-                    if (!editForm.resolved_date) {
-                      updates.resolved_date = new Date().toISOString().split("T")[0];
-                    }
-                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
-                  } else if (val === "Pending") {
-                    updates.confirm = "";
-                  }
-                  setEditForm({ ...editForm, ...updates });
-                }}
-                className={`w-full border rounded-lg p-1.5 font-bold transition-colors ${
-                  editForm.status === "In Progress"
-                    ? "bg-blue-50 dark:bg-blue-950/60 border-blue-400 text-blue-800 dark:text-blue-300"
-                    : editForm.status === "Resolved"
-                    ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-400 text-emerald-800 dark:text-emerald-300"
-                    : editForm.status === "Rejected"
-                    ? "bg-rose-50 dark:bg-rose-950/60 border-rose-400 text-rose-800 dark:text-rose-300"
-                    : "bg-amber-50 dark:bg-amber-950/60 border-amber-300 text-amber-800 dark:text-amber-300"
-                }`}
-              >
-                <option value="Pending">🟡 Pending — Menunggu Validitas</option>
-                <option value="In Progress">🔵 In Progress — Penyiapan Fisik</option>
-                <option value="Resolved">🟢 Resolved — Selesai Diterima</option>
-                <option value="Rejected">🔴 Rejected — Ditolak</option>
               </select>
             </div>
 
