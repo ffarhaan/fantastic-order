@@ -7,6 +7,7 @@ import { AppUser } from "@/components/LoginModal";
 import { recordActivityLog } from "@/lib/activityLogger";
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   Clock,
   Search,
@@ -318,6 +319,17 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [showDeliveryPrepModal, setShowDeliveryPrepModal] = useState(false);
   const [showConfirmApproveModal, setShowConfirmApproveModal] = useState(false);
   const [showConfirmRejectModal, setShowConfirmRejectModal] = useState(false);
+  const [validationModal, setValidationModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    subtitle?: string;
+    message: string;
+    missingFields?: string[];
+    note?: string;
+    type?: "warning" | "error" | "info";
+    onConfirmText?: string;
+    onConfirm?: () => void;
+  } | null>(null);
 
   // One-time onboarding workflow popup
   useEffect(() => {
@@ -914,7 +926,12 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     const skipDeliveryConfirm = param === true;
     if (!selectedReturn) return;
     if (!canEditReturns) {
-      alert("Akses Ditolak: Akun Anda tidak memiliki hak akses mengubah Shipment Error.");
+      setValidationModal({
+        isOpen: true,
+        title: "Mode Hanya Lihat",
+        message: "Akun Anda tidak memiliki hak akses mengubah modul Shipment Error. Hubungi Administrator untuk meminta akses.",
+        type: "warning",
+      });
       return;
     }
 
@@ -922,7 +939,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     const isRejecting = editForm.status === "Rejected" || editForm.confirm === "Reject";
     if (isRejecting) {
       if (!editForm.note || !editForm.note.trim()) {
-        alert("⚠️ Validasi Form: Kolom Catatan Balasan Logistik / Alasan Penolakan wajib diisi untuk tiket yang ditolak (Reject)!");
+        setValidationModal({
+          isOpen: true,
+          title: "Catatan Alasan Reject Wajib Diisi",
+          subtitle: `Faktur #${editForm.invoice_no || selectedReturn.invoice_no} • ${editForm.customer_name || selectedReturn.customer_name}`,
+          message: "Tiket yang ditolak (Reject) wajib menyertakan alasan penolakan pada kolom Catatan Balasan Logistik.",
+          missingFields: ["Catatan Balasan Logistik / Alasan Penolakan"],
+          note: "Catatan ini akan langsung terbaca oleh apotek pengaju komplain sebagai kejelasan penolakan.",
+          type: "error",
+          onConfirmText: "Isi Catatan Penolakan",
+        });
         return;
       }
       if (!skipDeliveryConfirm && selectedReturn.status !== "Rejected") {
@@ -947,16 +973,20 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       if (!hasAction || !hasRootCause || !hasPerson) {
         const missing: string[] = [];
-        if (!hasAction) missing.push("1. Tindakan Solusi Gudang (Action)");
-        if (!hasRootCause) missing.push("2. Penyebab Kesalahan (Root Cause)");
-        if (!hasPerson) missing.push("3. Personil Terkait (Picker / Checker)");
+        if (!hasAction) missing.push("Tindakan Solusi Gudang (Action)");
+        if (!hasRootCause) missing.push("Penyebab Kesalahan (Root Cause)");
+        if (!hasPerson) missing.push("Personil Terkait (Picker / Checker)");
 
-        alert(
-          `⚠️ Tahap In Progress (Proses 1 - Investigasi & Penyiapan Barang):\n\n` +
-          `Untuk menyimpan tiket yang sedang diproses, Anda wajib melengkapi data investigasi gudang berikut:\n` +
-          missing.join("\n") +
-          `\n\nSetelah ketiga data ini lengkap, fisik barang pengganti dapat disiapkan dan dikirim ke apotek.`
-        );
+        setValidationModal({
+          isOpen: true,
+          title: "Data Investigasi Belum Lengkap",
+          subtitle: `Faktur #${editForm.invoice_no || selectedReturn.invoice_no} • ${editForm.customer_name || selectedReturn.customer_name}`,
+          message: "Untuk menyimpan tiket pada tahap In Progress (Proses 1: Investigasi & Penyiapan Barang), Anda wajib melengkapi data investigasi gudang berikut:",
+          missingFields: missing,
+          note: "Setelah ketiga data ini lengkap, fisik barang pengganti dapat disiapkan dan dikirim ke apotek.",
+          type: "warning",
+          onConfirmText: "Mengerti & Lengkapi Data",
+        });
         return;
       }
     }
@@ -970,16 +1000,20 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       if (!hasAction || !hasRootCause || !hasPerson) {
         const missing: string[] = [];
-        if (!hasAction) missing.push("1. Tindakan Solusi Gudang (Action)");
-        if (!hasRootCause) missing.push("2. Penyebab Kesalahan (Root Cause)");
-        if (!hasPerson) missing.push("3. Personil Terkait (Picker / Checker)");
+        if (!hasAction) missing.push("Tindakan Solusi Gudang (Action)");
+        if (!hasRootCause) missing.push("Penyebab Kesalahan (Root Cause)");
+        if (!hasPerson) missing.push("Personil Terkait (Picker / Checker)");
 
-        alert(
-          `⚠️ Tiket Faktur #${editForm.invoice_no || selectedReturn.invoice_no} belum bisa diselesaikan!\n\n` +
-          `Pada tahap In Progress (Proses 1), Anda wajib melengkapi data investigasi berikut terlebih dahulu:\n` +
-          missing.join("\n") +
-          `\n\nTiket hanya dapat diselesaikan setelah data lengkap dan barang pengganti telah sampai di apotek.`
-        );
+        setValidationModal({
+          isOpen: true,
+          title: "Tiket Belum Dapat Diselesaikan",
+          subtitle: `Faktur #${editForm.invoice_no || selectedReturn.invoice_no} • ${editForm.customer_name || selectedReturn.customer_name}`,
+          message: "Tiket belum bisa ditandai selesai karena data investigasi gudang belum lengkap:",
+          missingFields: missing,
+          note: "Silakan lengkapi tindakan solusi, penyebab kesalahan, dan personil terkait sebelum tiket diselesaikan.",
+          type: "warning",
+          onConfirmText: "Lengkapi Data Investigasi",
+        });
         return;
       }
 
@@ -1063,7 +1097,12 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   // Handler sebelum konfirmasi selesai: WAJIB periksa kelengkapan Tindakan, Penyebab, & Personil
   const handleRequestResolveReturn = (item: ShipmentReturnRecord) => {
     if (!canEditReturns) {
-      alert("Akses Ditolak: Akun Anda tidak memiliki hak akses mengubah Shipment Error.");
+      setValidationModal({
+        isOpen: true,
+        title: "Mode Hanya Lihat",
+        message: "Akun Anda tidak memiliki hak akses mengubah modul Shipment Error.",
+        type: "warning",
+      });
       return;
     }
     const hasAction = item.action && item.action.trim() && item.action !== "-" && item.action !== "#N/A";
@@ -1072,17 +1111,23 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
     if (!hasAction || !hasRootCause || !hasPerson) {
       const missing: string[] = [];
-      if (!hasAction) missing.push("1. Tindakan Solusi Gudang (Action)");
-      if (!hasRootCause) missing.push("2. Penyebab Kesalahan (Root Cause)");
-      if (!hasPerson) missing.push("3. Personil Terkait (Picker / Checker)");
+      if (!hasAction) missing.push("Tindakan Solusi Gudang (Action)");
+      if (!hasRootCause) missing.push("Penyebab Kesalahan (Root Cause)");
+      if (!hasPerson) missing.push("Personil Terkait (Picker / Checker)");
 
-      alert(
-        `⚠️ Tiket Faktur #${item.invoice_no || item.id} belum bisa diselesaikan!\n\n` +
-        `Pada tahap In Progress (Proses 1), Anda wajib melengkapi data investigasi berikut terlebih dahulu:\n` +
-        missing.join("\n") +
-        `\n\nSilakan isi data investigasi pada detail tiket sebelum menyelesaikannya.`
-      );
-      setSelectedReturn(item);
+      setValidationModal({
+        isOpen: true,
+        title: "Tiket Belum Dapat Diselesaikan",
+        subtitle: `Faktur #${item.invoice_no || item.id} • ${item.customer_name || ""}`,
+        message: "Tiket belum bisa ditandai selesai karena data investigasi gudang belum lengkap:",
+        missingFields: missing,
+        note: "Silakan lengkapi data investigasi gudang pada detail tiket sebelum menyelesaikannya.",
+        type: "warning",
+        onConfirmText: "Buka Detail & Lengkapi Data",
+        onConfirm: () => {
+          setSelectedReturn(item);
+        },
+      });
       return;
     }
 
@@ -4590,6 +4635,77 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Ya, Fisik Sudah Sampai &amp; Selesai ✓</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL PERINGATAN VALIDASI DATA INVESTIGASI (MODERN IN-APP DIALOG) ─── */}
+      {validationModal && validationModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-amber-400/80 dark:border-amber-600/80 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-lg shrink-0 mt-0.5 shadow-xs">
+                <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-extrabold text-sm text-zinc-900 dark:text-white">
+                  {validationModal.title}
+                </h3>
+                {validationModal.subtitle && (
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium truncate mt-0.5">
+                    {validationModal.subtitle}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setValidationModal(null)}
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 text-xs text-zinc-800 dark:text-zinc-200 space-y-2.5 leading-relaxed">
+              <p className="font-medium text-amber-900 dark:text-amber-200">
+                {validationModal.message}
+              </p>
+
+              {validationModal.missingFields && validationModal.missingFields.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  {validationModal.missingFields.map((field, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 p-2 rounded-lg bg-white/80 dark:bg-zinc-900/80 border border-amber-200/80 dark:border-amber-800/60 text-xs font-bold text-amber-800 dark:text-amber-300 shadow-2xs"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                      <span>{field}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {validationModal.note && (
+                <p className="text-[11px] text-zinc-600 dark:text-zinc-400 italic pt-1 border-t border-amber-200/60 dark:border-amber-900/40">
+                  💡 {validationModal.note}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => {
+                  const cb = validationModal.onConfirm;
+                  setValidationModal(null);
+                  if (cb) cb();
+                }}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-black text-black bg-amber-400 hover:bg-amber-500 shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+              >
+                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                <span>{validationModal.onConfirmText || "Mengerti & Lengkapi Data"}</span>
               </button>
             </div>
           </div>

@@ -9,6 +9,7 @@ import {
   Search,
   Filter,
   Check,
+  X,
   Building2,
   Calendar,
   Layers,
@@ -36,6 +37,10 @@ export default function OpenCasesView({
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [confirmResolveCase, setConfirmResolveCase] = useState<ShipmentReturnRecord | null>(null);
+  const [warningModal, setWarningModal] = useState<{
+    row: ShipmentReturnRecord;
+    missing: string[];
+  } | null>(null);
 
   // Parse days open
   const openCases = useMemo(() => {
@@ -149,17 +154,11 @@ export default function OpenCasesView({
 
     if (!hasAction || !hasRootCause || !hasPerson) {
       const missing: string[] = [];
-      if (!hasAction) missing.push("1. Tindakan Solusi Gudang (Action)");
-      if (!hasRootCause) missing.push("2. Penyebab Kesalahan (Root Cause)");
-      if (!hasPerson) missing.push("3. Personil Terkait (Picker / Checker)");
+      if (!hasAction) missing.push("Tindakan Solusi Gudang (Action)");
+      if (!hasRootCause) missing.push("Penyebab Kesalahan (Root Cause)");
+      if (!hasPerson) missing.push("Personil Terkait (Picker / Checker)");
 
-      alert(
-        `⚠️ Tiket Faktur #${row.invoice_no || row.id} belum bisa diselesaikan!\n\n` +
-        `Pada tahap In Progress, Anda wajib melengkapi data investigasi berikut terlebih dahulu:\n` +
-        missing.join("\n") +
-        `\n\nSilakan klik tiket ini untuk melengkapi data sebelum menyelesaikannya.`
-      );
-      if (onSelectReturn) onSelectReturn(row);
+      setWarningModal({ row, missing });
       return;
     }
 
@@ -568,6 +567,71 @@ export default function OpenCasesView({
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Ya, Fisik Sudah Sampai &amp; Selesai ✓</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pop-up Peringatan Kelengkapan Investigasi Gudang */}
+      {warningModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-amber-400/80 dark:border-amber-600/80 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-lg shrink-0 mt-0.5 shadow-xs">
+                <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-extrabold text-sm text-zinc-900 dark:text-white">
+                  Tiket Belum Dapat Diselesaikan
+                </h3>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium truncate mt-0.5">
+                  Faktur #{warningModal.row.invoice_no || warningModal.row.id} • {warningModal.row.customer_name || ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWarningModal(null)}
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 text-xs text-zinc-800 dark:text-zinc-200 space-y-2.5 leading-relaxed">
+              <p className="font-medium text-amber-900 dark:text-amber-200">
+                Pada tahap In Progress, Anda wajib melengkapi data investigasi gudang berikut terlebih dahulu sebelum menyelesaikan tiket:
+              </p>
+
+              <div className="space-y-1.5 pt-1">
+                {warningModal.missing.map((field, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-2 p-2 rounded-lg bg-white/80 dark:bg-zinc-900/80 border border-amber-200/80 dark:border-amber-800/60 text-xs font-bold text-amber-800 dark:text-amber-300 shadow-2xs"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                    <span>{field}</span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-[11px] text-zinc-600 dark:text-zinc-400 italic pt-1 border-t border-amber-200/60 dark:border-amber-900/40">
+                💡 Silakan klik tombol di bawah untuk membuka form tiket dan melengkapi data investigasi.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => {
+                  const r = warningModal.row;
+                  setWarningModal(null);
+                  if (onSelectReturn) onSelectReturn(r);
+                }}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-black text-black bg-amber-400 hover:bg-amber-500 shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+              >
+                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Buka Detail &amp; Lengkapi Data</span>
               </button>
             </div>
           </div>
