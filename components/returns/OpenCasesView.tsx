@@ -175,10 +175,10 @@ export default function OpenCasesView({
   return (
     <div className="space-y-4 animate-in fade-in duration-150">
       {/* Tier Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
         <div
           onClick={() => setFilterTier("ALL")}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer touch-manipulation ${
             filterTier === "ALL"
               ? "bg-white dark:bg-zinc-800 border-zinc-900 dark:border-white shadow-sm"
               : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400"
@@ -199,7 +199,7 @@ export default function OpenCasesView({
 
         <div
           onClick={() => setFilterTier("kritis")}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer touch-manipulation ${
             filterTier === "kritis"
               ? "bg-rose-50 dark:bg-rose-950/40 border-rose-500 shadow-sm"
               : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:border-rose-400"
@@ -215,7 +215,7 @@ export default function OpenCasesView({
 
         <div
           onClick={() => setFilterTier("tinggi")}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer touch-manipulation ${
             filterTier === "tinggi"
               ? "bg-orange-50 dark:bg-orange-950/40 border-orange-500 shadow-sm"
               : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:border-orange-400"
@@ -231,7 +231,7 @@ export default function OpenCasesView({
 
         <div
           onClick={() => setFilterTier("sedang")}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer touch-manipulation ${
             filterTier === "sedang"
               ? "bg-amber-50 dark:bg-amber-950/40 border-amber-500 shadow-sm"
               : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:border-amber-400"
@@ -247,7 +247,7 @@ export default function OpenCasesView({
 
         <div
           onClick={() => setFilterTier("normal")}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer touch-manipulation ${
             filterTier === "normal"
               ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 shadow-sm"
               : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:border-emerald-400"
@@ -280,8 +280,118 @@ export default function OpenCasesView({
         </div>
       </div>
 
-      {/* Table Container */}
-      <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden shadow-xs">
+      {/* Mobile Cards View (Khusus iPhone & Layar Kecil) */}
+      <div className="block md:hidden space-y-3 pb-24 max-w-full overflow-hidden">
+        {filteredCases.length === 0 ? (
+          <div className="py-10 text-center text-zinc-400 bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-xs">
+            <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500 mb-2 opacity-80" />
+            <p className="font-bold text-xs text-zinc-700 dark:text-zinc-200">Tidak ada kasus menggantung</p>
+            <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">Semua pengiriman berjalan lancar atau sudah tuntas.</p>
+          </div>
+        ) : (
+          filteredCases.map((row) => (
+            <div
+              key={`mobile-open-${row.id}`}
+              className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3.5 shadow-xs space-y-2.5 max-w-full overflow-hidden"
+            >
+              {/* Baris 1: PBF + Faktur Link + Durasi + Status */}
+              <div className="flex items-center justify-between gap-1.5 flex-wrap pb-2 border-b border-zinc-100 dark:border-zinc-800/80">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                      row.pbf === "MAI"
+                        ? "bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30"
+                        : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30"
+                    }`}
+                  >
+                    {row.pbf || "MBI"}
+                  </span>
+
+                  {row.invoice_no && row.invoice_no !== "-" && row.invoice_no !== "#N/A" && onSelectInvoice ? (
+                    <button
+                      type="button"
+                      onClick={() => onSelectInvoice(row.invoice_no)}
+                      className="font-mono text-xs font-bold text-blue-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer touch-manipulation"
+                      title="Buka Faktur Terkait"
+                    >
+                      <span>#{row.invoice_no}</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </button>
+                  ) : (
+                    <span className="text-[11px] font-mono text-zinc-500">#{row.invoice_no || row.id}</span>
+                  )}
+
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${row.tierBadge}`}>
+                    <Clock className="w-2.5 h-2.5" />
+                    <span>{row.days}h ({row.tier})</span>
+                  </span>
+                </div>
+
+                {row.status === "In Progress" ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                    <span>In Progress</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                    <span>Pending</span>
+                  </span>
+                )}
+              </div>
+
+              {/* Baris 2: Nama Apotek/Outlet + Nama Produk */}
+              <div className="space-y-1">
+                <h4 className="font-extrabold text-xs sm:text-sm text-zinc-900 dark:text-white truncate">
+                  {row.customer_name || "-"}
+                </h4>
+                <div className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">
+                  Produk: {row.product_name || "-"}
+                </div>
+              </div>
+
+              {/* Baris 3: Jenis Kendala (warna oranye) + PIC Personil */}
+              <div className="p-2.5 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 text-xs space-y-1">
+                <div className="text-amber-700 dark:text-amber-400 font-bold truncate">
+                  <span>Kendala: </span>
+                  <span className="font-semibold">{row.reason || "-"}</span>
+                </div>
+                <div className="text-[11px] text-zinc-600 dark:text-zinc-400 font-medium truncate">
+                  <span>PIC (Picker/Checker): </span>
+                  <strong className="text-zinc-800 dark:text-zinc-200">{row.person || "-"}</strong>
+                </div>
+              </div>
+
+              {/* Footer: Tombol Aksi Nyaman di Jempol */}
+              <div className="pt-1">
+                {row.status === "In Progress" ? (
+                  <button
+                    type="button"
+                    disabled={updatingId === row.id}
+                    onClick={() => setConfirmResolveCase(row)}
+                    className="w-full h-9 py-2 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white flex items-center justify-center gap-1.5 shadow-xs transition-all touch-manipulation cursor-pointer disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{updatingId === row.id ? "Memproses..." : "Selesaikan Kasus"}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onSelectReturn && onSelectReturn(row)}
+                    className="w-full h-9 py-2 px-3 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-[0.99] text-white flex items-center justify-center gap-1.5 shadow-xs transition-all touch-manipulation cursor-pointer"
+                  >
+                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>Tindak Lanjut / Verifikasi</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Desktop & Tablet Table Container */}
+      <div className="hidden md:block rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden shadow-xs">
         <div className="overflow-x-auto max-h-[620px] overflow-y-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>

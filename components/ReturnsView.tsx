@@ -1991,14 +1991,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               </div>
 
               {/* 4 Status Workflow Metric Cards (Symmetrical 4-Column Grid) */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {/* 1. PENDING */}
                 <div
                   onClick={() => {
                     setStatusFilter(statusFilter === "Pending" ? "ALL" : "Pending");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-2xl border p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none ${
+                  className={`relative overflow-hidden rounded-2xl border p-2.5 sm:p-3 flex flex-col justify-between cursor-pointer touch-manipulation transition-all select-none ${
                     statusFilter === "Pending"
                       ? "border-amber-400 dark:border-amber-400 ring-4 ring-amber-500/20 dark:ring-amber-400/20 bg-amber-500/15 dark:bg-amber-950/70 shadow-lg shadow-amber-500/10 scale-[1.01]"
                       : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-amber-400 dark:hover:border-amber-700 bg-white dark:bg-slate-900 hover:shadow-md`
@@ -2023,7 +2023,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     )}
                   </div>
                   <div className="my-1">
-                    <span className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 font-mono tracking-tight">
+                    <span className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 font-mono tracking-tight">
                       {pendingCasesCount.toLocaleString("id-ID")}
                     </span>
                   </div>
@@ -2047,7 +2047,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setStatusFilter(statusFilter === "In Progress" ? "ALL" : "In Progress");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-2xl border p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none ${
+                  className={`relative overflow-hidden rounded-2xl border p-2.5 sm:p-3 flex flex-col justify-between cursor-pointer touch-manipulation transition-all select-none ${
                     statusFilter === "In Progress"
                       ? "border-blue-400 dark:border-blue-400 ring-4 ring-blue-500/20 dark:ring-blue-400/20 bg-blue-500/15 dark:bg-blue-950/70 shadow-lg shadow-blue-500/10 scale-[1.01]"
                       : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-700 bg-white dark:bg-slate-900 hover:shadow-md`
@@ -2072,7 +2072,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     )}
                   </div>
                   <div className="my-1">
-                    <span className="text-2xl sm:text-3xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tight">
+                    <span className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tight">
                       {inProgressCasesCount.toLocaleString("id-ID")}
                     </span>
                   </div>
@@ -2096,7 +2096,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setStatusFilter(statusFilter === "Resolved" ? "ALL" : "Resolved");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-2xl border p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none ${
+                  className={`relative overflow-hidden rounded-2xl border p-2.5 sm:p-3 flex flex-col justify-between cursor-pointer touch-manipulation transition-all select-none ${
                     statusFilter === "Resolved"
                       ? "border-emerald-400 dark:border-emerald-400 ring-4 ring-emerald-500/20 dark:ring-emerald-400/20 bg-emerald-500/15 dark:bg-emerald-950/70 shadow-lg shadow-emerald-500/10 scale-[1.01]"
                       : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-emerald-400 dark:hover:border-emerald-700 bg-white dark:bg-slate-900 hover:shadow-md`
@@ -2121,7 +2121,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     )}
                   </div>
                   <div className="my-1">
-                    <span className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tight">
+                    <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tight">
                       {resolvedCasesCount.toLocaleString("id-ID")}
                     </span>
                   </div>
@@ -2145,7 +2145,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setStatusFilter(statusFilter === "Rejected" ? "ALL" : "Rejected");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-2xl border p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none ${
+                  className={`relative overflow-hidden rounded-2xl border p-2.5 sm:p-3 flex flex-col justify-between cursor-pointer touch-manipulation transition-all select-none ${
                     statusFilter === "Rejected"
                       ? "border-rose-400 dark:border-rose-400 ring-4 ring-rose-500/20 dark:ring-rose-400/20 bg-rose-500/15 dark:bg-rose-950/70 shadow-lg shadow-rose-500/10 scale-[1.01]"
                       : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-rose-400 dark:hover:border-rose-700 bg-white dark:bg-slate-900 hover:shadow-md`
@@ -2170,7 +2170,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     )}
                   </div>
                   <div className="my-1">
-                    <span className="text-2xl sm:text-3xl font-black text-rose-600 dark:text-rose-400 font-mono tracking-tight">
+                    <span className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono tracking-tight">
                       {rejectedCasesCount.toLocaleString("id-ID")}
                     </span>
                   </div>
@@ -2197,7 +2197,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setPbfFilter(pbfFilter === "MAI" ? "ALL" : "MAI");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-xl border p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none ${
+                  className={`relative overflow-hidden rounded-xl border p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer touch-manipulation transition-all select-none ${
                     pbfFilter === "MAI"
                       ? "border-red-400 ring-2 ring-red-400/30 bg-red-500/15 dark:bg-red-950/60 shadow-sm"
                       : `${pbfFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-red-400 bg-white dark:bg-slate-900`
@@ -2231,7 +2231,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setPbfFilter(pbfFilter === "MBI" ? "ALL" : "MBI");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-xl border p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none ${
+                  className={`relative overflow-hidden rounded-xl border p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer touch-manipulation transition-all select-none ${
                     pbfFilter === "MBI"
                       ? "border-blue-400 ring-2 ring-blue-400/30 bg-blue-500/15 dark:bg-blue-950/60 shadow-sm"
                       : `${pbfFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-blue-400 bg-white dark:bg-slate-900`
@@ -2668,7 +2668,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* â”€â”€â”€ Enterprise Returns Table â”€â”€â”€ */}
       {/* ─── Mobile Cards View (Khusus Tampilan HP / Layar Kecil) ─── */}
-      <div className="block md:hidden space-y-3">
+      <div className="block md:hidden space-y-3 pb-24 max-w-full overflow-hidden">
         {loading && returns.length === 0 ? (
           <div className="py-12 text-center text-zinc-400 bg-white dark:bg-[#0a0f1c] rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-xs">
             <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-500 mb-2" />
@@ -2682,21 +2682,23 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           </div>
         ) : (
           returns.map((r) => {
-            const isResolved = (r.status || "").toLowerCase().includes("resolved");
-            const isPending = (r.status || "").toLowerCase().includes("pending");
+            const isResolved = (r.status || "").toLowerCase().includes("resolved") || (r.status || "").toLowerCase().includes("selesai");
+            const isReject = (r.status || "").toLowerCase().includes("reject") || (r.confirm || "").toLowerCase().includes("reject") || (r.confirm || "").toLowerCase().includes("tolak");
+            const isInProgress = (r.status || "").toLowerCase() === "in progress";
+            const isPending = !isResolved && !isReject && !isInProgress;
             const isExpanded = selectedReturn?.id === r.id;
 
             return (
               <div
                 key={`mobile-${r.id}`}
-                className={`rounded-2xl border transition-all p-3.5 shadow-xs ${
+                className={`rounded-2xl border transition-all p-3.5 shadow-xs max-w-full overflow-hidden ${
                   isExpanded
                     ? "bg-indigo-50/70 dark:bg-slate-800/80 border-indigo-500 ring-1 ring-indigo-500"
                     : "bg-white dark:bg-[#0a0f1c] border-zinc-200 dark:border-zinc-800"
                 }`}
               >
                 {/* 1. Header: PBF, Faktur No, & STATUS BADGE (Sangat Jelas di HP) */}
-                <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-zinc-100 dark:border-zinc-800/80">
+                <div className="flex items-center justify-between gap-1.5 pb-2.5 border-b border-zinc-100 dark:border-zinc-800/80 flex-wrap">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span
                       className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
@@ -2717,7 +2719,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                       <button
                         type="button"
                         onClick={() => onSelectInvoice && onSelectInvoice(r.invoice_no)}
-                        className="font-mono text-xs font-bold text-blue-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                        className="font-mono text-xs font-bold text-blue-600 dark:text-indigo-400 hover:underline flex items-center gap-1 touch-manipulation cursor-pointer"
                         title="Buka Faktur Terkait"
                       >
                         <span>#{r.invoice_no}</span>
@@ -2730,27 +2732,33 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
                   {/* STATUS BADGE - LANGSUNG TERLIHAT JELAS DI HP */}
                   <span
-                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black shrink-0 shadow-2xs ${
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black shrink-0 shadow-2xs ${
                       isResolved
                         ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/25 dark:text-emerald-300 dark:border-emerald-500/40"
-                        : isPending
-                        ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/25 dark:text-amber-300 dark:border-amber-500/40"
-                        : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/25 dark:text-blue-300 dark:border-blue-500/40"
+                        : isInProgress
+                        ? "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/25 dark:text-blue-300 dark:border-blue-500/40"
+                        : isReject
+                        ? "bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-500/25 dark:text-rose-300 dark:border-rose-500/40"
+                        : "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/25 dark:text-amber-300 dark:border-amber-500/40"
                     }`}
                   >
                     {isResolved ? (
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    ) : isInProgress ? (
+                      <Package className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    ) : isReject ? (
+                      <XCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
                     ) : (
                       <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                     )}
-                    <span>{isResolved ? "Resolved" : (r.status || "Pending")}</span>
+                    <span>{isResolved ? "Resolved" : isInProgress ? "In Progress" : isReject ? "Rejected" : "Pending"}</span>
                   </span>
                 </div>
 
-                {/* 2. Nama Apotek & Kategori */}
-                <div className="py-2.5 space-y-2">
+                {/* 2. Baris 2: Nama Apotek/Outlet & Nama Produk & Qty */}
+                <div className="py-2 space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <h4 className="font-extrabold text-xs sm:text-sm text-zinc-900 dark:text-white line-clamp-1">
+                    <h4 className="font-extrabold text-xs sm:text-sm text-zinc-900 dark:text-white truncate">
                       {r.customer_name || "-"}
                     </h4>
                     {r.category && r.category !== "#N/A" && (
@@ -2760,27 +2768,32 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     )}
                   </div>
 
-                  {/* Produk & Alasan Komplain */}
-                  <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-100 dark:border-zinc-800/80 text-xs space-y-1">
-                    <div className="flex items-center justify-between gap-1 font-bold text-zinc-900 dark:text-zinc-100">
-                      <span className="line-clamp-1">{r.product_name || "-"}</span>
-                      <span className="shrink-0 text-indigo-600 dark:text-indigo-400 font-mono">
-                        Qty: {r.qty || 1}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-zinc-600 dark:text-zinc-400 line-clamp-2">
-                      <strong className="text-zinc-700 dark:text-zinc-300">Kendala:</strong> {r.reason || "-"}
-                    </p>
+                  <div className="flex items-center justify-between gap-1 text-xs font-bold text-zinc-800 dark:text-zinc-200">
+                    <span className="truncate">Produk: {r.product_name || "-"}</span>
+                    <span className="shrink-0 text-indigo-600 dark:text-indigo-400 font-mono">
+                      Qty: {r.qty || 1}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3. Baris 3: Jenis Kendala (warna oranye) + PIC Personil (Picker/Checker) */}
+                <div className="p-2.5 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 text-xs space-y-1">
+                  <div className="text-amber-700 dark:text-amber-400 font-bold truncate">
+                    <span>Kendala: </span>
+                    <span className="font-semibold">{r.reason || "-"}</span>
+                  </div>
+                  <div className="text-[11px] text-zinc-600 dark:text-zinc-400 font-medium truncate flex items-center justify-between gap-1">
+                    <span>PIC (Picker/Checker): <strong className="text-zinc-800 dark:text-zinc-200">{r.person || "-"}</strong></span>
                     {r.action && r.action !== "#N/A" && (
-                      <p className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold line-clamp-1 pt-0.5">
-                        Tindakan: {r.action}
-                      </p>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold truncate">
+                        {r.action}
+                      </span>
                     )}
                   </div>
                 </div>
 
-                {/* 3. Tanggal Lapor & Selesai */}
-                <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-500 dark:text-zinc-400 pt-1 pb-2">
+                {/* Info Tanggal Lapor & Selesai */}
+                <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-500 dark:text-zinc-400 pt-2 pb-1">
                   <span className="flex items-center gap-1 font-medium">
                     <Calendar className="w-3 h-3 text-zinc-400" />
                     <span>Lapor: {formatDate(r.report_date || r.created_at?.split(" ")[0])}</span>
@@ -2797,31 +2810,31 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   )}
                 </div>
 
-                {/* 4. Action Buttons */}
+                {/* 4. Footer: Action Buttons (Nyaman di Jempol iPhone) */}
                 <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800/80">
                   {(r.photo_url || (r as any).has_photo) ? (
                     <button
                       type="button"
                       onClick={() => handlePreviewPhoto(r)}
                       disabled={loadingPhotoId === r.id}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300 border border-violet-200 dark:border-violet-800 hover:scale-105 transition-all cursor-pointer disabled:opacity-50"
+                      className="h-9 py-2 px-3 rounded-xl text-xs font-bold bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300 border border-violet-200 dark:border-violet-800 hover:scale-105 transition-all touch-manipulation cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
                     >
-                      <Camera className="w-3 h-3 text-violet-600 dark:text-violet-400" />
-                      <span>{loadingPhotoId === r.id ? "Memuat..." : "Lihat Foto Bukti"}</span>
+                      <Camera className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+                      <span>{loadingPhotoId === r.id ? "Memuat..." : "Foto"}</span>
                     </button>
                   ) : (
                     <span />
                   )}
 
-                  <div className="flex items-center gap-1.5">
-                    {r.status === "In Progress" && (
+                  <div className="flex items-center gap-2">
+                    {isInProgress && (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setConfirmResolveItem(r);
                         }}
-                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                        className="h-9 py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-xs transition-all touch-manipulation cursor-pointer"
                         title="Tandai kasus ini selesai (Resolved)"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
@@ -2831,7 +2844,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     <button
                       type="button"
                       onClick={() => setSelectedReturn((prev) => (prev?.id === r.id ? null : r))}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      className={`h-9 py-2 px-3.5 rounded-xl text-xs font-bold transition-all touch-manipulation cursor-pointer ${
                         isExpanded
                           ? "bg-black text-white dark:bg-indigo-600"
                           : "bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-100 dark:border-zinc-700"

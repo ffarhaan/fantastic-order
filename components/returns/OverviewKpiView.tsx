@@ -32,9 +32,12 @@ export default function OverviewKpiView({
     let mbiCases = 0;
     let resolved = 0;
     let inProgress = 0;
+    let pending = 0;
     let reject = 0;
     let openMAI = 0;
     let openMBI = 0;
+    let inProgMAI = 0;
+    let inProgMBI = 0;
 
     const rootCauseMap: Record<string, number> = {};
     const reasonMap: Record<string, number> = {};
@@ -45,6 +48,7 @@ export default function OverviewKpiView({
       const conf = (r.confirm || "").toLowerCase();
       const isRej = conf.includes("reject") || conf.includes("tolak") || st.includes("reject");
       const isRes = st.includes("resolved") || st.includes("selesai");
+      const isInProg = st === "in progress";
 
       if (isRej) {
         reject++;
@@ -52,13 +56,20 @@ export default function OverviewKpiView({
         if (pbf.includes("MAI")) {
           maiCases++;
           if (!isRes) openMAI++;
+          if (isInProg) inProgMAI++;
         } else {
           mbiCases++;
           if (!isRes) openMBI++;
+          if (isInProg) inProgMBI++;
         }
 
-        if (isRes) resolved++;
-        else inProgress++;
+        if (isRes) {
+          resolved++;
+        } else if (isInProg) {
+          inProgress++;
+        } else {
+          pending++;
+        }
       }
 
       // Root Cause
@@ -119,10 +130,13 @@ export default function OverviewKpiView({
       mbiCases,
       resolved,
       inProgress,
+      pending,
       reject,
       openCases,
       openMAI,
       openMBI,
+      inProgMAI,
+      inProgMBI,
       resolutionRate,
       maiInvoices,
       mbiInvoices,
@@ -205,17 +219,17 @@ export default function OverviewKpiView({
 
         {/* Card 5: IN PROGRESS */}
         <div className="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs p-3.5 flex flex-col justify-between">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500" />
+          <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500" />
           <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase">
             IN PROGRESS
           </div>
           <div className="my-1.5">
-            <span className="text-2xl font-black text-amber-500 dark:text-amber-400 font-mono">
-              {stats.openCases}
+            <span className="text-2xl font-black text-blue-600 dark:text-blue-400 font-mono">
+              {stats.inProgress}
             </span>
           </div>
           <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
-            MAI: {stats.openMAI} - MBI: {stats.openMBI}
+            {stats.inProgress > 0 ? `MAI: ${stats.inProgMAI} • MBI: ${stats.inProgMBI}` : "0 antrean kirim"}
           </div>
         </div>
 
