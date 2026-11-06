@@ -112,18 +112,36 @@ export const calculateDaysUntilToday = (reportDateStr?: string | null): number |
   }
 };
 
-export const calculateDaysUntilClose = (reportDateStr?: string | null, resolvedDateStr?: string | null, status?: string | null): number | string => {
-  if (!resolvedDateStr || resolvedDateStr === "#N/A" || resolvedDateStr === "-" || !(status || "").toLowerCase().includes("resolved")) {
-    return "#N/A";
-  }
-  if (!reportDateStr || reportDateStr === "#N/A" || reportDateStr === "-") return "#N/A";
+export const calculateDaysUntilClose = (
+  reportDateStr?: string | null,
+  resolvedDateStr?: string | null,
+  status?: string | null,
+  invoiceDateStr?: string | null
+): number | string => {
+  const isResolved =
+    (status || "").toLowerCase().includes("resolved") ||
+    (status || "").toLowerCase().includes("selesai");
+  if (!isResolved) return "#N/A";
+
+  const effectiveResolved =
+    resolvedDateStr && resolvedDateStr !== "#N/A" && resolvedDateStr !== "-"
+      ? resolvedDateStr
+      : (reportDateStr && reportDateStr !== "#N/A" && reportDateStr !== "-" ? reportDateStr : (invoiceDateStr || ""));
+
+  const effectiveReport =
+    reportDateStr && reportDateStr !== "#N/A" && reportDateStr !== "-"
+      ? reportDateStr
+      : (invoiceDateStr || effectiveResolved || "");
+
+  if (!effectiveResolved || !effectiveReport) return 0;
+
   try {
-    const rep = new Date(reportDateStr);
-    const res = new Date(resolvedDateStr);
-    if (isNaN(rep.getTime()) || isNaN(res.getTime())) return "#N/A";
+    const rep = new Date(effectiveReport);
+    const res = new Date(effectiveResolved);
+    if (isNaN(rep.getTime()) || isNaN(res.getTime())) return 0;
     return Math.max(0, Math.floor((res.getTime() - rep.getTime()) / (1000 * 60 * 60 * 24)));
   } catch {
-    return "#N/A";
+    return 0;
   }
 };
 
@@ -409,13 +427,12 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     for (let i = 0; i < list.length; i++) {
       const r = list[i];
       const st = (r.status || "").trim().toLowerCase();
-      const conf = (r.confirm || "").trim().toLowerCase();
 
-      if (st === "rejected" || conf === "reject" || st.includes("reject") || st.includes("tolak") || conf.includes("tolak")) {
+      if (st === "rejected" || st.includes("reject") || st.includes("tolak")) {
         rejected++;
       } else if (st === "resolved" || st.includes("selesai")) {
         resolved++;
-      } else if (st === "in progress" || conf === "approve" || conf.includes("valid") || st.includes("progress")) {
+      } else if (st === "in progress") {
         inProgress++;
       } else {
         pending++;
@@ -1615,11 +1632,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <div>
               <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Days Until Close</label>
               <div className={`p-1.5 border rounded-lg font-mono font-bold text-xs flex items-center justify-between ${
-                calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status) === "#N/A"
+                calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status, editForm.invoice_date) === "#N/A"
                   ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800"
                   : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
               }`}>
-                <span>{calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status) === "#N/A" ? "#N/A (Belum Close)" : `${calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status)} hari`}</span>
+                <span>{calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status, editForm.invoice_date) === "#N/A" ? "#N/A (Belum Close)" : `${calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status, editForm.invoice_date)} hari`}</span>
                 <span className="text-[10px] font-normal text-zinc-500">Today: {calculateDaysUntilToday(editForm.report_date)} hr</span>
               </div>
             </div>
@@ -1901,6 +1918,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             fetchAllReturns(true);
           }}
           onSelectInvoice={onSelectInvoice}
+          onSelectReturn={(r) => {
+            setActiveTab("list");
+            setSearch(r.invoice_no || "");
+            setSelectedReturn(r);
+          }}
         />
       )}
 
@@ -2913,7 +2935,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                           {isResolved ? (
                             <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium mt-1">
                               {(() => {
-                                const d = calculateDaysUntilClose(r.report_date, r.resolved_date, r.status);
+                                const d = calculateDaysUntilClose(r.report_date, r.resolved_date, r.status, r.invoice_date);
                                 return (
                                   <span className="inline-flex items-center gap-0.5 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/60">
                                     Selesai {d !== "#N/A" ? `(${d} hr)` : ""}
@@ -3394,7 +3416,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                         {isColVisible("days_close") && (
                           <td className="py-2.5 px-2.5 text-center font-mono text-[11px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
                             {(() => {
-                              const d = calculateDaysUntilClose(r.report_date, r.resolved_date, r.status);
+                              const d = calculateDaysUntilClose(r.report_date, r.resolved_date, r.status, r.invoice_date);
                               if (d === "#N/A") {
                                 return (
                                   <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60" title="Belum Selesai / Close">

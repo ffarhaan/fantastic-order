@@ -754,9 +754,9 @@ export async function GET(req: Request) {
         if (status === "Pending") {
           whereClause += " AND (status = 'Pending' OR status IS NULL OR status = '')";
         } else if (status === "In Progress") {
-          whereClause += " AND (status = 'In Progress' OR status = 'Approved' OR status = 'Dikonfirmasi')";
+          whereClause += " AND status = 'In Progress'";
         } else if (status === "Resolved") {
-          whereClause += " AND status = 'Resolved'";
+          whereClause += " AND (status = 'Resolved' OR status = 'Selesai')";
         } else if (status === "Rejected") {
           whereClause += " AND (status = 'Rejected' OR status = 'Ditolak' OR status = 'Gagal')";
         } else if (status === "Unresolved" || status === "Open case") {
@@ -832,9 +832,9 @@ export async function GET(req: Request) {
       const [stats] = (await conn.execute(`
         SELECT 
           COUNT(*) as totalAll,
-          SUM(CASE WHEN (LOWER(status) = 'resolved' OR LOWER(status) LIKE '%resolved%') AND LOWER(status) NOT LIKE '%reject%' AND LOWER(COALESCE(confirm, '')) NOT LIKE '%reject%' THEN 1 ELSE 0 END) as totalResolved,
+          SUM(CASE WHEN LOWER(status) = 'resolved' OR LOWER(status) LIKE '%selesai%' THEN 1 ELSE 0 END) as totalResolved,
           SUM(CASE WHEN LOWER(status) = 'pending' OR status IS NULL OR status = '' THEN 1 ELSE 0 END) as totalPending,
-          SUM(CASE WHEN (LOWER(status) = 'in progress' OR LOWER(status) = 'approved' OR LOWER(status) = 'dikonfirmasi' OR LOWER(confirm) = 'approve') AND LOWER(status) NOT LIKE '%reject%' AND LOWER(status) NOT LIKE '%resolved%' THEN 1 ELSE 0 END) as totalInProgress,
+          SUM(CASE WHEN LOWER(status) = 'in progress' THEN 1 ELSE 0 END) as totalInProgress,
           SUM(CASE WHEN pbf = 'MBI' THEN 1 ELSE 0 END) as totalMbi,
           SUM(CASE WHEN pbf = 'MAI' THEN 1 ELSE 0 END) as totalMai,
           SUM(CASE WHEN pbf = 'MBI' AND LOWER(status) NOT LIKE '%reject%' AND (confirm = 'Approve' OR confirm = '' OR confirm IS NULL) THEN 1 ELSE 0 END) as mbiApproved,
@@ -842,7 +842,7 @@ export async function GET(req: Request) {
           SUM(CASE WHEN pbf = 'MBI' AND LOWER(status) NOT LIKE '%resolved%' AND LOWER(status) NOT LIKE '%reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as openMbi,
           SUM(CASE WHEN pbf = 'MAI' AND LOWER(status) NOT LIKE '%resolved%' AND LOWER(status) NOT LIKE '%reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as openMai,
           SUM(CASE WHEN LOWER(status) NOT LIKE '%resolved%' AND LOWER(status) NOT LIKE '%reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as totalOpen,
-          SUM(CASE WHEN LOWER(status) LIKE '%reject%' OR LOWER(COALESCE(confirm, '')) LIKE '%reject%' OR LOWER(status) LIKE '%tolak%' THEN 1 ELSE 0 END) as totalReject
+          SUM(CASE WHEN LOWER(status) = 'rejected' OR LOWER(status) LIKE '%reject%' OR LOWER(status) LIKE '%tolak%' THEN 1 ELSE 0 END) as totalReject
         FROM shipment_returns ${statsCondition};
       `, statsQueryParams)) as any[];
 
@@ -2852,16 +2852,40 @@ export async function POST(req: Request) {
 
     // 2.5b. Migrate historical shipment returns status workflow
     if (action === "migrate_returns_workflow") {
+      // 1. Sinkronkan tiket yang sudah di-Approve tapi statusnya tertinggal
+      await conn.execute(`
+        UPDATE shipment_returns 
+        SET status = 'In Progress' 
+        WHERE LOWER(confirm) = 'approve' AND status IN ('Pending', 'Approve', 'Open case');
+      `);
+      // 2. Normalisasi status 'Open case' yang belum di-approve menjadi 'Pending'
+      await conn.execute(`
+        UPDATE shipment_returns 
+        SET status = 'Pending' 
+        WHERE status = 'Open case';
+      `);
+      // 3. Pastikan seluruh kasus reject berstatus 'Rejected'
       await conn.execute(`
         UPDATE shipment_returns 
         SET status = 'Rejected' 
         WHERE (LOWER(confirm) LIKE '%reject%' OR LOWER(confirm) LIKE '%tolak%') 
-          AND LOWER(status) = 'resolved';
+          AND status != 'Rejected';
       `);
+      // 4. Normalisasi casing untuk seluruh status
       await conn.execute("UPDATE shipment_returns SET status = 'Pending' WHERE LOWER(status) = 'pending';");
       await conn.execute("UPDATE shipment_returns SET status = 'In Progress' WHERE LOWER(status) = 'in progress';");
       await conn.execute("UPDATE shipment_returns SET status = 'Resolved' WHERE LOWER(status) = 'resolved';");
       await conn.execute("UPDATE shipment_returns SET status = 'Rejected' WHERE LOWER(status) = 'rejected';");
+      // 5. Backfill resolved_date yang kosong pada status Resolved
+      await conn.execute(`
+        UPDATE shipment_returns 
+        SET resolved_date = CASE 
+          WHEN report_date IS NOT NULL AND report_date != '' AND report_date != '-' THEN report_date 
+          WHEN invoice_date IS NOT NULL AND invoice_date != '' AND invoice_date != '-' THEN invoice_date 
+          ELSE resolved_date 
+        END 
+        WHERE status = 'Resolved' AND (resolved_date IS NULL OR resolved_date = '' OR resolved_date = '-');
+      `);
 
       return Response.json({ success: true, message: "Migration of shipment returns workflow completed successfully." });
     }

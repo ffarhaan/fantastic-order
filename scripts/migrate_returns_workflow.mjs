@@ -23,60 +23,82 @@ if (!databaseUrl) {
 const conn = connect({ url: databaseUrl });
 
 async function run() {
-  console.log("=== RUNNING RETURN STATUS MIGRATION IN TIDB ===");
+  console.log("=== RUNNING ADVANCED DATA SINKRONISASI IN TIDB ===");
 
   // 1. Audit before
   const beforeStats = await conn.execute(`
-    SELECT status, COUNT(*) as cnt FROM shipment_returns GROUP BY status
+    SELECT status, COUNT(*) as cnt FROM shipment_returns GROUP BY status ORDER BY cnt DESC
   `);
   console.log("Before migration status distribution:", beforeStats);
 
-  const [conflictingBefore] = await conn.execute(`
-    SELECT COUNT(*) as cnt 
-    FROM shipment_returns 
-    WHERE (LOWER(confirm) LIKE '%reject%' OR LOWER(confirm) LIKE '%tolak%') 
-      AND LOWER(status) = 'resolved'
+  // Check the two anomaly rows:
+  const anomalies = await conn.execute(`
+    SELECT id, invoice_no, confirm, status, person FROM shipment_returns 
+    WHERE invoice_no IN ('MBI/INV/CFO/2611/24114', 'MBI/INV/DOO/2610/28901')
   `);
-  console.log("Conflicting rows before (confirm reject, status resolved):", conflictingBefore?.cnt);
+  console.log("Anomaly rows before:", anomalies);
 
-  // 2. Query 1: Fix conflicting resolved that were rejected
+  // Check Open case rows:
+  const openCaseRows = await conn.execute(`
+    SELECT id, invoice_no, confirm, status FROM shipment_returns WHERE status = 'Open case'
+  `);
+  console.log("Open case rows before:", openCaseRows);
+
+  // Execute Step 1:
   const res1 = await conn.execute(`
+    UPDATE shipment_returns 
+    SET status = 'In Progress' 
+    WHERE LOWER(confirm) = 'approve' AND status IN ('Pending', 'Approve', 'Open case');
+  `);
+  console.log("1. Updated approved but pending/open case -> In Progress:", res1);
+
+  // Execute Step 2:
+  const res2 = await conn.execute(`
+    UPDATE shipment_returns 
+    SET status = 'Pending' 
+    WHERE status = 'Open case';
+  `);
+  console.log("2. Normalized remaining 'Open case' -> Pending:", res2);
+
+  // Execute Step 3:
+  const res3 = await conn.execute(`
     UPDATE shipment_returns 
     SET status = 'Rejected' 
     WHERE (LOWER(confirm) LIKE '%reject%' OR LOWER(confirm) LIKE '%tolak%') 
-      AND LOWER(status) = 'resolved';
+      AND status != 'Rejected';
   `);
-  console.log("1. Fixed conflicting resolved -> Rejected:", res1);
+  console.log("3. Ensured reject cases are 'Rejected':", res3);
 
-  // 3. Query 2: Standardize Pending
-  const res2 = await conn.execute(`
-    UPDATE shipment_returns SET status = 'Pending' WHERE LOWER(status) = 'pending';
-  `);
-  console.log("2. Standardized Pending:", res2);
+  // Execute Step 4:
+  await conn.execute("UPDATE shipment_returns SET status = 'Pending' WHERE LOWER(status) = 'pending';");
+  await conn.execute("UPDATE shipment_returns SET status = 'In Progress' WHERE LOWER(status) = 'in progress';");
+  await conn.execute("UPDATE shipment_returns SET status = 'Resolved' WHERE LOWER(status) = 'resolved';");
+  await conn.execute("UPDATE shipment_returns SET status = 'Rejected' WHERE LOWER(status) = 'rejected';");
+  console.log("4. Standardized casing for all 4 statuses.");
 
-  // 4. Query 3: Standardize In Progress
-  const res3 = await conn.execute(`
-    UPDATE shipment_returns SET status = 'In Progress' WHERE LOWER(status) = 'in progress';
-  `);
-  console.log("3. Standardized In Progress:", res3);
-
-  // 5. Query 4: Standardize Resolved
-  const res4 = await conn.execute(`
-    UPDATE shipment_returns SET status = 'Resolved' WHERE LOWER(status) = 'resolved';
-  `);
-  console.log("4. Standardized Resolved:", res4);
-
-  // 6. Query 5: Standardize Rejected
+  // Execute Step 5: Backfill resolved_date for resolved rows
   const res5 = await conn.execute(`
-    UPDATE shipment_returns SET status = 'Rejected' WHERE LOWER(status) = 'rejected';
+    UPDATE shipment_returns 
+    SET resolved_date = CASE 
+      WHEN report_date IS NOT NULL AND report_date != '' AND report_date != '-' THEN report_date 
+      WHEN invoice_date IS NOT NULL AND invoice_date != '' AND invoice_date != '-' THEN invoice_date 
+      ELSE resolved_date 
+    END 
+    WHERE status = 'Resolved' AND (resolved_date IS NULL OR resolved_date = '' OR resolved_date = '-');
   `);
-  console.log("5. Standardized Rejected:", res5);
+  console.log("5. Backfilled resolved_date for Resolved tickets:", res5);
 
-  // 7. Audit after
+  // Audit after:
   const afterStats = await conn.execute(`
-    SELECT status, COUNT(*) as cnt FROM shipment_returns GROUP BY status
+    SELECT status, COUNT(*) as cnt FROM shipment_returns GROUP BY status ORDER BY cnt DESC
   `);
   console.log("After migration status distribution:", afterStats);
+
+  const anomaliesAfter = await conn.execute(`
+    SELECT id, invoice_no, confirm, status, person FROM shipment_returns 
+    WHERE invoice_no IN ('MBI/INV/CFO/2611/24114', 'MBI/INV/DOO/2610/28901')
+  `);
+  console.log("Anomaly rows after:", anomaliesAfter);
 
   console.log("=== MIGRATION COMPLETED SUCCESSFULLY ===");
 }

@@ -23,12 +23,14 @@ interface OpenCasesViewProps {
   returns: ShipmentReturnRecord[];
   onRefreshParentReturns?: () => void;
   onSelectInvoice?: (invoiceNo: string) => void;
+  onSelectReturn?: (item: ShipmentReturnRecord) => void;
 }
 
 export default function OpenCasesView({
   returns = [],
   onRefreshParentReturns,
   onSelectInvoice,
+  onSelectReturn,
 }: OpenCasesViewProps) {
   const [filterTier, setFilterTier] = useState<"ALL" | "kritis" | "tinggi" | "sedang" | "normal">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
@@ -96,21 +98,29 @@ export default function OpenCasesView({
     }).sort((a, b) => b.days - a.days);
   }, [returns]);
 
-  // Counts by tier
+  // Counts by tier & status
   const tierCounts = useMemo(() => {
     let kritis = 0;
     let tinggi = 0;
     let sedang = 0;
     let normal = 0;
+    let inProgress = 0;
+    let pending = 0;
 
     for (const c of openCases) {
       if (c.tier === "kritis") kritis++;
       else if (c.tier === "tinggi") tinggi++;
       else if (c.tier === "sedang") sedang++;
       else normal++;
+
+      if ((c.status || "").toLowerCase() === "in progress") {
+        inProgress++;
+      } else {
+        pending++;
+      }
     }
 
-    return { total: openCases.length, kritis, tinggi, sedang, normal };
+    return { total: openCases.length, kritis, tinggi, sedang, normal, inProgress, pending };
   }, [openCases]);
 
   // Filtered cases
@@ -177,9 +187,14 @@ export default function OpenCasesView({
           <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
             Semua Open
           </span>
-          <span className="text-xl font-black text-zinc-900 dark:text-white mt-0.5 block">
-            {tierCounts.total}
-          </span>
+          <div className="flex items-baseline justify-between gap-1 mt-0.5">
+            <span className="text-xl font-black text-zinc-900 dark:text-white">
+              {tierCounts.total}
+            </span>
+            <span className="text-[10px] font-semibold text-zinc-500">
+              <span className="text-blue-600 dark:text-blue-400 font-bold">{tierCounts.inProgress}</span> kirim • <span className="text-amber-600 dark:text-amber-400 font-bold">{tierCounts.pending}</span> pending
+            </span>
+          </div>
         </div>
 
         <div
@@ -273,6 +288,7 @@ export default function OpenCasesView({
               <tr className="bg-zinc-100/80 dark:bg-zinc-800/80 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10 backdrop-blur-sm text-zinc-700 dark:text-zinc-300 font-bold">
                 <th className="py-3 px-3">Durasi Menggantung</th>
                 <th className="py-3 px-3">PBF</th>
+                <th className="py-3 px-3">Status / Tahap</th>
                 <th className="py-3 px-3">No. Faktur</th>
                 <th className="py-3 px-3">Apotek / Outlet</th>
                 <th className="py-3 px-3">Nama Produk</th>
@@ -284,7 +300,7 @@ export default function OpenCasesView({
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60 font-medium">
               {filteredCases.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-zinc-500">
+                  <td colSpan={9} className="py-12 text-center text-zinc-500">
                     Tidak ada kasus menggantung pada kategori ini. Bagus!
                   </td>
                 </tr>
@@ -307,6 +323,19 @@ export default function OpenCasesView({
                       >
                         {row.pbf || "MBI"}
                       </span>
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      {row.status === "In Progress" ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                          In Progress
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                          Pending Review
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-3 font-mono font-bold text-zinc-900 dark:text-white">
                       {row.invoice_no && row.invoice_no !== "-" && row.invoice_no !== "#N/A" && onSelectInvoice ? (
@@ -336,16 +365,28 @@ export default function OpenCasesView({
                       {row.person || "-"}
                     </td>
                     <td className="py-3 px-3 text-center whitespace-nowrap">
-                      <button
-                        type="button"
-                        disabled={updatingId === row.id}
-                        onClick={() => setConfirmResolveCase(row)}
-                        className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 mx-auto cursor-pointer shadow-2xs transition-all disabled:opacity-50"
-                        title="Tandai kasus ini selesai"
-                      >
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>{updatingId === row.id ? "Memproses..." : "Selesaikan"}</span>
-                      </button>
+                      {row.status === "In Progress" ? (
+                        <button
+                          type="button"
+                          disabled={updatingId === row.id}
+                          onClick={() => setConfirmResolveCase(row)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 mx-auto cursor-pointer shadow-xs transition-all disabled:opacity-50"
+                          title="Tandai kasus ini selesai (barang pengganti sudah sampai di apotek)"
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>{updatingId === row.id ? "Memproses..." : "Selesaikan"}</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onSelectReturn && onSelectReturn(row)}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] flex items-center gap-1 mx-auto cursor-pointer shadow-xs transition-all"
+                          title="Verifikasi bukti fisik & tetapkan PIC gudang"
+                        >
+                          <ArrowRight className="w-3 h-3" />
+                          <span>Tindak Lanjut / Verifikasi</span>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
