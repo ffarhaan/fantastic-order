@@ -73,7 +73,8 @@ export default function OverviewKpiView({
       }
 
       // Root Cause
-      const rc = (r.root_cause || "Human Error").trim();
+      const rawRc = (r.root_cause || "").trim();
+      const rc = (!rawRc || rawRc === "-" || rawRc === "#N/A") ? "Belum Diisi" : rawRc;
       rootCauseMap[rc] = (rootCauseMap[rc] || 0) + 1;
 
       // Reason / Jenis

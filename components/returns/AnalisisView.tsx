@@ -108,7 +108,7 @@ function normalizeReasonName(raw: string): string {
 function normalizeRootCauseName(raw: string): string {
   const trimmed = (raw || "").trim();
   if (!trimmed || trimmed === "-" || trimmed === "#N/A" || trimmed.toLowerCase() === "null" || trimmed.toLowerCase() === "none") {
-    return "Belum Diisi / Pending";
+    return "Belum Diisi";
   }
   const lower = trimmed.toLowerCase();
   if (lower === "human error") return "Human Error";
@@ -165,7 +165,7 @@ export default function AnalisisView({
 }: AnalisisViewProps) {
   const [localMonth, setLocalMonth] = useState<string>("ALL");
   const [localWeek, setLocalWeek] = useState<string>("ALL");
-  const [statusScope, setStatusScope] = useState<"ALL" | "VALID" | "RESOLVED" | "OPEN" | "REJECT">("ALL");
+  const [statusScope, setStatusScope] = useState<"ALL" | "PENDING" | "IN_PROGRESS" | "RESOLVED" | "REJECT">("ALL");
 
   const activeMonth = propMonth !== undefined ? propMonth : localMonth;
   const activeWeek = propWeek !== undefined ? propWeek : localWeek;
@@ -227,15 +227,17 @@ export default function AnalisisView({
       if (filterM > 0 && extractMonthFromRecord(r) !== filterM) return false;
       if (filterW > 0 && extractWeekFromRecord(r) !== filterW) return false;
 
-      const st = (r.status || "").toLowerCase();
-      const conf = (r.confirm || "").toLowerCase();
+      const st = (r.status || "").toLowerCase().trim();
+      const conf = (r.confirm || "").toLowerCase().trim();
       const isRej = conf.includes("reject") || conf.includes("tolak") || st.includes("reject");
       const isRes = st.includes("resolved") || st.includes("selesai");
+      const isInProg = st.includes("in progress");
+      const isPending = !isRej && !isRes && !isInProg;
 
-      if (statusScope === "VALID" && isRej) return false;
+      if (statusScope === "PENDING" && !isPending) return false;
+      if (statusScope === "IN_PROGRESS" && !isInProg) return false;
+      if (statusScope === "RESOLVED" && !isRes) return false;
       if (statusScope === "REJECT" && !isRej) return false;
-      if (statusScope === "RESOLVED" && (!isRes || isRej)) return false;
-      if (statusScope === "OPEN" && (isRes || isRej)) return false;
       return true;
     });
   }, [returns, activeMonth, activeWeek, statusScope]);
@@ -246,39 +248,46 @@ export default function AnalisisView({
       reasons: {} as Record<string, number>,
       roots: {} as Record<string, number>,
       total: 0,
-      validCount: 0,
+      resolvedCount: 0,
+      inProgressCount: 0,
+      pendingCount: 0,
       rejectCount: 0,
-      openCount: 0,
     };
     const mbi = {
       reasons: {} as Record<string, number>,
       roots: {} as Record<string, number>,
       total: 0,
-      validCount: 0,
+      resolvedCount: 0,
+      inProgressCount: 0,
+      pendingCount: 0,
       rejectCount: 0,
-      openCount: 0,
     };
 
     for (const r of filteredReturns) {
-      const st = (r.status || "").toLowerCase();
-      const conf = (r.confirm || "").toLowerCase();
+      const st = (r.status || "").toLowerCase().trim();
+      const conf = (r.confirm || "").toLowerCase().trim();
       const isRej = conf.includes("reject") || conf.includes("tolak") || st.includes("reject");
       const isRes = st.includes("resolved") || st.includes("selesai");
+      const isInProg = st.includes("in progress");
 
       const pbf = (r.pbf || "MBI").toUpperCase();
       const target = pbf.includes("MAI") ? mai : mbi;
       target.total++;
-      if (isRej) target.rejectCount++;
-      else {
-        target.validCount++;
-        if (!isRes) target.openCount++;
+      if (isRej) {
+        target.rejectCount++;
+      } else if (isRes) {
+        target.resolvedCount++;
+      } else if (isInProg) {
+        target.inProgressCount++;
+      } else {
+        target.pendingCount++;
       }
 
       // 1. Reason / Jenis Error (100% Real Data)
       const rz = normalizeReasonName(r.reason);
       target.reasons[rz] = (target.reasons[rz] || 0) + 1;
 
-      // 2. Root Cause (100% Real Data — empty root_cause is NOT forced into Human Error)
+      // 2. Root Cause (100% Real Data — empty root_cause is labeled Belum Diisi)
       const rc = normalizeRootCauseName(r.root_cause);
       target.roots[rc] = (target.roots[rc] || 0) + 1;
     }
@@ -309,17 +318,19 @@ export default function AnalisisView({
     return {
       mai: {
         total: mai.total,
-        validCount: mai.validCount,
+        resolvedCount: mai.resolvedCount,
+        inProgressCount: mai.inProgressCount,
+        pendingCount: mai.pendingCount,
         rejectCount: mai.rejectCount,
-        openCount: mai.openCount,
         reasons: formatReasons(mai.reasons),
         roots: formatRoots(mai.roots),
       },
       mbi: {
         total: mbi.total,
-        validCount: mbi.validCount,
+        resolvedCount: mbi.resolvedCount,
+        inProgressCount: mbi.inProgressCount,
+        pendingCount: mbi.pendingCount,
         rejectCount: mbi.rejectCount,
-        openCount: mbi.openCount,
         reasons: formatReasons(mbi.reasons),
         roots: formatRoots(mbi.roots),
       },
@@ -414,10 +425,10 @@ export default function AnalisisView({
     }
     if (statusScope !== "ALL") {
       const scopeLabels: Record<string, string> = {
-        VALID: "Kasus Valid (Non-Reject)",
-        RESOLVED: "Resolved Saja",
-        OPEN: "In Progress / Pending",
-        REJECT: "Kasus Reject",
+        PENDING: "Status Pending",
+        IN_PROGRESS: "Status In Progress",
+        RESOLVED: "Status Resolved",
+        REJECT: "Status Reject",
       };
       parts.push(scopeLabels[statusScope] || statusScope);
     }
@@ -694,11 +705,11 @@ export default function AnalisisView({
           {/* Filter Status Kasus */}
           <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
             {[
-              { id: "ALL", label: "Semua Kasus" },
-              { id: "VALID", label: "Valid (Non-Reject)" },
-              { id: "RESOLVED", label: "Resolved" },
-              { id: "OPEN", label: "In Progress" },
-              { id: "REJECT", label: "Reject" },
+              { id: "ALL", label: "Semua Status" },
+              { id: "PENDING", label: "🟡 Pending" },
+              { id: "IN_PROGRESS", label: "🔵 In Progress" },
+              { id: "RESOLVED", label: "🟢 Resolved" },
+              { id: "REJECT", label: "🔴 Reject" },
             ].map((s) => (
               <button
                 key={s.id}
@@ -759,12 +770,14 @@ export default function AnalisisView({
               PT Medika Akses Investama
             </span>
           </div>
-          <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500 dark:text-slate-400">
-            <span>Valid: <strong className="text-emerald-600 dark:text-emerald-400">{stats.mai.validCount}</strong></span>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-zinc-500 dark:text-slate-400">
+            <span>Resolved: <strong className="text-emerald-600 dark:text-emerald-400">{stats.mai.resolvedCount.toLocaleString("id-ID")}</strong></span>
             <span>•</span>
-            <span>In Progress: <strong className="text-amber-500">{stats.mai.openCount}</strong></span>
+            <span>In Progress: <strong className="text-blue-500">{stats.mai.inProgressCount.toLocaleString("id-ID")}</strong></span>
             <span>•</span>
-            <span>Reject: <strong className="text-rose-500">{stats.mai.rejectCount}</strong></span>
+            <span>Pending: <strong className="text-amber-500">{stats.mai.pendingCount.toLocaleString("id-ID")}</strong></span>
+            <span>•</span>
+            <span>Reject: <strong className="text-rose-500">{stats.mai.rejectCount.toLocaleString("id-ID")}</strong></span>
           </div>
         </div>
 
@@ -833,10 +846,12 @@ export default function AnalisisView({
               PT Medika Bina Investama
             </span>
           </div>
-          <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500 dark:text-slate-400">
-            <span>Valid: <strong className="text-emerald-600 dark:text-emerald-400">{stats.mbi.validCount.toLocaleString("id-ID")}</strong></span>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-zinc-500 dark:text-slate-400">
+            <span>Resolved: <strong className="text-emerald-600 dark:text-emerald-400">{stats.mbi.resolvedCount.toLocaleString("id-ID")}</strong></span>
             <span>•</span>
-            <span>In Progress: <strong className="text-amber-500">{stats.mbi.openCount.toLocaleString("id-ID")}</strong></span>
+            <span>In Progress: <strong className="text-blue-500">{stats.mbi.inProgressCount.toLocaleString("id-ID")}</strong></span>
+            <span>•</span>
+            <span>Pending: <strong className="text-amber-500">{stats.mbi.pendingCount.toLocaleString("id-ID")}</strong></span>
             <span>•</span>
             <span>Reject: <strong className="text-rose-500">{stats.mbi.rejectCount.toLocaleString("id-ID")}</strong></span>
           </div>
