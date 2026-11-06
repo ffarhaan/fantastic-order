@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Clock,
   Truck,
-  PackageCheck,
   AlertCircle,
   XCircle,
   Search,
@@ -23,6 +22,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { FakturRecord } from "@/lib/types";
+import { broadcastRealtimeSignal, broadcastNewComplaint } from "@/lib/firestoreService";
 
 export interface ReturnRequestItem {
   id: number;
@@ -60,32 +60,51 @@ const STATUS_CONFIG: Record<
       "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800",
     icon: Clock,
   },
-  Dikonfirmasi: {
-    label: "Dikonfirmasi",
+  "In Progress": {
+    label: "In Progress",
     badgeClass:
       "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800",
+    icon: Truck,
+  },
+  Resolved: {
+    label: "Resolved",
+    badgeClass:
+      "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800",
     icon: CheckCircle2,
   },
-  "Dalam Perjalanan": {
-    label: "Dalam Perjalanan",
+  Rejected: {
+    label: "Rejected",
     badgeClass:
-      "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/70 dark:text-purple-300 dark:border-purple-800",
+      "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/70 dark:text-rose-300 dark:border-rose-800",
+    icon: XCircle,
+  },
+  // Legacy status fallbacks (data lama di DB)
+  Dikonfirmasi: {
+    label: "In Progress",
+    badgeClass:
+      "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800",
+    icon: Truck,
+  },
+  "Dalam Perjalanan": {
+    label: "In Progress",
+    badgeClass:
+      "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800",
     icon: Truck,
   },
   Terkirim: {
-    label: "Terkirim",
+    label: "In Progress",
     badgeClass:
-      "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/70 dark:text-teal-300 dark:border-teal-800",
-    icon: PackageCheck,
+      "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800",
+    icon: Truck,
   },
   Selesai: {
-    label: "Selesai",
+    label: "Resolved",
     badgeClass:
       "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800",
     icon: CheckCircle2,
   },
   Gagal: {
-    label: "Gagal",
+    label: "Rejected",
     badgeClass:
       "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/70 dark:text-rose-300 dark:border-rose-800",
     icon: XCircle,
@@ -104,11 +123,9 @@ export default function ReturSubmissionView({
   const [summary, setSummary] = useState({
     total: 0,
     pending: 0,
-    dikonfirmasi: 0,
-    dalam_perjalanan: 0,
-    terkirim: 0,
-    selesai: 0,
-    gagal: 0,
+    in_progress: 0,
+    resolved: 0,
+    rejected: 0,
   });
 
   // Form State
@@ -306,6 +323,17 @@ export default function ReturSubmissionView({
       const json = await res.json();
       if (json.success) {
         setSubmitSuccessMsg(`✓ ${json.message}`);
+        // Broadcast signal & realtime notification
+        broadcastRealtimeSignal("returns").catch(() => {});
+        broadcastNewComplaint({
+          id: json.request_id || formFaktur.trim(),
+          customer_name: formApotek.trim(),
+          invoice_no: formFaktur.trim(),
+          reason: formJenis,
+          pbf: formPbf,
+          timestamp: Date.now(),
+        }).catch(() => {});
+
         // Reset form
         setFormPengaju("");
         setFormApotek("");
@@ -330,22 +358,25 @@ export default function ReturSubmissionView({
     }
   };
 
-  // Update status (Approve, Reject, or Pipeline advance)
+  // Update status (Approve → In Progress, Reject → Rejected)
   const handleUpdateStatus = async (
     item: ReturnRequestItem,
     newStatus: string
   ) => {
-    const isApprove = newStatus === "Dikonfirmasi";
-    const isReject = newStatus === "Gagal";
+    const isApprove = newStatus === "In Progress";
+    const isReject = newStatus === "Rejected";
 
     let confirmPrompt = `Ubah status tiket ${item.request_id} menjadi "${newStatus}"?`;
     if (isApprove) {
       confirmPrompt = `Setujui pengajuan ${item.request_id}?\n\nKasus ini otomatis dibuatkan data baru di tabel Shipment Error sebagai "In Progress".`;
     } else if (isReject) {
-      confirmPrompt = `Tolak pengajuan retur ${item.request_id}? (Status akan menjadi Gagal)`;
+      confirmPrompt = `Tolak pengajuan retur ${item.request_id}? (Tiket ditutup sebagai Rejected — tidak dihitung sebagai Resolved)`;
     }
 
     if (!confirm(confirmPrompt)) return;
+
+    // Status yang dikirim ke API — gunakan legacy mapping agar backend tetap kompatibel
+    const apiStatus = isApprove ? "Dikonfirmasi" : isReject ? "Gagal" : newStatus;
 
     try {
       const res = await fetch(
@@ -355,7 +386,7 @@ export default function ReturSubmissionView({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             request_id: item.request_id,
-            status: newStatus,
+            status: apiStatus,
             processed_by: "Admin Logistik",
           }),
         }
@@ -365,6 +396,8 @@ export default function ReturSubmissionView({
         alert(
           isApprove
             ? `✓ Pengajuan ${item.request_id} berhasil disetujui!\nData otomatis tercatat di Shipment Error sebagai In Progress.`
+            : isReject
+            ? `✓ Pengajuan ${item.request_id} telah ditolak (Rejected).`
             : `✓ Status berhasil diperbarui menjadi ${newStatus}.`
         );
         fetchRequests();
@@ -389,7 +422,18 @@ export default function ReturSubmissionView({
   const filteredList = useMemo(() => {
     return requests.filter((r) => {
       if (statusFilter !== "ALL") {
-        if (r.status.toLowerCase() !== statusFilter.toLowerCase()) return false;
+        const st = r.status.toLowerCase();
+        if (statusFilter === "In Progress") {
+          // tangkap semua status yang berarti "sedang diproses"
+          const inProgressSet = new Set(["in progress", "dikonfirmasi", "dalam perjalanan", "terkirim"]);
+          if (!inProgressSet.has(st)) return false;
+        } else if (statusFilter === "Resolved") {
+          if (st !== "resolved" && st !== "selesai") return false;
+        } else if (statusFilter === "Rejected") {
+          if (st !== "rejected" && st !== "gagal") return false;
+        } else {
+          if (st !== statusFilter.toLowerCase()) return false;
+        }
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -475,7 +519,7 @@ export default function ReturSubmissionView({
       {subTab === "list" && (
         <div className="space-y-4">
           {/* Summary KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
             <div className="p-3 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs">
               <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Total Pengajuan</span>
               <span className="text-xl font-black text-zinc-900 dark:text-white mt-0.5 block">{summary.total}</span>
@@ -485,20 +529,16 @@ export default function ReturSubmissionView({
               <span className="text-xl font-black text-amber-600 dark:text-amber-400 mt-0.5 block">{summary.pending}</span>
             </div>
             <div className="p-3 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/40 shadow-2xs">
-              <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider block">Dikonfirmasi</span>
-              <span className="text-xl font-black text-blue-600 dark:text-blue-400 mt-0.5 block">{summary.dikonfirmasi}</span>
-            </div>
-            <div className="p-3 rounded-2xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/40 shadow-2xs">
-              <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wider block">Dalam Perjalanan</span>
-              <span className="text-xl font-black text-purple-600 dark:text-purple-400 mt-0.5 block">{summary.dalam_perjalanan}</span>
+              <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider block">In Progress</span>
+              <span className="text-xl font-black text-blue-600 dark:text-blue-400 mt-0.5 block">{summary.in_progress}</span>
             </div>
             <div className="p-3 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 shadow-2xs">
-              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">Selesai</span>
-              <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5 block">{summary.selesai}</span>
+              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">Resolved</span>
+              <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5 block">{summary.resolved}</span>
             </div>
             <div className="p-3 rounded-2xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800/40 shadow-2xs">
-              <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider block">Ditolak / Gagal</span>
-              <span className="text-xl font-black text-rose-600 dark:text-rose-400 mt-0.5 block">{summary.gagal}</span>
+              <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider block">Rejected</span>
+              <span className="text-xl font-black text-rose-600 dark:text-rose-400 mt-0.5 block">{summary.rejected}</span>
             </div>
           </div>
 
@@ -508,11 +548,9 @@ export default function ReturSubmissionView({
               {[
                 { id: "ALL", label: "Semua", count: summary.total },
                 { id: "Pending", label: "Pending", count: summary.pending, color: "text-amber-500" },
-                { id: "Dikonfirmasi", label: "Dikonfirmasi", count: summary.dikonfirmasi, color: "text-blue-500" },
-                { id: "Dalam Perjalanan", label: "Perjalanan", count: summary.dalam_perjalanan, color: "text-purple-500" },
-                { id: "Terkirim", label: "Terkirim", count: summary.terkirim, color: "text-teal-500" },
-                { id: "Selesai", label: "Selesai", count: summary.selesai, color: "text-emerald-500" },
-                { id: "Gagal", label: "Gagal", count: summary.gagal, color: "text-rose-500" },
+                { id: "In Progress", label: "In Progress", count: summary.in_progress, color: "text-blue-500" },
+                { id: "Resolved", label: "Resolved", count: summary.resolved, color: "text-emerald-500" },
+                { id: "Rejected", label: "Rejected", count: summary.rejected, color: "text-rose-500" },
               ].map((t) => (
                 <button
                   key={t.id}
@@ -673,18 +711,18 @@ export default function ReturSubmissionView({
                                 <>
                                   <button
                                     type="button"
-                                    onClick={() => handleUpdateStatus(item, "Dikonfirmasi")}
+                                    onClick={() => handleUpdateStatus(item, "In Progress")}
                                     className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-2xs cursor-pointer transition-all"
-                                    title="Setujui dan masukkan ke Shipment Error"
+                                    title="Setujui dan masukkan ke Shipment Error sebagai In Progress"
                                   >
                                     <CheckCircle2 className="w-3 h-3" />
                                     <span>Approve</span>
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleUpdateStatus(item, "Gagal")}
+                                    onClick={() => handleUpdateStatus(item, "Rejected")}
                                     className="px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 dark:bg-rose-950 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-all"
-                                    title="Tolak pengajuan retur"
+                                    title="Tolak pengajuan retur (Rejected)"
                                   >
                                     <XCircle className="w-3 h-3" />
                                     <span>Tolak</span>
@@ -692,32 +730,10 @@ export default function ReturSubmissionView({
                                 </>
                               )}
 
-                              {item.status === "Dikonfirmasi" && (
+                              {(item.status === "In Progress" || item.status === "Dikonfirmasi" || item.status === "Dalam Perjalanan" || item.status === "Terkirim") && (
                                 <button
                                   type="button"
-                                  onClick={() => handleUpdateStatus(item, "Dalam Perjalanan")}
-                                  className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-2xs cursor-pointer transition-all"
-                                >
-                                  <Truck className="w-3 h-3" />
-                                  <span>Kirim Balik</span>
-                                </button>
-                              )}
-
-                              {item.status === "Dalam Perjalanan" && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateStatus(item, "Terkirim")}
-                                  className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-2xs cursor-pointer transition-all"
-                                >
-                                  <PackageCheck className="w-3 h-3" />
-                                  <span>Terkirim</span>
-                                </button>
-                              )}
-
-                              {item.status === "Terkirim" && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateStatus(item, "Selesai")}
+                                  onClick={() => handleUpdateStatus(item, "Resolved")}
                                   className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-2xs cursor-pointer transition-all"
                                 >
                                   <CheckCircle2 className="w-3 h-3" />

@@ -2247,7 +2247,7 @@ export function subscribeToCheckers(
 // UNIVERSAL REALTIME CROSS-BROWSER SIGNAL (FAKTURS, RETURNS, CUSTOMERS)
 // ============================================================================
 const REALTIME_SIGNALS_DOC = "realtime_signals";
-export type RealtimeSignalChannel = "fakturs" | "returns" | "customers" | "reset_all" | "system_update";
+export type RealtimeSignalChannel = "fakturs" | "returns" | "customers" | "reset_all" | "system_update" | "new_complaint";
 
 export interface SystemUpdatePayload {
   timestamp: number;
@@ -2296,6 +2296,63 @@ export async function broadcastRealtimeSignal(channel: RealtimeSignalChannel): P
   } catch (err) {
     console.warn(`broadcastRealtimeSignal(${channel}) warning:`, err);
   }
+}
+
+// Broadcast a new complaint with metadata for toast notifications
+export interface NewComplaintPayload {
+  id: number | string;
+  customer_name: string;
+  invoice_no: string;
+  reason: string;
+  pbf: string;
+  timestamp: number;
+}
+
+export async function broadcastNewComplaint(payload: NewComplaintPayload): Promise<void> {
+  try {
+    const ref = doc(db, APP_DATA_COLLECTION, REALTIME_SIGNALS_DOC);
+    await setDoc(
+      ref,
+      {
+        new_complaint: Date.now(),
+        new_complaint_payload: JSON.stringify(payload),
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn("broadcastNewComplaint warning:", err);
+  }
+}
+
+export function subscribeToNewComplaint(
+  onComplaint: (payload: NewComplaintPayload) => void
+): () => void {
+  let lastSeen = 0;
+  let initialized = false;
+  return onSnapshot(
+    doc(db, APP_DATA_COLLECTION, REALTIME_SIGNALS_DOC),
+    (snap) => {
+      if (!snap.exists()) {
+        initialized = true;
+        return;
+      }
+      const val = Number(snap.data()?.new_complaint || 0);
+      if (!initialized) {
+        lastSeen = val;
+        initialized = true;
+        return;
+      }
+      if (val > lastSeen) {
+        lastSeen = val;
+        try {
+          const raw = snap.data()?.new_complaint_payload;
+          if (raw) onComplaint(JSON.parse(raw) as NewComplaintPayload);
+        } catch {}
+      }
+    },
+    (err) => console.warn("subscribeToNewComplaint warning:", err)
+  );
 }
 
 export function subscribeToRealtimeSignal(

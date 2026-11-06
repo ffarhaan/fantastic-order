@@ -733,8 +733,16 @@ export async function GET(req: Request) {
         params.push(s, s, s, s, s, s, s, s, s);
       }
       if (status && status !== "ALL") {
-        if (status === "Pending" || status === "Unresolved" || status === "In Progress" || status === "Open case") {
-          whereClause += " AND (status != 'Resolved' OR status IS NULL)";
+        if (status === "Pending") {
+          whereClause += " AND (status = 'Pending' OR status IS NULL OR status = '')";
+        } else if (status === "In Progress") {
+          whereClause += " AND (status = 'In Progress' OR status = 'Approved' OR status = 'Dikonfirmasi')";
+        } else if (status === "Resolved") {
+          whereClause += " AND status = 'Resolved'";
+        } else if (status === "Rejected") {
+          whereClause += " AND (status = 'Rejected' OR status = 'Ditolak' OR status = 'Gagal')";
+        } else if (status === "Unresolved" || status === "Open case") {
+          whereClause += " AND (status != 'Resolved' AND status != 'Rejected' AND status != 'Ditolak' AND status != 'Gagal')";
         } else {
           whereClause += " AND status = ?";
           params.push(status);
@@ -806,16 +814,16 @@ export async function GET(req: Request) {
       const [stats] = (await conn.execute(`
         SELECT 
           COUNT(*) as totalAll,
-          SUM(CASE WHEN status LIKE '%Resolved%' THEN 1 ELSE 0 END) as totalResolved,
-          SUM(CASE WHEN status NOT LIKE '%Resolved%' AND status != '' THEN 1 ELSE 0 END) as totalPending,
+          SUM(CASE WHEN (status = 'Resolved' OR status LIKE '%Resolved%') AND status NOT LIKE '%Reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as totalResolved,
+          SUM(CASE WHEN status NOT LIKE '%Resolved%' AND status NOT LIKE '%Reject%' AND (confirm != 'Reject' OR confirm IS NULL) AND status != '' THEN 1 ELSE 0 END) as totalPending,
           SUM(CASE WHEN pbf = 'MBI' THEN 1 ELSE 0 END) as totalMbi,
           SUM(CASE WHEN pbf = 'MAI' THEN 1 ELSE 0 END) as totalMai,
-          SUM(CASE WHEN pbf = 'MBI' AND (confirm = 'Approve' OR confirm = '' OR confirm IS NULL) THEN 1 ELSE 0 END) as mbiApproved,
-          SUM(CASE WHEN pbf = 'MAI' AND (confirm = 'Approve' OR confirm = '' OR confirm IS NULL) THEN 1 ELSE 0 END) as maiApproved,
-          SUM(CASE WHEN pbf = 'MBI' AND status NOT LIKE '%Resolved%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as openMbi,
-          SUM(CASE WHEN pbf = 'MAI' AND status NOT LIKE '%Resolved%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as openMai,
-          SUM(CASE WHEN status NOT LIKE '%Resolved%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as totalOpen,
-          SUM(CASE WHEN confirm = 'Reject' THEN 1 ELSE 0 END) as totalReject
+          SUM(CASE WHEN pbf = 'MBI' AND status NOT LIKE '%Reject%' AND (confirm = 'Approve' OR confirm = '' OR confirm IS NULL) THEN 1 ELSE 0 END) as mbiApproved,
+          SUM(CASE WHEN pbf = 'MAI' AND status NOT LIKE '%Reject%' AND (confirm = 'Approve' OR confirm = '' OR confirm IS NULL) THEN 1 ELSE 0 END) as maiApproved,
+          SUM(CASE WHEN pbf = 'MBI' AND status NOT LIKE '%Resolved%' AND status NOT LIKE '%Reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as openMbi,
+          SUM(CASE WHEN pbf = 'MAI' AND status NOT LIKE '%Resolved%' AND status NOT LIKE '%Reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as openMai,
+          SUM(CASE WHEN status NOT LIKE '%Resolved%' AND status NOT LIKE '%Reject%' AND (confirm != 'Reject' OR confirm IS NULL) THEN 1 ELSE 0 END) as totalOpen,
+          SUM(CASE WHEN status LIKE '%Reject%' OR confirm = 'Reject' THEN 1 ELSE 0 END) as totalReject
         FROM shipment_returns ${statsCondition};
       `, statsQueryParams)) as any[];
 
@@ -1253,8 +1261,16 @@ export async function GET(req: Request) {
         params.push(s, s, s, s, s);
       }
       if (status && status !== "ALL" && status !== "all") {
-        whereClause += " AND LOWER(status) = LOWER(?)";
-        params.push(status);
+        if (status.toLowerCase() === "in progress") {
+          whereClause += " AND LOWER(status) IN ('in progress', 'dikonfirmasi', 'dalam perjalanan', 'terkirim')";
+        } else if (status.toLowerCase() === "resolved") {
+          whereClause += " AND LOWER(status) IN ('resolved', 'selesai')";
+        } else if (status.toLowerCase() === "rejected") {
+          whereClause += " AND LOWER(status) IN ('rejected', 'gagal')";
+        } else {
+          whereClause += " AND LOWER(status) = LOWER(?)";
+          params.push(status);
+        }
       }
 
       const rows = (await conn.execute(
@@ -1270,7 +1286,10 @@ export async function GET(req: Request) {
           SUM(CASE WHEN LOWER(status) = 'dalam perjalanan' THEN 1 ELSE 0 END) as dalam_perjalanan,
           SUM(CASE WHEN LOWER(status) = 'terkirim' THEN 1 ELSE 0 END) as terkirim,
           SUM(CASE WHEN LOWER(status) = 'selesai' THEN 1 ELSE 0 END) as selesai,
-          SUM(CASE WHEN LOWER(status) = 'gagal' THEN 1 ELSE 0 END) as gagal
+          SUM(CASE WHEN LOWER(status) = 'gagal' THEN 1 ELSE 0 END) as gagal,
+          SUM(CASE WHEN LOWER(status) IN ('in progress','dikonfirmasi','dalam perjalanan','terkirim') THEN 1 ELSE 0 END) as in_progress,
+          SUM(CASE WHEN LOWER(status) IN ('resolved','selesai') THEN 1 ELSE 0 END) as resolved,
+          SUM(CASE WHEN LOWER(status) IN ('rejected','gagal') THEN 1 ELSE 0 END) as rejected
         FROM return_requests;
       `)) as any[];
 
@@ -1287,6 +1306,10 @@ export async function GET(req: Request) {
           terkirim: Number(summary.terkirim || 0),
           selesai: Number(summary.selesai || 0),
           gagal: Number(summary.gagal || 0),
+          // 4-status baku
+          in_progress: Number(summary.dikonfirmasi || 0) + Number(summary.dalam_perjalanan || 0) + Number(summary.terkirim || 0),
+          resolved: Number(summary.selesai || 0),
+          rejected: Number(summary.gagal || 0),
         },
       });
     }
@@ -3216,6 +3239,13 @@ export async function POST(req: Request) {
         request_id: idStr,
         message: `Pengajuan retur berhasil dibuat dengan ID: ${idStr}`,
         id: res?.insertId,
+        payload: {
+          customer_name: customer_name || "",
+          invoice_no: invoice_no || "",
+          reason: reason || "",
+          pbf: pbf || "MBI",
+          request_id: idStr,
+        },
       });
     }
 
@@ -3248,8 +3278,8 @@ export async function POST(req: Request) {
         [newStatus, dateDisp, processed_by || "Admin", whereVal]
       );
 
-      // Auto-insert to shipment_returns if status is "Dikonfirmasi"
-      if (newStatus === "Dikonfirmasi") {
+      // Auto-insert to shipment_returns if status is "In Progress" (approved)
+      if (newStatus === "In Progress") {
         let photoFirst = "";
         try {
           if (existing.photos) {
@@ -3310,6 +3340,13 @@ export async function POST(req: Request) {
       return Response.json({
         success: true,
         message: `Status berhasil diubah ke: ${newStatus}`,
+        payload: {
+          customer_name: existing.customer_name || "",
+          invoice_no: existing.invoice_no || "",
+          reason: existing.reason || "",
+          pbf: existing.pbf || "MBI",
+          request_id: existing.request_id || "",
+        },
       });
     }
 

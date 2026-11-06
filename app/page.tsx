@@ -37,7 +37,10 @@ import {
   broadcastRealtimeSignal,
   isSuperAdminUser,
   StaffAccountProfile,
+  subscribeToNewComplaint,
+  type NewComplaintPayload,
 } from "@/lib/firestoreService";
+import { playShipmentChime, isShipmentSoundEnabled, setShipmentSoundEnabled } from "@/lib/soundEffects";
 import { syncFaktursToTiDB, syncFaktursToTiDBBackground, syncMissingFaktursToTiDB, syncPrintStatusToTiDBBackground, fetchFaktursFromTiDB, getLocalCachedFakturs, setLocalCachedFakturs, setLocalCachedPrintState, clearLocalCachedFakturs, clearAllFaktursInTiDB, checkTiDBUpdates, fetchTiDBDelta } from "@/lib/tidbService";
 import MasterApotekModal from "@/components/MasterApotekModal";
 import MasterProductModal from "@/components/MasterProductModal";
@@ -85,6 +88,9 @@ import {
   Filter,
   Layers,
   Sparkles,
+  Truck,
+  Volume2,
+  VolumeX,
   ArrowRight,
   User,
   Activity,
@@ -434,7 +440,10 @@ export default function Home() {
   const [hasVisitedCustomers, setHasVisitedCustomers] = useState(false);
 
   useEffect(() => {
-    if (mainView === "returns") setHasVisitedReturns(true);
+    if (mainView === "returns") {
+      setHasVisitedReturns(true);
+      setShipmentNewCount(0); // reset badge saat buka tab Shipment Error
+    }
     if (mainView === "customers") setHasVisitedCustomers(true);
   }, [mainView]);
   const [showDbStatsModal, setShowDbStatsModal] = useState(false);
@@ -686,6 +695,11 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const currentUserRef = useRef<AppUser | null>(null);
+
+  // === SHIPMENT ERROR NOTIFICATION STATE ===
+  const [shipmentNewCount, setShipmentNewCount] = useState(0);
+  const [shipmentToasts, setShipmentToasts] = useState<NewComplaintPayload[]>([]);
+  const [shipmentSoundOn, setShipmentSoundOn] = useState(true);
   useEffect(() => {
     if (!currentUser || mainView !== "dashboard") return;
     fetch("/api/tidb?action=returns&limit=1")
@@ -2221,6 +2235,25 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       unsubTiDBSignal();
       unsubResetSignal();
     };
+  }, [currentUser]);
+
+  // === SHIPMENT ERROR REALTIME NOTIFICATION (permission-gated) ===
+  useEffect(() => {
+    if (!currentUser) return;
+    const canNotify =
+      isSuperAdminUser(currentUser.name) ||
+      (currentUser as any)?.permissions?.can_edit_shipment_error === true;
+    if (!canNotify) return;
+
+    // Init sound toggle from localStorage
+    setShipmentSoundOn(isShipmentSoundEnabled());
+
+    const unsub = subscribeToNewComplaint((payload) => {
+      setShipmentNewCount((prev) => prev + 1);
+      setShipmentToasts((prev) => [...prev.slice(-2), payload]); // max 3 toasts
+      playShipmentChime();
+    });
+    return () => unsub();
   }, [currentUser]);
 
   const handleManualRefresh = useCallback(async () => {
@@ -4505,6 +4538,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 title="Shipment Error"
               >
                 <RotateCcw className="w-4 h-4" />
+                {shipmentNewCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[9px] font-black flex items-center justify-center shadow-lg animate-pulse ring-2 ring-white dark:ring-zinc-900">
+                    {shipmentNewCount > 9 ? "9+" : shipmentNewCount}
+                  </span>
+                )}
               </button>
 
               <button
@@ -4613,14 +4651,21 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <button
                 type="button"
                 onClick={() => { setMainView("returns"); setMobileSidebarOpen(false); }}
-                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
+                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
                   mainView === "returns"
                     ? (isDarkMode ? "bg-zinc-800 text-white font-semibold shadow-xs" : "bg-zinc-900 text-white font-semibold shadow-xs")
                     : (isDarkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60" : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100")
                 }`}
               >
-                <RotateCcw className={`w-4 h-4 ${mainView === "returns" ? "text-white" : isDarkMode ? "text-zinc-400" : "text-zinc-500"}`} />
-                <span>Shipment Error</span>
+                <div className="flex items-center gap-2.5">
+                  <RotateCcw className={`w-4 h-4 ${mainView === "returns" ? "text-white" : isDarkMode ? "text-zinc-400" : "text-zinc-500"}`} />
+                  <span>Shipment Error</span>
+                </div>
+                {shipmentNewCount > 0 && (
+                  <span className="min-w-[18px] h-[18px] px-1.5 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center animate-pulse shadow-xs">
+                    {shipmentNewCount > 9 ? "9+" : shipmentNewCount}
+                  </span>
+                )}
               </button>
 
               <button
@@ -7792,6 +7837,78 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* Realtime Pop-up Toast Shipment Error (Permission-Gated) */}
+      {(isSuperAdminUser(currentUser?.name) || (currentUser as any)?.permissions?.can_edit_shipment_error === true) && shipmentToasts.length > 0 && (
+        <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none">
+          {shipmentToasts.map((toast, idx) => (
+            <div
+              key={`${toast.id || toast.invoice_no}-${toast.timestamp || idx}`}
+              onClick={() => {
+                setMainView("returns");
+                setShipmentNewCount(0);
+                setShipmentToasts((prev) => prev.filter((_, i) => i !== idx));
+              }}
+              className="pointer-events-auto cursor-pointer group relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white p-3.5 shadow-2xl shadow-orange-500/30 border border-amber-300/60 transition-all hover:scale-[1.02] active:scale-[0.98] animate-in slide-in-from-top-3 fade-in duration-300"
+            >
+              {/* Glowing decorative blur backdrop */}
+              <div className="absolute -top-6 -right-6 w-20 h-20 bg-white/20 rounded-full blur-xl pointer-events-none" />
+
+              <div className="flex items-start gap-3 relative z-10">
+                <div className="p-2 rounded-xl bg-black/20 border border-white/20 shrink-0 text-white shadow-inner">
+                  <Truck className="w-5 h-5 animate-bounce" />
+                </div>
+
+                <div className="flex-1 min-w-0 pr-1">
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-white/25 px-2 py-0.5 rounded-full inline-block">
+                      🚨 Komplain Baru • {toast.pbf || "LOGISTIK"}
+                    </span>
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      {/* Audio toggle button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !shipmentSoundOn;
+                          setShipmentSoundOn(next);
+                          setShipmentSoundEnabled(next);
+                          if (next) playShipmentChime(true);
+                        }}
+                        className="p-1 rounded-lg bg-black/20 hover:bg-black/35 text-white/90 hover:text-white transition"
+                        title={shipmentSoundOn ? "Suara Aktif (Klik untuk Mute)" : "Suara Senyap (Klik untuk Unmute)"}
+                      >
+                        {shipmentSoundOn ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5 text-rose-200" />}
+                      </button>
+                      {/* Close button */}
+                      <button
+                        type="button"
+                        onClick={() => setShipmentToasts((prev) => prev.filter((_, i) => i !== idx))}
+                        className="p-1 rounded-lg bg-black/20 hover:bg-black/35 text-white/90 hover:text-white transition"
+                        title="Tutup notifikasi"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="font-extrabold text-xs truncate text-white drop-shadow-xs">
+                    {toast.customer_name || "Outlet / Apotek"}
+                  </p>
+
+                  <div className="flex items-center gap-2 text-[11px] font-mono text-white/90 mt-0.5">
+                    <span className="bg-black/25 px-1.5 py-0.2 rounded font-bold">{toast.invoice_no || toast.id || "Faktur"}</span>
+                  </div>
+
+                  {toast.reason && (
+                    <p className="text-[11px] text-amber-50 font-medium truncate mt-1 bg-black/15 px-2 py-0.5 rounded-lg border border-white/10">
+                      Masalah: {toast.reason}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

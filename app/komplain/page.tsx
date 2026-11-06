@@ -28,7 +28,7 @@ import {
   HelpCircle,
   FileText,
 } from "lucide-react";
-import { broadcastRealtimeSignal } from "@/lib/firestoreService";
+import { broadcastRealtimeSignal, broadcastNewComplaint } from "@/lib/firestoreService";
 
 const COMMON_REASONS = [
   "Fisik yang dikirim kurang",
@@ -544,6 +544,14 @@ ${photoStatus}
 
       // Broadcast real-time signal agar dashboard admin langsung update seketika tanpa refresh manual
       broadcastRealtimeSignal("returns").catch(() => {});
+      broadcastNewComplaint({
+        id: data.request_id || payload.invoice_no,
+        customer_name: payload.customer_name || "Apotek/Outlet",
+        invoice_no: payload.invoice_no || "-",
+        reason: processedProducts[0]?.reason || "Komplain Barang",
+        pbf: payload.pbf || "MBI",
+        timestamp: Date.now(),
+      }).catch(() => {});
 
       setSubmittedData({
         ...payload,

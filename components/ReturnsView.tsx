@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { ShipmentReturnRecord, FakturRecord } from "@/lib/types";
-import { broadcastRealtimeSignal, subscribeToRealtimeSignal, isSuperAdminUser } from "@/lib/firestoreService";
+import { broadcastRealtimeSignal, subscribeToRealtimeSignal, isSuperAdminUser, broadcastNewComplaint } from "@/lib/firestoreService";
 import { AppUser } from "@/components/LoginModal";
 import { recordActivityLog } from "@/lib/activityLogger";
 import {
@@ -972,6 +972,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         fetchReturns(false, true);
         fetchAllReturns(true);
         broadcastRealtimeSignal("returns");
+        broadcastNewComplaint({
+          id: String(data.id || newForm.invoice_no),
+          customer_name: newForm.customer_name,
+          invoice_no: newForm.invoice_no,
+          reason: newForm.reason,
+          pbf: newForm.pbf,
+          timestamp: Date.now(),
+        }).catch(() => {});
         await recordActivityLog({
           action_type: "CREATE_RETURN",
           module: "SHIPMENT_ERROR",
@@ -1306,10 +1314,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
                 className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
               >
-                <option value="Pending">Pending</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Resolved">Resolved</option>
-                <option value="Approve">Approve</option>
+                <option value="Pending">🟡 Pending — Menunggu Konfirmasi</option>
+                <option value="In Progress">🔵 In Progress — Diproses Gudang</option>
+                <option value="Resolved">🟢 Resolved — Selesai</option>
+                <option value="Rejected">🔴 Rejected — Ditolak</option>
               </select>
             </div>
 
@@ -1834,6 +1842,33 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   {resolutionRate}% resolved
                 </div>
               </div>
+
+              {/* Card 7: REJECTED */}
+              <div
+                onClick={() => {
+                  setStatusFilter(statusFilter === "Rejected" ? "ALL" : "Rejected");
+                  setPage(0);
+                }}
+                className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                  statusFilter === "Rejected"
+                    ? "border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/20 dark:bg-rose-950/20"
+                    : "border-slate-200 dark:border-slate-800 hover:border-rose-300 dark:hover:border-rose-800"
+                }`}
+                title="Klik untuk filter kasus Ditolak (Rejected)"
+              >
+                <div className="absolute top-0 left-0 right-0 h-0.5 bg-rose-500" />
+                <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
+                  REJECTED
+                </div>
+                <div className="my-0.5">
+                  <span className="text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400 font-mono">
+                    {(stats.totalReject || rejectCasesCount || 0).toLocaleString("id-ID")}
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                  Tiket Ditolak / Gugur
+                </div>
+              </div>
             </div>
           )}
 
@@ -1975,10 +2010,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
             >
               <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Status</option>
+              <option value="Pending" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Pending (Menunggu Konfirmasi)</option>
+              <option value="In Progress" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">In Progress (Diproses Gudang)</option>
               <option value="Resolved" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Resolved (Selesai)</option>
-              <option value="Pending" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Pending</option>
-              <option value="In Progress" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">In Progress</option>
-              <option value="Approve" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Approve</option>
+              <option value="Rejected" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Rejected (Ditolak)</option>
             </select>
           </div>
 
