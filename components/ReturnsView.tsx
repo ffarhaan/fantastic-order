@@ -948,6 +948,13 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       }
     }
 
+    // Form Guard Tahap 3: RESOLVED konfirmasi penerimaan barang di apotek
+    const isResolving = editForm.status === "Resolved";
+    if (isResolving && !skipDeliveryConfirm && selectedReturn.status !== "Resolved") {
+      setConfirmResolveItem({ ...selectedReturn, ...editForm });
+      return;
+    }
+
     setIsUpdating(true);
     setShowDeliveryPrepModal(false);
     try {
@@ -1049,6 +1056,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       });
       const data = await res.json();
       if (data.success) {
+        if (selectedReturn?.id === item.id) setSelectedReturn(null);
         broadcastRealtimeSignal("returns");
         fetchReturns(true, true);
         fetchAllReturns(true);
