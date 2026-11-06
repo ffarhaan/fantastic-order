@@ -316,6 +316,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [isImporting, setIsImporting] = useState(false);
   const [confirmResolveItem, setConfirmResolveItem] = useState<ShipmentReturnRecord | null>(null);
   const [showDeliveryPrepModal, setShowDeliveryPrepModal] = useState(false);
+  const [showConfirmApproveModal, setShowConfirmApproveModal] = useState(false);
+  const [showConfirmRejectModal, setShowConfirmRejectModal] = useState(false);
 
   // One-time onboarding workflow popup
   useEffect(() => {
@@ -916,36 +918,24 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       return;
     }
 
-    // Form Guard Tahap 4: REJECTED wajib sertakan alasan penolakan
+    // Form Guard Tahap 4: REJECTED wajib sertakan alasan penolakan + Konfirmasi
     const isRejecting = editForm.status === "Rejected" || editForm.confirm === "Reject";
     if (isRejecting) {
       if (!editForm.note || !editForm.note.trim()) {
         alert("⚠️ Validasi Form: Kolom Catatan Balasan Logistik / Alasan Penolakan wajib diisi untuk tiket yang ditolak (Reject)!");
         return;
       }
+      if (!skipDeliveryConfirm && selectedReturn.status !== "Rejected") {
+        setShowConfirmRejectModal(true);
+        return;
+      }
     }
 
-    // Form Guard Tahap 2: IN PROGRESS wajib isi 3 kolom utama
-    const isInProgress = editForm.status === "In Progress";
-    if (isInProgress) {
-      if (!editForm.action || !editForm.action.trim()) {
-        alert("⚠️ Validasi Form: Kolom Tindakan Solusi Gudang wajib diisi untuk tiket In Progress!");
-        return;
-      }
-      if (!editForm.root_cause || !editForm.root_cause.trim()) {
-        alert("⚠️ Validasi Form: Kolom Penyebab Kesalahan (Root Cause) wajib diisi untuk tiket In Progress!");
-        return;
-      }
-      if (!editForm.person || !editForm.person.trim()) {
-        alert("⚠️ Validasi Form: Kolom Personil Terkait (Picker / Checker) wajib diisi untuk tiket In Progress!");
-        return;
-      }
-
-      // Pop-up Konfirmasi Kesiapan Pengiriman
-      if (!skipDeliveryConfirm) {
-        setShowDeliveryPrepModal(true);
-        return;
-      }
+    // Form Guard Tahap 2: ACC / IN PROGRESS konfirmasi kesalahan PBF
+    const isApproveAcc = editForm.status === "In Progress" || editForm.confirm === "Approve";
+    if (isApproveAcc && !skipDeliveryConfirm && selectedReturn.status !== "In Progress") {
+      setShowConfirmApproveModal(true);
+      return;
     }
 
     // Form Guard Tahap 3: RESOLVED konfirmasi penerimaan barang di apotek
@@ -956,6 +946,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
 
     setIsUpdating(true);
+    setShowConfirmApproveModal(false);
+    setShowConfirmRejectModal(false);
     setShowDeliveryPrepModal(false);
     try {
       const isResolved = editForm.status === "Resolved";
@@ -4387,42 +4379,92 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         </div>
       )}
 
-      {/* ─── MODAL KONFIRMASI: KESIAPAN PENGIRIMAN LOGISTIK ─── */}
-      {showDeliveryPrepModal && (
+      {/* ─── MODAL KONFIRMASI: ACC KOMPLAIN (VALID / KESALAHAN PBF ➔ IN PROGRESS) ─── */}
+      {showConfirmApproveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-blue-300 dark:border-blue-800 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-blue-400 dark:border-blue-700 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-lg shrink-0">
-                🚚
+                <CheckCircle2 className="w-6 h-6" />
               </div>
               <div>
                 <h3 className="font-extrabold text-sm text-zinc-900 dark:text-white">
-                  Konfirmasi Kesiapan Pengiriman
+                  Konfirmasi Validitas Komplain
                 </h3>
-                <p className="text-[11px] text-zinc-500 font-medium">
-                  Validasi Fisik Barang Pengganti
+                <p className="text-[11px] text-zinc-500 font-medium truncate">
+                  Faktur #{selectedReturn?.invoice_no} • {selectedReturn?.customer_name}
                 </p>
               </div>
             </div>
 
             <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 text-xs text-blue-900 dark:text-blue-200 font-medium leading-relaxed">
-              Apakah fisik barang pengganti sudah benar-benar disiapkan di area logistik untuk diantar oleh driver?
+              Apakah sudah dipastikan komplain ini benar merupakan kesalahan operasional pihak PBF dan siap diproses tim gudang?
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
               <button
                 type="button"
-                onClick={() => setShowDeliveryPrepModal(false)}
+                onClick={() => setShowConfirmApproveModal(false)}
                 className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 transition-all cursor-pointer"
               >
-                Periksa Dulu
+                Periksa Kembali
               </button>
               <button
                 type="button"
                 onClick={() => handleSaveEdit(true)}
                 className="px-4 py-1.5 rounded-xl text-xs font-black text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
               >
-                <span>Ya, Barang Sudah Siap ➔</span>
+                <span>Ya, Sudah Pasti (ACC) ➔</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL KONFIRMASI: REJECT KOMPLAIN (BUKAN KESALAHAN PBF ➔ REJECTED) ─── */}
+      {showConfirmRejectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-rose-400 dark:border-rose-700 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-lg shrink-0">
+                <XCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-zinc-900 dark:text-white">
+                  Konfirmasi Penolakan Komplain
+                </h3>
+                <p className="text-[11px] text-zinc-500 font-medium truncate">
+                  Faktur #{selectedReturn?.invoice_no} • {selectedReturn?.customer_name}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-900 dark:text-rose-200 font-medium leading-relaxed space-y-1.5">
+              <p>Apakah sudah dipastikan komplain ini ditolak karena bukan merupakan kesalahan pihak PBF?</p>
+              <p className="text-[11px] text-rose-700 dark:text-rose-300 font-semibold">
+                *Catatan alasan reject wajib diisi dan akan langsung terbaca oleh pihak apotek di link tracking.
+              </p>
+              {editForm.note && (
+                <div className="p-2 rounded-lg bg-white/70 dark:bg-zinc-900/70 border border-rose-200 dark:border-rose-900/40 text-[11px] font-bold text-rose-800 dark:text-rose-300 italic">
+                  Alasan: &quot;{editForm.note}&quot;
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setShowConfirmRejectModal(false)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 transition-all cursor-pointer"
+              >
+                Periksa Kembali
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveEdit(true)}
+                className="px-4 py-1.5 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Ya, Tolak Komplain ✕</span>
               </button>
             </div>
           </div>
