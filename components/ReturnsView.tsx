@@ -1282,8 +1282,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               />
             </div>
 
-            <div className="sm:col-span-6">
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Alasan / Kendala Dilaporkan</label>
+            <div className="sm:col-span-3">
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Alasan / Kendala Dilaporkan (Dari Pelapor)</label>
               <input
                 type="text"
                 list="complaint-reasons-list"
@@ -1298,21 +1298,174 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 ))}
               </datalist>
             </div>
+
+            <div className="sm:col-span-3">
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Catatan Tambahan dari Pengaju Komplain (Note Pelapor)</label>
+              <input
+                type="text"
+                value={editForm.note}
+                onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
+                placeholder="Keterangan fisik barang, kondisi segel, dll dari pihak apotek/pelapor"
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-medium"
+              />
+            </div>
           </div>
         </div>
 
-        {/* Bagian 3: Tindak Lanjut & Resolusi */}
-        <div className="bg-zinc-50 dark:bg-slate-950/80 p-2.5 sm:p-3 rounded-lg border border-zinc-200 dark:border-slate-800 space-y-2">
-          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block">
-            3. Tindakan (Action) & Status Resolusi
-          </span>
+        {/* Bagian 3: Balasan & Tindak Lanjut dari Pihak Kita / Gudang */}
+        <div className="bg-blue-50/40 dark:bg-slate-950/90 p-2.5 sm:p-3 rounded-lg border border-blue-200 dark:border-blue-900/40 space-y-3">
+          <div className="flex items-center justify-between border-b border-blue-200/60 dark:border-blue-900/40 pb-1.5">
+            <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
+              <span>🏢 3. Balasan & Tindak Lanjut Pihak Gudang / Logistik (Investigasi, Solusi & Keputusan)</span>
+            </span>
+            <span className="text-[10px] text-zinc-500 font-medium">
+              *Mengisi Tindakan / Penyebab otomatis mengaktifkan status <strong className="text-blue-600 dark:text-blue-400">In Progress</strong>
+            </span>
+          </div>
+
+          {/* Baris 3.1: Investigasi & Solusi Gudang */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
             <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Status Tiket</label>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
+                Tindakan Solusi Gudang (Action)
+              </label>
+              <input
+                type="text"
+                value={editForm.action}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const updates: any = { action: val };
+                  // Auto In-Progress jika tindakan diisi saat masih Pending
+                  if (val.trim() && (editForm.status === "Pending" || !editForm.status)) {
+                    updates.status = "In Progress";
+                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
+                  }
+                  setEditForm({ ...editForm, ...updates });
+                }}
+                placeholder="Tukar fisik / Kirim susulan / dll"
+                className="w-full bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-800 rounded-lg p-1.5 text-blue-900 dark:text-blue-200 font-bold focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
+                Penyebab Kesalahan (Root Cause)
+              </label>
+              <input
+                type="text"
+                value={editForm.root_cause}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const updates: any = { root_cause: val };
+                  // Auto In-Progress jika penyebab diisi saat masih Pending
+                  if (val.trim() && (editForm.status === "Pending" || !editForm.status)) {
+                    updates.status = "In Progress";
+                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
+                  }
+                  setEditForm({ ...editForm, ...updates });
+                }}
+                placeholder="Human error / Salah ambil picker / dll"
+                className="w-full bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-800 rounded-lg p-1.5 text-blue-900 dark:text-blue-200 font-medium focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
+                Personil Terkait (Picker / Checker)
+              </label>
+              <input
+                type="text"
+                value={editForm.person}
+                onChange={(e) => setEditForm({ ...editForm, person: e.target.value })}
+                placeholder="Nama picker / checker bersangkutan"
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">No. Nota Retur</label>
+              <input
+                type="text"
+                value={editForm.nota_retur_no}
+                onChange={(e) => setEditForm({ ...editForm, nota_retur_no: e.target.value })}
+                placeholder="Nomor nota retur (jika ada)"
+                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
+              />
+            </div>
+          </div>
+
+          {/* Baris 3.2: Konfirmasi & Status Keputusan Tiket */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 border-t border-blue-100 dark:border-slate-800/80">
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
+                1. Konfirmasi (Confirm)
+              </label>
+              <select
+                value={editForm.confirm}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const updates: any = { confirm: val };
+                  if (val === "Approve") {
+                    if (editForm.status === "Pending" || editForm.status === "Rejected") {
+                      updates.status = "In Progress";
+                    }
+                  } else if (val === "Reject") {
+                    updates.status = "Rejected";
+                    updates.resolved_date = "";
+                  } else if (val === "Pending") {
+                    updates.status = "Pending";
+                  }
+                  setEditForm({ ...editForm, ...updates });
+                }}
+                className={`w-full border rounded-lg p-1.5 font-bold transition-colors ${
+                  editForm.confirm === "Approve"
+                    ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-400 text-emerald-800 dark:text-emerald-300"
+                    : editForm.confirm === "Reject"
+                    ? "bg-rose-50 dark:bg-rose-950/60 border-rose-400 text-rose-800 dark:text-rose-300"
+                    : "bg-white dark:bg-slate-900 border-zinc-300 dark:border-slate-700 text-black dark:text-white"
+                }`}
+              >
+                <option value="">-- Belum Ditentukan --</option>
+                <option value="Approve">✅ Approve (Disetujui)</option>
+                <option value="Reject">❌ Reject (Ditolak)</option>
+                <option value="Pending">🟡 Pending (Menunggu Verifikasi)</option>
+                <option value="Review">🔍 Review (Pemeriksaan Ulang)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
+                2. Status Tiket Komplain
+              </label>
               <select
                 value={editForm.status}
-                onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const updates: any = { status: val };
+                  if (val === "Rejected") {
+                    updates.confirm = "Reject";
+                    updates.resolved_date = "";
+                  } else if (val === "In Progress") {
+                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
+                  } else if (val === "Resolved") {
+                    if (!editForm.resolved_date) {
+                      updates.resolved_date = new Date().toISOString().split("T")[0];
+                    }
+                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
+                  } else if (val === "Pending") {
+                    updates.confirm = "Pending";
+                  }
+                  setEditForm({ ...editForm, ...updates });
+                }}
+                className={`w-full border rounded-lg p-1.5 font-bold transition-colors ${
+                  editForm.status === "In Progress"
+                    ? "bg-blue-50 dark:bg-blue-950/60 border-blue-400 text-blue-800 dark:text-blue-300"
+                    : editForm.status === "Resolved"
+                    ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-400 text-emerald-800 dark:text-emerald-300"
+                    : editForm.status === "Rejected"
+                    ? "bg-rose-50 dark:bg-rose-950/60 border-rose-400 text-rose-800 dark:text-rose-300"
+                    : "bg-amber-50 dark:bg-amber-950/60 border-amber-300 text-amber-800 dark:text-amber-300"
+                }`}
               >
                 <option value="Pending">🟡 Pending — Menunggu Konfirmasi</option>
                 <option value="In Progress">🔵 In Progress — Diproses Gudang</option>
@@ -1322,7 +1475,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             </div>
 
             <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tgl Penyelesaian</label>
+              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tgl Penyelesaian (Resolved Date)</label>
               <input
                 type="date"
                 value={editForm.resolved_date ? editForm.resolved_date.split("T")[0] : ""}
@@ -1341,76 +1494,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 <span>{calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status) === "#N/A" ? "#N/A (Belum Close)" : `${calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status)} hari`}</span>
                 <span className="text-[10px] font-normal text-zinc-500">Today: {calculateDaysUntilToday(editForm.report_date)} hr</span>
               </div>
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Konfirmasi (Confirm)</label>
-              <select
-                value={editForm.confirm}
-                onChange={(e) => setEditForm({ ...editForm, confirm: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-              >
-                <option value="">-- Belum Ditentukan --</option>
-                <option value="Approve">Approve</option>
-                <option value="Reject">Reject</option>
-                <option value="Pending">Pending</option>
-                <option value="Review">Review</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">No. Nota Retur</label>
-              <input
-                type="text"
-                value={editForm.nota_retur_no}
-                onChange={(e) => setEditForm({ ...editForm, nota_retur_no: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tindakan (Action)</label>
-              <input
-                type="text"
-                value={editForm.action}
-                onChange={(e) => setEditForm({ ...editForm, action: e.target.value })}
-                placeholder="Tukar fisik / Retur nota / dll"
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-              />
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Penyebab (Root Cause)</label>
-              <input
-                type="text"
-                value={editForm.root_cause}
-                onChange={(e) => setEditForm({ ...editForm, root_cause: e.target.value })}
-                placeholder="Human error / dll"
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-medium"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
-                Person (Pelaku Kesalahan / Picker & Checker)
-              </label>
-              <input
-                type="text"
-                value={editForm.person}
-                onChange={(e) => setEditForm({ ...editForm, person: e.target.value })}
-                placeholder=""
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-              />
-            </div>
-
-            <div className="sm:col-span-4">
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Catatan Tambahan (Note)</label>
-              <input
-                type="text"
-                value={editForm.note}
-                onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-medium"
-              />
             </div>
           </div>
         </div>
