@@ -374,11 +374,34 @@ export default function HowToUseModal({
               }`}>
                 <h3 className={`font-extrabold text-sm mb-1 flex items-center gap-2 ${isDark ? "text-amber-300" : "text-amber-900"}`}>
                   <RotateCcw className="w-4 h-4 text-amber-500" />
-                  Alur Operasional Baku 4 Status Tiket Komplain Retur
+                  Alur Operasional Baku &amp; SOP Modul Shipment Error
                 </h3>
                 <p className={`text-xs font-medium leading-relaxed ${isDark ? "text-amber-200/90" : "text-amber-900"}`}>
-                  Setiap komplain barang (selisih koli, barang rusak, fisik kurang, salah barang, ED dekat) wajib melalui 4 tahapan baku berikut untuk menjamin integritas logistik gudang MBI &amp; MAI.
+                  Setiap komplain barang (selisih koli, barang rusak, fisik kurang, salah barang, ED dekat) wajib melalui 4 tahapan baku dan 2 proses investigasi gudang untuk menjamin akurasi dan ketuntasan pengiriman fisik ke apotek.
                 </p>
+              </div>
+
+              {/* FITUR BARU: Kolom Eksekusi Cepat di Paling Kiri */}
+              <div className={`p-3.5 rounded-xl border shadow-xs ${
+                isDark ? "bg-[#142038] border-indigo-700/60" : "bg-indigo-50/70 border-indigo-200"
+              }`}>
+                <h4 className="font-extrabold text-xs mb-1.5 flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+                  <Zap className="w-4 h-4 text-indigo-500" />
+                  Fitur Baru: Kolom Eksekusi Cepat (Kolom 1: ACC / Selesai)
+                </h4>
+                <p className={`text-xs leading-relaxed mb-2 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                  Tabel dirancang 100% pas di layar laptop tanpa perlu scroll ke kanan atau scroll ke bawah form:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div className={`p-2.5 rounded-lg border ${isDark ? "bg-[#0b1220] border-slate-700" : "bg-white border-indigo-100"}`}>
+                    <strong className="text-blue-600 dark:text-blue-400 block mb-0.5">Tombol [ ✓ ACC ] (Biru):</strong>
+                    Untuk tiket <em>Pending</em>. Klik langsung di baris tabel untuk memvalidasi kesalahan operasional PBF dan memindahkan tiket ke <em>In Progress</em> tanpa membuka modal form.
+                  </div>
+                  <div className={`p-2.5 rounded-lg border ${isDark ? "bg-[#0b1220] border-slate-700" : "bg-white border-indigo-100"}`}>
+                    <strong className="text-emerald-600 dark:text-emerald-400 block mb-0.5">Tombol [ ✓ Selesaikan ] (Hijau):</strong>
+                    Untuk tiket <em>In Progress</em>. Sistem secara otomatis memvalidasi kelengkapan 3 data investigasi gudang sebelum mengonfirmasi penerimaan barang di apotek.
+                  </div>
+                </div>
               </div>
 
               {/* 4 Tahapan Workflow Baku */}
@@ -397,15 +420,15 @@ export default function HowToUseModal({
                     </span>
                   </div>
                   <ul className="text-xs space-y-1.5 leading-relaxed text-zinc-700 dark:text-slate-300 list-disc list-inside">
-                    <li>Setiap tiket baru yang dikirim dari form apotek/sales otomatis masuk berstatus <strong>Pending</strong>.</li>
+                    <li>Setiap tiket baru yang dikirim dari form apotek/sales otomatis masuk antrean <strong>Pending</strong>.</li>
                     <li>Admin/CS memeriksa rincian kendala beserta foto bukti komplain dan foto packingan tim gudang.</li>
-                    <li>Di modal tindakan, tentukan <strong>Validitas Komplain</strong>:
+                    <li>Eksekusi cepat via kolom 1:
                       <div className="mt-1 pl-4 space-y-1">
                         <div className="text-blue-600 dark:text-blue-400 font-bold">
-                          • Valid (Kesalahan PBF): Kesalahan murni tim gudang. Tiket otomatis lanjut ke <strong>IN PROGRESS</strong>.
+                          • Klik [ ACC ]: Komplain dinyatakan Valid (Kesalahan PBF). Tiket lanjut ke tahap <strong>IN PROGRESS</strong>.
                         </div>
                         <div className="text-rose-600 dark:text-rose-400 font-bold">
-                          • Reject (Bukan Kesalahan PBF): Bukan kesalahan gudang. Tiket otomatis berstatus <strong>REJECTED</strong>.
+                          • Reject: Bukan kesalahan gudang. Wajib isi catatan alasan penolakan pada tombol Tindakan.
                         </div>
                       </div>
                     </li>
@@ -419,21 +442,21 @@ export default function HowToUseModal({
                   <div className="flex items-center justify-between border-b border-blue-200/50 dark:border-blue-900/50 pb-2">
                     <span className="font-extrabold text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-                      2. TAHAP IN PROGRESS (Penyiapan Fisik)
+                      2. TAHAP IN PROGRESS (2 Proses Terkunci)
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
-                      Gudang Aktif
+                      Strict Guard
                     </span>
                   </div>
                   <ul className="text-xs space-y-1.5 leading-relaxed text-zinc-700 dark:text-slate-300 list-disc list-inside">
-                    <li><strong className="text-red-500">Form Guard:</strong> Wajib mengisi 3 kolom solusi sebelum simpan:
+                    <li><strong className="text-blue-500 dark:text-blue-400">Proses 1 (Investigasi &amp; Fisik):</strong> Wajib mengisi 3 data sebelum disimpan:
                       <div className="mt-1 pl-4 space-y-0.5 font-medium">
-                        <div>1. <strong>Tindakan</strong>: Solusi fisik (Tukar fisik / Kirim susulan / Nota retur).</div>
-                        <div>2. <strong>Akar Masalah (Root Cause)</strong>: Penyebab human error / sistem.</div>
-                        <div>3. <strong>Personil</strong>: Petugas Picker / Checker yang bertugas.</div>
+                        <div>1. <strong>Tindakan Solusi Gudang</strong>: Tukar fisik / Kirim susulan / Nota retur.</div>
+                        <div>2. <strong>Akar Penyebab (Root Cause)</strong>: Human Error / Vendor Issue / Sistem.</div>
+                        <div>3. <strong>Personil Terkait</strong>: Nama petugas Picker / Checker bersangkutan.</div>
                       </div>
                     </li>
-                    <li><strong>Konfirmasi Pengiriman</strong>: Pop-up pengingat memastikan fisik barang sudah siap di area logistik untuk diantar driver.</li>
+                    <li><strong className="text-emerald-500 dark:text-emerald-400">Proses 2 (Pengantaran Fisik):</strong> Barang pengganti disiapkan dan diantar oleh driver ke apotek pemesan.</li>
                   </ul>
                 </div>
 
@@ -451,13 +474,14 @@ export default function HowToUseModal({
                     </span>
                   </div>
                   <ul className="text-xs space-y-1.5 leading-relaxed text-zinc-700 dark:text-slate-300 list-disc list-inside">
-                    <li>Pada kartu atau baris tiket In Progress, klik tombol hijau <strong>"Selesaikan"</strong>.</li>
-                    <li>Sistem memunculkan pop-up konfirmasi penerimaan fisik:
+                    <li>Klik tombol hijau <strong>"Selesaikan"</strong> pada kolom 1 atau kartu In Progress.</li>
+                    <li>Sistem memeriksa: jika 3 data investigasi belum diisi, tiket <strong>DITOLAK</strong> untuk diselesaikan sampai data dilengkapi.</li>
+                    <li>Sistem memunculkan konfirmasi kepastian fisik:
                       <div className="p-2 mt-1 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 text-[11px] font-medium">
-                        <em>"Apakah barang ini sudah benar-benar sampai dan diterima dengan baik oleh pihak apotek?"</em>
+                        <em>"Apakah barang pengganti ini sudah benar-benar sampai dan diterima dengan baik oleh pihak apotek?"</em>
                       </div>
                     </li>
-                    <li>Saat dikonfirmasi, tanggal penyelesaian (<code>resolved_date</code>) otomatis diisi hari ini dan tiket tuntas keluar dari antrean aktif.</li>
+                    <li>Saat dikonfirmasi, tanggal selesai terisi otomatis dan tiket berstatus tuntas.</li>
                   </ul>
                 </div>
 
@@ -475,11 +499,24 @@ export default function HowToUseModal({
                     </span>
                   </div>
                   <ul className="text-xs space-y-1.5 leading-relaxed text-zinc-700 dark:text-slate-300 list-disc list-inside">
-                    <li>Dipilih jika hasil investigasi membuktikan kesalahan berasal dari pihak pemesan (salah pesan sales/apotek, klaim fiktif, dsb).</li>
-                    <li><strong className="text-red-500">Wajib Mengisi Alasan:</strong> Kolom catatan balasan logistik (<code>note</code>) 100% wajib diisi alasan penolakannya.</li>
-                    <li><strong>Transparansi Publik:</strong> Alasan penolakan ini otomatis tampil dalam banner merah di halaman pelacak komplain publik (<code>/komplain</code>) agar apotek pelapor membaca alasannya secara jelas.</li>
+                    <li>Dipilih jika hasil pengecekan membuktikan bukan kesalahan gudang (salah pesan sales/apotek, klaim fiktif, dll).</li>
+                    <li><strong className="text-rose-600 dark:text-rose-400">Wajib Mengisi Alasan:</strong> Kolom catatan balasan logistik (<code>note</code>) wajib diisi alasan penolakan.</li>
+                    <li>Alasan penolakan otomatis tampil di link pelacak komplain publik agar apotek mengetahui transparansi alasannya.</li>
                   </ul>
                 </div>
+              </div>
+
+              {/* PANDUAN FILTER BULAN & RETENSI DATA */}
+              <div className={`p-3.5 rounded-xl border shadow-xs ${
+                isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
+              }`}>
+                <h4 className={`font-bold text-xs flex items-center gap-1.5 mb-1.5 ${isDark ? "text-amber-300" : "text-amber-800"}`}>
+                  📌 Catatan Penting: Filter Bulan &amp; Riwayat Data Lengkap
+                </h4>
+                <p className={`text-[11px] leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                  Database menyimpan 100% data komplain dari awal tahun hingga sekarang secara permanen (1.800+ kasus). Jika pada tabel jumlah kasus terlihat lebih sedikit, periksa dropdown <strong>"Bulan"</strong> pada filter bar di atas tabel:
+                  pilih <strong>"Semua Bulan (Jan - Des 2026)"</strong> untuk menampilkan seluruh data riwayat, atau pilih bulan tertentu (misal <em>November 2026</em>) untuk fokus pada operasional bulan berjalan.
+                </p>
               </div>
 
               {/* Fitur Interaktif Tambahan */}
