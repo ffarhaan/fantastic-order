@@ -1,14 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   Lightbulb,
   Calendar,
   CalendarRange,
   Filter,
   RotateCcw,
+  Users,
+  Search,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { ShipmentReturnRecord } from "@/lib/types";
+import { parsePersonNames } from "@/lib/personnelUtils";
 
 interface AnalisisViewProps {
   returns: ShipmentReturnRecord[];
@@ -16,6 +21,7 @@ interface AnalisisViewProps {
   selectedWeek?: string;
   onMonthChange?: (month: string) => void;
   onWeekChange?: (week: string) => void;
+  onSelectPerson?: (person: string) => void;
 }
 
 const MONTH_NAMES: Record<number, string> = {
@@ -155,6 +161,7 @@ export default function AnalisisView({
   selectedWeek: propWeek,
   onMonthChange,
   onWeekChange,
+  onSelectPerson,
 }: AnalisisViewProps) {
   const [localMonth, setLocalMonth] = useState<string>("ALL");
   const [localWeek, setLocalWeek] = useState<string>("ALL");
@@ -211,11 +218,30 @@ export default function AnalisisView({
     };
   }, [returns, activeMonth]);
 
-  // Aggregate real data by PBF according to active Month, Week, and Status filters
-  const stats = useMemo(() => {
+  // Single source of truth: rows matching active Month, Week, and Status filters
+  const filteredReturns = useMemo(() => {
     const filterM = activeMonth !== "ALL" ? Number(activeMonth) : 0;
     const filterW = activeWeek !== "ALL" ? Number(String(activeWeek).replace(/[^0-9]/g, "")) : 0;
 
+    return returns.filter((r) => {
+      if (filterM > 0 && extractMonthFromRecord(r) !== filterM) return false;
+      if (filterW > 0 && extractWeekFromRecord(r) !== filterW) return false;
+
+      const st = (r.status || "").toLowerCase();
+      const conf = (r.confirm || "").toLowerCase();
+      const isRej = conf.includes("reject") || conf.includes("tolak") || st.includes("reject");
+      const isRes = st.includes("resolved") || st.includes("selesai");
+
+      if (statusScope === "VALID" && isRej) return false;
+      if (statusScope === "REJECT" && !isRej) return false;
+      if (statusScope === "RESOLVED" && (!isRes || isRej)) return false;
+      if (statusScope === "OPEN" && (isRes || isRej)) return false;
+      return true;
+    });
+  }, [returns, activeMonth, activeWeek, statusScope]);
+
+  // Aggregate real data by PBF according to active Month, Week, and Status filters
+  const stats = useMemo(() => {
     const mai = {
       reasons: {} as Record<string, number>,
       roots: {} as Record<string, number>,
@@ -233,25 +259,11 @@ export default function AnalisisView({
       openCount: 0,
     };
 
-    for (const r of returns) {
-      if (filterM > 0) {
-        const m = extractMonthFromRecord(r);
-        if (m !== filterM) continue;
-      }
-      if (filterW > 0) {
-        const w = extractWeekFromRecord(r);
-        if (w !== filterW) continue;
-      }
-
+    for (const r of filteredReturns) {
       const st = (r.status || "").toLowerCase();
       const conf = (r.confirm || "").toLowerCase();
       const isRej = conf.includes("reject") || conf.includes("tolak") || st.includes("reject");
       const isRes = st.includes("resolved") || st.includes("selesai");
-
-      if (statusScope === "VALID" && isRej) continue;
-      if (statusScope === "REJECT" && !isRej) continue;
-      if (statusScope === "RESOLVED" && (!isRes || isRej)) continue;
-      if (statusScope === "OPEN" && (isRes || isRej)) continue;
 
       const pbf = (r.pbf || "MBI").toUpperCase();
       const target = pbf.includes("MAI") ? mai : mbi;
@@ -312,7 +324,85 @@ export default function AnalisisView({
         roots: formatRoots(mbi.roots),
       },
     };
-  }, [returns, activeMonth, activeWeek, statusScope]);
+  }, [filteredReturns]);
+
+  // Personnel breakdown (full names, same parser as Personil tab) on the filtered rows
+  const personnel = useMemo(() => {
+    type Entry = {
+      person: string;
+      total: number;
+      mai: number;
+      mbi: number;
+      resolved: number;
+      open: number;
+      reject: number;
+      variants: Map<string, number>;
+    };
+    const map = new Map<string, Entry>();
+    let unassigned = 0;
+    let unassignedMai = 0;
+    let unassignedMbi = 0;
+
+    for (const r of filteredReturns) {
+      const pbf = (r.pbf || "MBI").toUpperCase();
+      const isMai = pbf.includes("MAI");
+      const st = (r.status || "").toLowerCase();
+      const conf = (r.confirm || "").toLowerCase();
+      const isRej = conf.includes("reject") || conf.includes("tolak") || st.includes("reject");
+      const isRes = st.includes("resolved") || st.includes("selesai");
+
+      const rawPerson = String(r.person || "").trim();
+      const names = parsePersonNames(rawPerson);
+      if (names.length === 0) {
+        unassigned++;
+        if (isMai) unassignedMai++;
+        else unassignedMbi++;
+        continue;
+      }
+
+      for (const name of names) {
+        let e = map.get(name);
+        if (!e) {
+          e = { person: name, total: 0, mai: 0, mbi: 0, resolved: 0, open: 0, reject: 0, variants: new Map() };
+          map.set(name, e);
+        }
+        e.total++;
+        if (isMai) e.mai++;
+        else e.mbi++;
+        if (isRej) e.reject++;
+        else if (isRes) e.resolved++;
+        else e.open++;
+        e.variants.set(rawPerson, (e.variants.get(rawPerson) || 0) + 1);
+      }
+    }
+
+    const list = Array.from(map.values())
+      .sort((a, b) => b.total - a.total || a.person.localeCompare(b.person))
+      .map((e) => ({
+        ...e,
+        variantList: Array.from(e.variants.entries()).sort((a, b) => b[1] - a[1]),
+      }));
+
+    return { list, unassigned, unassignedMai, unassignedMbi };
+  }, [filteredReturns]);
+
+  const [personnelSearch, setPersonnelSearch] = useState("");
+  const [personnelPbf, setPersonnelPbf] = useState<"ALL" | "MBI" | "MAI">("ALL");
+  const [expandedPerson, setExpandedPerson] = useState<string | null>(null);
+
+  const visiblePersonnel = useMemo(() => {
+    const q = personnelSearch.trim().toUpperCase();
+    return personnel.list
+      .filter((p) => (personnelPbf === "MAI" ? p.mai > 0 : personnelPbf === "MBI" ? p.mbi > 0 : true))
+      .filter((p) => !q || p.person.includes(q) || p.variantList.some(([v]) => v.toUpperCase().includes(q)))
+      .map((p) => ({
+        ...p,
+        shown: personnelPbf === "MAI" ? p.mai : personnelPbf === "MBI" ? p.mbi : p.total,
+      }))
+      .sort((a, b) => b.shown - a.shown || a.person.localeCompare(b.person));
+  }, [personnel.list, personnelSearch, personnelPbf]);
+
+  const maxPersonCases = Math.max(1, ...visiblePersonnel.map((p) => p.shown));
 
   const activePeriodLabel = useMemo(() => {
     const parts: string[] = [];
@@ -799,6 +889,182 @@ export default function AnalisisView({
             </div>
 
             {renderHorizontalBars(stats.mbi.roots, "#3b82f6", mbiMaxRoot)}
+          </div>
+        </div>
+      </div>
+
+      {/* =========================================
+          SECTION 2.5: PERSONIL (NAMA LENGKAP)
+      ========================================= */}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-4 bg-amber-500 rounded-full" />
+            <h2 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+              <Users className="w-4 h-4 text-amber-500" />
+              <span>Personil Terlibat</span>
+            </h2>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 font-bold">
+              {personnel.list.length} orang
+            </span>
+          </div>
+          <span className="text-[11px] text-zinc-500 dark:text-slate-400">
+            {activePeriodLabel}
+          </span>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-zinc-200 dark:border-slate-800 shadow-xs overflow-hidden">
+          {/* Toolbar */}
+          <div className="p-3 border-b border-zinc-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div className="relative flex-1 min-w-[220px]">
+              <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={personnelSearch}
+                onChange={(e) => setPersonnelSearch(e.target.value)}
+                placeholder="Cari nama personil..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-zinc-50 dark:bg-slate-950 border border-zinc-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
+              {(["ALL", "MBI", "MAI"] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPersonnelPbf(p)}
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer text-[11px] ${
+                    personnelPbf === p
+                      ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                      : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+                  }`}
+                >
+                  {p === "ALL" ? "Semua PBF" : `${p} Saja`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="max-h-[520px] overflow-y-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 z-10 bg-zinc-50 dark:bg-slate-950 text-zinc-600 dark:text-slate-400 font-bold border-b border-zinc-200 dark:border-slate-800">
+                <tr>
+                  <th className="py-2.5 px-3 w-12 text-center">No</th>
+                  <th className="py-2.5 px-3">Nama Personil</th>
+                  <th className="py-2.5 px-3">Jumlah Kasus</th>
+                  <th className="py-2.5 px-2 text-center">MBI</th>
+                  <th className="py-2.5 px-2 text-center">MAI</th>
+                  <th className="py-2.5 px-2 text-center">Resolved</th>
+                  <th className="py-2.5 px-2 text-center">In Progress</th>
+                  <th className="py-2.5 px-2 text-center">Reject</th>
+                  <th className="py-2.5 px-3 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-slate-800">
+                {visiblePersonnel.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-10 text-center text-zinc-400">
+                      Tidak ada personil pada filter ini
+                    </td>
+                  </tr>
+                ) : (
+                  visiblePersonnel.map((p, idx) => {
+                    const isOpen = expandedPerson === p.person;
+                    const pct = Math.round((p.shown / maxPersonCases) * 100);
+                    return (
+                      <Fragment key={p.person}>
+                        <tr
+                          onClick={() => setExpandedPerson(isOpen ? null : p.person)}
+                          className="hover:bg-zinc-50 dark:hover:bg-slate-800/40 cursor-pointer transition-colors"
+                          title="Klik untuk melihat penulisan nama asli di Data Kasus"
+                        >
+                          <td className="py-2 px-3 text-center font-mono text-zinc-500">{idx + 1}</td>
+                          <td className="py-2 px-3 font-bold text-zinc-900 dark:text-white">
+                            <div className="flex items-center gap-1.5">
+                              {isOpen ? (
+                                <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                              )}
+                              <span>{p.person}</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3">
+                            <div className="flex items-center gap-2">
+                              <span className="w-8 font-black font-mono text-rose-600 dark:text-rose-400">{p.shown}</span>
+                              <div className="flex-1 max-w-[180px] h-2 bg-zinc-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div className="h-full rounded-full bg-amber-500" style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-2 px-2 text-center font-bold text-blue-600 dark:text-blue-400">{p.mbi}</td>
+                          <td className="py-2 px-2 text-center font-bold text-purple-600 dark:text-purple-400">{p.mai}</td>
+                          <td className="py-2 px-2 text-center font-bold text-emerald-600 dark:text-emerald-400">{p.resolved}</td>
+                          <td className="py-2 px-2 text-center font-bold text-amber-600 dark:text-amber-400">{p.open}</td>
+                          <td className="py-2 px-2 text-center font-bold text-rose-600 dark:text-rose-400">{p.reject}</td>
+                          <td className="py-2 px-3 text-center">
+                            {onSelectPerson && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectPerson(p.person);
+                                }}
+                                className="px-2 py-0.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-800 dark:text-slate-200 font-bold text-[11px] transition-colors cursor-pointer"
+                                title={`Buka Data Kasus untuk ${p.person}`}
+                              >
+                                Lihat Kasus
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="bg-zinc-50/80 dark:bg-slate-950/60">
+                            <td />
+                            <td colSpan={8} className="py-2 px-3">
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 dark:text-slate-400 mb-1.5">
+                                Penulisan asli di Data Kasus (klik untuk buka di Data Kasus)
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {p.variantList.map(([variant, cnt]) => (
+                                  <button
+                                    key={variant}
+                                    type="button"
+                                    onClick={() => onSelectPerson && onSelectPerson(variant)}
+                                    className="px-2 py-0.5 rounded-md bg-white hover:bg-zinc-100 dark:bg-slate-800 dark:hover:bg-slate-700 border border-zinc-200 dark:border-slate-700 text-[11px] font-mono text-zinc-700 dark:text-slate-200 transition-colors cursor-pointer flex items-center gap-1"
+                                    title={`Klik untuk filter Data Kasus dengan kata kunci "${variant}"`}
+                                  >
+                                    <span>{variant}</span>
+                                    <strong className="text-rose-600 dark:text-rose-400">×{cnt}</strong>
+                                  </button>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer: cases without personnel */}
+          <div className="px-3 py-2.5 border-t border-zinc-200 dark:border-slate-800 bg-zinc-50/60 dark:bg-slate-950/40 text-[11px] text-zinc-500 dark:text-slate-400 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>
+              Kasus tanpa nama personil:{" "}
+              <strong className="text-amber-600 dark:text-amber-400">
+                {(personnelPbf === "MAI"
+                  ? personnel.unassignedMai
+                  : personnelPbf === "MBI"
+                  ? personnel.unassignedMbi
+                  : personnel.unassigned
+                ).toLocaleString("id-ID")}
+              </strong>
+            </span>
+            <span className="text-zinc-400">•</span>
+            <span>Kasus dengan 2 personil (mis. &quot;RIPAL / ZAID&quot;) dihitung ke masing-masing orang.</span>
           </div>
         </div>
       </div>

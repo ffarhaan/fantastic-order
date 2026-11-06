@@ -1,5 +1,6 @@
 import { getTiDBClient } from "@/lib/tidb";
 import { calculateDominantCategory } from "@/lib/parser";
+import { parsePersonNames } from "@/lib/personnelUtils";
 import zlib from "zlib";
 import crypto from "crypto";
 
@@ -1149,63 +1150,10 @@ export async function GET(req: Request) {
         pending_cases: number;
       }>();
 
-      const EXCLUDE_WORDS = new Set([
-        'REJECT', '-', '#N/A', 'NONE', 'NULL', 'ADMIN',
-        'KESALAHAN PAXEL', 'PAXEL', 'EXPEDISI', 'EKSPEDISI',
-        'TIKI', 'JNE', 'SICEPAT', 'ANTERAJA', 'GOSEND', 'GRAB', 'LALAMOVE',
-        'QC SESUAI', 'TIDAK ADA', 'TIDAK DIKETAHUI', 'UNKNOWN'
-      ]);
-
-      // Smart Person Name Canonicalization (Merges nicknames/short names with official staff names)
-      const PERSON_CANONICAL_MAP: Record<string, string> = {
-        "BUDI": "BUDI SUSANTO",
-        "BUDI SUSANTO": "BUDI SUSANTO",
-        "ZAID": "ZAID AKMAL HUDA",
-        "ZAID AKMAL HUDA": "ZAID AKMAL HUDA",
-        "HASBI": "HASBIYAALLAH",
-        "HASBIYALLAH": "HASBIYAALLAH",
-        "HASBIYAALLAH": "HASBIYAALLAH",
-        "KHASBIYA": "HASBIYAALLAH",
-        "KHASBIYA RIZQI": "HASBIYAALLAH",
-        "OGI": "OGI SAPUTRA",
-        "OGIK": "OGI SAPUTRA",
-        "OGI SAPUTRA": "OGI SAPUTRA",
-        "DEFRI": "DEPRI",
-        "DEPRI": "DEPRI",
-        "SYUD": "MUHAMAD SYU'UD",
-        "SYU'UD": "MUHAMAD SYU'UD",
-        "WIBI": "WIBI ANDRIANSYAH",
-        "WIBI ANDRIANSYAH": "WIBI ANDRIANSYAH",
-        "AGUS": "AGUS SUROSO",
-        "AGUS SUROSO": "AGUS SUROSO",
-      };
-
+      // Shared parser (lib/personnelUtils.ts) keeps Personil tab and Analisis tab 100% identical
       for (const r of rawReturns) {
-        let raw = String(r.person || "").trim();
-        if (!raw) continue;
-
-        // Remove parenthetical annotations like (picker), (checker), (gudang)
-        raw = raw.replace(/\([^)]*\)/g, ' ');
-
-        // Pre-clean legacy merged prefixes without separator (e.g. ARDRIDWAN -> ARDIN / RIDWAN)
-        raw = raw.replace(/\bARD(ANDRE|IDAL|WIBI|HIMAWAN|ASWIN|FARIS|YONNO|TRI|BUDI|RIDWAN)\b/gi, 'ARDIN / $1');
-        raw = raw.replace(/\bARDN\//gi, 'ARDIN / ');
-
-        // Split by /, \, ,, +, &, " - ", " dan ", " and " (handles single, pairs, and triplets like AGUS/FAHRI/FATHUR)
-        const parts = raw.split(/[\/\\,+&]|\s+-\s+|\s+dan\s+|\s+and\s+/i);
-
-        for (let p of parts) {
-          // Strip leading/trailing dots, spaces, dashes, slashes, backslashes
-          p = p.replace(/^[.\\\/\s\-_]+|[.\\\/\s\-_]+$/g, '').replace(/\s+/g, ' ').trim();
-          if (!p) continue;
-
-          let norm = p.toUpperCase();
-          if (EXCLUDE_WORDS.has(norm)) continue;
-          if (norm.length <= 1) continue;
-
-          // Map to canonical name if exists (e.g. BUDI and BUDI SUSANTO merge into BUDI SUSANTO)
-          const canonical = PERSON_CANONICAL_MAP[norm] || norm;
-
+        const names = parsePersonNames(r.person);
+        for (const canonical of names) {
           let entry = personMap.get(canonical);
           if (!entry) {
             entry = {

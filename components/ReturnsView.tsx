@@ -1504,49 +1504,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             </span>
           </button>
 
-          {/* Tab 2: Overview */}
-          <button
-            type="button"
-            onClick={() => setActiveTab("overview")}
-            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === "overview"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 text-indigo-500" />
-            <span>Overview</span>
-          </button>
-
-          {/* Tab 3: Monthly */}
-          <button
-            type="button"
-            onClick={() => setActiveTab("monthly")}
-            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === "monthly"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <Calendar className="w-4 h-4 text-red-500" />
-            <span>Monthly</span>
-          </button>
-
-          {/* Tab 4: Weekly */}
-          <button
-            type="button"
-            onClick={() => setActiveTab("weekly")}
-            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === "weekly"
-                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-            }`}
-          >
-            <CalendarRange className="w-4 h-4 text-blue-500" />
-            <span>Weekly</span>
-          </button>
-
-          {/* Tab 5: Analisis */}
+          {/* Tab 2: Analisis (Tepat di Sebelah Data Kasus) */}
           <button
             type="button"
             onClick={() => {
@@ -1561,6 +1519,48 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           >
             <Sparkles className="w-4 h-4 text-purple-500" />
             <span>Analisis</span>
+          </button>
+
+          {/* Tab 3: Overview */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("overview")}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "overview"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 text-indigo-500" />
+            <span>Overview</span>
+          </button>
+
+          {/* Tab 4: Monthly */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("monthly")}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "monthly"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <Calendar className="w-4 h-4 text-red-500" />
+            <span>Monthly</span>
+          </button>
+
+          {/* Tab 5: Weekly */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("weekly")}
+            className={`px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "weekly"
+                ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+            }`}
+          >
+            <CalendarRange className="w-4 h-4 text-blue-500" />
+            <span>Weekly</span>
           </button>
 
           {/* Tab 6: In Progress */}
@@ -3273,6 +3273,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             setWeekFilter(w);
             setPage(0);
             fetchPersonnelStats(monthFilter, w);
+          }}
+          onSelectPerson={(p) => {
+            setSearch(p);
+            setActiveTab("list");
           }}
         />
       )}
