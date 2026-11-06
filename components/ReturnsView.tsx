@@ -1946,6 +1946,50 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           {/* Top 6 Metric Cards matching Apps Script layout */}
           {showKpiSummary && (
             <div className="space-y-2.5">
+              {/* Filter Status Bar Header */}
+              <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Filter className="w-3.5 h-3.5" />
+                    <span>Filter Alur Status:</span>
+                  </span>
+                  {statusFilter === "ALL" ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                      Semua Kasus Ditampilkan ({total.toLocaleString("id-ID")})
+                    </span>
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
+                      <span>Sedang difilter:</span>
+                      <span className="underline decoration-2 font-black">{statusFilter}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatusFilter("ALL");
+                          setPage(0);
+                        }}
+                        className="ml-1 px-1.5 py-0.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold cursor-pointer transition-colors"
+                        title="Tampilkan Semua Kasus"
+                      >
+                        ✕ Tampilkan Semua
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {statusFilter !== "ALL" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter("ALL");
+                      setPage(0);
+                    }}
+                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>✕ Reset ke Semua Kasus</span>
+                  </button>
+                )}
+              </div>
+
               {/* 4 Status Workflow Metric Cards (Symmetrical 4-Column Grid) */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
                 {/* 1. PENDING */}
@@ -1954,30 +1998,46 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setStatusFilter(statusFilter === "Pending" ? "ALL" : "Pending");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-2xl border bg-white dark:bg-slate-900 shadow-2xs p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                  className={`relative overflow-hidden rounded-2xl border p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none ${
                     statusFilter === "Pending"
-                      ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/40 dark:bg-amber-950/30 shadow-sm"
-                      : "border-slate-200 dark:border-slate-800 hover:border-amber-300 dark:hover:border-amber-800"
+                      ? "border-amber-400 dark:border-amber-400 ring-4 ring-amber-500/20 dark:ring-amber-400/20 bg-amber-500/15 dark:bg-amber-950/70 shadow-lg shadow-amber-500/10 scale-[1.01]"
+                      : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-amber-400 dark:hover:border-amber-700 bg-white dark:bg-slate-900 hover:shadow-md`
                   }`}
                   title="Klik untuk filter tiket Pending (Menunggu Validitas). Klik lagi untuk reset."
                 >
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500" />
+                  <div className="absolute top-0 left-0 right-0 h-1.5 bg-amber-500" />
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="text-[11px] font-mono font-bold tracking-wider text-amber-600 dark:text-amber-400 uppercase flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5" />
                       <span>PENDING</span>
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                      Tahap 1
-                    </span>
+                    {statusFilter === "Pending" ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-amber-500 text-black flex items-center gap-1 shadow-xs animate-in zoom-in-95">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        <span>AKTIF</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                        Tahap 1
+                      </span>
+                    )}
                   </div>
                   <div className="my-1">
                     <span className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 font-mono tracking-tight">
                       {pendingCasesCount.toLocaleString("id-ID")}
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                    Pengecekan bukti &amp; validitas
+                  <div className="text-[10px] font-medium truncate">
+                    {statusFilter === "Pending" ? (
+                      <span className="text-amber-800 dark:text-amber-300 font-bold flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                        Sedang Difilter (Klik untuk reset)
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 dark:text-slate-400">
+                        Pengecekan bukti &amp; validitas
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1987,30 +2047,46 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setStatusFilter(statusFilter === "In Progress" ? "ALL" : "In Progress");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-2xl border bg-white dark:bg-slate-900 shadow-2xs p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                  className={`relative overflow-hidden rounded-2xl border p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none ${
                     statusFilter === "In Progress"
-                      ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/40 dark:bg-blue-950/30 shadow-sm"
-                      : "border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-800"
+                      ? "border-blue-400 dark:border-blue-400 ring-4 ring-blue-500/20 dark:ring-blue-400/20 bg-blue-500/15 dark:bg-blue-950/70 shadow-lg shadow-blue-500/10 scale-[1.01]"
+                      : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-700 bg-white dark:bg-slate-900 hover:shadow-md`
                   }`}
                   title="Klik untuk filter tiket In Progress (Penyiapan Fisik & Pengantaran). Klik lagi untuk reset."
                 >
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500" />
+                  <div className="absolute top-0 left-0 right-0 h-1.5 bg-blue-500" />
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="text-[11px] font-mono font-bold tracking-wider text-blue-600 dark:text-blue-400 uppercase flex items-center gap-1.5">
                       <Package className="w-3.5 h-3.5" />
                       <span>IN PROGRESS</span>
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
-                      Tahap 2
-                    </span>
+                    {statusFilter === "In Progress" ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-blue-500 text-white flex items-center gap-1 shadow-xs animate-in zoom-in-95">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        <span>AKTIF</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                        Tahap 2
+                      </span>
+                    )}
                   </div>
                   <div className="my-1">
                     <span className="text-2xl sm:text-3xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tight">
                       {inProgressCasesCount.toLocaleString("id-ID")}
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                    Penyiapan fisik &amp; antar driver
+                  <div className="text-[10px] font-medium truncate">
+                    {statusFilter === "In Progress" ? (
+                      <span className="text-blue-800 dark:text-blue-300 font-bold flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                        Sedang Difilter (Klik untuk reset)
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 dark:text-slate-400">
+                        Penyiapan fisik &amp; antar driver
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -2020,30 +2096,46 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setStatusFilter(statusFilter === "Resolved" ? "ALL" : "Resolved");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-2xl border bg-white dark:bg-slate-900 shadow-2xs p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                  className={`relative overflow-hidden rounded-2xl border p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none ${
                     statusFilter === "Resolved"
-                      ? "border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/40 dark:bg-emerald-950/30 shadow-sm"
-                      : "border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-800"
+                      ? "border-emerald-400 dark:border-emerald-400 ring-4 ring-emerald-500/20 dark:ring-emerald-400/20 bg-emerald-500/15 dark:bg-emerald-950/70 shadow-lg shadow-emerald-500/10 scale-[1.01]"
+                      : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-emerald-400 dark:hover:border-emerald-700 bg-white dark:bg-slate-900 hover:shadow-md`
                   }`}
                   title="Klik untuk filter tiket Selesai (Resolved). Klik lagi untuk reset."
                 >
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500" />
+                  <div className="absolute top-0 left-0 right-0 h-1.5 bg-emerald-500" />
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="text-[11px] font-mono font-bold tracking-wider text-emerald-600 dark:text-emerald-400 uppercase flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>RESOLVED</span>
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                      Tahap 3
-                    </span>
+                    {statusFilter === "Resolved" ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-emerald-500 text-white flex items-center gap-1 shadow-xs animate-in zoom-in-95">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        <span>AKTIF</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        Tahap 3
+                      </span>
+                    )}
                   </div>
                   <div className="my-1">
                     <span className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tight">
                       {resolvedCasesCount.toLocaleString("id-ID")}
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                    {resolutionRate}% tuntas diterima apotek
+                  <div className="text-[10px] font-medium truncate">
+                    {statusFilter === "Resolved" ? (
+                      <span className="text-emerald-800 dark:text-emerald-300 font-bold flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        Sedang Difilter (Klik untuk reset)
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 dark:text-slate-400">
+                        {resolutionRate}% tuntas diterima apotek
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -2053,30 +2145,46 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setStatusFilter(statusFilter === "Rejected" ? "ALL" : "Rejected");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-2xl border bg-white dark:bg-slate-900 shadow-2xs p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                  className={`relative overflow-hidden rounded-2xl border p-3 sm:p-3.5 flex flex-col justify-between cursor-pointer transition-all select-none ${
                     statusFilter === "Rejected"
-                      ? "border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/40 dark:bg-rose-950/30 shadow-sm"
-                      : "border-slate-200 dark:border-slate-800 hover:border-rose-300 dark:hover:border-rose-800"
+                      ? "border-rose-400 dark:border-rose-400 ring-4 ring-rose-500/20 dark:ring-rose-400/20 bg-rose-500/15 dark:bg-rose-950/70 shadow-lg shadow-rose-500/10 scale-[1.01]"
+                      : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-rose-400 dark:hover:border-rose-700 bg-white dark:bg-slate-900 hover:shadow-md`
                   }`}
                   title="Klik untuk filter tiket Ditolak (Rejected). Klik lagi untuk reset."
                 >
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-rose-500" />
+                  <div className="absolute top-0 left-0 right-0 h-1.5 bg-rose-500" />
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="text-[11px] font-mono font-bold tracking-wider text-rose-600 dark:text-rose-400 uppercase flex items-center gap-1.5">
                       <XCircle className="w-3.5 h-3.5" />
                       <span>REJECTED</span>
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-                      Tahap 4
-                    </span>
+                    {statusFilter === "Rejected" ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-rose-500 text-white flex items-center gap-1 shadow-xs animate-in zoom-in-95">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        <span>AKTIF</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                        Tahap 4
+                      </span>
+                    )}
                   </div>
                   <div className="my-1">
                     <span className="text-2xl sm:text-3xl font-black text-rose-600 dark:text-rose-400 font-mono tracking-tight">
                       {rejectedCasesCount.toLocaleString("id-ID")}
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                    Bukan kesalahan pihak PBF
+                  <div className="text-[10px] font-medium truncate">
+                    {statusFilter === "Rejected" ? (
+                      <span className="text-rose-800 dark:text-rose-300 font-bold flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                        Sedang Difilter (Klik untuk reset)
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 dark:text-slate-400">
+                        Bukan kesalahan pihak PBF
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2089,16 +2197,23 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setPbfFilter(pbfFilter === "MAI" ? "ALL" : "MAI");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                  className={`relative overflow-hidden rounded-xl border p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none ${
                     pbfFilter === "MAI"
-                      ? "border-red-500 ring-2 ring-red-500/20 bg-red-50/20 dark:bg-red-950/20"
-                      : "border-slate-200 dark:border-slate-800 hover:border-red-300 dark:hover:border-red-800"
+                      ? "border-red-400 ring-2 ring-red-400/30 bg-red-500/15 dark:bg-red-950/60 shadow-sm"
+                      : `${pbfFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-red-400 bg-white dark:bg-slate-900`
                   }`}
                   title="Klik untuk filter PBF MAI"
                 >
-                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500" />
-                  <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
-                    TOTAL CASES MAI
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-red-500" />
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <span className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
+                      TOTAL CASES MAI
+                    </span>
+                    {pbfFilter === "MAI" && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded-full font-black bg-red-500 text-white">
+                        ✓ AKTIF
+                      </span>
+                    )}
                   </div>
                   <div className="my-0.5">
                     <span className="text-base sm:text-lg font-black text-rose-600 dark:text-rose-400 font-mono">
@@ -2116,16 +2231,23 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setPbfFilter(pbfFilter === "MBI" ? "ALL" : "MBI");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-2xs p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none hover:shadow-md ${
+                  className={`relative overflow-hidden rounded-xl border p-2 sm:p-2.5 flex flex-col justify-between cursor-pointer transition-all select-none ${
                     pbfFilter === "MBI"
-                      ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20 dark:bg-blue-950/20"
-                      : "border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-800"
+                      ? "border-blue-400 ring-2 ring-blue-400/30 bg-blue-500/15 dark:bg-blue-950/60 shadow-sm"
+                      : `${pbfFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-blue-400 bg-white dark:bg-slate-900`
                   }`}
                   title="Klik untuk filter PBF MBI"
                 >
-                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500" />
-                  <div className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
-                    TOTAL CASES MBI
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500" />
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <span className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase truncate">
+                      TOTAL CASES MBI
+                    </span>
+                    {pbfFilter === "MBI" && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded-full font-black bg-blue-500 text-white">
+                        ✓ AKTIF
+                      </span>
+                    )}
                   </div>
                   <div className="my-0.5">
                     <span className="text-base sm:text-lg font-black text-blue-600 dark:text-blue-400 font-mono">
