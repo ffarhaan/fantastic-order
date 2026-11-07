@@ -451,21 +451,16 @@ export async function GET(req: Request) {
           }
         }
       }
-      const isFresh = searchParams.get("fresh") === "true" || searchParams.has("_t");
+      // Edge CDN Caching (Protects Vercel Fast Origin Transfer 10GB limit)
+      // Real-time delta updates are handled <50ms by Firestore subscribeToCheckers
       return compressedJsonResponse(
         req, 
         { success: true, data: map },
-        isFresh
-          ? {
-              "Cache-Control": "no-store, no-cache, must-revalidate",
-              "CDN-Cache-Control": "no-store",
-              "Vercel-CDN-Cache-Control": "no-store",
-            }
-          : {
-              "Cache-Control": "public, max-age=60, stale-while-revalidate=180",
-              "CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=180",
-              "Vercel-CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=180",
-            }
+        {
+          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=3600",
+          "CDN-Cache-Control": "public, s-maxage=300",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=300",
+        }
       );
     }
 
@@ -522,8 +517,9 @@ export async function GET(req: Request) {
         { success: true, count: rows.length, data: rows },
         {
           headers: {
-            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-            "Pragma": "no-cache",
+            "Cache-Control": "public, s-maxage=10, stale-while-revalidate=60",
+            "CDN-Cache-Control": "public, s-maxage=10",
+            "Vercel-CDN-Cache-Control": "public, s-maxage=10",
           },
         }
       );
@@ -871,24 +867,19 @@ export async function GET(req: Request) {
           limit,
           offset,
         },
-        isFreshReq
-          ? {
-              "Cache-Control": "no-store, no-cache, must-revalidate",
-              "CDN-Cache-Control": "no-store",
-              "Vercel-CDN-Cache-Control": "no-store",
-            }
-          : {
-              "CDN-Cache-Control": limit <= 5
-                ? "public, s-maxage=300, stale-while-revalidate=600"
-                : limit >= 1000
-                ? "public, s-maxage=60, stale-while-revalidate=180"
-                : "public, s-maxage=30, stale-while-revalidate=60",
-              "Vercel-CDN-Cache-Control": limit <= 5
-                ? "public, s-maxage=300, stale-while-revalidate=600"
-                : limit >= 1000
-                ? "public, s-maxage=60, stale-while-revalidate=180"
-                : "public, s-maxage=30, stale-while-revalidate=60",
-            }
+        {
+          "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120",
+          "CDN-Cache-Control": limit <= 5
+            ? "public, s-maxage=300, stale-while-revalidate=600"
+            : limit >= 1000
+            ? "public, s-maxage=60, stale-while-revalidate=180"
+            : "public, s-maxage=30, stale-while-revalidate=60",
+          "Vercel-CDN-Cache-Control": limit <= 5
+            ? "public, s-maxage=300, stale-while-revalidate=600"
+            : limit >= 1000
+            ? "public, s-maxage=60, stale-while-revalidate=180"
+            : "public, s-maxage=30, stale-while-revalidate=60",
+        }
       );
     }
 
@@ -1253,6 +1244,10 @@ export async function GET(req: Request) {
         pbfComparison,
         selectedMonth: monthParam || "ALL",
         selectedWeek: weekParam || "ALL",
+      }, {
+        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        "CDN-Cache-Control": "public, s-maxage=60",
+        "Vercel-CDN-Cache-Control": "public, s-maxage=60",
       });
     }
 

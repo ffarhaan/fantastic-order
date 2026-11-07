@@ -634,12 +634,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     try {
       const q = new URLSearchParams({ 
         action: "personnel_stats",
-        fresh: "true",
-        _t: String(Date.now()),
       });
       if (selectedMonth && selectedMonth !== "ALL") q.set("month", selectedMonth);
       if (selectedWeek && selectedWeek !== "ALL") q.set("week", selectedWeek);
-      const res = await fetch(`/api/tidb?${q.toString()}`, { cache: "no-store" });
+      const res = await fetch(`/api/tidb?${q.toString()}`);
       const json = await res.json();
       if (json.success) {
         setPersonnelStats({

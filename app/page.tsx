@@ -1043,10 +1043,7 @@ export default function Home() {
   const lastQcSigRef = useRef<Record<string, string>>({});
   const fetchQcOrders = useCallback(async (wh: "MBI" | "MAI") => {
     try {
-      const res = await fetch(`/api/tidb?action=qc_reports&warehouse=${wh}&_t=${Date.now()}`, {
-        cache: "no-store",
-        headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" }
-      });
+      const res = await fetch(`/api/tidb?action=qc_reports&warehouse=${wh}`);
       const d = await res.json();
       if (d && d.success && Array.isArray(d.data)) {
         if (wh === selectedWarehouseRef.current) {
@@ -1141,7 +1138,7 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
     }, "MBI");
 
     try {
-      fetch("/api/tidb?action=get_checkers&warehouse=MBI&fresh=true&_t=" + Date.now())
+      fetch("/api/tidb?action=get_checkers&warehouse=MBI")
         .then((r) => r.json())
         .then((d) => {
           if (d.success && d.data) {
@@ -1188,7 +1185,7 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
     }, "MAI");
 
     try {
-      fetch("/api/tidb?action=get_checkers&warehouse=MAI&fresh=true&_t=" + Date.now())
+      fetch("/api/tidb?action=get_checkers&warehouse=MAI")
         .then((r) => r.json())
         .then((d) => {
           if (d.success && d.data) {
@@ -2425,8 +2422,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         showToast(`✓ Data sudah paling baru (${currentCount.toLocaleString("id-ID")} faktur sinkron).`);
       }
 
-      // Refresh checkers mapping (MBI & MAI) from TiDB live (LOCKED_RULES.md Section 6)
-      fetch("/api/tidb?action=get_checkers&warehouse=MBI&fresh=true&_t=" + Date.now())
+      // Refresh checkers mapping (MBI & MAI) from TiDB via CDN (LOCKED_RULES.md Section 6)
+      fetch("/api/tidb?action=get_checkers&warehouse=MBI")
         .then((r) => r.json())
         .then((d) => {
           if (d.success && d.data) {
@@ -2435,7 +2432,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
         })
         .catch(() => {});
-      fetch("/api/tidb?action=get_checkers&warehouse=MAI&fresh=true&_t=" + Date.now())
+      fetch("/api/tidb?action=get_checkers&warehouse=MAI")
         .then((r) => r.json())
         .then((d) => {
           if (d.success && d.data) {
