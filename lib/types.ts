@@ -105,6 +105,8 @@ export interface FakturGroup {
   transactionDate?: string;
   jenisTransaksi: "ORA" | "DOO";
   customerName: string;
+  normCust?: string;
+  cleanInv?: string;
   kategori: "1P" | "2P" | "3P" | string;
   dklk?: "DK" | "LK" | "-" | string;
   kategoriProduk: string;
@@ -170,6 +172,15 @@ export interface ActiveUserPresence {
   role: "admin" | "readonly";
   lastActive: number;
   deviceId: string;
+}
+
+export interface PrintSignalPayload {
+  keys: string[];
+  status: boolean;
+  printedAt: string | null;
+  printedBy?: string | null;
+  senderId: string;
+  ts: number;
 }
 
 // 🏥 Master Customer Record

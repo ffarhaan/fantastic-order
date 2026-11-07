@@ -12,10 +12,10 @@ import {
   Unsubscribe,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { FirestoreFakturDoc, PrintState, InvoiceProgression, UploadNotification, ActiveUserPresence } from "./types";
+import { FirestoreFakturDoc, PrintState, InvoiceProgression, UploadNotification, ActiveUserPresence, PrintSignalPayload } from "./types";
 import { normalize } from "./parser";
 
-export type { FirestoreFakturDoc, PrintState, InvoiceProgression, UploadNotification, ActiveUserPresence };
+export type { FirestoreFakturDoc, PrintState, InvoiceProgression, UploadNotification, ActiveUserPresence, PrintSignalPayload };
 
 const APP_DATA_COLLECTION = "app_data";
 const METADATA_DOC = "metadata";
@@ -664,6 +664,60 @@ export async function broadcastRecentUpload(
   } catch (err) {
     console.warn("Broadcast recent upload warning:", err);
   }
+}
+
+/**
+ * Broadcast print/unprint toggle to all peer devices in real-time (< 20ms) via dedicated signal document
+ * Functions as a high-speed walkie-talkie so other devices update instantaneously
+ */
+export async function broadcastPrintSignal(
+  keys: string[],
+  status: boolean,
+  printedAt: string | null,
+  printedBy?: string | null,
+  senderId: string = ""
+): Promise<void> {
+  if (!keys || keys.length === 0) return;
+  try {
+    const signalRef = doc(db, APP_DATA_COLLECTION, "print_signal");
+    await setDoc(signalRef, {
+      keys,
+      status,
+      printedAt: printedAt || null,
+      printedBy: printedBy || null,
+      senderId,
+      ts: Date.now(),
+    });
+  } catch (err) {
+    console.warn("[Print Signal] Broadcast warning:", err);
+  }
+}
+
+/**
+ * Real-time listener for ultra-fast print signals (< 30ms sync between peer laptops)
+ */
+export function subscribeToPrintSignal(
+  onSignal: (signal: PrintSignalPayload) => void
+): Unsubscribe {
+  const signalRef = doc(db, APP_DATA_COLLECTION, "print_signal");
+  return onSnapshot(
+    signalRef,
+    (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (data && Array.isArray(data.keys) && data.keys.length > 0) {
+        onSignal({
+          keys: data.keys as string[],
+          status: Boolean(data.status),
+          printedAt: (data.printedAt as string) || null,
+          printedBy: (data.printedBy as string) || null,
+          senderId: (data.senderId as string) || "",
+          ts: Number(data.ts || Date.now()),
+        });
+      }
+    },
+    (err) => console.warn("[Print Signal] Listener warning:", err)
+  );
 }
 
 /**

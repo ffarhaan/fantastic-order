@@ -31,6 +31,8 @@ import {
   subscribeToOnlinePresence,
   isStalePrintTimestamp,
   broadcastRecentUpload,
+  broadcastPrintSignal,
+  subscribeToPrintSignal,
   subscribeToCheckers,
   subscribeToUserProfiles,
   subscribeToRealtimeSignal,
@@ -2191,10 +2193,75 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       showToast("🗑️ Seluruh data faktur telah di-reset (0) secara real-time oleh Owner.");
     });
 
+    // Ultra-Fast Walkie-Talkie Print Signal (< 30ms sync between peer laptops!)
+    const unsubPrintSignal = subscribeToPrintSignal((signal) => {
+      if (signal.senderId && signal.senderId === deviceIdRef.current) return;
+      if (Date.now() - signal.ts > 60000) return;
+
+      const { keys, status, printedAt, printedBy } = signal;
+      if (!keys || keys.length === 0) return;
+
+      setPrintedInvoices((prev) => {
+        const next = new Set(prev);
+        keys.forEach((k) => {
+          if (status) next.add(k);
+          else next.delete(k);
+        });
+        printedInvoicesRef.current = next;
+        return next;
+      });
+
+      if (printedAt) {
+        setPrintedAtMap((prev) => {
+          const next = { ...prev };
+          keys.forEach((k) => {
+            if (status) next[k] = printedAt;
+            else delete next[k];
+          });
+          printedAtMapRef.current = next;
+          return next;
+        });
+      }
+
+      if (printedBy) {
+        setPrintedByMap((prev) => {
+          const next = { ...prev };
+          keys.forEach((k) => {
+            if (status) next[k] = printedBy;
+            else delete next[k];
+          });
+          printedByMapRef.current = next;
+          return next;
+        });
+      }
+
+      if (currentFakturDocsRef.current) {
+        const keySet = new Set(keys);
+        for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
+          const d = currentFakturDocsRef.current[i];
+          const k = d.id || d.no_faktur;
+          if (k && keySet.has(k)) {
+            d.status_cetak = status;
+            d.printed_at = status ? printedAt : null;
+            d.printed_by = status ? (printedBy || null) : null;
+            const cachedEntry = docRecordsCacheMap.get(d);
+            if (cachedEntry?.recs) {
+              for (const rec of cachedEntry.recs) {
+                rec.status_cetak = status;
+                rec.printed_at = status ? printedAt : null;
+                rec.printed_by = status ? (printedBy || null) : null;
+              }
+            }
+          }
+        }
+      }
+    });
+
     return () => {
       unsubscribe();
       unsubTiDBSignal();
       unsubResetSignal();
+      unsubPrintSignal();
     };
   }, [currentUser]);
 
@@ -2441,6 +2508,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           : `↩ Faktur ${targetKey} dikembalikan ke BELUM dicetak.`
       );
 
+      // Ultra-Fast Walkie-Talkie Signal (< 20ms broadcast to all peer laptops!)
+      broadcastPrintSignal(
+        [targetKey],
+        willBePrinted,
+        willBePrinted ? nowIso : null,
+        willBePrinted ? currentUserName : null,
+        deviceIdRef.current
+      );
+
       // 2. Firestore Sync - strictly updates targetKey in background
       try {
         await updateFakturPrintStatus(
@@ -2536,6 +2612,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         transactionDate: firstRec.transactionDate || firstRec.orderDate,
         jenisTransaksi: firstRec.jenisTransaksi,
         customerName: firstRec.customerName,
+        normCust,
+        cleanInv,
         kategori: firstRec.kategori,
         dklk: resolvedDkLk,
         kategoriProduk: firstRec.kategoriProduk || "FARMA",
@@ -2676,9 +2754,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       let kat = g.kategori;
       let dklk = g.dklk;
       if (hasCatOverrides || hasDkLkOverrides) {
-        const rawCust = String(g.customerName || "").trim();
-        const normCust = rawCust ? normalize(rawCust) : "";
-        const cleanInv = g.invoiceNumber.replace(/-1P$/i, "");
+        const normCust = g.normCust || "";
+        const rawCust = g.customerName || "";
+        const cleanInv = g.cleanInv || "";
         if (hasCatOverrides && g.jenisTransaksi !== "ORA") {
           const ovKat = categoryOverrides[normCust] || categoryOverrides[rawCust] || categoryOverrides[cleanInv] || categoryOverrides[g.key];
           if (ovKat) kat = ovKat as "1P" | "2P" | "3P";
@@ -2688,13 +2766,27 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           if (ovDkLk) dklk = ovDkLk;
         }
       }
+
+      const pBy = isPrinted ? (printedByMap[g.key] || null) : null;
+
+      // Ultra-fast reference reuse: if nothing changed for this invoice, return g directly (0ms)
+      if (
+        g.allPrinted === isPrinted &&
+        g.printedAt === pAt &&
+        g.printedBy === pBy &&
+        g.kategori === kat &&
+        g.dklk === dklk
+      ) {
+        return g;
+      }
+
       return {
         ...g,
         kategori: kat,
         dklk,
         allPrinted: isPrinted,
         printedAt: pAt,
-        printedBy: isPrinted ? (printedByMap[g.key] || null) : null,
+        printedBy: pBy,
         printTimeMs: pAt ? getCachedDateMs(pAt) : 0,
       };
     });
@@ -3188,6 +3280,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
     // INSTANT OPTIMISTIC TOAST (< 1ms feedback)
     showToast(`✓ Menandai ${targetKeys.length} faktur selesai dicetak oleh ${currentUserName}...`);
+
+    // Ultra-Fast Walkie-Talkie Signal (< 20ms broadcast to all peer laptops!)
+    broadcastPrintSignal(
+      targetKeys,
+      true,
+      nowIso,
+      currentUserName,
+      deviceIdRef.current
+    );
 
     try {
       setLoading(true);
