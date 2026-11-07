@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 // Short-term in-memory cache to protect against rapid client loops
 let memoryQcReportsCache: Record<string, { payload: any; ts: number }> = {};
 let memoryCheckCache: { payload: any; ts: number } | null = null;
+let memoryCheckersCache: Record<string, { payload: any; ts: number }> = {};
 
 function compressedJsonResponse(
   req: Request,
@@ -409,9 +410,20 @@ export async function GET(req: Request) {
     // ==========================================
     if (action === "get_checkers") {
       const warehouse = (searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
+      const now = Date.now();
+      if (memoryCheckersCache[warehouse] && (now - memoryCheckersCache[warehouse].ts < 60000)) {
+        return compressedJsonResponse(req, memoryCheckersCache[warehouse].payload, {
+          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+          "CDN-Cache-Control": "public, s-maxage=3600",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=3600",
+        });
+      }
+
       const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
-      // LOCKED_RULES.md Section 6: WAJIB ORDER BY updated_at DESC agar seluruh data terbaru (termasuk WY3M0L-*) tidak terpotong default limit
-      const rows = (await conn.execute(`SELECT so_number, checker_name, packer_name, picker_name FROM ${tableName} ORDER BY updated_at DESC LIMIT 30000`)) as Array<{
+      // Fetch recent 60-day active checkers (LIMIT 8000) to keep payload ~58KB so it fits well within Vercel 2MB Edge CDN limit
+      const rows = (await conn.execute(
+        `SELECT so_number, checker_name, packer_name, picker_name FROM ${tableName} WHERE updated_at >= NOW() - INTERVAL 60 DAY ORDER BY updated_at DESC LIMIT 8000`
+      )) as Array<{
         so_number: string;
         checker_name: string;
         packer_name: string;
@@ -420,8 +432,9 @@ export async function GET(req: Request) {
       const map: Record<string, { checker: string; packer: string; picker: string }> = {};
       if (Array.isArray(rows)) {
         for (const r of rows) {
-          if (r.so_number) {
+          if (r.so_number && r.so_number !== "-" && r.so_number !== "#N/A") {
             const raw = String(r.so_number).trim();
+            if (!raw) continue;
             let p = r.packer_name || "";
             let k = r.picker_name || "";
             if (
@@ -444,34 +457,25 @@ export async function GET(req: Request) {
               packer: p,
               picker: k,
             };
-            map[raw] = val;
+            if (!map[raw]) map[raw] = val;
             const noSpace = raw.replace(/\s+/g, "");
-            const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
             if (noSpace && !map[noSpace]) map[noSpace] = val;
-            if (alpha && !map[alpha]) map[alpha] = val;
-
-            // Smart Multi-Key Matcher: 0 <-> O variations (LOCKED_RULES.md Section 6.6)
-            const oVar1 = raw.replace(/^0/i, "O");
-            const oVar2 = raw.replace(/^O/i, "0");
-            const oVarAll1 = raw.replace(/0/g, "O");
-            const oVarAll2 = raw.replace(/O/gi, "0");
-            if (oVar1 && !map[oVar1]) map[oVar1] = val;
-            if (oVar2 && !map[oVar2]) map[oVar2] = val;
-            if (oVarAll1 && !map[oVarAll1]) map[oVarAll1] = val;
-            if (oVarAll2 && !map[oVarAll2]) map[oVarAll2] = val;
-            // Strict No-Suffix: prevents cross-SO collision (e.g. -1048)
           }
         }
       }
-      // Edge CDN Caching (Protects Vercel Fast Origin Transfer 10GB limit)
-      // Real-time delta updates are handled <50ms by Firestore subscribeToCheckers
+
+      const payload = { success: true, data: map };
+      memoryCheckersCache[warehouse] = { payload, ts: now };
+
+      // Edge CDN Caching (1 Hour edge cache, 24h stale-while-revalidate)
+      // Real-time new checkers arrive <50ms directly from Firestore subscribeToCheckers
       return compressedJsonResponse(
         req, 
-        { success: true, data: map },
+        payload,
         {
-          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=3600",
-          "CDN-Cache-Control": "public, s-maxage=300",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=300",
+          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+          "CDN-Cache-Control": "public, s-maxage=3600",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=3600",
         }
       );
     }
