@@ -385,7 +385,30 @@ Aturan ini mengunci secara mutlak arsitektur integrasi data petugas gudang (Chec
 
 ---
 
-### 7. KLAUSUL INTEGRITAS MUTLAK (INVIOLABILITY CLAUSE)
+### 7. ARSITEKTUR UPLOAD KILAT & EFISIENSI TINGGI (LIGHTNING-FAST UPLOAD ARCHITECTURE - LOCKED TOTAL)
+
+Arsitektur upload cepat ini telah diuji dan terbukti memberikan respon kilat instan pada operasional harian, dan **DIKUNCI TOTAL (LOCKED TOTAL)** agar tidak ada perubahan kode di masa depan yang memperlambat alur ini:
+
+1. **Optimistic Instant UI Update (< 100ms Response)**:
+   - Saat pengguna mengunggah file Excel (XXCUST / Export), file langsung diparsing di memori lokal peramban (*client-side parsing*).
+   - Antarmuka pengguna (tabel, kartu KPI, banner toast, dan daftar faktur baru) **WAJIB LANGSUNG TERUPDATE KETIKA PARSING SELESAI (< 100ms)** tanpa menunggu respon jaringan database cloud.
+   - Operator gudang tidak pernah diblokir oleh indikator loading berputar yang lama saat mengupload file.
+
+2. **Background Non-Blocking Batch Persistence**:
+   - Penyimpanan data faktur baru ke TiDB Cloud Serverless (`/api/tidb?action=upsert_batch`) dan siaran realtime Firebase (`broadcastRecentUpload`) dijalankan secara asinkron di latar belakang (*background promise*).
+   - Database menerima data dalam bentuk *Batch Chunked Upsert* (`INSERT ... ON DUPLICATE KEY UPDATE`) yang efisien, mencegah *request flood* per-baris.
+
+3. **Pruning Data Ekstrem di Sisi Klien (Extreme Client-Side Data Pruning)**:
+   - Sebelum payload dikirim ke server, memori browser secara otomatis memangkas seluruh kolom sampah/token Oracle XML dari file 20–30 MB menjadi format JSON ringkas (< 500 KB).
+   - Pengiriman jaringan ke API Vercel menjadi sangat cepat, ringan, dan tidak membebani kuota Fast Origin.
+
+4. **Pembaruan Langsung IndexedDB Lokal (Direct In-Memory & Local Cache Injection)**:
+   - Faktur yang baru diunggah langsung disuntikkan ke dalam memori aplikasi aktif (`records`) dan cache lokal browser (**IndexedDB**) detik itu juga.
+   - Sistem **DILARANG KERAS** memicu *full re-download* atau memanggil ulang arsip 35 MB dari database saat upload selesai.
+
+---
+
+### 8. KLAUSUL INTEGRITAS MUTLAK (INVIOLABILITY CLAUSE)
 
 > **DILARANG MERUBAH LOGIKA DASAR PADA PERMINTAAN FITUR BARU APAPUN:**
 > Setiap penambahan fitur, perubahan tampilan, atau optimasi di masa mendatang **WAJIB** tunduk pada dokumen `LOCKED_RULES.md` ini dan **TIDAK BOLEH** merusak atau mengubah:
@@ -405,4 +428,5 @@ Aturan ini mengunci secara mutlak arsitektur integrasi data petugas gudang (Chec
 > 14. Jaminan Kelengkapan Ingesti File: Wajib membaca seluruh sheet workbook Excel tanpa ada yang terpotong.
 > 15. Jaminan Zero SO Stripping: Dilarang membuang No SO pada ORA / export. No SO wajib dipertahankan utuh.
 > 16. Integritas SO-Invoice Report QC: SO yang sudah memiliki faktur wajib otomatis keluar dari antrean Menunggu Faktur detik itu juga melalui pencocokan multi-dimensi.
+> 17. Arsitektur Upload Kilat & Non-Blocking Persistence: Optimistic instant UI update (<100ms), pruning data client-side, dan direct in-memory cache injection tanpa full re-download.
 
