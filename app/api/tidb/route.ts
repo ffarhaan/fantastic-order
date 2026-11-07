@@ -1846,7 +1846,7 @@ export async function POST(req: Request) {
               kategori_produk = IF(VALUES(kategori_produk) IS NOT NULL AND VALUES(kategori_produk) != '', VALUES(kategori_produk), qc_reports.kategori_produk),
               total_item = IF(VALUES(total_item) > 0, VALUES(total_item), qc_reports.total_item),
               total_qty = IF(VALUES(total_qty) > 0, VALUES(total_qty), qc_reports.total_qty),
-              barang_catatan = IF(VALUES(barang_catatan) IS NOT NULL, VALUES(barang_catatan), qc_reports.barang_catatan),
+              barang_catatan = IF(VALUES(barang_catatan) IS NOT NULL AND VALUES(barang_catatan) > 0, VALUES(barang_catatan), qc_reports.barang_catatan),
               is_done = IF(VALUES(is_done) IS NOT NULL AND VALUES(is_done) != '', VALUES(is_done), qc_reports.is_done),
               sheet_row = IF(VALUES(sheet_row) > 0, VALUES(sheet_row), qc_reports.sheet_row),
               updated_at = CURRENT_TIMESTAMP`,

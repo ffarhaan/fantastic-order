@@ -1203,37 +1203,51 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
     } catch {}
 
     // 3. Instant Report QC Direct Push via Firestore WebSocket (<100ms sync, 0 bytes on Vercel)
+    const mergeQcItems = (prev: any[], incoming: any[]) => {
+      const prevMap = new Map<string, any>();
+      for (const p of prev) {
+        if (p.so_number) prevMap.set(p.so_number.trim(), p);
+      }
+      for (const item of incoming) {
+        if (!item.so_number) continue;
+        const soKey = item.so_number.trim();
+        const existing = prevMap.get(soKey);
+        if (!existing) {
+          prevMap.set(soKey, item);
+        } else {
+          prevMap.set(soKey, {
+            ...existing,
+            ...item,
+            customer_name: item.customer_name || existing.customer_name || "-",
+            checker_name: (item.checker_name && item.checker_name !== "-") ? item.checker_name : existing.checker_name,
+            packer_name: item.packer_name || existing.packer_name,
+            picker_name: item.picker_name || existing.picker_name,
+            no_do: item.no_do || existing.no_do,
+            waktu_kirim: item.waktu_kirim || existing.waktu_kirim,
+            so_date: item.so_date || existing.so_date,
+            kategori: item.kategori || existing.kategori,
+            kategori_produk: item.kategori_produk || existing.kategori_produk,
+            total_item: (item.total_item && Number(item.total_item) > 0) ? Number(item.total_item) : existing.total_item,
+            total_qty: (item.total_qty && Number(item.total_qty) > 0) ? Number(item.total_qty) : existing.total_qty,
+            barang_catatan: (item.barang_catatan !== undefined && item.barang_catatan !== null && item.barang_catatan !== "" && Number(item.barang_catatan) > 0)
+              ? Number(item.barang_catatan)
+              : (existing.barang_catatan || 0),
+            sheet_row: (item.sheet_row && Number(item.sheet_row) > 0) ? Number(item.sheet_row) : existing.sheet_row,
+          });
+        }
+      }
+      return Array.from(prevMap.values());
+    };
+
     const unsubQcRecentMbi = subscribeToQcRecent((items) => {
       if (selectedWarehouseRef.current === "MBI" && Array.isArray(items) && items.length > 0) {
-        setQcOrders((prev) => {
-          const map = new Map<string, any>();
-          for (const item of items) {
-            if (item.so_number) map.set(item.so_number.trim(), item);
-          }
-          for (const item of prev) {
-            if (item.so_number && !map.has(item.so_number.trim())) {
-              map.set(item.so_number.trim(), item);
-            }
-          }
-          return Array.from(map.values());
-        });
+        setQcOrders((prev) => mergeQcItems(prev, items));
       }
     }, "MBI");
 
     const unsubQcRecentMai = subscribeToQcRecent((items) => {
       if (selectedWarehouseRef.current === "MAI" && Array.isArray(items) && items.length > 0) {
-        setQcOrders((prev) => {
-          const map = new Map<string, any>();
-          for (const item of items) {
-            if (item.so_number) map.set(item.so_number.trim(), item);
-          }
-          for (const item of prev) {
-            if (item.so_number && !map.has(item.so_number.trim())) {
-              map.set(item.so_number.trim(), item);
-            }
-          }
-          return Array.from(map.values());
-        });
+        setQcOrders((prev) => mergeQcItems(prev, items));
       }
     }, "MAI");
 
