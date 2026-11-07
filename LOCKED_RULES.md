@@ -429,4 +429,5 @@ Arsitektur upload cepat ini telah diuji dan terbukti memberikan respon kilat ins
 > 15. Jaminan Zero SO Stripping: Dilarang membuang No SO pada ORA / export. No SO wajib dipertahankan utuh.
 > 16. Integritas SO-Invoice Report QC: SO yang sudah memiliki faktur wajib otomatis keluar dari antrean Menunggu Faktur detik itu juga melalui pencocokan multi-dimensi.
 > 17. Arsitektur Upload Kilat & Non-Blocking Persistence: Optimistic instant UI update (<100ms), pruning data client-side, dan direct in-memory cache injection tanpa full re-download.
+> 18. Arsitektur Sinkronisasi Instan Report QC (<1 Detik & 0-Byte Vercel Origin): Siaran langsung via Firestore WebSocket (`qc_recent_mbi` dan `qc_recent_mai`), invalidasi instan cache serverless, dukungan query bypass `fresh=true`, dan eliminasi penundaan CDN 60 detik tanpa menambah beban Fast Origin Vercel.
 
