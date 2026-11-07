@@ -2323,7 +2323,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
 
       // If client has a cold start / empty database (< 1000), perform full archive download
-      const isColdStart = Boolean(!check || currentCount < 1000);
+      const isColdStart = currentCount < 1000;
 
       if (isColdStart) {
         const fullRes = await fetchFaktursFromTiDB();
