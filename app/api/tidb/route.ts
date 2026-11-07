@@ -15,10 +15,18 @@ function compressedJsonResponse(
   const jsonStr = JSON.stringify(data);
   const acceptEncoding = req.headers.get("accept-encoding") || "";
   const url = new URL(req.url);
-  const isNoCache =
+
+  // If customHeaders explicitly configures CDN caching, protect it and never let browser headers override it to no-store
+  const hasExplicitCdnCache = Boolean(
+    customHeaders["CDN-Cache-Control"]?.includes("public") ||
+    customHeaders["Vercel-CDN-Cache-Control"]?.includes("public") ||
+    customHeaders["Cache-Control"]?.includes("public")
+  );
+
+  const isNoCache = !hasExplicitCdnCache && (
     req.method !== "GET" ||
-    req.headers.get("cache-control") === "no-cache" ||
-    url.searchParams.get("fresh") === "true";
+    url.searchParams.get("fresh") === "true"
+  );
 
   const etag = `"${crypto.createHash("md5").update(jsonStr).digest("hex")}"`;
 
@@ -1512,6 +1520,7 @@ export async function GET(req: Request) {
           timestamp: Date.now(),
         },
         {
+          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
           "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
           "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
         }
@@ -1609,6 +1618,7 @@ export async function GET(req: Request) {
           timestamp: Date.now(),
         },
         {
+          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
           "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
           "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
         }
