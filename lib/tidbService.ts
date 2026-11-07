@@ -203,9 +203,7 @@ export async function checkTiDBUpdates(
 
   activeCheckPromise = (async () => {
     try {
-      const res = await fetch(`/api/tidb?action=check&count=${clientCount}&updated=${clientUpdated}&_t=${Date.now()}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/tidb?action=check&count=${clientCount}&updated=${clientUpdated}`);
       if (!res.ok) return null;
       const data = await res.json();
       if (data.success) {
@@ -240,8 +238,8 @@ export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreF
     const querySince = Math.max(0, sinceTimestamp - 10);
 
     while (true) {
-      const url = `/api/tidb?action=delta&since=${querySince}&cursor=${encodeURIComponent(cursor)}&limit=5000&_t=${Date.now()}`;
-      const res = await fetch(url, { cache: "no-store" });
+      const url = `/api/tidb?action=delta&since=${querySince}&cursor=${encodeURIComponent(cursor)}&limit=5000`;
+      const res = await fetch(url);
       if (!res.ok) break;
       const data = await res.json();
       if (!data.success || !Array.isArray(data.fakturs)) break;

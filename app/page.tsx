@@ -1775,7 +1775,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
     };
 
-    const interval = setInterval(syncNetTick, 4000);
+    // Gentle 60s fallback interval (primary realtime updates arrive <50ms via Firestore WebSocket signals)
+    const interval = setInterval(syncNetTick, 60000);
 
     const onVisibility = () => {
       if (document.visibilityState === "visible") {

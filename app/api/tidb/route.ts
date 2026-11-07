@@ -988,9 +988,9 @@ export async function GET(req: Request) {
           maxUpdated,
         },
         {
-          "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
-          "CDN-Cache-Control": "no-store",
-          "Vercel-CDN-Cache-Control": "no-store",
+          "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
+          "CDN-Cache-Control": "public, s-maxage=10",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=10",
         }
       );
     }
@@ -1112,9 +1112,9 @@ export async function GET(req: Request) {
           hasMore,
         },
         {
-          "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
-          "CDN-Cache-Control": "no-store",
-          "Vercel-CDN-Cache-Control": "no-store",
+          "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
+          "CDN-Cache-Control": "public, s-maxage=10",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=10",
         }
       );
     }
