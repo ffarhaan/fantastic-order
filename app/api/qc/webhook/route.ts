@@ -242,6 +242,42 @@ export async function POST(req: Request) {
               }),
             }
           ).catch((e) => console.warn(`[QC Webhook ${wh}] Firestore patch warning:`, e));
+
+          // Realtime push for Report QC queue (instant <1s sync, 0 bytes on Vercel)
+          const qcDocId = wh === "MAI" ? "qc_recent_mai" : "qc_recent_mbi";
+          const recentQcItems = rows.slice(-100).map((r) => ({
+            warehouse: wh,
+            so_number: r.so,
+            no_do: r.noDo,
+            customer_name: r.customer,
+            so_date: r.soDate,
+            waktu_kirim: r.waktuKirim,
+            checker_name: r.checker,
+            packer_name: r.packer,
+            picker_name: r.picker,
+            kategori: r.kategori || "1P",
+            kategori_produk: r.kategoriProduk || "FARMA",
+            total_item: r.totalItem,
+            total_qty: r.totalQty,
+            barang_catatan: r.barangCatatan,
+            is_done: r.isDone,
+            sheet_row: 0,
+            status: "QC_DONE",
+            updated_at: new Date().toISOString(),
+          }));
+          await fetch(
+            `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/app_data/${qcDocId}?key=${apiKey}&updateMask.fieldPaths=data&updateMask.fieldPaths=updatedAt`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                fields: {
+                  data: { stringValue: JSON.stringify(recentQcItems) },
+                  updatedAt: { stringValue: new Date().toISOString() },
+                },
+              }),
+            }
+          ).catch((e) => console.warn(`[QC Webhook Recent ${wh}] Firestore patch failed:`, e));
         } catch (e) {
           console.warn(`[QC Webhook ${wh}] Firestore sync error:`, e);
         }

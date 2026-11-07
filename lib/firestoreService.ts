@@ -2300,6 +2300,37 @@ export function subscribeToCheckers(
   };
 }
 
+/**
+ * Realtime direct Firestore subscription for Report QC Recent Queue (<100ms sync, 0 bytes on Vercel)
+ * Strictly isolated per warehouse (MBI vs MAI)
+ */
+export function subscribeToQcRecent(
+  onUpdate: (items: any[]) => void,
+  warehouse: "MBI" | "MAI" = "MBI"
+): () => void {
+  const docName = warehouse === "MAI" ? "qc_recent_mai" : "qc_recent_mbi";
+  const docRef = doc(db, APP_DATA_COLLECTION, docName);
+  return onSnapshot(
+    docRef,
+    (snap) => {
+      if (snap.exists()) {
+        const rawData = snap.data()?.data;
+        if (typeof rawData === "string") {
+          try {
+            const parsed = JSON.parse(rawData);
+            if (Array.isArray(parsed)) {
+              onUpdate(parsed);
+            }
+          } catch {}
+        } else if (Array.isArray(rawData)) {
+          onUpdate(rawData);
+        }
+      }
+    },
+    (err) => console.warn(`Firestore ${docName} sync warning:`, err)
+  );
+}
+
 
 // ============================================================================
 // UNIVERSAL REALTIME CROSS-BROWSER SIGNAL (FAKTURS, RETURNS, CUSTOMERS)

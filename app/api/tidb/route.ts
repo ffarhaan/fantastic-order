@@ -485,12 +485,13 @@ export async function GET(req: Request) {
     // ==========================================
     if (action === "qc_reports") {
       const warehouse = (searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
+      const isFresh = searchParams.get("fresh") === "true";
       const now = Date.now();
-      if (memoryQcReportsCache[warehouse] && (now - memoryQcReportsCache[warehouse].ts < 15000)) {
+      if (!isFresh && memoryQcReportsCache[warehouse] && (now - memoryQcReportsCache[warehouse].ts < 2000)) {
         return compressedJsonResponse(req, memoryQcReportsCache[warehouse].payload, {
-          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
-          "CDN-Cache-Control": "public, s-maxage=60",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=60",
+          "Cache-Control": "public, s-maxage=2, stale-while-revalidate=10",
+          "CDN-Cache-Control": "public, s-maxage=2",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=2",
         });
       }
       const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
@@ -520,14 +521,14 @@ export async function GET(req: Request) {
              checker_name, packer_name, picker_name, kategori, kategori_produk,
              total_item, total_qty, barang_catatan, is_done, status, sheet_row, updated_at
            FROM qc_reports
-           WHERE warehouse = ? AND updated_at >= NOW() - INTERVAL 48 HOUR
+           WHERE warehouse = ? AND updated_at >= NOW() - INTERVAL 7 DAY
            UNION ALL
            SELECT 
              ? as warehouse, so_number, NULL as no_do, NULL as customer_name, NULL as so_date, NULL as waktu_kirim,
              checker_name, packer_name, picker_name, '1P' as kategori, 'FARMA' as kategori_produk,
              0 as total_item, 0 as total_qty, 0 as barang_catatan, '' as is_done, 'QC_DONE' as status, 0 as sheet_row, updated_at
            FROM ${tableName}
-           WHERE updated_at >= NOW() - INTERVAL 48 HOUR
+           WHERE updated_at >= NOW() - INTERVAL 7 DAY
              AND so_number IS NOT NULL AND so_number != '' AND so_number != '-'
          ) t
          LEFT JOIN cancelled_qc_sos cqs ON t.so_number = cqs.so_number
@@ -544,9 +545,9 @@ export async function GET(req: Request) {
         req,
         payload,
         {
-          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
-          "CDN-Cache-Control": "public, s-maxage=60",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=60",
+          "Cache-Control": isFresh ? "no-store, no-cache, must-revalidate" : "public, s-maxage=2, stale-while-revalidate=10",
+          "CDN-Cache-Control": isFresh ? "no-store" : "public, s-maxage=2",
+          "Vercel-CDN-Cache-Control": isFresh ? "no-store" : "public, s-maxage=2",
         }
       );
     }
@@ -1854,7 +1855,10 @@ export async function POST(req: Request) {
         }
       }
 
-      // Also propagate to Firestore (so_checkers_recent for MBI, so_checkers_recent_mai for MAI) for instant real-time WebSocket updates (<100ms)
+      // Immediately bust in-memory QC reports cache so next fetch is instant
+      delete memoryQcReportsCache[warehouse];
+
+      // Also propagate to Firestore for instant real-time WebSocket updates (<100ms, 0 byte on Vercel)
       const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
       const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "fantastic-order";
       if (apiKey && projectId && (validRows.length > 0 || qcRows.length > 0)) {
@@ -1878,6 +1882,44 @@ export async function POST(req: Request) {
               }),
             }
           ).catch((e) => console.warn(`[Sync Checkers ${warehouse}] Firestore patch failed:`, e));
+
+          // Realtime push for Report QC queue (instant <1s sync, 0 bytes on Vercel)
+          if (qcRows.length > 0) {
+            const qcDocId = warehouse === "MAI" ? "qc_recent_mai" : "qc_recent_mbi";
+            const recentQcItems = qcRows.slice(-100).map((r) => ({
+              warehouse: r[0],
+              so_number: r[1],
+              no_do: r[2],
+              customer_name: r[3],
+              so_date: r[4],
+              waktu_kirim: r[5],
+              checker_name: r[6],
+              packer_name: r[7],
+              picker_name: r[8],
+              kategori: r[9],
+              kategori_produk: r[10],
+              total_item: r[11],
+              total_qty: r[12],
+              barang_catatan: r[13],
+              is_done: r[14],
+              sheet_row: r[15],
+              status: "QC_DONE",
+              updated_at: new Date().toISOString(),
+            }));
+            await fetch(
+              `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/app_data/${qcDocId}?key=${apiKey}&updateMask.fieldPaths=data&updateMask.fieldPaths=updatedAt`,
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  fields: {
+                    data: { stringValue: JSON.stringify(recentQcItems) },
+                    updatedAt: { stringValue: new Date().toISOString() },
+                  },
+                }),
+              }
+            ).catch((e) => console.warn(`[Sync QC Recent ${warehouse}] Firestore patch failed:`, e));
+          }
         } catch (e) {
           console.warn(`[Sync Checkers ${warehouse}] Firestore sync warning:`, e);
         }

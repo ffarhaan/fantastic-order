@@ -34,6 +34,7 @@ import {
   broadcastPrintSignal,
   subscribeToPrintSignal,
   subscribeToCheckers,
+  subscribeToQcRecent,
   subscribeToUserProfiles,
   subscribeToRealtimeSignal,
   broadcastRealtimeSignal,
@@ -1043,16 +1044,16 @@ export default function Home() {
 
   // Fetch QC Reports (GSheet Rekap Lengkap / Rekap SO queue waiting for Oracle invoice)
   const lastQcSigRef = useRef<Record<string, string>>({});
-  const fetchQcOrders = useCallback(async (wh: "MBI" | "MAI") => {
+  const fetchQcOrders = useCallback(async (wh: "MBI" | "MAI", fresh = false) => {
     try {
-      const res = await fetch(`/api/tidb?action=qc_reports&warehouse=${wh}`);
+      const res = await fetch(`/api/tidb?action=qc_reports&warehouse=${wh}${fresh ? "&fresh=true" : ""}`);
       const d = await res.json();
       if (d && d.success && Array.isArray(d.data)) {
         if (wh === selectedWarehouseRef.current) {
           const sig = d.data
             .map((r: any) => `${r.so_number}:${r.is_done}:${r.status}:${r.checker_name}:${r.packer_name}:${r.picker_name}:${r.barang_catatan}:${r.updated_at}`)
             .join("|");
-          if (lastQcSigRef.current[wh] !== sig) {
+          if (fresh || lastQcSigRef.current[wh] !== sig) {
             lastQcSigRef.current[wh] = sig;
             setQcOrders(d.data);
           }
@@ -1135,7 +1136,7 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
         setCheckerMapMbi(next);
       }
       if (selectedWarehouseRef.current === "MBI") {
-        fetchQcOrders("MBI");
+        fetchQcOrders("MBI", true);
       }
     }, "MBI");
 
@@ -1182,7 +1183,7 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
         setCheckerMapMai(next);
       }
       if (selectedWarehouseRef.current === "MAI") {
-        fetchQcOrders("MAI");
+        fetchQcOrders("MAI", true);
       }
     }, "MAI");
 
@@ -1201,9 +1202,46 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
         .catch(() => {});
     } catch {}
 
+    // 3. Instant Report QC Direct Push via Firestore WebSocket (<100ms sync, 0 bytes on Vercel)
+    const unsubQcRecentMbi = subscribeToQcRecent((items) => {
+      if (selectedWarehouseRef.current === "MBI" && Array.isArray(items) && items.length > 0) {
+        setQcOrders((prev) => {
+          const map = new Map<string, any>();
+          for (const item of items) {
+            if (item.so_number) map.set(item.so_number.trim(), item);
+          }
+          for (const item of prev) {
+            if (item.so_number && !map.has(item.so_number.trim())) {
+              map.set(item.so_number.trim(), item);
+            }
+          }
+          return Array.from(map.values());
+        });
+      }
+    }, "MBI");
+
+    const unsubQcRecentMai = subscribeToQcRecent((items) => {
+      if (selectedWarehouseRef.current === "MAI" && Array.isArray(items) && items.length > 0) {
+        setQcOrders((prev) => {
+          const map = new Map<string, any>();
+          for (const item of items) {
+            if (item.so_number) map.set(item.so_number.trim(), item);
+          }
+          for (const item of prev) {
+            if (item.so_number && !map.has(item.so_number.trim())) {
+              map.set(item.so_number.trim(), item);
+            }
+          }
+          return Array.from(map.values());
+        });
+      }
+    }, "MAI");
+
     return () => {
       unsubMbi();
       unsubMai();
+      unsubQcRecentMbi();
+      unsubQcRecentMai();
     };
   }, [fetchQcOrders]);
 
@@ -5964,7 +6002,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           {/* Cell 0: Report QC (Menunggu Faktur ORA/DOO) */}
           <button
             type="button"
-            onClick={() => { setFilter(filter === "report_qc" ? "all" : "report_qc"); setPage(0); }}
+            onClick={() => {
+              const nextFilter = filter === "report_qc" ? "all" : "report_qc";
+              setFilter(nextFilter);
+              setPage(0);
+              if (nextFilter === "report_qc") {
+                fetchQcOrders(selectedWarehouseRef.current, true);
+              }
+            }}
             className={`py-1.5 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
               filter === "report_qc"
                 ? (isDarkMode ? "bg-amber-950/50 ring-2 ring-inset ring-amber-400" : "bg-amber-100 ring-2 ring-inset ring-amber-600")
