@@ -1545,12 +1545,11 @@ export async function GET(req: Request) {
           maxUpdated,
           nextCursor,
           hasMore,
-          timestamp: Date.now(),
         },
         {
-          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
-          "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
+          "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=86400",
+          "CDN-Cache-Control": "public, s-maxage=1800",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=1800",
         }
       );
     }
@@ -1643,12 +1642,11 @@ export async function GET(req: Request) {
           count: docs.length,
           fakturs: docs,
           maxUpdated,
-          timestamp: Date.now(),
         },
         {
-          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
-          "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
+          "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=86400",
+          "CDN-Cache-Control": "public, s-maxage=1800",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=1800",
         }
       );
     }
