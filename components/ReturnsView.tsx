@@ -473,11 +473,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const resolvedCasesCount = stats.totalResolved !== undefined ? Number(stats.totalResolved) : statusMetrics.resolved;
   const rejectedCasesCount = stats.totalReject !== undefined ? Number(stats.totalReject) : statusMetrics.rejected;
 
-  // Fetch all returns for analytic tabs (always real-time fresh from TiDB)
-  const fetchAllReturns = useCallback(async (_forceFresh = true) => {
+  // Fetch all returns for analytic tabs (prioritizes memory cache, backed by Edge CDN)
+  const fetchAllReturns = useCallback(async (forceFresh = false) => {
+    // If not forcing fresh and we already have cached data in memory, prioritize instant memory read (<1ms)
+    if (!forceFresh && cachedAllReturnsData && cachedAllReturnsData.length > 0) {
+      setAllReturns(cachedAllReturnsData);
+      return;
+    }
     try {
-      const url = `/api/tidb?action=returns&limit=5000&fresh=true&_t=${Date.now()}`;
-      const res = await fetch(url, { cache: "no-store" });
+      const url = `/api/tidb?action=returns&limit=5000`;
+      const res = await fetch(url);
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setAllReturns(json.data);
@@ -764,7 +769,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const limit = 50;
   const lastFocusFetchRef = useRef<number>(Date.now());
 
-  const fetchReturns = useCallback(async (silent = false, forceFresh = false) => {
+  const fetchReturns = useCallback(async (silent = false, _forceFresh = false) => {
     if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -772,10 +777,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         limit: String(limit),
         offset: String(page * limit),
       });
-      if (forceFresh) {
-        params.set("fresh", "true");
-        params.set("_t", String(Date.now()));
-      }
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       if (pbfFilter !== "ALL") params.set("pbf", pbfFilter);
