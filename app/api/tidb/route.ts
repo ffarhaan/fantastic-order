@@ -6,6 +6,10 @@ import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
+// Short-term in-memory cache to protect against rapid client loops
+let memoryQcReportsCache: Record<string, { payload: any; ts: number }> = {};
+let memoryCheckCache: { payload: any; ts: number } | null = null;
+
 function compressedJsonResponse(
   req: Request,
   data: unknown,
@@ -477,6 +481,14 @@ export async function GET(req: Request) {
     // ==========================================
     if (action === "qc_reports") {
       const warehouse = (searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
+      const now = Date.now();
+      if (memoryQcReportsCache[warehouse] && (now - memoryQcReportsCache[warehouse].ts < 15000)) {
+        return compressedJsonResponse(req, memoryQcReportsCache[warehouse].payload, {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+          "CDN-Cache-Control": "public, s-maxage=60",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=60",
+        });
+      }
       const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
       const rows = (await conn.execute(
         `SELECT 
@@ -521,14 +533,16 @@ export async function GET(req: Request) {
          LIMIT 500;`,
         [warehouse, warehouse, warehouse]
       )) as any[];
-      return Response.json(
-        { success: true, count: rows.length, data: rows },
+      const payload = { success: true, count: rows.length, data: rows };
+      memoryQcReportsCache[warehouse] = { payload, ts: Date.now() };
+
+      return compressedJsonResponse(
+        req,
+        payload,
         {
-          headers: {
-            "Cache-Control": "public, s-maxage=10, stale-while-revalidate=60",
-            "CDN-Cache-Control": "public, s-maxage=10",
-            "Vercel-CDN-Cache-Control": "public, s-maxage=10",
-          },
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+          "CDN-Cache-Control": "public, s-maxage=60",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=60",
         }
       );
     }
@@ -977,11 +991,21 @@ export async function GET(req: Request) {
     }
 
     if (action === "check") {
-      const result = (await conn.execute(
-        "SELECT COUNT(*) as count, UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
-      )) as Array<{ count: number; max_updated: number | null }>;
-      const totalCount = Number(result[0]?.count || 0);
-      const maxUpdated = Number(result[0]?.max_updated || 0);
+      const now = Date.now();
+      let totalCount = 0;
+      let maxUpdated = 0;
+
+      if (memoryCheckCache && (now - memoryCheckCache.ts < 15000)) {
+        totalCount = memoryCheckCache.payload.totalCount;
+        maxUpdated = memoryCheckCache.payload.maxUpdated;
+      } else {
+        const result = (await conn.execute(
+          "SELECT COUNT(*) as count, UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
+        )) as Array<{ count: number; max_updated: number | null }>;
+        totalCount = Number(result[0]?.count || 0);
+        maxUpdated = Number(result[0]?.max_updated || 0);
+        memoryCheckCache = { payload: { totalCount, maxUpdated }, ts: now };
+      }
 
       const clientCount = Number(searchParams.get("count") || 0);
       const clientUpdated = Number(searchParams.get("updated") || 0);
@@ -996,9 +1020,9 @@ export async function GET(req: Request) {
           maxUpdated,
         },
         {
-          "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
-          "CDN-Cache-Control": "public, s-maxage=10",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=10",
+          "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+          "CDN-Cache-Control": "public, s-maxage=30",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=30",
         }
       );
     }

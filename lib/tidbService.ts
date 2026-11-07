@@ -203,14 +203,17 @@ export async function checkTiDBUpdates(
 
   activeCheckPromise = (async () => {
     try {
-      const res = await fetch(`/api/tidb?action=check&count=${clientCount}&updated=${clientUpdated}`);
+      const res = await fetch("/api/tidb?action=check");
       if (!res.ok) return null;
       const data = await res.json();
       if (data.success) {
+        const totalCount = Number(data.totalCount || 0);
+        const maxUpdated = Number(data.maxUpdated || 0);
+        const isUpToDate = clientCount === totalCount && totalCount > 0 && clientUpdated > 0 && clientUpdated >= maxUpdated;
         const result = {
-          upToDate: Boolean(data.upToDate),
-          totalCount: Number(data.totalCount || 0),
-          maxUpdated: Number(data.maxUpdated || 0),
+          upToDate: isUpToDate,
+          totalCount,
+          maxUpdated,
         };
         lastCheckTime = Date.now();
         lastCheckResult = result;

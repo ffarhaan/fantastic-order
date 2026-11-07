@@ -67,38 +67,16 @@ export default function SystemUpdateNotifier() {
         }
       } catch {}
 
-      // Tunggu sampai Vercel benar-benar selesai build ("Ready") dan traffic sudah berpindah
-      let attempts = 0;
-      const maxAttempts = 35; // cek setiap 3 detik (sampai ~105 detik)
+      // Tunggu 20 detik agar Vercel deployment selesai switch traffic secara mulus tanpa spam polling API
+      const switchTimer = setTimeout(() => {
+        setUpdateInfo(payload);
+        setIsDismissed(false);
+        setCountdown(15);
+        setIsAutoReloadPaused(false);
+        playChime();
+      }, 20000);
 
-      const pollUntilLive = async () => {
-        try {
-          const res = await fetch(`/api/system/version?t=${Date.now()}`, {
-            cache: "no-store",
-          });
-          if (res.ok) {
-            const data = await res.json();
-            // Jika server live Vercel sudah merespon dengan Build ID yang baru:
-            if (data.buildId === payload.buildId) {
-              setUpdateInfo(payload);
-              setIsDismissed(false);
-              setCountdown(15);
-              setIsAutoReloadPaused(false);
-              playChime();
-              return;
-            }
-          }
-        } catch {
-          // Abaikan glitch koneksi saat Vercel switch traffic
-        }
-
-        attempts++;
-        if (attempts < maxAttempts) {
-          setTimeout(pollUntilLive, 3000);
-        }
-      };
-
-      pollUntilLive();
+      return () => clearTimeout(switchTimer);
     });
 
     return () => unsub();

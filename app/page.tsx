@@ -1752,6 +1752,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     fetchQcOrders(selectedWarehouseRef.current);
 
     const syncNetTick = async () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       // 1. Pull Report QC updates (only triggers React state update if data signature changed)
       fetchQcOrders(selectedWarehouseRef.current);
 
@@ -1775,8 +1776,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
     };
 
-    // Gentle 60s fallback interval (primary realtime updates arrive <50ms via Firestore WebSocket signals)
-    const interval = setInterval(syncNetTick, 60000);
+    // Ultra-conservative 5-minute fallback interval (primary realtime updates arrive <50ms via Firestore WebSocket signals)
+    const interval = setInterval(syncNetTick, 300000);
 
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
