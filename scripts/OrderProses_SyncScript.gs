@@ -338,7 +338,6 @@ function syncReportQcMBI() {
         itemsToSend.push(it);
       }
     }
-    }
 
     if (itemsToSend.length > 0) {
       var CHUNK = 200;
