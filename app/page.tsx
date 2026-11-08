@@ -1229,9 +1229,9 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
             kategori_produk: item.kategori_produk || existing.kategori_produk,
             total_item: (item.total_item && Number(item.total_item) > 0) ? Number(item.total_item) : existing.total_item,
             total_qty: (item.total_qty && Number(item.total_qty) > 0) ? Number(item.total_qty) : existing.total_qty,
-            barang_catatan: (item.barang_catatan !== undefined && item.barang_catatan !== null && item.barang_catatan !== "" && Number(item.barang_catatan) > 0)
-              ? Number(item.barang_catatan)
-              : (existing.barang_catatan || 0),
+            barang_catatan: (item.barang_catatan !== undefined && item.barang_catatan !== null && item.barang_catatan !== "")
+              ? (Number(item.barang_catatan) || 0)
+              : (existing.barang_catatan !== undefined ? existing.barang_catatan : 0),
             sheet_row: (item.sheet_row && Number(item.sheet_row) > 0) ? Number(item.sheet_row) : existing.sheet_row,
           });
         }

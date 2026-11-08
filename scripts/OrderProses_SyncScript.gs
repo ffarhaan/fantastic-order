@@ -83,41 +83,21 @@ function detectLengkapColumns(headers) {
 
 /**
  * Deteksi Kolom Tab "Rekap SO":
- * Col A: Waktu Kirim | B: NO DO | C: No SO | D: Apotek | E: Tanggal SO
- * Col H: Total Item | I: Total Qty | Col J: Barang Catatan | K: Kat | L: Kat Produk
+ * HANYA MEMBACA:
+ * - Col C: No SO (Kunci Pencocokan)
+ * - Col J: Barang Catatan (Jumlah Catatan Barang)
+ * (Kolom lain seperti No DO, Pelanggan, Tgl SO TIDAK DIBACA karena sudah lengkap di Rekap Lengkap)
  */
 function detectRekapSOColumns(headers) {
-  var map = {
-    waktuKirim: -1, noDo: -1, so: -1, customer: -1, soDate: -1, checker: -1,
-    totalItem: -1, totalQty: -1, barangCatatan: -1,
-    kategori: -1, kategoriProduk: -1
-  };
+  var map = { so: -1, barangCatatan: -1 };
   for (var i = 0; i < headers.length; i++) {
     var h = String(headers[i] || "").toLowerCase().trim();
-    if (map.waktuKirim < 0 && (h.indexOf("waktu kirim") !== -1 || h.indexOf("waktu") !== -1 || h.indexOf("jam") !== -1)) map.waktuKirim = i;
-    if (map.noDo < 0 && (h.indexOf("no do") !== -1 || h.indexOf("no. do") !== -1 || h === "do")) map.noDo = i;
     if (map.so < 0 && (h.indexOf("so selesai") !== -1 || h.indexOf("no so") !== -1 || h.indexOf("no. so") !== -1 || h === "so")) map.so = i;
-    if (map.customer < 0 && (h.indexOf("apotek") !== -1 || h.indexOf("pelanggan") !== -1 || h.indexOf("customer") !== -1 || h.indexOf("nama apotek") !== -1)) map.customer = i;
-    if (map.soDate < 0 && (h.indexOf("tanggal so") !== -1 || h.indexOf("tgl so") !== -1 || h.indexOf("order date") !== -1)) map.soDate = i;
-    if (map.checker < 0 && (h.indexOf("checker") !== -1 || h.indexOf("qc") !== -1)) map.checker = i;
-    if (map.totalItem < 0 && (h.indexOf("total item") !== -1 || h.indexOf("item") !== -1)) map.totalItem = i;
-    if (map.totalQty < 0 && (h.indexOf("total qty") !== -1 || h.indexOf("qty") !== -1)) map.totalQty = i;
     if (map.barangCatatan < 0 && (h.indexOf("barang c") !== -1 || h.indexOf("catatan") !== -1 || h.indexOf("brg c") !== -1)) map.barangCatatan = i;
-    if (map.kategori < 0 && (h === "kategori" || h === "kat")) map.kategori = i;
-    if (map.kategoriProduk < 0 && (h.indexOf("kategori produk") !== -1 || h.indexOf("kat produk") !== -1 || h.indexOf("produk") !== -1)) map.kategoriProduk = i;
   }
-  // Fallback standar posisi kolom tab "Rekap SO" Gudang MBI (sesuai layout fisik sheet):
-  if (map.waktuKirim < 0) map.waktuKirim = 0;       // Col A
-  if (map.noDo < 0) map.noDo = 1;                   // Col B
-  if (map.so < 0) map.so = 2;                       // Col C
-  if (map.customer < 0) map.customer = 3;           // Col D
-  if (map.soDate < 0) map.soDate = 4;               // Col E
-  if (map.checker < 0) map.checker = 5;             // Col F (Checker)
-  if (map.totalItem < 0) map.totalItem = 6;         // Col G (Item)
-  if (map.totalQty < 0) map.totalQty = 8;           // Col I (Total Qty)
-  if (map.barangCatatan < 0) map.barangCatatan = 9; // Col J: Jumlah Barang Catatan
-  if (map.kategori < 0) map.kategori = 10;          // Col K
-  if (map.kategoriProduk < 0) map.kategoriProduk = 11; // Col L
+  // Fallback standar posisi kolom tab "Rekap SO" Gudang MBI:
+  if (map.so < 0) map.so = 2;                       // Col C (No SO)
+  if (map.barangCatatan < 0) map.barangCatatan = 9; // Col J (Jumlah Barang Catatan)
   return map;
 }
 
@@ -200,28 +180,11 @@ function onEditReportQcMBI(e) {
         if (!soValS || soValS === "-" || soValS === "#N/A") continue;
 
         var brgCatatan = colMapS.barangCatatan >= 0 ? Number(rowS[colMapS.barangCatatan]) || 0 : 0;
-        var cust = colMapS.customer >= 0 ? String(rowS[colMapS.customer] || "").trim() : "";
-        var noDo = colMapS.noDo >= 0 ? String(rowS[colMapS.noDo] || "").trim() : "";
-        var waktuKirim = colMapS.waktuKirim >= 0 ? String(rowS[colMapS.waktuKirim] || "").trim() : "";
-        var tglSo = colMapS.soDate >= 0 ? String(rowS[colMapS.soDate] || "").trim() : "";
-        var checkerVal = colMapS.checker >= 0 ? cleanStaffName(rowS[colMapS.checker]) : "";
-        var kat = colMapS.kategori >= 0 ? String(rowS[colMapS.kategori] || "").trim() : "";
-        var katProd = colMapS.kategoriProduk >= 0 ? String(rowS[colMapS.kategoriProduk] || "").trim() : "";
-        var totItem = colMapS.totalItem >= 0 ? Number(rowS[colMapS.totalItem]) || 0 : 0;
-        var totQty = colMapS.totalQty >= 0 ? Number(rowS[colMapS.totalQty]) || 0 : 0;
         var rowNumberS = actualStart + s;
 
+        // MURNI HANYA AMBIL BARANG CATATAN (KOLOM J) DARI TAB REKAP SO!
         itemsToSend.push({
           so: soValS,
-          no_do: noDo,
-          customer: cust,
-          waktu_kirim: waktuKirim,
-          so_date: tglSo,
-          checker: checkerVal,
-          kategori: kat,
-          kategori_produk: katProd,
-          total_item: totItem,
-          total_qty: totQty,
           barang_catatan: brgCatatan,
           sheet_row: rowNumberS,
           source: "rekap_so",
@@ -308,7 +271,6 @@ function syncReportQcMBI() {
               packer: packerVal,
               picker: pickerVal,
               so_date: soDateVal,
-              barang_catatan: 0,
               sheet_row: rowNumber,
               source: "rekap_lengkap",
               warehouse: "MBI"
@@ -318,9 +280,10 @@ function syncReportQcMBI() {
       }
     }
 
-    // 2. Baca TAB "Rekap SO" HANYA UNTUK KOLOM CATATAN BARANG
+    // 2. Baca TAB "Rekap SO" HANYA UNTUK KOLOM J (BARANG CATATAN)
+    // Sesuai aturan: No DO & Tgl SO TIDAK DIBACA dari Rekap SO karena sudah ada di Rekap Lengkap!
     if (sheetSO) {
-      var lastColSO = Math.max(12, sheetSO.getLastColumn());
+      var lastColSO = Math.max(10, sheetSO.getLastColumn());
       var maxRowsSO = sheetSO.getLastRow();
       if (maxRowsSO > 1) {
         var headersSO = sheetSO.getRange(1, 1, 1, lastColSO).getValues()[0];
@@ -347,49 +310,18 @@ function syncReportQcMBI() {
             if (!soKey || soKey === "-" || soKey === "#N/A") continue;
 
             var brgCatatan = colMapSO.barangCatatan >= 0 ? Number(rowSO[colMapSO.barangCatatan]) || 0 : 0;
-            var cust = colMapSO.customer >= 0 ? String(rowSO[colMapSO.customer] || "").trim() : "";
-            var noDo = colMapSO.noDo >= 0 ? String(rowSO[colMapSO.noDo] || "").trim() : "";
-            var waktuKirim = colMapSO.waktuKirim >= 0 ? String(rowSO[colMapSO.waktuKirim] || "").trim() : "";
-            var tglSoSO = colMapSO.soDate >= 0 ? String(rowSO[colMapSO.soDate] || "").trim() : "";
-            var checkerValSO = colMapSO.checker >= 0 ? cleanStaffName(rowSO[colMapSO.checker]) : "";
-            var kat = colMapSO.kategori >= 0 ? String(rowSO[colMapSO.kategori] || "").trim() : "";
-            var katProd = colMapSO.kategoriProduk >= 0 ? String(rowSO[colMapSO.kategoriProduk] || "").trim() : "";
-            var totItem = colMapSO.totalItem >= 0 ? Number(rowSO[colMapSO.totalItem]) || 0 : 0;
-            var totQty = colMapSO.totalQty >= 0 ? Number(rowSO[colMapSO.totalQty]) || 0 : 0;
             var rowNumberSO = startRowSO + s;
 
             if (itemsMap[soKey]) {
-              // HANYA ambil barang_catatan & metadata pendukung dari Rekap SO
-              // Checker, Packer, Picker TETAP DIAMBIL DARI REKAP LENGKAP!
+              // HANYA pasangkan barang_catatan (Kolom J) ke SO yang sudah ada di Rekap Lengkap!
               itemsMap[soKey].barang_catatan = brgCatatan;
-              itemsMap[soKey].sheet_row = Math.max(itemsMap[soKey].sheet_row || 0, rowNumberSO);
-              if (cust) itemsMap[soKey].customer = cust;
-              if (noDo) itemsMap[soKey].no_do = noDo;
-              if (waktuKirim) itemsMap[soKey].waktu_kirim = waktuKirim;
-              if (tglSoSO) itemsMap[soKey].so_date = tglSoSO;
-              if (checkerValSO && !itemsMap[soKey].checker) itemsMap[soKey].checker = checkerValSO;
-              if (kat) itemsMap[soKey].kategori = kat;
-              if (katProd) itemsMap[soKey].kategori_produk = katProd;
-              if (totItem > 0) itemsMap[soKey].total_item = totItem;
-              if (totQty > 0) itemsMap[soKey].total_qty = totQty;
             } else {
-              // Jika SO belum tercatat di Rekap Lengkap, daftarkan dengan barang_catatan
+              // Jika SO ada di Rekap SO tapi belum ada di Rekap Lengkap
               soOrder.push(soKey);
               itemsMap[soKey] = {
                 so: soKey,
-                no_do: noDo,
-                customer: cust,
-                waktu_kirim: waktuKirim,
-                so_date: tglSoSO,
-                kategori: kat,
-                kategori_produk: katProd,
-                total_item: totItem,
-                total_qty: totQty,
                 barang_catatan: brgCatatan,
                 sheet_row: rowNumberSO,
-                checker: checkerValSO,
-                packer: "",
-                picker: "",
                 source: "rekap_so",
                 warehouse: "MBI"
               };
@@ -402,9 +334,10 @@ function syncReportQcMBI() {
     var itemsToSend = [];
     for (var i = 0; i < soOrder.length; i++) {
       var it = itemsMap[soOrder[i]];
-      if (it && (it.checker || it.packer || it.picker || it.barang_catatan > 0 || it.customer)) {
+      if (it && (it.checker || it.packer || it.picker || it.barang_catatan !== undefined)) {
         itemsToSend.push(it);
       }
+    }
     }
 
     if (itemsToSend.length > 0) {
