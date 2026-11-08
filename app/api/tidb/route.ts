@@ -431,31 +431,53 @@ export async function GET(req: Request) {
       }>;
       const map: Record<string, { checker: string; packer: string; picker: string }> = {};
       if (Array.isArray(rows)) {
+        const isBad = (s: string) => {
+          if (!s || s === "-" || s === "#N/A") return true;
+          const low = s.toLowerCase();
+          return (
+            low.startsWith("apotek") ||
+            low.startsWith("apt ") ||
+            low.startsWith("hak ") ||
+            low.startsWith("pt ") ||
+            low.startsWith("klinik") ||
+            low.startsWith("rs ") ||
+            low.startsWith("rumah sakit") ||
+            low.startsWith("toko ") ||
+            low.startsWith("halo ") ||
+            low.startsWith("medika ") ||
+            low.startsWith("cv ") ||
+            low.startsWith("puskesmas") ||
+            low.includes("00:00:00") ||
+            low.includes("gmt") ||
+            low.includes("wib") ||
+            /^[0-9]+[a-z]*$/i.test(low) ||
+            /^(mon|tue|wed|thu|fri|sat|sun)\s/i.test(low)
+          );
+        };
+
         for (const r of rows) {
           if (r.so_number && r.so_number !== "-" && r.so_number !== "#N/A") {
             const raw = String(r.so_number).trim();
             if (!raw) continue;
-            let p = r.packer_name || "";
-            let k = r.picker_name || "";
-            if (
-              p.toLowerCase().startsWith("apotek") ||
-              p.toLowerCase().startsWith("pt ") ||
-              p.includes("00:00:00") ||
-              p.includes("GMT")
-            ) {
-              p = "";
+            let c = (r.checker_name || "").trim();
+            let p = (r.packer_name || "").trim();
+            let k = (r.picker_name || "").trim();
+
+            if (isBad(c)) {
+              if (p && !isBad(p)) {
+                c = p;
+                p = "";
+              } else {
+                c = "";
+              }
             }
-            if (
-              k.includes("00:00:00") ||
-              k.includes("GMT") ||
-              /^(mon|tue|wed|thu|fri|sat|sun)\s/i.test(k)
-            ) {
-              k = "";
-            }
+            if (isBad(p)) p = "";
+            if (isBad(k)) k = "";
+
             const val = {
-              checker: r.checker_name || "",
-              packer: p,
-              picker: k,
+              checker: c || "-",
+              packer: p || "-",
+              picker: k || "-",
             };
             if (!map[raw]) map[raw] = val;
             const noSpace = raw.replace(/\s+/g, "");

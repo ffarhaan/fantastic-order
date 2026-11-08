@@ -19,12 +19,24 @@ export async function OPTIONS() {
 function cleanName(val: unknown): string {
   if (!val) return "";
   const str = String(val).trim();
+  const low = str.toLowerCase();
   if (
-    str.toLowerCase().startsWith("apotek") ||
-    str.toLowerCase().startsWith("pt ") ||
-    str.toLowerCase().startsWith("klinik") ||
+    low.startsWith("apotek") ||
+    low.startsWith("apt ") ||
+    low.startsWith("hak ") ||
+    low.startsWith("pt ") ||
+    low.startsWith("klinik") ||
+    low.startsWith("rs ") ||
+    low.startsWith("rumah sakit") ||
+    low.startsWith("toko ") ||
+    low.startsWith("halo ") ||
+    low.startsWith("medika ") ||
+    low.startsWith("cv ") ||
+    low.startsWith("puskesmas") ||
     str.includes("00:00:00") ||
     str.includes("GMT") ||
+    str.includes("WIB") ||
+    /^[0-9]+[a-zA-Z]*$/.test(str) ||
     /^(mon|tue|wed|thu|fri|sat|sun)\s/i.test(str)
   ) {
     return "";

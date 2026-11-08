@@ -1015,30 +1015,54 @@ export default function Home() {
 
     if (!entry) return null;
 
+    const isBadPersonnelName = (val?: string) => {
+      if (!val) return true;
+      const s = String(val).trim().toLowerCase();
+      if (!s || s === "-" || s === "#n/a") return true;
+      if (
+        s.startsWith("apotek") ||
+        s.startsWith("apt ") ||
+        s.startsWith("hak ") ||
+        s.startsWith("pt ") ||
+        s.startsWith("klinik") ||
+        s.startsWith("rs ") ||
+        s.startsWith("rumah sakit") ||
+        s.startsWith("toko ") ||
+        s.startsWith("halo ") ||
+        s.startsWith("medika ") ||
+        s.startsWith("cv ") ||
+        s.startsWith("puskesmas") ||
+        s.includes("00:00:00") ||
+        s.includes("gmt") ||
+        s.includes("wib") ||
+        /^[0-9]+[a-z]*$/i.test(s)
+      ) {
+        return true;
+      }
+      return false;
+    };
+
+    let c = entry.checker;
     let p = entry.packer;
     let k = entry.picker;
-    if (
-      p &&
-      (p.toLowerCase().startsWith("apotek") ||
-        p.toLowerCase().startsWith("pt ") ||
-        p.includes("00:00:00") ||
-        p.includes("GMT"))
-    ) {
-      p = "";
+
+    // Multi-Layer Sanitization Guard (LOCKED_RULES.md Section 6.3):
+    // 1. Guard against shifted columns: If checker contains apotek name but packer is a real person, shift it!
+    if (isBadPersonnelName(c)) {
+      if (p && !isBadPersonnelName(p)) {
+        c = p;
+        p = "";
+      } else {
+        c = "";
+      }
     }
-    if (
-      k &&
-      (k.includes("00:00:00") ||
-        k.includes("GMT") ||
-        /^(mon|tue|wed|thu|fri|sat|sun)\s/i.test(k))
-    ) {
-      k = "";
-    }
+    if (isBadPersonnelName(p)) p = "";
+    if (isBadPersonnelName(k)) k = "";
 
     return {
-      checker: entry.checker,
-      packer: p,
-      picker: k,
+      checker: c || "-",
+      packer: p || "-",
+      picker: k || "-",
     };
   }, [checkerMapMbi, checkerMapMai]);
 
@@ -1108,14 +1132,11 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
 
   // Real-time direct Firebase Firestore subscription (0 byte on Vercel, <100ms sync)
   useEffect(() => {
-    // 1. MBI Checkers Subscription (v3: clean truncated legacy caches)
+    // 1. MBI Checkers Subscription (v4: clean bad shifted apotek names)
     if (typeof window !== "undefined") {
       try {
         localStorage.removeItem("fantastic_so_checkers_cache_v2");
-        const cached = localStorage.getItem("fantastic_so_checkers_cache_v3");
-        if (cached && (cached.includes("Apotek") || cached.includes("00:00:00") || cached.includes("GMT"))) {
-          localStorage.removeItem("fantastic_so_checkers_cache_v3");
-        }
+        localStorage.removeItem("fantastic_so_checkers_cache_v3");
       } catch {}
     }
 
@@ -1145,21 +1166,18 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
             setCheckerMapMbi((prev) => ({ ...prev, ...d.data }));
             checkerMapMbiRef.current = { ...checkerMapMbiRef.current, ...d.data };
             try {
-              localStorage.setItem("fantastic_so_checkers_cache_v3", JSON.stringify(d.data));
+              localStorage.setItem("fantastic_so_checkers_cache_v4", JSON.stringify(d.data));
             } catch {}
           }
         })
         .catch(() => {});
     } catch {}
 
-    // 2. MAI Checkers Subscription (v3: clean truncated legacy caches)
+    // 2. MAI Checkers Subscription (v4: clean bad shifted apotek names)
     if (typeof window !== "undefined") {
       try {
         localStorage.removeItem("fantastic_so_checkers_cache_mai_v2");
-        const cached = localStorage.getItem("fantastic_so_checkers_cache_mai_v3");
-        if (cached && (cached.includes("Apotek") || cached.includes("00:00:00") || cached.includes("GMT"))) {
-          localStorage.removeItem("fantastic_so_checkers_cache_mai_v3");
-        }
+        localStorage.removeItem("fantastic_so_checkers_cache_mai_v3");
       } catch {}
     }
 
@@ -1189,7 +1207,7 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
             setCheckerMapMai((prev) => ({ ...prev, ...d.data }));
             checkerMapMaiRef.current = { ...checkerMapMaiRef.current, ...d.data };
             try {
-              localStorage.setItem("fantastic_so_checkers_cache_mai_v3", JSON.stringify(d.data));
+              localStorage.setItem("fantastic_so_checkers_cache_mai_v4", JSON.stringify(d.data));
             } catch {}
           }
         })
