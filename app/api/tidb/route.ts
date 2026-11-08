@@ -1111,6 +1111,9 @@ export async function GET(req: Request) {
           }
         }
 
+        const rowUpdatedNum = Number(r.row_updated || 0);
+        const rowUpdatedIso = rowUpdatedNum > 0 ? new Date(rowUpdatedNum * 1000).toISOString() : new Date().toISOString();
+
         return {
           id: r.invoice_key,
           no_faktur: r.no_faktur,
@@ -1123,6 +1126,8 @@ export async function GET(req: Request) {
           status_cetak: Number(r.status_cetak) === 1,
           printed_at: r.printed_at || null,
           printed_by: r.printed_by || null,
+          row_updated: rowUpdatedNum,
+          updated_at: rowUpdatedIso,
           extra: {
             nama_pelanggan: r.customer_name || "-",
             order_date: r.order_date || "-",
@@ -1130,6 +1135,8 @@ export async function GET(req: Request) {
             jenis_transaksi: r.jenis_transaksi || "DOO",
             kategori: r.kategori || "3P",
             total_harga: Number(r.total_harga || 0),
+            row_updated: rowUpdatedNum,
+            updated_at: rowUpdatedIso,
             items: parsedItems,
           },
         };
@@ -1415,6 +1422,9 @@ export async function GET(req: Request) {
           }
         }
 
+        const rowUpdatedNum = Number(r.row_updated || 0);
+        const rowUpdatedIso = rowUpdatedNum > 0 ? new Date(rowUpdatedNum * 1000).toISOString() : new Date().toISOString();
+
         return {
           id: r.invoice_key,
           no_faktur: r.no_faktur,
@@ -1427,6 +1437,8 @@ export async function GET(req: Request) {
           status_cetak: Number(r.status_cetak) === 1,
           printed_at: r.printed_at || null,
           printed_by: r.printed_by || null,
+          row_updated: rowUpdatedNum,
+          updated_at: rowUpdatedIso,
           extra: {
             nama_pelanggan: r.customer_name || "-",
             order_date: r.order_date || "-",
@@ -1434,6 +1446,8 @@ export async function GET(req: Request) {
             jenis_transaksi: r.jenis_transaksi || "DOO",
             kategori: r.kategori || "3P",
             total_harga: Number(r.total_harga || 0),
+            row_updated: rowUpdatedNum,
+            updated_at: rowUpdatedIso,
             items: parsedItems,
           },
         };
@@ -1462,7 +1476,7 @@ export async function GET(req: Request) {
               invoice_key, no_faktur, no_sales_order, customer_name,
               order_date, transaction_date, jenis_transaksi, kategori,
               kategori_produk, status_cetak, printed_at, printed_by,
-              total_harga, items_json
+              total_harga, items_json, UNIX_TIMESTAMP(updated_at) as row_updated
             FROM fakturs_archive 
             WHERE invoice_key NOT LIKE 'TEST-%'
             ORDER BY invoice_key ASC LIMIT ? OFFSET ?;`
@@ -1470,7 +1484,7 @@ export async function GET(req: Request) {
               invoice_key, no_faktur, no_sales_order, customer_name,
               order_date, transaction_date, jenis_transaksi, kategori,
               kategori_produk, status_cetak, printed_at, printed_by,
-              total_harga, items_json
+              total_harga, items_json, UNIX_TIMESTAMP(updated_at) as row_updated
             FROM fakturs_archive 
             WHERE invoice_key > ? AND invoice_key NOT LIKE 'TEST-%'
             ORDER BY invoice_key ASC LIMIT ?;`,
@@ -1490,6 +1504,7 @@ export async function GET(req: Request) {
         printed_by: string | null;
         total_harga: string | number;
         items_json: string | null;
+        row_updated?: number | string;
       }>;
 
       const resultMeta = (await conn.execute(
@@ -1509,6 +1524,9 @@ export async function GET(req: Request) {
           }
         }
 
+        const rowUpdatedNum = Number(r.row_updated || 0);
+        const rowUpdatedIso = rowUpdatedNum > 0 ? new Date(rowUpdatedNum * 1000).toISOString() : new Date().toISOString();
+
         return {
           id: r.invoice_key,
           no_faktur: r.no_faktur,
@@ -1521,6 +1539,8 @@ export async function GET(req: Request) {
           status_cetak: Number(r.status_cetak) === 1,
           printed_at: r.printed_at || null,
           printed_by: r.printed_by || null,
+          row_updated: rowUpdatedNum,
+          updated_at: rowUpdatedIso,
           extra: {
             nama_pelanggan: r.customer_name || "-",
             order_date: r.order_date || "-",
@@ -1528,6 +1548,8 @@ export async function GET(req: Request) {
             jenis_transaksi: r.jenis_transaksi || "DOO",
             kategori: r.kategori || "3P",
             total_harga: Number(r.total_harga || 0),
+            row_updated: rowUpdatedNum,
+            updated_at: rowUpdatedIso,
             items: parsedItems,
           },
         };
@@ -1574,6 +1596,7 @@ export async function GET(req: Request) {
         printed_by: string | null;
         total_harga: string | number;
         items_json: string | null;
+        row_updated?: number | string;
       }> = [];
 
       let lastKey = "";
@@ -1583,7 +1606,7 @@ export async function GET(req: Request) {
             invoice_key, no_faktur, no_sales_order, customer_name,
             order_date, transaction_date, jenis_transaksi, kategori,
             kategori_produk, status_cetak, printed_at, printed_by,
-            total_harga, items_json
+            total_harga, items_json, UNIX_TIMESTAMP(updated_at) as row_updated
           FROM fakturs_archive 
           WHERE invoice_key > ? AND invoice_key NOT LIKE 'TEST-%'
           ORDER BY invoice_key ASC LIMIT 5000;`,
@@ -1612,6 +1635,9 @@ export async function GET(req: Request) {
           }
         }
 
+        const rowUpdatedNum = Number(r.row_updated || 0);
+        const rowUpdatedIso = rowUpdatedNum > 0 ? new Date(rowUpdatedNum * 1000).toISOString() : new Date().toISOString();
+
         return {
           id: r.invoice_key,
           no_faktur: r.no_faktur,
@@ -1624,6 +1650,8 @@ export async function GET(req: Request) {
           status_cetak: Number(r.status_cetak) === 1,
           printed_at: r.printed_at || null,
           printed_by: r.printed_by || null,
+          row_updated: rowUpdatedNum,
+          updated_at: rowUpdatedIso,
           extra: {
             nama_pelanggan: r.customer_name || "-",
             order_date: r.order_date || "-",
@@ -1631,6 +1659,8 @@ export async function GET(req: Request) {
             jenis_transaksi: r.jenis_transaksi || "DOO",
             kategori: r.kategori || "3P",
             total_harga: Number(r.total_harga || 0),
+            row_updated: rowUpdatedNum,
+            updated_at: rowUpdatedIso,
             items: parsedItems,
           },
         };

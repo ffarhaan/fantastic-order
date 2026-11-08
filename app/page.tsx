@@ -1890,14 +1890,18 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           clientCount = cached.fakturs.length;
           clientUpdated = cached.maxUpdated || 0;
 
-          // If clientUpdated is 0, derive it from cached items so we never do a full download!
+          // If clientUpdated is 0, derive it from cached items or fallback to recent 24h so we NEVER do a full download!
           if (clientUpdated === 0) {
             for (const f of cached.fakturs) {
-              const u = (f as unknown as Record<string, unknown>).updated_at;
+              const u = (f as unknown as Record<string, unknown>).updated_at || (f as unknown as Record<string, unknown>).row_updated;
               if (u) {
-                const ts = Math.floor(new Date(String(u)).getTime() / 1000);
+                const ts = typeof u === "number" ? u : Math.floor(new Date(String(u)).getTime() / 1000);
                 if (ts > clientUpdated) clientUpdated = ts;
               }
+            }
+            if (clientUpdated === 0 && clientCount >= 1000) {
+              // Authoritative Guard: Client already has full database, fallback to 24h ago
+              clientUpdated = Math.floor(Date.now() / 1000) - 86400;
             }
           }
           clientUpdatedRef.current = clientUpdated;

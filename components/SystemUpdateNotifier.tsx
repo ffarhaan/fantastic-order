@@ -8,7 +8,7 @@ export default function SystemUpdateNotifier() {
   const [updateInfo, setUpdateInfo] = useState<SystemUpdatePayload | null>(null);
   const [isDismissed, setIsDismissed] = useState(false);
   const [countdown, setCountdown] = useState<number>(15);
-  const [isAutoReloadPaused, setIsAutoReloadPaused] = useState(false);
+  const [isAutoReloadPaused, setIsAutoReloadPaused] = useState(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Synthesized soft chime using Web Audio API (no external asset needed)
@@ -72,7 +72,7 @@ export default function SystemUpdateNotifier() {
         setUpdateInfo(payload);
         setIsDismissed(false);
         setCountdown(15);
-        setIsAutoReloadPaused(false);
+        setIsAutoReloadPaused(true);
         playChime();
       }, 20000);
 

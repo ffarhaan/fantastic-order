@@ -234,11 +234,15 @@ export async function checkTiDBUpdates(
 export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreFakturDoc[] | null> {
   try {
     const allDelta: FirestoreFakturDoc[] = [];
-    let maxUpdated = sinceTimestamp;
+    const nowSec = Math.floor(Date.now() / 1000);
+    // CRITICAL FAST ORIGIN LEAK GUARD:
+    // If sinceTimestamp is 0 or invalid, NEVER query from year 1970 (which would download all 20,000 invoices = 60MB)!
+    // If invalid or 0, strictly fallback to the last 12 hours (at most 100 rows < 50KB).
+    const validSince = Number(sinceTimestamp || 0);
+    const querySince = validSince > 0 ? Math.max(0, validSince - 10) : (nowSec - 43200);
+    let maxUpdated = querySince;
     let cursor = "";
     let pageCount = 0;
-    // 10-second overlap window to shield against serverless clock drift & second-level MySQL resolution
-    const querySince = Math.max(0, sinceTimestamp - 10);
 
     while (true) {
       const url = `/api/tidb?action=delta&since=${querySince}&cursor=${encodeURIComponent(cursor)}&limit=5000`;
