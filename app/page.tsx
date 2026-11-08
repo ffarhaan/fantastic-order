@@ -3082,7 +3082,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   const pendingQcList = useMemo(() => {
     const normalizeSO = (soStr: string) => soStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
     return qcOrders.filter((qc) => {
-      if (!qc.so_number || qc.so_number === "-" || qc.so_number === "#N/A") return false;
+      if (!qc.so_number || qc.so_number.trim().length < 3 || qc.so_number === "-" || qc.so_number === "#N/A") return false;
       // STRICT ISOLATION per LOCKED_RULES.md: MBI only sees MBI, MAI only sees MAI
       if ((qc.warehouse || "MBI").toUpperCase() !== selectedWarehouse) return false;
       const cleanSo = qc.so_number.trim().toUpperCase();

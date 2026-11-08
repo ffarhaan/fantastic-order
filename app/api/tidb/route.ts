@@ -553,7 +553,7 @@ export async function GET(req: Request) {
              0 as total_item, 0 as total_qty, 0 as barang_catatan, '' as is_done, 'QC_DONE' as status, 0 as sheet_row, updated_at
            FROM ${tableName}
            WHERE updated_at >= NOW() - INTERVAL 7 DAY
-             AND so_number IS NOT NULL AND so_number != '' AND so_number != '-'
+             AND so_number IS NOT NULL AND LENGTH(TRIM(so_number)) >= 3 AND so_number != '-'
          ) t
          LEFT JOIN cancelled_qc_sos cqs ON t.so_number = cqs.so_number
          WHERE cqs.so_number IS NULL
