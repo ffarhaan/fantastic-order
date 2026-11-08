@@ -209,13 +209,28 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   }, []);
 
   const availableWeeks = useMemo(() => {
-    const maxW = Math.max(43, currentWeekNumber);
+    const maxW = Math.max(45, currentWeekNumber);
     const list: number[] = [];
     for (let w = maxW; w >= 1; w--) {
       list.push(w);
     }
     return list;
   }, [currentWeekNumber]);
+
+  const threeWeekBlocks = useMemo(() => {
+    const maxW = availableWeeks[0] || 45;
+    const blocks: { id: string; min: number; max: number; label: string }[] = [];
+    for (let end = maxW; end >= 1; end -= 3) {
+      const start = Math.max(1, end - 2);
+      blocks.push({
+        id: `3W:${start}-${end}`,
+        min: start,
+        max: end,
+        label: `W${start} – W${end} (3 Minggu)`,
+      });
+    }
+    return blocks;
+  }, [availableWeeks]);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(() => cachedTotalCount);
 
@@ -414,6 +429,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   } | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [personnelFilterPbf, setPersonnelFilterPbf] = useState<string>("ALL");
+  const [personnelReasonFilter, setPersonnelReasonFilter] = useState<string>("ALL");
   const [personnelSearchQuery, setPersonnelSearchQuery] = useState<string>("");
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
   const [loadingPhotoId, setLoadingPhotoId] = useState<number | null>(null);
@@ -634,7 +650,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   };
 
-  const fetchPersonnelStats = useCallback(async (selectedMonth = monthFilter, selectedWeek = weekFilter) => {
+  const fetchPersonnelStats = useCallback(async (selectedMonth = monthFilter, selectedWeek = weekFilter, selectedReason = personnelReasonFilter) => {
     setLoadingStats(true);
     try {
       const q = new URLSearchParams({ 
@@ -642,6 +658,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       });
       if (selectedMonth && selectedMonth !== "ALL") q.set("month", selectedMonth);
       if (selectedWeek && selectedWeek !== "ALL") q.set("week", selectedWeek);
+      if (selectedReason && selectedReason !== "ALL") q.set("reason", selectedReason);
       const res = await fetch(`/api/tidb?${q.toString()}`);
       const json = await res.json();
       if (json.success) {
@@ -657,7 +674,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     } finally {
       setLoadingStats(false);
     }
-  }, [monthFilter, weekFilter]);
+  }, [monthFilter, weekFilter, personnelReasonFilter]);
 
   useEffect(() => {
     fetchPersonnelStats();
@@ -4095,7 +4112,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   onChange={(e) => {
                     const m = e.target.value;
                     setMonthFilter(m);
-                    fetchPersonnelStats(m, weekFilter);
+                    fetchPersonnelStats(m, weekFilter, personnelReasonFilter);
                   }}
                   className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
                 >
@@ -4115,7 +4132,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 </select>
               </div>
 
-              {/* Filter Week Leaderboard */}
+              {/* Filter Week Leaderboard (Mendukung Rentang 3 Minggu, Rolling 3 Weeks, dan Single Week) */}
               <div className="flex items-center gap-1.5 px-3 py-1 bg-zinc-100 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
                 <CalendarRange className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                 <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase tracking-wider">Week:</span>
@@ -4124,20 +4141,55 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   onChange={(e) => {
                     const w = e.target.value;
                     setWeekFilter(w);
-                    fetchPersonnelStats(monthFilter, w);
+                    fetchPersonnelStats(monthFilter, w, personnelReasonFilter);
                   }}
-                  className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
+                  className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white dark:bg-slate-950 focus:outline-none cursor-pointer pr-1 max-w-[200px] truncate"
                 >
-                  <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Week (W1 - W{Math.max(43, currentWeekNumber)})</option>
-                  <option value={String(currentWeekNumber)} className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Week Sekarang (W{currentWeekNumber})</option>
-                  <option disabled className="bg-white dark:bg-slate-900 text-zinc-400">──────────</option>
-                  {availableWeeks.map((w) => (
-                    <option key={w} value={String(w)} className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">
-                      W{w} {w === currentWeekNumber ? "(Minggu Ini)" : ""}
-                    </option>
-                  ))}
+                  <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">
+                    Semua Week (W1 – W{availableWeeks[0] || 45})
+                  </option>
+                  <option
+                    value="LAST_3"
+                    className="bg-emerald-50 text-emerald-800 dark:bg-slate-900 dark:text-emerald-400 font-bold"
+                  >
+                    ⚡ 3 Minggu Terakhir (W{Math.max(1, (availableWeeks[0] || 45) - 2)} – W{availableWeeks[0] || 45})
+                  </option>
+
+                  <optgroup label="── Rentang 3 Mingguan (3 Weeks) ──" className="font-bold text-zinc-500">
+                    {threeWeekBlocks.map((blk) => (
+                      <option key={blk.id} value={blk.id} className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">
+                        {blk.label}
+                      </option>
+                    ))}
+                  </optgroup>
+
+                  <optgroup label="── Minggu Tunggal (Single Week) ──" className="font-bold text-zinc-500">
+                    {availableWeeks.map((w) => (
+                      <option key={w} value={String(w)} className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">
+                        Week W{w} {w === currentWeekNumber ? "(Minggu Ini)" : ""}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </div>
+
+              {/* Quick Toggle Button: 3 Minggu Terakhir */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = weekFilter === "LAST_3" ? "ALL" : "LAST_3";
+                  setWeekFilter(next);
+                  fetchPersonnelStats(monthFilter, next, personnelReasonFilter);
+                }}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border shrink-0 ${
+                  weekFilter === "LAST_3" || (weekFilter.startsWith("3W:") && weekFilter === `3W:${Math.max(1, (availableWeeks[0] || 45) - 2)}-${availableWeeks[0] || 45}`)
+                    ? "bg-emerald-600 text-white border-emerald-500 shadow-xs"
+                    : "bg-zinc-50 dark:bg-slate-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                }`}
+                title="Filter cepat 3 minggu terakhir"
+              >
+                <span>⚡ 3 Minggu Terakhir</span>
+              </button>
 
               {/* Filter PBF Buttons */}
               <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
@@ -4160,6 +4212,122 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Row 2: Filter 4 Kendala Fisik Utama (Personil) */}
+            <div className="w-full flex flex-wrap items-center justify-between gap-2.5 pt-2.5 border-t border-zinc-100 dark:border-slate-800/80">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 text-xs font-bold text-zinc-700 dark:text-slate-200 mr-0.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span className="text-[11px] uppercase tracking-wider font-extrabold">Fokus Kendala Fisik:</span>
+                </div>
+
+                {/* Pill: Semua Kendala */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPersonnelReasonFilter("ALL");
+                    fetchPersonnelStats(monthFilter, weekFilter, "ALL");
+                  }}
+                  className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer border ${
+                    personnelReasonFilter === "ALL"
+                      ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
+                      : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-300"
+                  }`}
+                >
+                  Semua Kendala
+                </button>
+
+                {/* Pill: ⭐ 4 Kendala Fisik Utama (Gabungan) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPersonnelReasonFilter("PRIMARY_4");
+                    fetchPersonnelStats(monthFilter, weekFilter, "PRIMARY_4");
+                  }}
+                  className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer border ${
+                    personnelReasonFilter === "PRIMARY_4"
+                      ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500 shadow-md shadow-emerald-500/25"
+                      : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100"
+                  }`}
+                  title="Filter personil khusus 4 Kendala Fisik Utama: Kurang, Lebih, Salah, Tidak Ada"
+                >
+                  ⭐ 4 Kendala Fisik Utama
+                </button>
+
+                {/* 4 Individual Physical Reasons */}
+                {[
+                  { name: "Fisik yang dikirim kurang", color: "#10b981" },
+                  { name: "Fisik yang dikirim lebih", color: "#eab308" },
+                  { name: "Fisik yang dikirim salah", color: "#f97316" },
+                  { name: "Fisik yang dikirim tidak ada", color: "#a855f7" },
+                ].map((rz) => {
+                  const isSelected = personnelReasonFilter === rz.name;
+                  return (
+                    <button
+                      key={rz.name}
+                      type="button"
+                      onClick={() => {
+                        const next = isSelected ? "ALL" : rz.name;
+                        setPersonnelReasonFilter(next);
+                        fetchPersonnelStats(monthFilter, weekFilter, next);
+                      }}
+                      className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                        isSelected
+                          ? "text-white shadow-xs font-black ring-2 ring-offset-1 ring-white/50"
+                          : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-400"
+                      }`}
+                      style={
+                        isSelected
+                          ? { backgroundColor: rz.color, borderColor: rz.color }
+                          : {}
+                      }
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: rz.color }}
+                      />
+                      <span>{rz.name}</span>
+                    </button>
+                  );
+                })}
+
+                {/* Pill: Kendala Lainnya */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = personnelReasonFilter === "OTHER" ? "ALL" : "OTHER";
+                    setPersonnelReasonFilter(next);
+                    fetchPersonnelStats(monthFilter, weekFilter, next);
+                  }}
+                  className={`px-2.5 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer border ${
+                    personnelReasonFilter === "OTHER"
+                      ? "bg-zinc-700 text-white border-zinc-600"
+                      : "bg-zinc-50 dark:bg-slate-950 text-zinc-500 dark:text-slate-400 border-zinc-200 dark:border-slate-800"
+                  }`}
+                >
+                  Lainnya
+                </button>
+              </div>
+
+              {/* Reset Filter Button */}
+              {(personnelReasonFilter !== "ALL" || weekFilter !== "ALL" || monthFilter !== "ALL" || personnelFilterPbf !== "ALL" || personnelSearchQuery) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPersonnelReasonFilter("ALL");
+                    setPersonnelFilterPbf("ALL");
+                    setPersonnelSearchQuery("");
+                    setMonthFilter("ALL");
+                    setWeekFilter("ALL");
+                    fetchPersonnelStats("ALL", "ALL", "ALL");
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset Filter Personil</span>
+                </button>
+              )}
             </div>
           </div>
 

@@ -1241,6 +1241,18 @@ export async function GET(req: Request) {
         }
       }
 
+      const reasonParam = (searchParams.get("reason") || "").trim();
+      if (reasonParam && reasonParam !== "ALL") {
+        if (reasonParam === "PRIMARY_4") {
+          filterCondition += " AND reason IN ('Fisik yang dikirim kurang', 'Fisik yang dikirim lebih', 'Fisik yang dikirim salah', 'Fisik yang dikirim tidak ada')";
+        } else if (reasonParam === "OTHER") {
+          filterCondition += " AND (reason NOT IN ('Fisik yang dikirim kurang', 'Fisik yang dikirim lebih', 'Fisik yang dikirim salah', 'Fisik yang dikirim tidak ada') OR reason IS NULL)";
+        } else {
+          filterCondition += " AND reason = ?";
+          statsParams.push(reasonParam);
+        }
+      }
+
       const rawReturns = (await conn.execute(`
         SELECT person, pbf, status
         FROM shipment_returns
