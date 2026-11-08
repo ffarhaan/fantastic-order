@@ -104,6 +104,7 @@ function onEditSyncMAI(e) {
       }
 
       // Sanitasi nilai agar tidak salah ambil nama apotek atau jam
+      checkerVal = cleanStaffNameMAI(checkerVal);
       packerVal = cleanStaffNameMAI(packerVal);
       pickerVal = cleanStaffNameMAI(pickerVal);
 
@@ -123,6 +124,7 @@ function onEditSyncMAI(e) {
           total_qty: totalQtyVal,
           barang_catatan: barangCatatanVal,
           is_done: doneVal,
+          sheet_row: actualStart + r,
           warehouse: "MAI"
         });
       }
@@ -209,6 +211,7 @@ function autoSyncCheckersMAI() {
       }
 
       // Sanitasi nilai
+      checkerVal = cleanStaffNameMAI(checkerVal);
       packerVal = cleanStaffNameMAI(packerVal);
       pickerVal = cleanStaffNameMAI(pickerVal);
 
@@ -228,6 +231,7 @@ function autoSyncCheckersMAI() {
           total_qty: totalQtyVal,
           barang_catatan: barangCatatanVal,
           is_done: doneVal,
+          sheet_row: startRow + r,
           warehouse: "MAI"
         });
       }
