@@ -1815,11 +1815,12 @@ export async function POST(req: Request) {
         const katProd = String(item.kategori_produk || "").trim() || null;
         const totItem = Number(item.total_item) || 0;
         const totQty = Number(item.total_qty) || 0;
-        const barangCatatan = Number(item.barang_catatan || item.catatan_barang || item.barang_c) || 0;
+        const hasExplicitCatatan = item.barang_catatan !== undefined && item.barang_catatan !== null && item.barang_catatan !== "";
+        const barangCatatan = hasExplicitCatatan ? (Number(item.barang_catatan) || 0) : null;
         const isDone = String(item.is_done || item.done || "").trim();
         const sheetRow = Number(item.sheet_row || item.row || item.row_number) || 0;
 
-        if (so && (checker !== "-" || packer || picker || cust || soDate || waktuKirim || noDo || isDone || barangCatatan > 0 || sheetRow > 0)) {
+        if (so && (checker !== "-" || packer || picker || cust || soDate || waktuKirim || noDo || isDone || (barangCatatan !== null && barangCatatan >= 0) || sheetRow > 0)) {
           qcRows.push([warehouse, so, noDo, cust, soDate, waktuKirim, checker, packer, picker, kat, katProd, totItem, totQty, barangCatatan, isDone, sheetRow]);
         }
       }
@@ -1846,7 +1847,7 @@ export async function POST(req: Request) {
               kategori_produk = IF(VALUES(kategori_produk) IS NOT NULL AND VALUES(kategori_produk) != '', VALUES(kategori_produk), qc_reports.kategori_produk),
               total_item = IF(VALUES(total_item) > 0, VALUES(total_item), qc_reports.total_item),
               total_qty = IF(VALUES(total_qty) > 0, VALUES(total_qty), qc_reports.total_qty),
-              barang_catatan = IF(VALUES(barang_catatan) IS NOT NULL AND VALUES(barang_catatan) > 0, VALUES(barang_catatan), qc_reports.barang_catatan),
+              barang_catatan = IF(VALUES(barang_catatan) IS NOT NULL, VALUES(barang_catatan), qc_reports.barang_catatan),
               is_done = IF(VALUES(is_done) IS NOT NULL AND VALUES(is_done) != '', VALUES(is_done), qc_reports.is_done),
               sheet_row = IF(VALUES(sheet_row) > 0, VALUES(sheet_row), qc_reports.sheet_row),
               updated_at = CURRENT_TIMESTAMP`,

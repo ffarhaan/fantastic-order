@@ -88,7 +88,7 @@ function detectLengkapColumns(headers) {
  */
 function detectRekapSOColumns(headers) {
   var map = {
-    waktuKirim: -1, noDo: -1, so: -1, customer: -1, soDate: -1,
+    waktuKirim: -1, noDo: -1, so: -1, customer: -1, soDate: -1, checker: -1,
     totalItem: -1, totalQty: -1, barangCatatan: -1,
     kategori: -1, kategoriProduk: -1
   };
@@ -99,20 +99,22 @@ function detectRekapSOColumns(headers) {
     if (map.so < 0 && (h.indexOf("so selesai") !== -1 || h.indexOf("no so") !== -1 || h.indexOf("no. so") !== -1 || h === "so")) map.so = i;
     if (map.customer < 0 && (h.indexOf("apotek") !== -1 || h.indexOf("pelanggan") !== -1 || h.indexOf("customer") !== -1 || h.indexOf("nama apotek") !== -1)) map.customer = i;
     if (map.soDate < 0 && (h.indexOf("tanggal so") !== -1 || h.indexOf("tgl so") !== -1 || h.indexOf("order date") !== -1)) map.soDate = i;
+    if (map.checker < 0 && (h.indexOf("checker") !== -1 || h.indexOf("qc") !== -1)) map.checker = i;
     if (map.totalItem < 0 && (h.indexOf("total item") !== -1 || h.indexOf("item") !== -1)) map.totalItem = i;
     if (map.totalQty < 0 && (h.indexOf("total qty") !== -1 || h.indexOf("qty") !== -1)) map.totalQty = i;
     if (map.barangCatatan < 0 && (h.indexOf("barang c") !== -1 || h.indexOf("catatan") !== -1 || h.indexOf("brg c") !== -1)) map.barangCatatan = i;
     if (map.kategori < 0 && (h === "kategori" || h === "kat")) map.kategori = i;
     if (map.kategoriProduk < 0 && (h.indexOf("kategori produk") !== -1 || h.indexOf("kat produk") !== -1 || h.indexOf("produk") !== -1)) map.kategoriProduk = i;
   }
-  // Fallback standar posisi kolom tab "Rekap SO" Gudang MBI:
+  // Fallback standar posisi kolom tab "Rekap SO" Gudang MBI (sesuai layout fisik sheet):
   if (map.waktuKirim < 0) map.waktuKirim = 0;       // Col A
   if (map.noDo < 0) map.noDo = 1;                   // Col B
   if (map.so < 0) map.so = 2;                       // Col C
   if (map.customer < 0) map.customer = 3;           // Col D
   if (map.soDate < 0) map.soDate = 4;               // Col E
-  if (map.totalItem < 0) map.totalItem = 7;         // Col H
-  if (map.totalQty < 0) map.totalQty = 8;           // Col I
+  if (map.checker < 0) map.checker = 5;             // Col F (Checker)
+  if (map.totalItem < 0) map.totalItem = 6;         // Col G (Item)
+  if (map.totalQty < 0) map.totalQty = 8;           // Col I (Total Qty)
   if (map.barangCatatan < 0) map.barangCatatan = 9; // Col J: Jumlah Barang Catatan
   if (map.kategori < 0) map.kategori = 10;          // Col K
   if (map.kategoriProduk < 0) map.kategoriProduk = 11; // Col L
@@ -201,6 +203,8 @@ function onEditReportQcMBI(e) {
         var cust = colMapS.customer >= 0 ? String(rowS[colMapS.customer] || "").trim() : "";
         var noDo = colMapS.noDo >= 0 ? String(rowS[colMapS.noDo] || "").trim() : "";
         var waktuKirim = colMapS.waktuKirim >= 0 ? String(rowS[colMapS.waktuKirim] || "").trim() : "";
+        var tglSo = colMapS.soDate >= 0 ? String(rowS[colMapS.soDate] || "").trim() : "";
+        var checkerVal = colMapS.checker >= 0 ? cleanStaffName(rowS[colMapS.checker]) : "";
         var kat = colMapS.kategori >= 0 ? String(rowS[colMapS.kategori] || "").trim() : "";
         var katProd = colMapS.kategoriProduk >= 0 ? String(rowS[colMapS.kategoriProduk] || "").trim() : "";
         var totItem = colMapS.totalItem >= 0 ? Number(rowS[colMapS.totalItem]) || 0 : 0;
@@ -212,6 +216,8 @@ function onEditReportQcMBI(e) {
           no_do: noDo,
           customer: cust,
           waktu_kirim: waktuKirim,
+          so_date: tglSo,
+          checker: checkerVal,
           kategori: kat,
           kategori_produk: katProd,
           total_item: totItem,
@@ -344,6 +350,8 @@ function syncReportQcMBI() {
             var cust = colMapSO.customer >= 0 ? String(rowSO[colMapSO.customer] || "").trim() : "";
             var noDo = colMapSO.noDo >= 0 ? String(rowSO[colMapSO.noDo] || "").trim() : "";
             var waktuKirim = colMapSO.waktuKirim >= 0 ? String(rowSO[colMapSO.waktuKirim] || "").trim() : "";
+            var tglSoSO = colMapSO.soDate >= 0 ? String(rowSO[colMapSO.soDate] || "").trim() : "";
+            var checkerValSO = colMapSO.checker >= 0 ? cleanStaffName(rowSO[colMapSO.checker]) : "";
             var kat = colMapSO.kategori >= 0 ? String(rowSO[colMapSO.kategori] || "").trim() : "";
             var katProd = colMapSO.kategoriProduk >= 0 ? String(rowSO[colMapSO.kategoriProduk] || "").trim() : "";
             var totItem = colMapSO.totalItem >= 0 ? Number(rowSO[colMapSO.totalItem]) || 0 : 0;
@@ -358,6 +366,8 @@ function syncReportQcMBI() {
               if (cust) itemsMap[soKey].customer = cust;
               if (noDo) itemsMap[soKey].no_do = noDo;
               if (waktuKirim) itemsMap[soKey].waktu_kirim = waktuKirim;
+              if (tglSoSO) itemsMap[soKey].so_date = tglSoSO;
+              if (checkerValSO && !itemsMap[soKey].checker) itemsMap[soKey].checker = checkerValSO;
               if (kat) itemsMap[soKey].kategori = kat;
               if (katProd) itemsMap[soKey].kategori_produk = katProd;
               if (totItem > 0) itemsMap[soKey].total_item = totItem;
@@ -370,13 +380,14 @@ function syncReportQcMBI() {
                 no_do: noDo,
                 customer: cust,
                 waktu_kirim: waktuKirim,
+                so_date: tglSoSO,
                 kategori: kat,
                 kategori_produk: katProd,
                 total_item: totItem,
                 total_qty: totQty,
                 barang_catatan: brgCatatan,
                 sheet_row: rowNumberSO,
-                checker: "",
+                checker: checkerValSO,
                 packer: "",
                 picker: "",
                 source: "rekap_so",
