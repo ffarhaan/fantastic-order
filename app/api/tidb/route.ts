@@ -487,11 +487,11 @@ export async function GET(req: Request) {
       const warehouse = (searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
       const isFresh = searchParams.get("fresh") === "true";
       const now = Date.now();
-      if (!isFresh && memoryQcReportsCache[warehouse] && (now - memoryQcReportsCache[warehouse].ts < 2000)) {
+      if (!isFresh && memoryQcReportsCache[warehouse] && (now - memoryQcReportsCache[warehouse].ts < 30000)) {
         return compressedJsonResponse(req, memoryQcReportsCache[warehouse].payload, {
-          "Cache-Control": "public, s-maxage=2, stale-while-revalidate=10",
-          "CDN-Cache-Control": "public, s-maxage=2",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=2",
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+          "CDN-Cache-Control": "public, s-maxage=60",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=60",
         });
       }
       const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
@@ -545,9 +545,9 @@ export async function GET(req: Request) {
         req,
         payload,
         {
-          "Cache-Control": isFresh ? "no-store, no-cache, must-revalidate" : "public, s-maxage=2, stale-while-revalidate=10",
-          "CDN-Cache-Control": isFresh ? "no-store" : "public, s-maxage=2",
-          "Vercel-CDN-Cache-Control": isFresh ? "no-store" : "public, s-maxage=2",
+          "Cache-Control": isFresh ? "no-store, no-cache, must-revalidate" : "public, s-maxage=60, stale-while-revalidate=300",
+          "CDN-Cache-Control": isFresh ? "no-store" : "public, s-maxage=60",
+          "Vercel-CDN-Cache-Control": isFresh ? "no-store" : "public, s-maxage=60",
         }
       );
     }

@@ -6016,7 +6016,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               setFilter(nextFilter);
               setPage(0);
               if (nextFilter === "report_qc") {
-                fetchQcOrders(selectedWarehouseRef.current, true);
+                fetchQcOrders(selectedWarehouseRef.current);
               }
             }}
             className={`py-1.5 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
