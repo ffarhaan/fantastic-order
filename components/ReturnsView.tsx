@@ -1074,26 +1074,40 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       return;
     }
 
+    // Deteksi apakah jenis komplain adalah Klaim & Retur (personil tidak wajib)
+    const isKlaimRetur = editForm.inprogress_type === "Klaim & Retur" || selectedReturn.inprogress_type === "Klaim & Retur" || (
+      !editForm.inprogress_type && ![
+        "fisik yang dikirim kurang",
+        "fisik yang dikirim lebih",
+        "fisik yang dikirim salah",
+        "fisik yang dikirim tidak ada",
+      ].some((k) =>
+        (selectedReturn.description || "").toLowerCase().includes(k) ||
+        (editForm.reason || "").toLowerCase().includes(k)
+      )
+    );
+
     // Form Guard Tahap 2 (Proses 1): Tiket yang SEDANG In Progress wajib lengkapi investigasi gudang
     const isCurrentlyInProgress = selectedReturn.status === "In Progress" && editForm.status === "In Progress";
     if (isCurrentlyInProgress) {
       const hasAction = editForm.action && editForm.action.trim() && editForm.action !== "-" && editForm.action !== "#N/A";
       const hasRootCause = editForm.root_cause && editForm.root_cause.trim() && editForm.root_cause !== "-" && editForm.root_cause !== "#N/A";
       const hasPerson = editForm.person && editForm.person.trim() && editForm.person !== "-" && editForm.person !== "#N/A";
+      const isPersonRequired = !isKlaimRetur;
 
-      if (!hasAction || !hasRootCause || !hasPerson) {
+      if (!hasAction || !hasRootCause || (isPersonRequired && !hasPerson)) {
         const missing: string[] = [];
         if (!hasAction) missing.push("Tindakan Solusi Gudang (Action)");
         if (!hasRootCause) missing.push("Penyebab Kesalahan (Root Cause)");
-        if (!hasPerson) missing.push("Personil Terkait (Picker / Checker)");
+        if (isPersonRequired && !hasPerson) missing.push("Personil Terkait (Picker / Checker)");
 
         setValidationModal({
           isOpen: true,
           title: "Data Investigasi Belum Lengkap",
           subtitle: `Faktur #${editForm.invoice_no || selectedReturn.invoice_no} • ${editForm.customer_name || selectedReturn.customer_name}`,
-          message: "Untuk menyimpan tiket pada tahap In Progress (Proses 1: Investigasi & Penyiapan Barang), Anda wajib melengkapi data investigasi gudang berikut:",
+          message: "Untuk menyimpan tiket pada tahap In Progress, Anda wajib melengkapi data investigasi berikut:",
           missingFields: missing,
-          note: "Setelah ketiga data ini lengkap, fisik barang pengganti dapat disiapkan dan dikirim ke apotek.",
+          note: isKlaimRetur ? "Catatan: Untuk jenis Klaim & Retur, nama personil opsional." : "Setelah data lengkap, fisik barang pengganti dapat disiapkan dan dikirim ke apotek.",
           type: "warning",
           onConfirmText: "Mengerti & Lengkapi Data",
         });
@@ -1107,22 +1121,23 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       const hasAction = editForm.action && editForm.action.trim() && editForm.action !== "-" && editForm.action !== "#N/A";
       const hasRootCause = editForm.root_cause && editForm.root_cause.trim() && editForm.root_cause !== "-" && editForm.root_cause !== "#N/A";
       const hasPerson = editForm.person && editForm.person.trim() && editForm.person !== "-" && editForm.person !== "#N/A";
+      const isPersonRequired = !isKlaimRetur;
 
-      if (!hasAction || !hasRootCause || !hasPerson) {
+      if (!hasAction || !hasRootCause || (isPersonRequired && !hasPerson)) {
         const missing: string[] = [];
         if (!hasAction) missing.push("Tindakan Solusi Gudang (Action)");
         if (!hasRootCause) missing.push("Penyebab Kesalahan (Root Cause)");
-        if (!hasPerson) missing.push("Personil Terkait (Picker / Checker)");
+        if (isPersonRequired && !hasPerson) missing.push("Personil Terkait (Picker / Checker)");
 
         setValidationModal({
           isOpen: true,
           title: "Tiket Belum Dapat Diselesaikan",
           subtitle: `Faktur #${editForm.invoice_no || selectedReturn.invoice_no} • ${editForm.customer_name || selectedReturn.customer_name}`,
-          message: "Tiket belum bisa ditandai selesai karena data investigasi gudang belum lengkap:",
+          message: "Tiket belum bisa ditandai selesai karena data solusi/penyebab belum lengkap:",
           missingFields: missing,
-          note: "Silakan lengkapi tindakan solusi, penyebab kesalahan, dan personil terkait sebelum tiket diselesaikan.",
+          note: isKlaimRetur ? "Untuk jenis Klaim & Retur, nama personil boleh dikosongkan." : "Silakan lengkapi tindakan solusi, penyebab kesalahan, dan personil terkait sebelum tiket diselesaikan.",
           type: "warning",
-          onConfirmText: "Lengkapi Data Investigasi",
+          onConfirmText: "Lengkapi Data",
         });
         return;
       }
@@ -1297,23 +1312,37 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       });
       return;
     }
+    const isKlaimRetur = item.inprogress_type === "Klaim & Retur" || (
+      !item.inprogress_type && ![
+        "fisik yang dikirim kurang",
+        "fisik yang dikirim lebih",
+        "fisik yang dikirim salah",
+        "fisik yang dikirim tidak ada",
+      ].some((k) =>
+        (item.description || "").toLowerCase().includes(k) ||
+        (item.reason || "").toLowerCase().includes(k)
+      )
+    );
     const hasAction = item.action && item.action.trim() && item.action !== "-" && item.action !== "#N/A";
     const hasRootCause = item.root_cause && item.root_cause.trim() && item.root_cause !== "-" && item.root_cause !== "#N/A";
     const hasPerson = item.person && item.person.trim() && item.person !== "-" && item.person !== "#N/A";
+    const isPersonRequired = !isKlaimRetur;
 
-    if (!hasAction || !hasRootCause || !hasPerson) {
+    if (!hasAction || !hasRootCause || (isPersonRequired && !hasPerson)) {
       const missing: string[] = [];
       if (!hasAction) missing.push("Tindakan Solusi Gudang (Action)");
       if (!hasRootCause) missing.push("Penyebab Kesalahan (Root Cause)");
-      if (!hasPerson) missing.push("Personil Terkait (Picker / Checker)");
+      if (isPersonRequired && !hasPerson) missing.push("Personil Terkait (Picker / Checker)");
 
       setValidationModal({
         isOpen: true,
         title: "Tiket Belum Dapat Diselesaikan",
         subtitle: `Faktur #${item.invoice_no || item.id} • ${item.customer_name || ""}`,
-        message: "Tiket belum bisa ditandai selesai karena data investigasi gudang belum lengkap:",
+        message: "Tiket belum bisa ditandai selesai karena data solusi/penyebab belum lengkap:",
         missingFields: missing,
-        note: "Silakan lengkapi data investigasi gudang pada detail tiket sebelum menyelesaikannya.",
+        note: isKlaimRetur
+          ? "Untuk jenis Klaim & Retur, nama personil boleh dikosongkan. Cukup lengkapi Tindakan Solusi & Penyebab."
+          : "Silakan lengkapi data investigasi gudang pada detail tiket sebelum menyelesaikannya.",
         type: "warning",
         onConfirmText: "Buka Detail & Lengkapi Data",
         onConfirm: () => {
@@ -1907,7 +1936,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
             <div>
               <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
-                Personil Terkait (Picker / Checker)
+                Personil Terkait {editForm.inprogress_type === "Klaim & Retur" ? "(Opsional untuk Klaim & Retur)" : "(Picker / Checker)"}
               </label>
               <input
                 type="text"
@@ -1921,7 +1950,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   }
                   setEditForm({ ...editForm, ...updates });
                 }}
-                placeholder="Nama picker / checker bersangkutan"
+                placeholder={editForm.inprogress_type === "Klaim & Retur" ? "Opsional (Boleh dikosongkan)" : "Nama picker / checker bersangkutan"}
                 className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
               />
             </div>
