@@ -12,7 +12,20 @@ import {
   ChevronDown,
   ChevronRight,
   Sparkles,
+  X,
+  Download,
+  ExternalLink,
+  Eye,
+  Play,
+  Video,
+  Image as ImageIcon,
+  FileText,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  Package,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { ShipmentReturnRecord } from "@/lib/types";
 import { parsePersonNames } from "@/lib/personnelUtils";
 
@@ -228,6 +241,19 @@ export default function AnalisisView({
   const [localWeek, setLocalWeek] = useState<string>("ALL");
   const [statusScope, setStatusScope] = useState<"ALL" | "PENDING" | "IN_PROGRESS" | "RESOLVED" | "REJECT">("ALL");
   const [reasonScope, setReasonScope] = useState<ReasonFilterScope>("ALL");
+
+  // Drill-down Case Evidence Modal State (100% Real Database Evidence)
+  const [drillDownModal, setDrillDownModal] = useState<{
+    isOpen: boolean;
+    reasonName: string;
+    pbf: "ALL" | "MBI" | "MAI";
+  }>({
+    isOpen: false,
+    reasonName: "",
+    pbf: "ALL",
+  });
+  const [drillDownSearch, setDrillDownSearch] = useState<string>("");
+  const [previewMedia, setPreviewMedia] = useState<{ url: string; type: "image" | "video"; title?: string } | null>(null);
 
   const activeMonth = propMonth !== undefined ? propMonth : localMonth;
   const activeWeek = propWeek !== undefined ? propWeek : localWeek;
@@ -614,10 +640,85 @@ export default function AnalisisView({
     return parts.length > 0 ? parts.join(" • ") : "Semua periode (Real-Time Database)";
   }, [activeMonth, activeWeek, statusScope, reasonScope, availableWeeksList]);
 
+  // Drill-down Rows: Filter 100% Real Database Cases for Clicked Reason
+  const drillDownRows = useMemo(() => {
+    if (!drillDownModal.isOpen || !drillDownModal.reasonName) return [];
+    const targetNorm = normalizeReasonName(drillDownModal.reasonName);
+
+    return filteredReturns.filter((r) => {
+      // 1. PBF Match
+      if (drillDownModal.pbf !== "ALL") {
+        const rPbf = (r.pbf || "MBI").toUpperCase();
+        if (drillDownModal.pbf === "MAI" && !rPbf.includes("MAI")) return false;
+        if (drillDownModal.pbf === "MBI" && rPbf.includes("MAI")) return false;
+      }
+
+      // 2. Reason Match
+      const rReason = normalizeReasonName(r.reason);
+      if (rReason !== targetNorm) return false;
+
+      // 3. Search query
+      if (drillDownSearch.trim()) {
+        const q = drillDownSearch.toLowerCase().trim();
+        const inv = String(r.invoice_no || "").toLowerCase();
+        const so = String(r.so_no || "").toLowerCase();
+        const cust = String(r.customer_name || "").toLowerCase();
+        const prod = String(r.product_name || "").toLowerCase();
+        const pers = String(r.person || "").toLowerCase();
+        const act = String(r.action || "").toLowerCase();
+        return (
+          inv.includes(q) ||
+          so.includes(q) ||
+          cust.includes(q) ||
+          prod.includes(q) ||
+          pers.includes(q) ||
+          act.includes(q)
+        );
+      }
+
+      return true;
+    });
+  }, [drillDownModal, filteredReturns, drillDownSearch]);
+
+  const handleExportDrillDownExcel = () => {
+    if (drillDownRows.length === 0) return;
+    const formatted = drillDownRows.map((r, idx) => ({
+      No: idx + 1,
+      PBF: r.pbf || "MBI",
+      "No. Faktur": r.invoice_no || "-",
+      "No. Sales Order (SO)": r.so_no || "-",
+      "Nama Apotek / Merchant": r.customer_name || "-",
+      "Nama Produk": r.product_name || "-",
+      Qty: r.qty || 1,
+      "Batch No": r.batch_no || "-",
+      "Expiry Date": r.expiry_date || "-",
+      "Tanggal Lapor": r.report_date || "-",
+      "Tanggal Faktur": r.invoice_date || "-",
+      "Kendala / Alasan": r.reason || "-",
+      "Status Tiket": r.status || "Pending",
+      "Tindakan Logistik": r.action || "-",
+      "Personil Terkait": r.person || "-",
+      "Akar Masalah (Root Cause)": r.root_cause || "-",
+      Catatan: r.note || "-",
+      "Bukti Foto": r.photo_url ? "Ada Foto" : "-",
+      "Bukti Video": r.video_url ? r.video_url : "-",
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(formatted);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Bukti_Kasus");
+    const cleanReason = (drillDownModal.reasonName || "Kasus").replace(/[^a-zA-Z0-9]/g, "_");
+    XLSX.writeFile(
+      wb,
+      `Bukti_Kasus_${drillDownModal.pbf}_${cleanReason}_${new Date().toISOString().split("T")[0]}.xlsx`
+    );
+  };
+
   // Render SVG Donut (100% aligned between SVG slices and label positions)
   const renderDonut = (
     items: { name: string; count: number; pct: number; color: string }[],
-    totalCount: number
+    totalCount: number,
+    pbfName: "MBI" | "MAI" = "MBI"
   ) => {
     if (items.length === 0 || totalCount === 0) {
       return (
@@ -660,10 +761,16 @@ export default function AnalisisView({
                   fill={s.color}
                   stroke={isSelected ? "#ffffff" : "rgba(15, 23, 42, 0.35)"}
                   strokeWidth={isSelected ? "2.5" : "1"}
-                  onClick={() => setReasonScope(reasonScope === s.name ? "ALL" : (s.name as any))}
+                  onClick={() => {
+                    setDrillDownModal({
+                      isOpen: true,
+                      reasonName: s.name,
+                      pbf: pbfName,
+                    });
+                  }}
                   className="transition-all duration-300 hover:opacity-85 cursor-pointer"
                 >
-                  <title>{`${s.name}: ${s.count.toLocaleString("id-ID")} kasus (${s.pct}%) — Klik untuk filter`}</title>
+                  <title>{`${s.name}: ${s.count.toLocaleString("id-ID")} kasus (${s.pct}%) — Klik untuk melihat bukti kasus riil`}</title>
                 </path>
               );
             })}
@@ -698,20 +805,26 @@ export default function AnalisisView({
           </div>
         </div>
 
-        {/* Legend with Real Counts & Percentages */}
+        {/* Legend with Real Counts & Percentages + Interactive Drill Down Trigger */}
         <div className="w-full mt-3 pt-3 border-t border-zinc-100 dark:border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 px-1">
           {items.map((item, idx) => {
             const isSelected = reasonScope === item.name;
             return (
               <div
                 key={idx}
-                onClick={() => setReasonScope(reasonScope === item.name ? "ALL" : (item.name as any))}
-                className={`flex items-center justify-between gap-2 text-xs py-0.5 px-1.5 rounded-lg transition-colors cursor-pointer ${
+                onClick={() => {
+                  setDrillDownModal({
+                    isOpen: true,
+                    reasonName: item.name,
+                    pbf: pbfName,
+                  });
+                }}
+                className={`flex items-center justify-between gap-2 text-xs py-1 px-2 rounded-xl transition-all cursor-pointer group border ${
                   isSelected
-                    ? "bg-zinc-200 dark:bg-slate-700 font-bold"
-                    : "hover:bg-zinc-50 dark:hover:bg-slate-800/50"
+                    ? "bg-zinc-100 dark:bg-slate-800 border-zinc-300 dark:border-slate-700 font-bold shadow-2xs"
+                    : "hover:bg-zinc-50 dark:hover:bg-slate-800/60 border-transparent hover:border-zinc-200 dark:hover:border-slate-800"
                 }`}
-                title="Klik untuk filter kendala ini"
+                title="Klik untuk melihat bukti kasus riil (No Faktur, No SO, Apotek, Produk, Personil)"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span
@@ -728,11 +841,14 @@ export default function AnalisisView({
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0 font-mono">
-                  <span className="font-bold text-zinc-900 dark:text-white">
+                  <span className="font-extrabold text-zinc-900 dark:text-white">
                     {item.count.toLocaleString("id-ID")}
                   </span>
                   <span className="text-[10px] text-zinc-400 dark:text-slate-400">
                     ({item.pct}%)
+                  </span>
+                  <span className="text-[10px] font-sans font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1 py-0.5 rounded opacity-75 group-hover:opacity-100 transition-opacity">
+                    Bukti →
                   </span>
                 </div>
               </div>
@@ -1161,7 +1277,7 @@ export default function AnalisisView({
               </span>
             </div>
 
-            {renderDonut(stats.mai.reasons, stats.mai.total)}
+            {renderDonut(stats.mai.reasons, stats.mai.total, "MAI")}
           </div>
 
           {/* Card: Root Cause MAI */}
@@ -1237,7 +1353,7 @@ export default function AnalisisView({
               </span>
             </div>
 
-            {renderDonut(stats.mbi.reasons, stats.mbi.total)}
+            {renderDonut(stats.mbi.reasons, stats.mbi.total, "MBI")}
           </div>
 
           {/* Card: Root Cause MBI */}
@@ -1497,6 +1613,308 @@ export default function AnalisisView({
           </div>
         </div>
       </div>
+
+      {/* =========================================
+          MODAL DRILL-DOWN: BUKTI & DAFTAR RINCIAN KASUS RIIL DATABASE (100% TRANSPARAN)
+      ========================================= */}
+      {drillDownModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-[#0c101d] border border-zinc-200 dark:border-slate-800 rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-zinc-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-zinc-50/50 dark:bg-slate-950/60">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black shrink-0 border border-indigo-200 dark:border-indigo-800">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                        drillDownModal.pbf === "MAI"
+                          ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+                          : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                      }`}
+                    >
+                      Gudang {drillDownModal.pbf}
+                    </span>
+                    <span className="text-xs text-zinc-500 dark:text-slate-400">
+                      • Bukti Rincian Kasus Riil Database
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-extrabold text-zinc-900 dark:text-white leading-tight mt-0.5">
+                    {drillDownModal.reasonName}
+                  </h3>
+                </div>
+              </div>
+
+              {/* Actions: Search, Export, Close */}
+              <div className="flex items-center gap-2">
+                <div className="relative min-w-[180px] sm:min-w-[240px]">
+                  <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={drillDownSearch}
+                    onChange={(e) => setDrillDownSearch(e.target.value)}
+                    placeholder="Cari Apotek / Faktur / SO..."
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-zinc-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleExportDrillDownExcel}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs shrink-0"
+                  title="Ekspor rincian kasus ini ke file Excel"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Ekspor Excel</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDrillDownModal({ isOpen: false, reasonName: "", pbf: "ALL" })}
+                  className="p-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-xl bg-zinc-100 dark:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body / Table */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+              {drillDownRows.length === 0 ? (
+                <div className="py-16 text-center text-zinc-400 dark:text-slate-500">
+                  <Package className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                  <p className="text-xs font-semibold">Tidak ditemukan baris kasus yang cocok.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-zinc-200 dark:border-slate-800 shadow-2xs">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-zinc-100/80 dark:bg-slate-900 text-zinc-700 dark:text-slate-300 font-extrabold sticky top-0 z-10 border-b border-zinc-200 dark:border-slate-800">
+                      <tr>
+                        <th className="py-2.5 px-3 text-center w-12">No</th>
+                        <th className="py-2.5 px-3">No. Faktur / SO</th>
+                        <th className="py-2.5 px-3">Nama Apotek / Merchant</th>
+                        <th className="py-2.5 px-3">Produk & Qty</th>
+                        <th className="py-2.5 px-3">Tanggal Lapor</th>
+                        <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3">Personil Terkait</th>
+                        <th className="py-2.5 px-3">Tindakan / Solusi</th>
+                        <th className="py-2.5 px-3 text-center">Bukti Media</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200 dark:divide-slate-800">
+                      {drillDownRows.map((r, idx) => {
+                        const isOperasional = r.status === "In Progress (Operasional)";
+                        const isKlaim = r.status === "In Progress (Klaim & Retur)";
+                        const isInProgress = (r.status || "").toLowerCase().includes("in progress");
+                        const isResolved = (r.status || "").toLowerCase().includes("resolved");
+                        const isReject = (r.status || "").toLowerCase().includes("reject");
+
+                        return (
+                          <tr
+                            key={r.id || idx}
+                            className="hover:bg-zinc-50 dark:hover:bg-slate-900/60 transition-colors"
+                          >
+                            <td className="py-2.5 px-3 text-center font-mono text-zinc-400">
+                              {idx + 1}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono">
+                              <div className="font-extrabold text-indigo-700 dark:text-indigo-400">
+                                #{r.invoice_no || "-"}
+                              </div>
+                              <div className="text-[11px] text-zinc-500">
+                                SO: {r.so_no || "-"}
+                              </div>
+                            </td>
+                            <td
+                              className="py-2.5 px-3 font-bold text-zinc-900 dark:text-white max-w-[180px] truncate"
+                              title={r.customer_name}
+                            >
+                              {r.customer_name || "-"}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div
+                                className="font-semibold text-zinc-800 dark:text-zinc-200 max-w-[200px] truncate"
+                                title={r.product_name}
+                              >
+                                {r.product_name || "-"}
+                              </div>
+                              <div className="text-[11px] text-zinc-500 font-mono">
+                                Qty: <strong>{r.qty || 1}</strong> {r.batch_no ? `• Batch: ${r.batch_no}` : ""}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-zinc-600 dark:text-zinc-400 font-mono whitespace-nowrap">
+                              {r.report_date || r.invoice_date || "-"}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                  isReject
+                                    ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 border border-red-200 dark:border-red-800"
+                                    : isResolved
+                                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                                    : isOperasional
+                                    ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
+                                    : isKlaim
+                                    ? "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800"
+                                    : isInProgress
+                                    ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                                    : "bg-zinc-100 text-zinc-700 dark:bg-slate-800 dark:text-slate-300 border border-zinc-200 dark:border-slate-700"
+                                }`}
+                              >
+                                {r.status || "Pending"}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span
+                                className="font-semibold text-zinc-700 dark:text-zinc-300 block max-w-[150px] truncate"
+                                title={r.person || "-"}
+                              >
+                                {r.person && r.person !== "-" ? (
+                                  r.person
+                                ) : (
+                                  <span className="text-zinc-400 italic">Belum diisi</span>
+                                )}
+                              </span>
+                            </td>
+                            <td
+                              className="py-2.5 px-3 text-zinc-600 dark:text-zinc-400 max-w-[160px] truncate"
+                              title={r.action || r.note || "-"}
+                            >
+                              {r.action && r.action !== "-" ? r.action : r.note || "-"}
+                            </td>
+                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                              <div className="flex items-center justify-center gap-1.5">
+                                {r.photo_url && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPreviewMedia({
+                                        url: r.photo_url!,
+                                        type: "image",
+                                        title: `Foto Faktur #${r.invoice_no}`,
+                                      })
+                                    }
+                                    className="p-1 rounded-lg text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
+                                    title="Lihat Foto Bukti"
+                                  >
+                                    <ImageIcon className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {r.video_url && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPreviewMedia({
+                                        url: r.video_url!,
+                                        type: "video",
+                                        title: `Video Unboxing Faktur #${r.invoice_no}`,
+                                      })
+                                    }
+                                    className="p-1 rounded-lg text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/60 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer"
+                                    title="Tonton Video Unboxing"
+                                  >
+                                    <Play className="w-3.5 h-3.5 fill-current" />
+                                  </button>
+                                )}
+                                {!r.photo_url && !r.video_url && (
+                                  <span className="text-zinc-300 dark:text-slate-700 font-mono">-</span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 sm:p-4 border-t border-zinc-200 dark:border-slate-800 flex items-center justify-between text-xs bg-zinc-50/50 dark:bg-slate-950/60">
+              <span className="text-zinc-500 font-medium">
+                Menampilkan <strong>{drillDownRows.length}</strong> kasus riil database untuk &quot;{drillDownModal.reasonName}&quot;
+              </span>
+              <button
+                type="button"
+                onClick={() => setDrillDownModal({ isOpen: false, reasonName: "", pbf: "ALL" })}
+                className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 font-bold hover:opacity-90 transition-opacity cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MEDIA PREVIEW MODAL */}
+      {previewMedia && (
+        <div
+          className="fixed inset-0 z-60 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setPreviewMedia(null)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-3xl max-w-3xl w-full p-4 sm:p-5 space-y-3 relative shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                {previewMedia.type === "video" ? (
+                  <Video className="w-4 h-4 text-purple-400" />
+                ) : (
+                  <ImageIcon className="w-4 h-4 text-indigo-400" />
+                )}
+                <span>{previewMedia.title || "Preview Bukti Media"}</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setPreviewMedia(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-slate-800/80 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-center max-h-[70vh] overflow-hidden rounded-2xl bg-black">
+              {previewMedia.type === "video" ? (
+                <video
+                  src={previewMedia.url}
+                  controls
+                  autoPlay
+                  className="max-h-[70vh] w-auto max-w-full rounded-xl"
+                />
+              ) : (
+                <img
+                  src={previewMedia.url}
+                  alt="Bukti Kasus"
+                  className="max-h-[70vh] w-auto max-w-full object-contain rounded-xl"
+                />
+              )}
+            </div>
+
+            <div className="flex justify-between items-center pt-2 text-xs text-slate-400">
+              <a
+                href={previewMedia.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-indigo-400 hover:underline font-bold"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Buka di Tab Baru</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setPreviewMedia(null)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 text-white font-bold cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

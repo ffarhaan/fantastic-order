@@ -27,7 +27,12 @@ import {
   XCircle,
   HelpCircle,
   FileText,
+  Video,
+  Play,
+  Eye,
 } from "lucide-react";
+import { storage } from "@/lib/firebase";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { broadcastRealtimeSignal, broadcastNewComplaint } from "@/lib/firestoreService";
 
 const COMMON_REASONS = [
@@ -85,6 +90,14 @@ export default function KomplainPage() {
   const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+
+  // Video state (Direct upload to Firebase Storage, max 10 mins)
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoFileName, setVideoFileName] = useState<string>("");
+  const [videoUploadProgress, setVideoUploadProgress] = useState<number | null>(null);
+  const [isUploadingVideo, setIsUploadingVideo] = useState<boolean>(false);
+  const [videoError, setVideoError] = useState<string>("");
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -282,6 +295,77 @@ export default function KomplainPage() {
     setPhotoSizeKb(0);
     if (cameraInputRef.current) cameraInputRef.current.value = "";
     if (galleryInputRef.current) galleryInputRef.current.value = "";
+  };
+
+  // Direct video upload to Firebase Storage (0% Vercel load, max 10 mins)
+  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setVideoError("");
+
+    // Create temp video element to inspect duration before uploading
+    const tempVideo = document.createElement("video");
+    tempVideo.preload = "metadata";
+    tempVideo.onloadedmetadata = () => {
+      window.URL.revokeObjectURL(tempVideo.src);
+      const durationSec = tempVideo.duration;
+      if (durationSec > 600) {
+        setVideoError(`Durasi video (${Math.round(durationSec)} detik) melebihi batas maksimal 10 menit (600 detik). Silakan potong atau unggah video unboxing yang lebih singkat.`);
+        if (videoInputRef.current) videoInputRef.current.value = "";
+        return;
+      }
+
+      // Direct upload from browser to Firebase Storage (0% Vercel serverless load)
+      setIsUploadingVideo(true);
+      setVideoUploadProgress(0);
+      setVideoFileName(file.name);
+
+      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const storageRef = ref(storage, `complaint_videos/${Date.now()}_${cleanName}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+          setVideoUploadProgress(progress);
+        },
+        (error) => {
+          console.error("Firebase Storage direct upload error:", error);
+          setVideoError("Gagal mengunggah video ke cloud storage. Pastikan koneksi internet stabil.");
+          setIsUploadingVideo(false);
+          setVideoUploadProgress(null);
+        },
+        async () => {
+          try {
+            const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+            setVideoUrl(downloadUrl);
+            setIsUploadingVideo(false);
+            setVideoUploadProgress(null);
+          } catch (err: any) {
+            setVideoError("Gagal mengambil tautan video: " + err.message);
+            setIsUploadingVideo(false);
+            setVideoUploadProgress(null);
+          }
+        }
+      );
+    };
+
+    tempVideo.onerror = () => {
+      setVideoError("Format video tidak didukung atau rusak. Gunakan format MP4, WebM, atau MOV.");
+      if (videoInputRef.current) videoInputRef.current.value = "";
+    };
+
+    tempVideo.src = URL.createObjectURL(file);
+  };
+
+  const handleRemoveVideo = () => {
+    setVideoUrl(null);
+    setVideoFileName("");
+    setVideoUploadProgress(null);
+    setVideoError("");
+    if (videoInputRef.current) videoInputRef.current.value = "";
   };
 
   // Add & Remove Product rows
@@ -526,6 +610,7 @@ ${photoStatus}
       person: "",   // Kosong: diisi oleh tim internal (picker/checker bersangkutan)
       root_cause: "", // Kosong: diisi oleh tim internal
       photo_url: photoBase64 || null,
+      video_url: videoUrl || null,
       products: processedProducts,
       user_name: headerData.customer_name.trim() ? `${headerData.customer_name.trim()} (Form Komplain Publik)` : "Form Komplain Publik",
       submitted_by: headerData.customer_name.trim() || "Form Komplain Publik",
@@ -560,6 +645,7 @@ ${photoStatus}
       setSubmittedData({
         ...payload,
         hasPhoto: Boolean(photoBase64),
+        hasVideo: Boolean(videoUrl),
         insertedCount: data.count || processedProducts.length,
       });
       setSubmittedTimestamp(formattedTimestamp);
@@ -959,10 +1045,17 @@ ${photoStatus}
                       String(item.status || "").toLowerCase().includes("konfirmasi") ||
                       String(item.confirm || "").toLowerCase() === "approve");
 
+                  const isInProgressOperasional = item.status === "In Progress (Operasional)";
+                  const isInProgressKlaim = item.status === "In Progress (Klaim & Retur)";
+
                   const statusLabel = isReject
                     ? "Ditolak (Reject)"
                     : isResolved
                     ? "Selesai (Resolved)"
+                    : isInProgressOperasional
+                    ? "Dalam Proses (Operasional)"
+                    : isInProgressKlaim
+                    ? "Dalam Proses (Klaim & Retur)"
                     : isInProgress
                     ? "Dalam Proses"
                     : (item.status || "Pending");
@@ -1001,6 +1094,10 @@ ${photoStatus}
                               ? "bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
                               : isResolved
                               ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                              : isInProgressOperasional
+                              ? "bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
+                              : isInProgressKlaim
+                              ? "bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800"
                               : isInProgress
                               ? "bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
                               : "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
@@ -1048,16 +1145,50 @@ ${photoStatus}
                         </div>
                       </div>
 
+                      {/* Bukti Video Unboxing dari Apotek (Jika ada) */}
+                      {item.video_url && (
+                        <div className="p-2.5 bg-purple-50/60 dark:bg-purple-950/20 rounded-xl border border-purple-200 dark:border-purple-800/60 flex items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300 font-bold min-w-0">
+                            <Video className="w-4 h-4 shrink-0 text-purple-600" />
+                            <span className="truncate">Video Unboxing Apotek Terlampir</span>
+                          </div>
+                          <a
+                            href={item.video_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold shrink-0 transition-colors shadow-2xs"
+                          >
+                            <Play className="w-3 h-3 fill-current" />
+                            <span>Tonton Video</span>
+                          </a>
+                        </div>
+                      )}
+
                       {/* Notes / Alasan Resmi dari Tim Logistik */}
                       {isReject ? (
-                        <div className="p-3.5 rounded-xl border border-red-300 dark:border-red-900/80 bg-red-50 dark:bg-red-950/40 shadow-xs space-y-1.5 animate-in fade-in">
+                        <div className="p-3.5 rounded-xl border border-red-300 dark:border-red-900/80 bg-red-50 dark:bg-red-950/40 shadow-xs space-y-2.5 animate-in fade-in">
                           <div className="flex items-center gap-2 text-xs font-black text-red-700 dark:text-red-300">
-                            <AlertCircle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400" />
-                            <span>Alasan Penolakan Komplain (Bukan Kesalahan PBF):</span>
+                            <XCircle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400" />
+                            <span>Alasan Penolakan Komplain dari Tim PBF:</span>
                           </div>
                           <p className="text-xs font-bold pl-6 whitespace-pre-wrap text-red-900 dark:text-red-200 leading-relaxed">
-                            {item.note && item.note.trim() ? item.note : "Pengajuan komplain ditolak karena tidak memenuhi kriteria kesalahan pihak PBF."}
+                            {item.reject_reason || item.note || "Pengajuan komplain ditolak setelah diverifikasi oleh tim logistik/gudang."}
                           </p>
+
+                          {/* Bukti Foto / Video dari PBF */}
+                          {item.reject_media_url && (
+                            <div className="pl-6 pt-1">
+                              <a
+                                href={item.reject_media_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/60 font-bold text-xs transition-colors shadow-2xs"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Lihat Bukti Verifikasi dari PBF (Foto/Video)</span>
+                              </a>
+                            </div>
+                          )}
                         </div>
                       ) : item.note && item.note.trim() ? (
                         <div className="p-3 rounded-xl border bg-blue-50/60 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/40 space-y-1">
@@ -1352,6 +1483,114 @@ ${photoStatus}
                     onClick={handleRemovePhoto}
                     className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
                     title="Hapus foto"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* VIDEO UNBOXING UPLOAD (DIRECT CLOUD UPLOAD, MAX 10 MINS) */}
+            <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Video className="w-4 h-4 text-purple-500" />
+                  <h2 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-white">
+                    Video Unboxing Apotek (Opsional)
+                  </h2>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                  Maks. 10 Menit
+                </span>
+              </div>
+
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Unggah video rekaman saat membuka paket fisik dari ekspedisi untuk mempercepat persetujuan komplain oleh tim gudang.
+              </p>
+
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime,video/*"
+                onChange={handleVideoUpload}
+                disabled={isUploadingVideo}
+                className="hidden"
+                id="return-video-input"
+              />
+
+              {videoError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{videoError}</span>
+                </div>
+              )}
+
+              {isUploadingVideo && (
+                <div className="p-4 rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-purple-700 dark:text-purple-300">
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
+                      <span>Mengunggah video unboxing...</span>
+                    </span>
+                    <span className="font-mono">{videoUploadProgress ?? 0}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-purple-100 dark:bg-purple-900/40 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-purple-600 transition-all duration-150 rounded-full"
+                      style={{ width: `${videoUploadProgress ?? 0}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-zinc-500 font-mono truncate">
+                    File: {videoFileName}
+                  </p>
+                </div>
+              )}
+
+              {!videoUrl && !isUploadingVideo && (
+                <label
+                  htmlFor="return-video-input"
+                  className="border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-purple-500 dark:hover:border-purple-500 rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all bg-zinc-50/50 dark:bg-zinc-900/40 text-center"
+                >
+                  <div className="w-10 h-10 rounded-full bg-purple-50 dark:bg-purple-950/60 flex items-center justify-center text-purple-600 dark:text-purple-400 shadow-xs">
+                    <Video className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 block">
+                      Pilih Video Unboxing dari Galeri / File
+                    </span>
+                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      Format MP4, MOV, WebM (durasi maksimal 10 menit)
+                    </p>
+                  </div>
+                </label>
+              )}
+
+              {videoUrl && !isUploadingVideo && (
+                <div className="rounded-xl border border-purple-200 dark:border-purple-800 p-3 bg-purple-50/40 dark:bg-purple-950/20 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/60 flex items-center justify-center text-purple-600 shrink-0">
+                      <Play className="w-5 h-5 fill-current" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>Video Unboxing Tersimpan</span>
+                      </div>
+                      <a
+                        href={videoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline truncate block"
+                      >
+                        Tonton Video Preview
+                      </a>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveVideo}
+                    className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer shrink-0"
+                    title="Hapus video"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

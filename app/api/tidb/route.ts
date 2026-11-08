@@ -801,7 +801,11 @@ export async function GET(req: Request) {
         if (status === "Pending") {
           whereClause += " AND (status = 'Pending' OR status IS NULL OR status = '')";
         } else if (status === "In Progress") {
-          whereClause += " AND status = 'In Progress'";
+          whereClause += " AND (status LIKE 'In Progress%' OR status = 'In Progress (Operasional)' OR status = 'In Progress (Klaim & Retur)')";
+        } else if (status === "In Progress (Operasional)") {
+          whereClause += " AND (status = 'In Progress (Operasional)' OR inprogress_type = 'Operasional')";
+        } else if (status === "In Progress (Klaim & Retur)") {
+          whereClause += " AND (status = 'In Progress (Klaim & Retur)' OR inprogress_type = 'Klaim & Retur')";
         } else if (status === "Resolved") {
           whereClause += " AND (status = 'Resolved' OR status = 'Selesai')";
         } else if (status === "Rejected") {
@@ -861,7 +865,9 @@ export async function GET(req: Request) {
           sr.invoice_no, sr.invoice_date, sr.product_name, sr.batch_no, sr.expiry_date,
           sr.qty, sr.reason, sr.person, sr.root_cause, sr.note, sr.status,
           sr.confirm, sr.action, sr.nota_retur_no, sr.resolved_date, sr.category, sr.created_at,
+          sr.video_url, sr.reject_reason, sr.reject_media_url, sr.inprogress_type,
           CASE WHEN sr.photo_url IS NOT NULL AND CHAR_LENGTH(sr.photo_url) > 0 THEN 1 ELSE 0 END AS has_photo,
+          CASE WHEN sr.video_url IS NOT NULL AND CHAR_LENGTH(sr.video_url) > 0 THEN 1 ELSE 0 END AS has_video,
           ${includePhoto ? "sr.photo_url" : "CASE WHEN CHAR_LENGTH(sr.photo_url) < 256 THEN sr.photo_url ELSE NULL END AS photo_url"},
           COALESCE(
             NULLIF(fa.order_date, ''),
@@ -875,7 +881,7 @@ export async function GET(req: Request) {
           WHERE no_faktur != '' AND no_faktur IS NOT NULL
           GROUP BY no_faktur
         ) fa ON sr.invoice_no = fa.no_faktur
-        ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|person|batch_no|expiry_date|root_cause|note|status|pbf|category|month|week|report_date|invoice_date|action|nota_retur_no|resolved_date)\b/g, 'sr.$1')}
+        ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|person|batch_no|expiry_date|root_cause|note|status|pbf|category|month|week|report_date|invoice_date|action|nota_retur_no|resolved_date|inprogress_type)\b/g, 'sr.$1')}
         ORDER BY CASE WHEN sr.report_date IS NOT NULL AND sr.report_date != '' THEN sr.report_date ELSE '1970-01-01' END DESC, sr.id DESC 
         LIMIT ? OFFSET ?
       `;
@@ -896,7 +902,9 @@ export async function GET(req: Request) {
           COUNT(*) as totalAll,
           SUM(CASE WHEN LOWER(status) = 'resolved' OR LOWER(status) LIKE '%selesai%' THEN 1 ELSE 0 END) as totalResolved,
           SUM(CASE WHEN LOWER(status) = 'pending' OR status IS NULL OR status = '' THEN 1 ELSE 0 END) as totalPending,
-          SUM(CASE WHEN LOWER(status) = 'in progress' THEN 1 ELSE 0 END) as totalInProgress,
+          SUM(CASE WHEN LOWER(status) LIKE '%in progress%' THEN 1 ELSE 0 END) as totalInProgress,
+          SUM(CASE WHEN status = 'In Progress (Operasional)' OR inprogress_type = 'Operasional' THEN 1 ELSE 0 END) as totalInProgressOperasional,
+          SUM(CASE WHEN status = 'In Progress (Klaim & Retur)' OR inprogress_type = 'Klaim & Retur' THEN 1 ELSE 0 END) as totalInProgressKlaim,
           SUM(CASE WHEN pbf = 'MBI' THEN 1 ELSE 0 END) as totalMbi,
           SUM(CASE WHEN pbf = 'MAI' THEN 1 ELSE 0 END) as totalMai,
           SUM(CASE WHEN pbf = 'MBI' AND LOWER(status) NOT LIKE '%reject%' AND (confirm = 'Approve' OR confirm = '' OR confirm IS NULL) THEN 1 ELSE 0 END) as mbiApproved,
@@ -920,6 +928,8 @@ export async function GET(req: Request) {
             totalResolved: Number(stats?.totalResolved || 0),
             totalPending: Number(stats?.totalPending || 0),
             totalInProgress: Number(stats?.totalInProgress || 0),
+            totalInProgressOperasional: Number(stats?.totalInProgressOperasional || 0),
+            totalInProgressKlaim: Number(stats?.totalInProgressKlaim || 0),
             totalMbi: Number(stats?.totalMbi || 0),
             totalMai: Number(stats?.totalMai || 0),
             mbiApproved: Number(stats?.mbiApproved || 0),
@@ -981,7 +991,7 @@ export async function GET(req: Request) {
       }
 
       const rows = (await conn.execute(
-        `SELECT id, invoice_no, so_no, customer_name, product_name, qty, reason, status, confirm, action, nota_retur_no, resolved_date, report_date, photo_url, note
+        `SELECT id, invoice_no, so_no, customer_name, product_name, qty, reason, status, confirm, action, nota_retur_no, resolved_date, report_date, photo_url, note, video_url, reject_reason, reject_media_url, inprogress_type
          FROM shipment_returns 
          WHERE invoice_no = ? OR invoice_no LIKE ?
          ORDER BY id DESC LIMIT 20`,
@@ -2685,6 +2695,10 @@ export async function POST(req: Request) {
         person,
         root_cause,
         photo_url,
+        video_url,
+        reject_reason,
+        reject_media_url,
+        inprogress_type,
         products, // multi-product array
       } = body;
 
@@ -2709,6 +2723,10 @@ export async function POST(req: Request) {
                 action: returnAction,
                 root_cause,
                 photo_url,
+                video_url,
+                reject_reason,
+                reject_media_url,
+                inprogress_type,
               },
             ];
 
@@ -2752,8 +2770,8 @@ export async function POST(req: Request) {
         const [res] = (await conn.execute(
           `INSERT INTO shipment_returns (
             pbf, customer_name, invoice_no, so_no, product_name, qty, batch_no, expiry_date, reason, invoice_date, report_date,
-            category, confirm, action, status, note, person, root_cause, photo_url, month, week
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            category, confirm, action, status, note, person, root_cause, photo_url, video_url, reject_reason, reject_media_url, inprogress_type, month, week
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             pbf || item.pbf || "MBI",
             customer_name || item.customer_name || "",
@@ -2774,6 +2792,10 @@ export async function POST(req: Request) {
             person !== undefined && person !== null ? person : (item.person ?? ""),
             item.root_cause || root_cause || "",
             item.photo_url || photo_url || null,
+            item.video_url || video_url || null,
+            item.reject_reason || reject_reason || null,
+            item.reject_media_url || reject_media_url || null,
+            item.inprogress_type || inprogress_type || null,
             repMonth,
             repWeek,
           ]
@@ -2856,6 +2878,10 @@ export async function POST(req: Request) {
         person,
         root_cause,
         photo_url,
+        video_url,
+        reject_reason,
+        reject_media_url,
+        inprogress_type,
       } = body;
 
       if (!id) {
@@ -2890,7 +2916,11 @@ export async function POST(req: Request) {
           note = COALESCE(?, note),
           person = COALESCE(?, person),
           root_cause = COALESCE(?, root_cause),
-          photo_url = COALESCE(?, photo_url)
+          photo_url = COALESCE(?, photo_url),
+          video_url = COALESCE(?, video_url),
+          reject_reason = COALESCE(?, reject_reason),
+          reject_media_url = COALESCE(?, reject_media_url),
+          inprogress_type = COALESCE(?, inprogress_type)
         WHERE id = ?`,
         [
           pbf,
@@ -2914,6 +2944,10 @@ export async function POST(req: Request) {
           person,
           root_cause,
           photo_url || null,
+          video_url || null,
+          reject_reason || null,
+          reject_media_url || null,
+          inprogress_type || null,
           id,
         ]
       );

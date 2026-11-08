@@ -246,5 +246,10 @@ export interface ShipmentReturnRecord {
   person: string;
   root_cause: string;
   photo_url?: string;
+  video_url?: string;
+  description?: string;
+  reject_reason?: string;
+  reject_media_url?: string;
+  inprogress_type?: "Operasional" | "Klaim & Retur" | string;
   created_at?: string;
 }

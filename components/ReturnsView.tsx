@@ -51,6 +51,7 @@ import {
   ChevronUp,
   LayoutGrid,
   Table,
+  Video,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import OverviewKpiView from "./returns/OverviewKpiView";
@@ -432,6 +433,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [personnelReasonFilter, setPersonnelReasonFilter] = useState<string>("ALL");
   const [personnelSearchQuery, setPersonnelSearchQuery] = useState<string>("");
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
   const [loadingPhotoId, setLoadingPhotoId] = useState<number | null>(null);
 
   const handlePreviewPhoto = useCallback(async (r: ShipmentReturnRecord | any) => {
@@ -461,6 +463,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     const list = allReturns.length > 0 ? allReturns : returns;
     let pending = 0;
     let inProgress = 0;
+    let inProgressOperasional = 0;
+    let inProgressKlaim = 0;
     let resolved = 0;
     let rejected = 0;
 
@@ -472,20 +476,46 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         rejected++;
       } else if (st === "resolved" || st.includes("selesai")) {
         resolved++;
-      } else if (st === "in progress") {
+      } else if (st === "in progress" || st.startsWith("in progress")) {
         inProgress++;
+        const isOp = r.inprogress_type === "Operasional" || (
+          !r.inprogress_type && [
+            "fisik yang dikirim kurang",
+            "fisik yang dikirim lebih",
+            "fisik yang dikirim salah",
+            "fisik yang dikirim tidak ada",
+          ].some((k) =>
+            (r.description || "").toLowerCase().includes(k) ||
+            (r.reason || "").toLowerCase().includes(k)
+          )
+        );
+        if (isOp) {
+          inProgressOperasional++;
+        } else {
+          inProgressKlaim++;
+        }
       } else {
         pending++;
       }
     }
 
-    return { pending, inProgress, resolved, rejected, total: list.length };
+    return {
+      pending,
+      inProgress,
+      inProgressOperasional,
+      inProgressKlaim,
+      resolved,
+      rejected,
+      total: list.length,
+    };
   }, [allReturns, returns]);
 
   const openCasesCount = statusMetrics.inProgress;
   const rejectCasesCount = statusMetrics.rejected;
   const pendingCasesCount = stats.totalPending !== undefined ? Number(stats.totalPending) : statusMetrics.pending;
   const inProgressCasesCount = (stats as any).totalInProgress !== undefined ? Number((stats as any).totalInProgress) : statusMetrics.inProgress;
+  const inProgressOperasionalCount = (stats as any).totalInProgressOperasional !== undefined ? Number((stats as any).totalInProgressOperasional) : statusMetrics.inProgressOperasional;
+  const inProgressKlaimCount = (stats as any).totalInProgressKlaim !== undefined ? Number((stats as any).totalInProgressKlaim) : statusMetrics.inProgressKlaim;
   const resolvedCasesCount = stats.totalResolved !== undefined ? Number(stats.totalResolved) : statusMetrics.resolved;
   const rejectedCasesCount = stats.totalReject !== undefined ? Number(stats.totalReject) : statusMetrics.rejected;
 
@@ -712,6 +742,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     note: "",
     person: "",
     root_cause: "",
+    video_url: "",
+    reject_reason: "",
+    reject_media_url: "",
+    inprogress_type: "",
   });
 
   useEffect(() => {
@@ -737,6 +771,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         note: selectedReturn.note || "",
         person: selectedReturn.person || "",
         root_cause: selectedReturn.root_cause || "",
+        video_url: selectedReturn.video_url || "",
+        reject_reason: selectedReturn.reject_reason || "",
+        reject_media_url: selectedReturn.reject_media_url || "",
+        inprogress_type: selectedReturn.inprogress_type || "",
       });
     }
   }, [selectedReturn]);
@@ -760,6 +798,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     person: "",
     root_cause: "",
     note: "",
+    video_url: "",
+    reject_reason: "",
+    reject_media_url: "",
+    inprogress_type: "",
   });
 
   const editCustomerSuggestions = useMemo(() => {
@@ -1130,6 +1172,19 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       });
       return;
     }
+    const defaultType = r.inprogress_type || (
+      [
+        "fisik yang dikirim kurang",
+        "fisik yang dikirim lebih",
+        "fisik yang dikirim salah",
+        "fisik yang dikirim tidak ada",
+      ].some((k) =>
+        (r.description || "").toLowerCase().includes(k) ||
+        (r.reason || "").toLowerCase().includes(k)
+      )
+        ? "Operasional"
+        : "Klaim & Retur"
+    );
     setSelectedReturn(r);
     setEditForm({
       pbf: r.pbf || "MBI",
@@ -1152,6 +1207,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       note: r.note || "",
       person: r.person || "",
       root_cause: r.root_cause || "",
+      video_url: r.video_url || "",
+      reject_reason: r.reject_reason || "",
+      reject_media_url: r.reject_media_url || "",
+      inprogress_type: defaultType,
     });
     setShowConfirmApproveModal(true);
   };
@@ -1306,6 +1365,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           person: "",
           root_cause: "",
           note: "",
+          video_url: "",
+          reject_reason: "",
+          reject_media_url: "",
+          inprogress_type: "",
         });
         fetchReturns(false, true);
         fetchAllReturns(true);
@@ -1474,17 +1537,30 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           </span>
         </div>
 
-        {(r.photo_url || (r as any).has_photo) && (
-          <button
-            type="button"
-            onClick={() => handlePreviewPhoto(r)}
-            disabled={loadingPhotoId === r.id}
-            className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 disabled:opacity-50"
-          >
-            <Maximize2 className="w-3 h-3" />
-            <span>{loadingPhotoId === r.id ? "Memuat..." : "Lihat Foto Bukti"}</span>
-          </button>
-        )}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {(r.photo_url || (r as any).has_photo) && (
+            <button
+              type="button"
+              onClick={() => handlePreviewPhoto(r)}
+              disabled={loadingPhotoId === r.id}
+              className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 disabled:opacity-50"
+            >
+              <Maximize2 className="w-3 h-3" />
+              <span>{loadingPhotoId === r.id ? "Memuat..." : "Lihat Foto Bukti"}</span>
+            </button>
+          )}
+
+          {r.video_url && (
+            <button
+              type="button"
+              onClick={() => setPreviewVideoUrl(r.video_url || null)}
+              className="text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 cursor-pointer bg-purple-50 dark:bg-purple-950/40 px-2.5 py-1 rounded-lg border border-purple-200 dark:border-purple-800"
+            >
+              <Video className="w-3 h-3" />
+              <span>Putar Video Unboxing</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Form Edit Ringkas & Lengkap (3 Bagian Rapi) */}
@@ -1788,6 +1864,18 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   const updates: any = { confirm: val };
                   if (val === "Approve") {
                     updates.status = "In Progress";
+                    if (!editForm.inprogress_type) {
+                      const isOp = [
+                        "fisik yang dikirim kurang",
+                        "fisik yang dikirim lebih",
+                        "fisik yang dikirim salah",
+                        "fisik yang dikirim tidak ada",
+                      ].some((k) =>
+                        (selectedReturn?.description || "").toLowerCase().includes(k) ||
+                        (editForm.reason || "").toLowerCase().includes(k)
+                      );
+                      updates.inprogress_type = isOp ? "Operasional" : "Klaim & Retur";
+                    }
                   } else if (val === "Reject") {
                     updates.status = "Rejected";
                     updates.resolved_date = "";
@@ -1832,6 +1920,108 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               </div>
             </div>
           </div>
+
+          {/* Baris 3.3: Spesifik In Progress / Reject Details */}
+          {(editForm.confirm === "Approve" || editForm.status === "In Progress") && (
+            <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 rounded-xl space-y-2">
+              <label className="text-xs font-bold text-blue-900 dark:text-blue-300 block">
+                Jenis Alur In Progress:
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditForm({ ...editForm, inprogress_type: "Operasional" })}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    editForm.inprogress_type === "Operasional"
+                      ? "bg-blue-600 text-white border-blue-700 shadow-sm"
+                      : "bg-white dark:bg-slate-900 text-zinc-700 dark:text-slate-300 border-blue-200 dark:border-blue-900/40 hover:border-blue-400"
+                  }`}
+                >
+                  <div className="font-extrabold text-xs flex items-center gap-1.5">
+                    <Package className="w-4 h-4" />
+                    <span>In Progress (Operasional)</span>
+                  </div>
+                  <p className={`text-[10px] mt-0.5 ${editForm.inprogress_type === "Operasional" ? "text-blue-100" : "text-zinc-500 dark:text-slate-400"}`}>
+                    Kelalaian fisik pengiriman: Fisik kurang, lebih, salah, tidak ada (Penyiapan barang &amp; antar driver).
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEditForm({ ...editForm, inprogress_type: "Klaim & Retur" })}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    editForm.inprogress_type === "Klaim & Retur"
+                      ? "bg-blue-600 text-white border-blue-700 shadow-sm"
+                      : "bg-white dark:bg-slate-900 text-zinc-700 dark:text-slate-300 border-blue-200 dark:border-blue-900/40 hover:border-blue-400"
+                  }`}
+                >
+                  <div className="font-extrabold text-xs flex items-center gap-1.5">
+                    <FileText className="w-4 h-4" />
+                    <span>In Progress (Klaim &amp; Retur)</span>
+                  </div>
+                  <p className={`text-[10px] mt-0.5 ${editForm.inprogress_type === "Klaim & Retur" ? "text-blue-100" : "text-zinc-500 dark:text-slate-400"}`}>
+                    Retur administratif &amp; kondisi barang: Damage On Delivery, ED dekat, recall, salah SKU, dll.
+                  </p>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {(editForm.confirm === "Reject" || editForm.status === "Rejected") && (
+            <div className="p-3 bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 rounded-xl space-y-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-rose-900 dark:text-rose-300">
+                <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>Form Penolakan Transparan (Akan Tampil di Link Tracking Apotek)</span>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-zinc-700 dark:text-slate-300 block mb-1">
+                  Alasan Penolakan PBF (Wajib Diisi):
+                </label>
+                <textarea
+                  rows={2}
+                  value={editForm.reject_reason || editForm.note}
+                  onChange={(e) => setEditForm({ ...editForm, reject_reason: e.target.value, note: e.target.value })}
+                  placeholder="Contoh: Dus luar utuh bersegel dan tidak ada video unboxing saat paket diterima..."
+                  className="w-full bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 rounded-lg p-2 text-xs text-zinc-900 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-zinc-700 dark:text-slate-300 block mb-1">
+                  Link / Bukti Media Penolakan dari Tim PBF (Opsional):
+                </label>
+                <input
+                  type="text"
+                  value={editForm.reject_media_url || ""}
+                  onChange={(e) => setEditForm({ ...editForm, reject_media_url: e.target.value })}
+                  placeholder="URL Foto/Video Bukti CCTV Gudang atau Packing List..."
+                  className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-xs text-zinc-900 dark:text-white font-mono"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Bukti Media Apotek */}
+          {(selectedReturn?.video_url || editForm.video_url) && (
+            <div className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/50 rounded-xl">
+              <Video className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-purple-900 dark:text-purple-300 truncate">
+                  Tersedia Video Unboxing dari Apotek
+                </p>
+                <p className="text-[10px] text-purple-700 dark:text-purple-400">
+                  Video direkam saat pembukaan paket oleh apotek (durasi max 10 menit).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewVideoUrl(selectedReturn?.video_url || editForm.video_url || null)}
+                className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+              >
+                <Video className="w-3.5 h-3.5" />
+                <span>Putar Video</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -2225,50 +2415,81 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
                 {/* 2. IN PROGRESS */}
                 <div
-                  onClick={() => {
-                    setStatusFilter(statusFilter === "In Progress" ? "ALL" : "In Progress");
-                    setPage(0);
-                  }}
-                  className={`relative overflow-hidden rounded-2xl border p-2.5 sm:p-3 flex flex-col justify-between cursor-pointer touch-manipulation transition-all select-none ${
-                    statusFilter === "In Progress"
+                  className={`relative overflow-hidden rounded-2xl border p-2.5 sm:p-3 flex flex-col justify-between transition-all select-none ${
+                    statusFilter.startsWith("In Progress")
                       ? "border-blue-400 dark:border-blue-400 ring-4 ring-blue-500/20 dark:ring-blue-400/20 bg-blue-500/15 dark:bg-blue-950/70 shadow-lg shadow-blue-500/10 scale-[1.01]"
                       : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-700 bg-white dark:bg-slate-900 hover:shadow-md`
                   }`}
-                  title="Klik untuk filter tiket In Progress (Penyiapan Fisik & Pengantaran). Klik lagi untuk reset."
+                  title="Klik untuk filter tiket In Progress. Klik lagi untuk reset."
                 >
                   <div className="absolute top-0 left-0 right-0 h-1.5 bg-blue-500" />
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <span className="text-[11px] font-mono font-bold tracking-wider text-blue-600 dark:text-blue-400 uppercase flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5" />
-                      <span>IN PROGRESS</span>
-                    </span>
-                    {statusFilter === "In Progress" ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-blue-500 text-white flex items-center gap-1 shadow-xs animate-in zoom-in-95">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                        <span>AKTIF</span>
+                  <div
+                    onClick={() => {
+                      setStatusFilter(statusFilter === "In Progress" ? "ALL" : "In Progress");
+                      setPage(0);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="text-[11px] font-mono font-bold tracking-wider text-blue-600 dark:text-blue-400 uppercase flex items-center gap-1.5">
+                        <Package className="w-3.5 h-3.5" />
+                        <span>IN PROGRESS</span>
                       </span>
-                    ) : (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
-                        Tahap 2
+                      {statusFilter.startsWith("In Progress") ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-blue-500 text-white flex items-center gap-1 shadow-xs animate-in zoom-in-95">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                          <span>AKTIF</span>
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                          Tahap 2
+                        </span>
+                      )}
+                    </div>
+                    <div className="my-1">
+                      <span className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tight">
+                        {inProgressCasesCount.toLocaleString("id-ID")}
                       </span>
-                    )}
+                    </div>
                   </div>
-                  <div className="my-1">
-                    <span className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tight">
-                      {inProgressCasesCount.toLocaleString("id-ID")}
-                    </span>
-                  </div>
-                  <div className="text-[10px] font-medium truncate">
-                    {statusFilter === "In Progress" ? (
-                      <span className="text-blue-800 dark:text-blue-300 font-bold flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                        Sedang Difilter (Klik untuk reset)
-                      </span>
-                    ) : (
-                      <span className="text-slate-500 dark:text-slate-400">
-                        Penyiapan fisik &amp; antar driver
-                      </span>
-                    )}
+
+                  {/* Sub-Pills: 2 Jenis In Progress */}
+                  <div className="grid grid-cols-2 gap-1 pt-1.5 mt-1 border-t border-blue-200/60 dark:border-blue-900/40">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStatusFilter(statusFilter === "In Progress (Operasional)" ? "ALL" : "In Progress (Operasional)");
+                        setPage(0);
+                      }}
+                      className={`px-1.5 py-1 rounded-lg text-[9px] font-bold text-left transition-all cursor-pointer truncate ${
+                        statusFilter === "In Progress (Operasional)"
+                          ? "bg-blue-600 text-white shadow-xs"
+                          : "bg-blue-100/70 dark:bg-blue-900/40 text-blue-900 dark:text-blue-200 hover:bg-blue-200"
+                      }`}
+                      title="Filter komplain operasional fisik: Kurang, Lebih, Salah, Tidak Ada"
+                    >
+                      <span className="block opacity-75">📦 Operasional</span>
+                      <strong className="text-[11px] font-mono font-black">{inProgressOperasionalCount}</strong>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStatusFilter(statusFilter === "In Progress (Klaim & Retur)" ? "ALL" : "In Progress (Klaim & Retur)");
+                        setPage(0);
+                      }}
+                      className={`px-1.5 py-1 rounded-lg text-[9px] font-bold text-left transition-all cursor-pointer truncate ${
+                        statusFilter === "In Progress (Klaim & Retur)"
+                          ? "bg-blue-600 text-white shadow-xs"
+                          : "bg-blue-100/70 dark:bg-blue-900/40 text-blue-900 dark:text-blue-200 hover:bg-blue-200"
+                      }`}
+                      title="Filter komplain administratif: Klaim & Retur, Damage, ED dekat, recall"
+                    >
+                      <span className="block opacity-75">📋 Klaim/Retur</span>
+                      <strong className="text-[11px] font-mono font-black">{inProgressKlaimCount}</strong>
+                    </button>
                   </div>
                 </div>
 
@@ -2615,7 +2836,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             >
               <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">Semua Status</option>
               <option value="Pending" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">🟡 Pending (Menunggu Validitas)</option>
-              <option value="In Progress" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">🔵 In Progress (Penyiapan Fisik)</option>
+              <option value="In Progress" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">🔵 In Progress (Semua)</option>
+              <option value="In Progress (Operasional)" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">📦 In Progress (Operasional - Fisik)</option>
+              <option value="In Progress (Klaim & Retur)" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">📋 In Progress (Klaim & Retur)</option>
               <option value="Resolved" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">🟢 Resolved (Selesai Diterima)</option>
               <option value="Rejected" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">🔴 Rejected (Ditolak)</option>
             </select>
@@ -2994,19 +3217,29 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
                 {/* 4. Footer: Action Buttons (Nyaman di Jempol iPhone) */}
                 <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800/80">
-                  {(r.photo_url || (r as any).has_photo) ? (
-                    <button
-                      type="button"
-                      onClick={() => handlePreviewPhoto(r)}
-                      disabled={loadingPhotoId === r.id}
-                      className="h-9 py-2 px-3 rounded-xl text-xs font-bold bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300 border border-violet-200 dark:border-violet-800 hover:scale-105 transition-all touch-manipulation cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
-                    >
-                      <Camera className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
-                      <span>{loadingPhotoId === r.id ? "Memuat..." : "Foto"}</span>
-                    </button>
-                  ) : (
-                    <span />
-                  )}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {(r.photo_url || (r as any).has_photo) && (
+                      <button
+                        type="button"
+                        onClick={() => handlePreviewPhoto(r)}
+                        disabled={loadingPhotoId === r.id}
+                        className="h-9 py-2 px-3 rounded-xl text-xs font-bold bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300 border border-violet-200 dark:border-violet-800 hover:scale-105 transition-all touch-manipulation cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+                      >
+                        <Camera className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+                        <span>{loadingPhotoId === r.id ? "Memuat..." : "Foto"}</span>
+                      </button>
+                    )}
+                    {r.video_url && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewVideoUrl(r.video_url || null)}
+                        className="h-9 py-2 px-3 rounded-xl text-xs font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:scale-105 transition-all touch-manipulation cursor-pointer inline-flex items-center gap-1.5"
+                      >
+                        <Video className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        <span>Video</span>
+                      </button>
+                    )}
+                  </div>
 
                   <div className="flex items-center gap-2">
                     {isInProgress && (
@@ -3098,6 +3331,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 returns.map((r) => {
                   const isResolved = (r.status || "").toLowerCase().includes("resolved");
                   const isPending = (r.status || "").toLowerCase().includes("pending");
+                  const isReject = (r.status || "").toLowerCase().includes("reject");
+                  const isInProgress = (r.status || "").toLowerCase().includes("in progress");
                   const isExpanded = selectedReturn?.id === r.id;
 
                   return (
@@ -3244,21 +3479,37 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                               </span>
                             )}
                           </div>
-                          {(r.photo_url || (r as any).has_photo) && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handlePreviewPhoto(r);
-                              }}
-                              disabled={loadingPhotoId === r.id}
-                              className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-300 border border-violet-200 dark:border-violet-700 hover:scale-105 transition-all shadow-xs cursor-pointer disabled:opacity-50"
-                              title="Lihat foto bukti kerusakan dari apotek"
-                            >
-                              <Camera className="w-3 h-3 text-violet-600 dark:text-violet-400" />
-                              <span>{loadingPhotoId === r.id ? "Memuat..." : "Foto Bukti"}</span>
-                            </button>
-                          )}
+                          <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                            {(r.photo_url || (r as any).has_photo) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePreviewPhoto(r);
+                                }}
+                                disabled={loadingPhotoId === r.id}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-300 border border-violet-200 dark:border-violet-700 hover:scale-105 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                                title="Lihat foto bukti kerusakan dari apotek"
+                              >
+                                <Camera className="w-3 h-3 text-violet-600 dark:text-violet-400" />
+                                <span>{loadingPhotoId === r.id ? "Memuat..." : "Foto Bukti"}</span>
+                              </button>
+                            )}
+                            {r.video_url && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPreviewVideoUrl(r.video_url || null);
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 border border-purple-200 dark:border-purple-700 hover:scale-105 transition-all shadow-xs cursor-pointer"
+                                title="Tonton video unboxing dari apotek"
+                              >
+                                <Video className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                                <span>Video</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
 
                         {/* 3. Kendala & Penyebab */}
@@ -3288,20 +3539,45 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                         {/* 4. Status & Timeline */}
                         <td className="py-3 px-3 text-center border-r border-zinc-200 dark:border-zinc-800/80 align-top">
                           <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            className={`inline-flex flex-col items-center justify-center gap-0.5 px-2.5 py-1 rounded-xl text-[10px] font-bold ${
                               isResolved
                                 ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30"
                                 : isPending
                                 ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
+                                : isReject
+                                ? "bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-500/15 dark:text-rose-400 dark:border-rose-500/30"
                                 : "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/30"
                             }`}
                           >
-                            {isResolved ? (
-                              <CheckCircle2 className="w-2.5 h-2.5" />
-                            ) : (
-                              <Clock className="w-2.5 h-2.5" />
+                            <span className="inline-flex items-center gap-1">
+                              {isResolved ? (
+                                <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
+                              ) : isReject ? (
+                                <XCircle className="w-2.5 h-2.5 text-rose-600 dark:text-rose-400" />
+                              ) : isInProgress ? (
+                                <Package className="w-2.5 h-2.5 text-blue-600 dark:text-blue-400" />
+                              ) : (
+                                <Clock className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                              )}
+                              <span>{isResolved ? "Resolved" : isReject ? "Rejected" : isInProgress ? "In Progress" : "Pending"}</span>
+                            </span>
+                            {isInProgress && (
+                              <span className="text-[8.5px] font-mono uppercase tracking-tight text-blue-800 dark:text-blue-300 opacity-90">
+                                {r.inprogress_type || (
+                                  [
+                                    "fisik yang dikirim kurang",
+                                    "fisik yang dikirim lebih",
+                                    "fisik yang dikirim salah",
+                                    "fisik yang dikirim tidak ada",
+                                  ].some((k) =>
+                                    (r.description || "").toLowerCase().includes(k) ||
+                                    (r.reason || "").toLowerCase().includes(k)
+                                  )
+                                    ? "Operasional"
+                                    : "Klaim/Retur"
+                                )}
+                              </span>
                             )}
-                            <span>{r.status || "Pending"}</span>
                           </span>
                           <div className="text-[10px] text-zinc-600 dark:text-slate-400 font-mono mt-1.5 flex items-center justify-center gap-1" title="Tanggal Dilaporkan">
                             <Calendar className="w-3 h-3 text-rose-500 shrink-0" />
@@ -3513,6 +3789,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 returns.map((r) => {
                   const isResolved = (r.status || "").toLowerCase().includes("resolved");
                   const isPending = (r.status || "").toLowerCase().includes("pending");
+                  const isReject = (r.status || "").toLowerCase().includes("reject");
+                  const isInProgress = (r.status || "").toLowerCase().includes("in progress");
                   const isExpanded = selectedReturn?.id === r.id;
 
                   return (
@@ -4736,6 +5014,54 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         </div>
       )}
 
+      {/* ─── FULLSCREEN VIDEO PREVIEW MODAL ─── */}
+      {previewVideoUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setPreviewVideoUrl(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[92vh] w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-3 shadow-2xl flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full flex items-center justify-between p-2 border-b border-zinc-800 mb-2">
+              <span className="text-xs font-bold text-zinc-300 flex items-center gap-2">
+                <Video className="w-4 h-4 text-purple-400" />
+                <span>Video Unboxing Asli dari Apotek (Max 10 Menit)</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewVideoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  download="video-unboxing.mp4"
+                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold flex items-center gap-1 transition-colors"
+                  title="Unduh / Buka di tab baru"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Unduh</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewVideoUrl(null)}
+                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-auto max-h-[75vh] w-full flex items-center justify-center p-1 bg-black rounded-xl">
+              <video
+                src={previewVideoUrl}
+                controls
+                autoPlay
+                className="max-h-[72vh] max-w-full rounded-xl shadow-lg"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── MODAL KONFIRMASI: ACC KOMPLAIN (VALID / KESALAHAN PBF ➔ IN PROGRESS) ─── */}
       {showConfirmApproveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
@@ -4755,7 +5081,51 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             </div>
 
             <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 text-xs text-blue-900 dark:text-blue-200 font-medium leading-relaxed">
-              Apakah sudah dipastikan komplain ini benar merupakan kesalahan operasional pihak PBF dan siap diproses tim gudang?
+              Komplain ini disetujui (ACC) sebagai kesalahan pihak PBF dan dialihkan ke tahap <strong>In Progress</strong>.
+            </div>
+
+            {/* Pilihan 2 Jenis In Progress */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300 block">
+                Pilih Jenis Penanganan:
+              </label>
+              <div className="grid grid-cols-1 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditForm({ ...editForm, inprogress_type: "Operasional" })}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    editForm.inprogress_type === "Operasional"
+                      ? "bg-blue-600 text-white border-blue-700 shadow-sm"
+                      : "bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-blue-400"
+                  }`}
+                >
+                  <div className="font-black text-xs flex items-center gap-1.5">
+                    <Package className="w-4 h-4" />
+                    <span>In Progress (Operasional)</span>
+                  </div>
+                  <p className={`text-[10px] mt-0.5 ${editForm.inprogress_type === "Operasional" ? "text-blue-100" : "text-zinc-500 dark:text-zinc-400"}`}>
+                    Kelalaian fisik gudang: Kurang, Lebih, Salah, atau Tidak Ada (Penyiapan fisik pengganti &amp; antar driver).
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEditForm({ ...editForm, inprogress_type: "Klaim & Retur" })}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    editForm.inprogress_type === "Klaim & Retur"
+                      ? "bg-blue-600 text-white border-blue-700 shadow-sm"
+                      : "bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-blue-400"
+                  }`}
+                >
+                  <div className="font-black text-xs flex items-center gap-1.5">
+                    <FileText className="w-4 h-4" />
+                    <span>In Progress (Klaim &amp; Retur)</span>
+                  </div>
+                  <p className={`text-[10px] mt-0.5 ${editForm.inprogress_type === "Klaim & Retur" ? "text-blue-100" : "text-zinc-500 dark:text-zinc-400"}`}>
+                    Retur administratif &amp; kondisi barang: Damage On Delivery, ED dekat, recall pabrik, salah SKU apotek.
+                  </p>
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
@@ -4796,16 +5166,32 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-900 dark:text-rose-200 font-medium leading-relaxed space-y-1.5">
-              <p>Apakah sudah dipastikan komplain ini ditolak karena bukan merupakan kesalahan pihak PBF?</p>
-              <p className="text-[11px] text-rose-700 dark:text-rose-300 font-semibold">
-                *Catatan alasan reject wajib diisi dan akan langsung terbaca oleh pihak apotek di link tracking.
-              </p>
-              {editForm.note && (
-                <div className="p-2 rounded-lg bg-white/70 dark:bg-zinc-900/70 border border-rose-200 dark:border-rose-900/40 text-[11px] font-bold text-rose-800 dark:text-rose-300 italic">
-                  Alasan: &quot;{editForm.note}&quot;
-                </div>
-              )}
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300 block mb-1">
+                  Alasan Penolakan PBF (Wajib Diisi):
+                </label>
+                <textarea
+                  rows={2}
+                  value={editForm.reject_reason || editForm.note}
+                  onChange={(e) => setEditForm({ ...editForm, reject_reason: e.target.value, note: e.target.value })}
+                  placeholder="Contoh: Dus luar utuh bersegel dan tidak ada video unboxing saat paket diterima..."
+                  className="w-full bg-white dark:bg-zinc-800 border border-rose-300 dark:border-rose-800 rounded-xl p-2 text-xs text-zinc-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300 block mb-1">
+                  Link Bukti CCTV / Packing List (Opsional):
+                </label>
+                <input
+                  type="text"
+                  value={editForm.reject_media_url || ""}
+                  onChange={(e) => setEditForm({ ...editForm, reject_media_url: e.target.value })}
+                  placeholder="URL Foto/Video Rekaman CCTV Gudang..."
+                  className="w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl p-1.5 text-xs text-zinc-900 dark:text-white font-mono"
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">

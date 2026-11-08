@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCKtbQ1c1s-My3Mf0so727hXmR79ekJ5v8",
@@ -14,5 +15,6 @@ const firebaseConfig = {
 // Initialize Firebase (singleton instance)
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
-export { app, db, firebaseConfig };
+export { app, db, storage, firebaseConfig };
