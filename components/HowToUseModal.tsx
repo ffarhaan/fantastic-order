@@ -12,6 +12,9 @@ import {
   Layers,
   ExternalLink,
   Zap,
+  Video,
+  BarChart3,
+  FileSpreadsheet,
 } from "lucide-react";
 
 interface HowToUseModalProps {
@@ -377,29 +380,29 @@ export default function HowToUseModal({
                   Alur Operasional Baku &amp; SOP Modul Shipment Error
                 </h3>
                 <p className={`text-xs font-medium leading-relaxed ${isDark ? "text-amber-200/90" : "text-amber-900"}`}>
-                  Setiap komplain barang (selisih koli, barang rusak, fisik kurang, salah barang, ED dekat) wajib melalui 4 tahapan baku dan 2 proses investigasi gudang untuk menjamin akurasi dan ketuntasan pengiriman fisik ke apotek.
+                  Setiap komplain barang (selisih koli, barang rusak, fisik kurang, salah barang, ED dekat) wajib melalui 4 tahapan baku dan investigasi gudang untuk menjamin akurasi dan ketuntasan pengiriman fisik ke apotek.
                 </p>
               </div>
 
-              {/* FITUR BARU: Kolom Eksekusi Cepat di Paling Kiri */}
+              {/* FITUR BARU: Kolom Eksekusi Cepat di Paling Kiri & Performa Instan */}
               <div className={`p-3.5 rounded-xl border shadow-xs ${
                 isDark ? "bg-[#142038] border-indigo-700/60" : "bg-indigo-50/70 border-indigo-200"
               }`}>
                 <h4 className="font-extrabold text-xs mb-1.5 flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
                   <Zap className="w-4 h-4 text-indigo-500" />
-                  Fitur Baru: Kolom Eksekusi Cepat (Kolom 1: ACC / Selesai)
+                  Fitur Baru: Kolom Eksekusi Cepat (Kolom 1: ACC / Selesai) &amp; Performa Kilat (&lt;1ms)
                 </h4>
                 <p className={`text-xs leading-relaxed mb-2 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-                  Tabel dirancang 100% pas di layar laptop tanpa perlu scroll ke kanan atau scroll ke bawah form:
+                  Tabel dirancang 100% pas di layar laptop tanpa perlu scroll ke kanan atau scroll ke bawah form. Seluruh aksi bekerja instan (&lt;1ms) di memori identik dengan kecepatan Meja Kerja Faktur:
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
                   <div className={`p-2.5 rounded-lg border ${isDark ? "bg-[#0b1220] border-slate-700" : "bg-white border-indigo-100"}`}>
                     <strong className="text-blue-600 dark:text-blue-400 block mb-0.5">Tombol [ ✓ ACC ] (Biru):</strong>
-                    Untuk tiket <em>Pending</em>. Klik langsung di baris tabel untuk memvalidasi kesalahan operasional PBF dan memindahkan tiket ke <em>In Progress</em> tanpa membuka modal form.
+                    Untuk tiket <em>Pending</em>. Klik langsung di baris tabel untuk memvalidasi kesalahan operasional PBF dan memindahkan tiket ke <em>In Progress</em> sesuai klasifikasi jenis pengerjaannya.
                   </div>
                   <div className={`p-2.5 rounded-lg border ${isDark ? "bg-[#0b1220] border-slate-700" : "bg-white border-indigo-100"}`}>
                     <strong className="text-emerald-600 dark:text-emerald-400 block mb-0.5">Tombol [ ✓ Selesaikan ] (Hijau):</strong>
-                    Untuk tiket <em>In Progress</em>. Sistem secara otomatis memvalidasi kelengkapan 3 data investigasi gudang sebelum mengonfirmasi penerimaan barang di apotek.
+                    Untuk tiket <em>In Progress</em>. Sistem secara otomatis memvalidasi kelengkapan data investigasi gudang sebelum mengonfirmasi penerimaan fisik barang di apotek.
                   </div>
                 </div>
               </div>
@@ -421,14 +424,14 @@ export default function HowToUseModal({
                   </div>
                   <ul className="text-xs space-y-1.5 leading-relaxed text-zinc-700 dark:text-slate-300 list-disc list-inside">
                     <li>Setiap tiket baru yang dikirim dari form apotek/sales otomatis masuk antrean <strong>Pending</strong>.</li>
-                    <li>Admin/CS memeriksa rincian kendala beserta foto bukti komplain dan foto packingan tim gudang.</li>
-                    <li>Eksekusi cepat via kolom 1:
+                    <li>Admin/CS memeriksa rincian kendala beserta foto bukti komplain, video unboxing apotek, dan foto packing tim gudang.</li>
+                    <li>Eksekusi cepat via kolom 1 atau tombol Tindakan:
                       <div className="mt-1 pl-4 space-y-1">
                         <div className="text-blue-600 dark:text-blue-400 font-bold">
-                          • Klik [ ACC ]: Komplain dinyatakan Valid (Kesalahan PBF). Tiket lanjut ke tahap <strong>IN PROGRESS</strong>.
+                          • Klik [ ACC ]: Komplain dinyatakan Valid (Kesalahan PBF). Tiket otomatis dialokasikan ke jenis <strong>In Progress (Operasional)</strong> atau <strong>In Progress (Klaim &amp; Retur)</strong>.
                         </div>
                         <div className="text-rose-600 dark:text-rose-400 font-bold">
-                          • Reject: Bukan kesalahan gudang. Wajib isi catatan alasan penolakan pada tombol Tindakan.
+                          • Reject: Bukan kesalahan gudang. Tim PBF wajib mengisi alasan penolakan dan lampiran bukti (CCTV/packing list) jika ada.
                         </div>
                       </div>
                     </li>
@@ -442,21 +445,26 @@ export default function HowToUseModal({
                   <div className="flex items-center justify-between border-b border-blue-200/50 dark:border-blue-900/50 pb-2">
                     <span className="font-extrabold text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-                      2. TAHAP IN PROGRESS (2 Proses Terkunci)
+                      2. TAHAP IN PROGRESS (2 Alur Terpisah &amp; Personil)
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
-                      Strict Guard
+                      2 Jalur Khusus
                     </span>
                   </div>
                   <ul className="text-xs space-y-1.5 leading-relaxed text-zinc-700 dark:text-slate-300 list-disc list-inside">
-                    <li><strong className="text-blue-500 dark:text-blue-400">Proses 1 (Investigasi &amp; Fisik):</strong> Wajib mengisi 3 data sebelum disimpan:
-                      <div className="mt-1 pl-4 space-y-0.5 font-medium">
-                        <div>1. <strong>Tindakan Solusi Gudang</strong>: Tukar fisik / Kirim susulan / Nota retur.</div>
-                        <div>2. <strong>Akar Penyebab (Root Cause)</strong>: Human Error / Vendor Issue / Sistem.</div>
-                        <div>3. <strong>Personil Terkait</strong>: Nama petugas Picker / Checker bersangkutan.</div>
+                    <li><strong className="text-blue-500 dark:text-blue-400">Jalur 1: In Progress (Operasional):</strong>
+                      <div className="mt-0.5 pl-4 space-y-0.5 font-medium text-[11px]">
+                        <div>• Khusus 4 kelalaian fisik gudang: <em>Fisik kurang, lebih, salah kirim, tidak ada</em>.</div>
+                        <div>• Barang pengganti disiapkan dan diantar oleh driver ke apotek pemesan.</div>
+                        <div>• <strong>Wajib Mengisi 3 Data Lengkap:</strong> (1) Tindakan Solusi, (2) Akar Penyebab, dan (3) <strong>Personil Terkait (Picker / Checker Wajib)</strong>.</div>
                       </div>
                     </li>
-                    <li><strong className="text-emerald-500 dark:text-emerald-400">Proses 2 (Pengantaran Fisik):</strong> Barang pengganti disiapkan dan diantar oleh driver ke apotek pemesan.</li>
+                    <li><strong className="text-cyan-600 dark:text-cyan-400">Jalur 2: In Progress (Klaim &amp; Retur):</strong>
+                      <div className="mt-0.5 pl-4 space-y-0.5 font-medium text-[11px]">
+                        <div>• Khusus kendala kondisi &amp; administrasi: <em>Damage on delivery (pecah/bocor), ED dekat, Recall pabrik, Retur admin salah SKU apotek</em>.</div>
+                        <div>• <strong className="text-amber-500 dark:text-amber-400">Aturan Khusus Personil:</strong> Nama personil <strong>TIDAK WAJIB (opsional / boleh dikosongkan)</strong> untuk diselesaikan, karena kerusakan dari pabrik/ekspedisi atau administrasi faktur bukan kelalaian personil picking/checking.</div>
+                      </div>
+                    </li>
                   </ul>
                 </div>
 
@@ -475,13 +483,18 @@ export default function HowToUseModal({
                   </div>
                   <ul className="text-xs space-y-1.5 leading-relaxed text-zinc-700 dark:text-slate-300 list-disc list-inside">
                     <li>Klik tombol hijau <strong>"Selesaikan"</strong> pada kolom 1 atau kartu In Progress.</li>
-                    <li>Sistem memeriksa: jika 3 data investigasi belum diisi, tiket <strong>DITOLAK</strong> untuk diselesaikan sampai data dilengkapi.</li>
+                    <li>Sistem memvalidasi kelengkapan data investigasi:
+                      <div className="mt-1 pl-4 space-y-0.5 text-[11px] font-medium">
+                        <div>• <strong>Jenis Operasional:</strong> Wajib 3 data lengkap (Tindakan, Penyebab, dan Personil).</div>
+                        <div>• <strong>Jenis Klaim &amp; Retur:</strong> Cukup mengisi Tindakan &amp; Penyebab (Personil boleh kosong).</div>
+                      </div>
+                    </li>
                     <li>Sistem memunculkan konfirmasi kepastian fisik:
                       <div className="p-2 mt-1 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 text-[11px] font-medium">
                         <em>"Apakah barang pengganti ini sudah benar-benar sampai dan diterima dengan baik oleh pihak apotek?"</em>
                       </div>
                     </li>
-                    <li>Saat dikonfirmasi, tanggal selesai terisi otomatis dan tiket berstatus tuntas.</li>
+                    <li>Saat dikonfirmasi, tanggal selesai terisi otomatis dan tiket berstatus tuntas 100%.</li>
                   </ul>
                 </div>
 
@@ -492,7 +505,7 @@ export default function HowToUseModal({
                   <div className="flex items-center justify-between border-b border-rose-200/50 dark:border-rose-900/50 pb-2">
                     <span className="font-extrabold text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                      4. TAHAP REJECTED (Tiket Ditolak)
+                      4. TAHAP REJECTED (Tiket Ditolak &amp; Transparansi ke Apotek)
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
                       Bukan Kesalahan PBF
@@ -500,9 +513,37 @@ export default function HowToUseModal({
                   </div>
                   <ul className="text-xs space-y-1.5 leading-relaxed text-zinc-700 dark:text-slate-300 list-disc list-inside">
                     <li>Dipilih jika hasil pengecekan membuktikan bukan kesalahan gudang (salah pesan sales/apotek, klaim fiktif, dll).</li>
-                    <li><strong className="text-rose-600 dark:text-rose-400">Wajib Mengisi Alasan:</strong> Kolom catatan balasan logistik (<code>note</code>) wajib diisi alasan penolakan.</li>
-                    <li>Alasan penolakan otomatis tampil di link pelacak komplain publik agar apotek mengetahui transparansi alasannya.</li>
+                    <li><strong className="text-rose-600 dark:text-rose-400">Wajib Mengisi Alasan:</strong> Kolom catatan alasan penolakan wajib diisi secara jelas dan profesional.</li>
+                    <li><strong>Lampiran Bukti PBF (Opsional):</strong> Dapat melampirkan link foto/CCTV gudang atau resi packing timbangan.</li>
+                    <li>Alasan penolakan beserta bukti otomatis tampil di <strong>link pelacak komplain publik</strong> agar pihak apotek memahami dasar penolakan secara transparan tanpa sengketa.</li>
                   </ul>
+                </div>
+              </div>
+
+              {/* FITUR BARU: DIRECT VIDEO UNBOXING & DRILL-DOWN ANALISIS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className={`p-3.5 rounded-xl border shadow-xs ${
+                  isDark ? "bg-[#142038] border-blue-900/60" : "bg-blue-50/60 border-blue-200"
+                }`}>
+                  <h4 className="font-extrabold text-xs mb-1.5 flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                    <Video className="w-4 h-4 text-blue-500" />
+                    Direct Video Unboxing Apotek (Max 10 Menit)
+                  </h4>
+                  <p className={`text-[11px] leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                    Apotek dapat mengunggah video unboxing hingga <strong>10 menit (600 detik)</strong> langsung dari link form komplain. Video diunggah langsung ke Cloud Storage tanpa membebani server backend (0% beban server). Tim PBF dapat langsung memutar video unboxing dengan tombol <strong>"Putar Video"</strong> di tabel.
+                  </p>
+                </div>
+
+                <div className={`p-3.5 rounded-xl border shadow-xs ${
+                  isDark ? "bg-[#142038] border-emerald-900/60" : "bg-emerald-50/60 border-emerald-200"
+                }`}>
+                  <h4 className="font-extrabold text-xs mb-1.5 flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                    <BarChart3 className="w-4 h-4 text-emerald-500" />
+                    Interactive Drill-Down Tab Analisis (Data Kasus Riil)
+                  </h4>
+                  <p className={`text-[11px] leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                    Pada tab <strong>Analisis</strong>, klik langsung kategori kendala pada daftar atau irisan <em>Donut Chart</em>. Sistem akan membuka popup modal yang menampilkan <strong>100% data kasus asli database TiDB</strong> yang mendasari grafik, lengkap dengan pencarian dan tombol <strong>"Ekspor XLSX"</strong> untuk unduh audit Excel.
+                  </p>
                 </div>
               </div>
 
