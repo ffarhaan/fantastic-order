@@ -6927,18 +6927,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                 {g.isDoubleInv && (
                                   <span className="text-amber-500 font-bold" title="Double Invoice Detected">⚠</span>
                                 )}
-                                {g.isQcQueue && Boolean(g.barangCatatan && g.barangCatatan > 0) && (
-                                  <span
-                                    className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold border ${
-                                      isDarkMode
-                                        ? "bg-rose-950/80 text-rose-300 border-rose-700"
-                                        : "bg-rose-100 text-rose-800 border-rose-300"
-                                    }`}
-                                    title={`Jumlah Barang Catatan: ${g.barangCatatan}`}
-                                  >
-                                    📝 {g.barangCatatan} Catatan
-                                  </span>
-                                )}
                               </div>
                             </td>
                           )}
@@ -7115,13 +7103,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                               onClick={(e) => e.stopPropagation()}
                             >
                               {(g.barangCatatan && g.barangCatatan > 0) ? (
-                                <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-black border inline-flex items-center gap-1 ${
-                                  isDarkMode ? "bg-rose-950/90 text-rose-300 border-rose-700" : "bg-rose-100 text-rose-800 border-rose-300 font-bold"
+                                <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-black border inline-flex items-center justify-center min-w-[24px] ${
+                                  isDarkMode ? "bg-amber-500/20 text-amber-300 border-amber-500/40" : "bg-amber-100 text-amber-900 border-amber-300 font-bold"
                                 }`}>
-                                  📝 {g.barangCatatan} Catatan
+                                  {g.barangCatatan}
                                 </span>
                               ) : (
-                                <span className="text-zinc-400 font-mono text-[11px]">0</span>
+                                <span className="text-zinc-500 font-mono text-[11px]">0</span>
                               )}
                             </td>
                           ) : (
