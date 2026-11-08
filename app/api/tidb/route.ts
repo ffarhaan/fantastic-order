@@ -447,6 +447,8 @@ export async function GET(req: Request) {
             low.startsWith("medika ") ||
             low.startsWith("cv ") ||
             low.startsWith("puskesmas") ||
+            low.startsWith("dc ") ||
+            low.includes("apotek") ||
             low.includes("00:00:00") ||
             low.includes("gmt") ||
             low.includes("wib") ||
@@ -828,10 +830,25 @@ export async function GET(req: Request) {
       }
       const weekParam = (searchParams.get("week") || "").trim();
       if (weekParam && weekParam !== "ALL") {
-        const wNum = Number(weekParam.replace(/[^0-9]/g, ""));
-        if (!isNaN(wNum) && wNum > 0) {
-          whereClause += " AND week = ?";
-          params.push(wNum);
+        if (weekParam === "LAST_3") {
+          whereClause += " AND week >= (SELECT COALESCE(MAX(week), 45) - 2 FROM shipment_returns) AND week <= (SELECT COALESCE(MAX(week), 45) FROM shipment_returns)";
+        } else if (weekParam.startsWith("3W:") || weekParam.includes("-")) {
+          const clean = weekParam.replace(/^3W:/i, "");
+          const [s1, s2] = clean.split("-");
+          const n1 = Number(s1.replace(/[^0-9]/g, ""));
+          const n2 = Number(s2.replace(/[^0-9]/g, ""));
+          if (n1 > 0 && n2 > 0) {
+            const minW = Math.min(n1, n2);
+            const maxW = Math.max(n1, n2);
+            whereClause += " AND week >= ? AND week <= ?";
+            params.push(minW, maxW);
+          }
+        } else {
+          const wNum = Number(weekParam.replace(/[^0-9]/g, ""));
+          if (!isNaN(wNum) && wNum > 0) {
+            whereClause += " AND week = ?";
+            params.push(wNum);
+          }
         }
       }
 
@@ -1202,10 +1219,25 @@ export async function GET(req: Request) {
       }
 
       if (weekParam && weekParam !== "ALL") {
-        const wNum = Number(weekParam.replace(/[^0-9]/g, ""));
-        if (!isNaN(wNum) && wNum > 0) {
-          filterCondition += " AND week = ?";
-          statsParams.push(wNum);
+        if (weekParam === "LAST_3") {
+          filterCondition += " AND week >= (SELECT COALESCE(MAX(week), 45) - 2 FROM shipment_returns) AND week <= (SELECT COALESCE(MAX(week), 45) FROM shipment_returns)";
+        } else if (weekParam.startsWith("3W:") || weekParam.includes("-")) {
+          const clean = weekParam.replace(/^3W:/i, "");
+          const [s1, s2] = clean.split("-");
+          const n1 = Number(s1.replace(/[^0-9]/g, ""));
+          const n2 = Number(s2.replace(/[^0-9]/g, ""));
+          if (n1 > 0 && n2 > 0) {
+            const minW = Math.min(n1, n2);
+            const maxW = Math.max(n1, n2);
+            filterCondition += " AND week >= ? AND week <= ?";
+            statsParams.push(minW, maxW);
+          }
+        } else {
+          const wNum = Number(weekParam.replace(/[^0-9]/g, ""));
+          if (!isNaN(wNum) && wNum > 0) {
+            filterCondition += " AND week = ?";
+            statsParams.push(wNum);
+          }
         }
       }
 

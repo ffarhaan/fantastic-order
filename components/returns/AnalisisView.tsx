@@ -11,9 +11,70 @@ import {
   Search,
   ChevronDown,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import { ShipmentReturnRecord } from "@/lib/types";
 import { parsePersonNames } from "@/lib/personnelUtils";
+
+// 4 Kategori Kendala Fisik Utama Pengiriman (Zero-Assumption & Non-Destructive)
+export const PRIMARY_4_PHYSICAL_REASONS = [
+  "Fisik yang dikirim kurang",
+  "Fisik yang dikirim lebih",
+  "Fisik yang dikirim salah",
+  "Fisik yang dikirim tidak ada",
+] as const;
+
+export type ReasonFilterScope =
+  | "ALL"
+  | "PRIMARY_4"
+  | "Fisik yang dikirim kurang"
+  | "Fisik yang dikirim lebih"
+  | "Fisik yang dikirim salah"
+  | "Fisik yang dikirim tidak ada"
+  | "OTHER";
+
+export function parseWeekFilterRange(
+  val: string,
+  maxWeek: number
+): { min: number; max: number; label: string } | null {
+  if (!val || val === "ALL") return null;
+
+  if (val === "LAST_3") {
+    const start = Math.max(1, maxWeek - 2);
+    return {
+      min: start,
+      max: maxWeek,
+      label: `3 Minggu Terakhir (W${start} – W${maxWeek})`,
+    };
+  }
+
+  if (val.startsWith("3W:") || val.includes("-")) {
+    const clean = val.replace(/^3W:/i, "");
+    const parts = clean.split("-");
+    const n1 = parseInt(parts[0], 10);
+    const n2 = parseInt(parts[1], 10);
+    if (!isNaN(n1) && !isNaN(n2) && n1 > 0 && n2 > 0) {
+      const min = Math.min(n1, n2);
+      const max = Math.max(n1, n2);
+      return {
+        min,
+        max,
+        label: `Rentang 3 Minggu (W${min} – W${max})`,
+      };
+    }
+  }
+
+  const single = parseInt(val.replace(/[^0-9]/g, ""), 10);
+  if (!isNaN(single) && single > 0) {
+    return {
+      min: single,
+      max: single,
+      label: `Week W${single}`,
+    };
+  }
+
+  return null;
+}
 
 interface AnalisisViewProps {
   returns: ShipmentReturnRecord[];
@@ -166,6 +227,7 @@ export default function AnalisisView({
   const [localMonth, setLocalMonth] = useState<string>("ALL");
   const [localWeek, setLocalWeek] = useState<string>("ALL");
   const [statusScope, setStatusScope] = useState<"ALL" | "PENDING" | "IN_PROGRESS" | "RESOLVED" | "REJECT">("ALL");
+  const [reasonScope, setReasonScope] = useState<ReasonFilterScope>("ALL");
 
   const activeMonth = propMonth !== undefined ? propMonth : localMonth;
   const activeWeek = propWeek !== undefined ? propWeek : localWeek;
@@ -218,15 +280,109 @@ export default function AnalisisView({
     };
   }, [returns, activeMonth]);
 
-  // Single source of truth: rows matching active Month, Week, and Status filters
+  // Compute 3-Week Blocks (Windows) from available weeks with accurate case counts
+  const threeWeekBlocks = useMemo(() => {
+    const maxW = availableWeeksList[0] || 45;
+    const filterM = activeMonth !== "ALL" ? Number(activeMonth) : 0;
+    const blocks: { id: string; min: number; max: number; label: string; count: number }[] = [];
+
+    for (let end = maxW; end >= 1; end -= 3) {
+      const start = Math.max(1, end - 2);
+      let count = 0;
+      for (const r of returns) {
+        if (filterM > 0 && extractMonthFromRecord(r) !== filterM) continue;
+        const w = extractWeekFromRecord(r);
+        if (w >= start && w <= end) count++;
+      }
+      blocks.push({
+        id: `3W:${start}-${end}`,
+        min: start,
+        max: end,
+        label: `W${start} – W${end} (3 Minggu)`,
+        count,
+      });
+    }
+    return blocks;
+  }, [availableWeeksList, returns, activeMonth]);
+
+  // Real-time live counts for 4 Primary Physical Error pills under active Month, Week & Status
+  const reasonCounts = useMemo(() => {
+    const filterM = activeMonth !== "ALL" ? Number(activeMonth) : 0;
+    const weekRange = parseWeekFilterRange(activeWeek, availableWeeksList[0] || 45);
+
+    let all = 0;
+    let primary4 = 0;
+    let kurang = 0;
+    let lebih = 0;
+    let salah = 0;
+    let tidakAda = 0;
+    let other = 0;
+
+    for (const r of returns) {
+      if (filterM > 0 && extractMonthFromRecord(r) !== filterM) continue;
+      if (weekRange) {
+        const w = extractWeekFromRecord(r);
+        if (w < weekRange.min || w > weekRange.max) continue;
+      }
+
+      const st = (r.status || "").toLowerCase().trim();
+      const conf = (r.confirm || "").toLowerCase().trim();
+      const isRej = conf.includes("reject") || conf.includes("tolak") || st.includes("reject");
+      const isRes = st.includes("resolved") || st.includes("selesai");
+      const isInProg = st.includes("in progress");
+      const isPending = !isRej && !isRes && !isInProg;
+
+      if (statusScope === "PENDING" && !isPending) continue;
+      if (statusScope === "IN_PROGRESS" && !isInProg) continue;
+      if (statusScope === "RESOLVED" && !isRes) continue;
+      if (statusScope === "REJECT" && !isRej) continue;
+
+      all++;
+      const rz = normalizeReasonName(r.reason);
+      if (rz === "Fisik yang dikirim kurang") {
+        kurang++;
+        primary4++;
+      } else if (rz === "Fisik yang dikirim lebih") {
+        lebih++;
+        primary4++;
+      } else if (rz === "Fisik yang dikirim salah") {
+        salah++;
+        primary4++;
+      } else if (rz === "Fisik yang dikirim tidak ada") {
+        tidakAda++;
+        primary4++;
+      } else {
+        other++;
+      }
+    }
+
+    return {
+      all,
+      primary4,
+      "Fisik yang dikirim kurang": kurang,
+      "Fisik yang dikirim lebih": lebih,
+      "Fisik yang dikirim salah": salah,
+      "Fisik yang dikirim tidak ada": tidakAda,
+      other,
+    };
+  }, [returns, activeMonth, activeWeek, statusScope, availableWeeksList]);
+
+  // Single source of truth: rows matching active Month, Week (including 3-week range), Status, and Reason filters
   const filteredReturns = useMemo(() => {
     const filterM = activeMonth !== "ALL" ? Number(activeMonth) : 0;
-    const filterW = activeWeek !== "ALL" ? Number(String(activeWeek).replace(/[^0-9]/g, "")) : 0;
+    const weekRange = parseWeekFilterRange(activeWeek, availableWeeksList[0] || 45);
 
     return returns.filter((r) => {
+      // 1. Month filter
       if (filterM > 0 && extractMonthFromRecord(r) !== filterM) return false;
-      if (filterW > 0 && extractWeekFromRecord(r) !== filterW) return false;
 
+      // 2. Week filter (supporting Single Week, Rolling 3 Weeks, or 3-Week Windows)
+      if (weekRange) {
+        const w = extractWeekFromRecord(r);
+        if (w < weekRange.min || w > weekRange.max) return false;
+      }
+
+      // 3. Status filter
       const st = (r.status || "").toLowerCase().trim();
       const conf = (r.confirm || "").toLowerCase().trim();
       const isRej = conf.includes("reject") || conf.includes("tolak") || st.includes("reject");
@@ -238,9 +394,20 @@ export default function AnalisisView({
       if (statusScope === "IN_PROGRESS" && !isInProg) return false;
       if (statusScope === "RESOLVED" && !isRes) return false;
       if (statusScope === "REJECT" && !isRej) return false;
+
+      // 4. Reason filter (4 Kendala Fisik Utama: Kurang, Lebih, Salah, Tidak Ada)
+      const rz = normalizeReasonName(r.reason);
+      if (reasonScope === "PRIMARY_4") {
+        if (!PRIMARY_4_PHYSICAL_REASONS.includes(rz as any)) return false;
+      } else if (reasonScope === "OTHER") {
+        if (PRIMARY_4_PHYSICAL_REASONS.includes(rz as any)) return false;
+      } else if (reasonScope !== "ALL") {
+        if (rz !== reasonScope) return false;
+      }
+
       return true;
     });
-  }, [returns, activeMonth, activeWeek, statusScope]);
+  }, [returns, activeMonth, activeWeek, statusScope, reasonScope, availableWeeksList]);
 
   // Aggregate real data by PBF according to active Month, Week, and Status filters
   const stats = useMemo(() => {
@@ -421,7 +588,19 @@ export default function AnalisisView({
       parts.push(MONTH_NAMES[Number(activeMonth)] || `Bulan ${activeMonth}`);
     }
     if (activeWeek !== "ALL") {
-      parts.push(`Week W${String(activeWeek).replace(/[^0-9]/g, "")}`);
+      const rng = parseWeekFilterRange(activeWeek, availableWeeksList[0] || 45);
+      if (rng) {
+        parts.push(rng.label);
+      }
+    }
+    if (reasonScope !== "ALL") {
+      if (reasonScope === "PRIMARY_4") {
+        parts.push("⭐ 4 Kendala Fisik Utama");
+      } else if (reasonScope === "OTHER") {
+        parts.push("Kendala Lainnya");
+      } else {
+        parts.push(reasonScope);
+      }
     }
     if (statusScope !== "ALL") {
       const scopeLabels: Record<string, string> = {
@@ -433,7 +612,7 @@ export default function AnalisisView({
       parts.push(scopeLabels[statusScope] || statusScope);
     }
     return parts.length > 0 ? parts.join(" • ") : "Semua periode (Real-Time Database)";
-  }, [activeMonth, activeWeek, statusScope]);
+  }, [activeMonth, activeWeek, statusScope, reasonScope, availableWeeksList]);
 
   // Render SVG Donut (100% aligned between SVG slices and label positions)
   const renderDonut = (
@@ -472,18 +651,22 @@ export default function AnalisisView({
         <div className="relative w-64 h-64 flex items-center justify-center">
           {/* DO NOT add -rotate-90 here because polarToCartesian already sets 0 deg at 12 o'clock! */}
           <svg viewBox="0 0 240 240" className="w-full h-full">
-            {slices.map((s, idx) => (
-              <path
-                key={idx}
-                d={s.path}
-                fill={s.color}
-                stroke="rgba(15, 23, 42, 0.35)"
-                strokeWidth="1"
-                className="transition-all duration-300 hover:opacity-85 cursor-pointer"
-              >
-                <title>{`${s.name}: ${s.count.toLocaleString("id-ID")} kasus (${s.pct}%)`}</title>
-              </path>
-            ))}
+            {slices.map((s, idx) => {
+              const isSelected = reasonScope === s.name;
+              return (
+                <path
+                  key={idx}
+                  d={s.path}
+                  fill={s.color}
+                  stroke={isSelected ? "#ffffff" : "rgba(15, 23, 42, 0.35)"}
+                  strokeWidth={isSelected ? "2.5" : "1"}
+                  onClick={() => setReasonScope(reasonScope === s.name ? "ALL" : (s.name as any))}
+                  className="transition-all duration-300 hover:opacity-85 cursor-pointer"
+                >
+                  <title>{`${s.name}: ${s.count.toLocaleString("id-ID")} kasus (${s.pct}%) — Klik untuk filter`}</title>
+                </path>
+              );
+            })}
           </svg>
 
           {/* Center total label */}
@@ -517,33 +700,44 @@ export default function AnalisisView({
 
         {/* Legend with Real Counts & Percentages */}
         <div className="w-full mt-3 pt-3 border-t border-zinc-100 dark:border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 px-1">
-          {items.map((item, idx) => (
-            <div
-              key={idx}
-              className="flex items-center justify-between gap-2 text-xs py-0.5 px-1.5 rounded-lg hover:bg-zinc-50 dark:hover:bg-slate-800/50 transition-colors"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <span
-                  className="w-3 h-3 rounded-sm shrink-0 shadow-2xs"
-                  style={{ backgroundColor: item.color }}
-                />
-                <span
-                  className="truncate text-zinc-700 dark:text-zinc-300 font-medium"
-                  title={item.name}
-                >
-                  {item.name}
-                </span>
+          {items.map((item, idx) => {
+            const isSelected = reasonScope === item.name;
+            return (
+              <div
+                key={idx}
+                onClick={() => setReasonScope(reasonScope === item.name ? "ALL" : (item.name as any))}
+                className={`flex items-center justify-between gap-2 text-xs py-0.5 px-1.5 rounded-lg transition-colors cursor-pointer ${
+                  isSelected
+                    ? "bg-zinc-200 dark:bg-slate-700 font-bold"
+                    : "hover:bg-zinc-50 dark:hover:bg-slate-800/50"
+                }`}
+                title="Klik untuk filter kendala ini"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="w-3 h-3 rounded-sm shrink-0 shadow-2xs"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  <span
+                    className={`truncate font-medium ${
+                      isSelected ? "text-zinc-950 dark:text-white font-bold" : "text-zinc-700 dark:text-zinc-300"
+                    }`}
+                    title={item.name}
+                  >
+                    {item.name}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0 font-mono">
+                  <span className="font-bold text-zinc-900 dark:text-white">
+                    {item.count.toLocaleString("id-ID")}
+                  </span>
+                  <span className="text-[10px] text-zinc-400 dark:text-slate-400">
+                    ({item.pct}%)
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 shrink-0 font-mono">
-                <span className="font-bold text-zinc-900 dark:text-white">
-                  {item.count.toLocaleString("id-ID")}
-                </span>
-                <span className="text-[10px] text-zinc-400 dark:text-slate-400">
-                  ({item.pct}%)
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -629,130 +823,294 @@ export default function AnalisisView({
   }, [stats.mbi.roots]);
 
   const hasActiveFilter =
-    activeMonth !== "ALL" || activeWeek !== "ALL" || statusScope !== "ALL";
+    activeMonth !== "ALL" ||
+    activeWeek !== "ALL" ||
+    statusScope !== "ALL" ||
+    reasonScope !== "ALL";
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* =========================================
-          FILTER BAR: PER BULAN, PER WEEK & STATUS
+          FILTER BAR: PER BULAN, PER WEEK (3 MINGGU), STATUS & 4 KENDALA FISIK UTAMA
       ========================================= */}
-      <div className="p-3.5 bg-white dark:bg-slate-900 rounded-2xl border border-zinc-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-700 dark:text-slate-200 mr-1">
-            <Filter className="w-4 h-4 text-purple-500" />
-            <span>Filter Analisis:</span>
-          </div>
+      <div className="p-3.5 bg-white dark:bg-slate-900 rounded-2xl border border-zinc-200 dark:border-slate-800 shadow-xs flex flex-col gap-3">
+        {/* ROW 1: FILTER WAKTU (BULAN & WEEK / 3 MINGGU), STATUS & SUMMARY */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-700 dark:text-slate-200 mr-1">
+              <Filter className="w-4 h-4 text-purple-500" />
+              <span>Filter Analisis:</span>
+            </div>
 
-          {/* Filter Bulan */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-50 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
-            <Calendar className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-            <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase tracking-wider">
-              Bulan:
-            </span>
-            <select
-              value={activeMonth}
-              onChange={(e) => handleMonthSelect(e.target.value)}
-              className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
-            >
-              <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">
-                Semua Bulan ({returns.length.toLocaleString("id-ID")} Kasus)
-              </option>
-              {[12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((m) => {
-                const cnt = monthCounts[m] || 0;
-                return (
-                  <option
-                    key={m}
-                    value={String(m)}
-                    className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white"
-                  >
-                    {MONTH_NAMES[m]} ({cnt.toLocaleString("id-ID")} Kasus)
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-
-          {/* Filter Week */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-50 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
-            <CalendarRange className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-            <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase tracking-wider">
-              Week:
-            </span>
-            <select
-              value={activeWeek}
-              onChange={(e) => handleWeekSelect(e.target.value)}
-              className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
-            >
-              <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">
-                Semua Week (W1 - W{availableWeeksList[0] || 45})
-              </option>
-              {availableWeeksList.map((w) => {
-                const cnt = weekCounts[w] || 0;
-                if (activeMonth !== "ALL" && cnt === 0) return null;
-                return (
-                  <option
-                    key={w}
-                    value={String(w)}
-                    className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white"
-                  >
-                    Week W{w} ({cnt.toLocaleString("id-ID")} Kasus)
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-
-          {/* Filter Status Kasus */}
-          <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
-            {[
-              { id: "ALL", label: "Semua Status" },
-              { id: "PENDING", label: "🟡 Pending" },
-              { id: "IN_PROGRESS", label: "🔵 In Progress" },
-              { id: "RESOLVED", label: "🟢 Resolved" },
-              { id: "REJECT", label: "🔴 Reject" },
-            ].map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setStatusScope(s.id as typeof statusScope)}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer text-[11px] ${
-                  statusScope === s.id
-                    ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
-                    : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
-                }`}
+            {/* Filter Bulan */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-50 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
+              <Calendar className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+                Bulan:
+              </span>
+              <select
+                value={activeMonth}
+                onChange={(e) => handleMonthSelect(e.target.value)}
+                className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
               >
-                {s.label}
-              </button>
-            ))}
-          </div>
+                <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">
+                  Semua Bulan ({returns.length.toLocaleString("id-ID")} Kasus)
+                </option>
+                {[12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((m) => {
+                  const cnt = monthCounts[m] || 0;
+                  return (
+                    <option
+                      key={m}
+                      value={String(m)}
+                      className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white"
+                    >
+                      {MONTH_NAMES[m]} ({cnt.toLocaleString("id-ID")} Kasus)
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
 
-          {hasActiveFilter && (
+            {/* Filter Week (Mendukung Rentang 3 Minggu, Rolling 3 Weeks, dan Single Week) */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-50 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
+              <CalendarRange className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+              <span className="text-[10px] text-zinc-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+                Week:
+              </span>
+              <select
+                value={activeWeek}
+                onChange={(e) => handleWeekSelect(e.target.value)}
+                className="bg-transparent border-none text-xs font-bold text-zinc-900 dark:text-white dark:bg-slate-950 focus:outline-none cursor-pointer pr-1 max-w-[210px] truncate"
+              >
+                <option value="ALL" className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white">
+                  Semua Week (W1 – W{availableWeeksList[0] || 45})
+                </option>
+
+                {/* Preset Cepat: 3 Minggu Terakhir */}
+                <option
+                  value="LAST_3"
+                  className="bg-emerald-50 text-emerald-800 dark:bg-slate-900 dark:text-emerald-400 font-bold"
+                >
+                  ⚡ 3 Minggu Terakhir (W{Math.max(1, (availableWeeksList[0] || 45) - 2)} – W{availableWeeksList[0] || 45})
+                </option>
+
+                {/* Optgroup: Rentang 3 Mingguan (Window 3 Minggu) */}
+                <optgroup
+                  label="── Rentang 3 Mingguan (3 Weeks) ──"
+                  className="bg-zinc-100 dark:bg-slate-900 text-zinc-500 font-bold"
+                >
+                  {threeWeekBlocks.map((blk) => (
+                    <option
+                      key={blk.id}
+                      value={blk.id}
+                      className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white"
+                    >
+                      {blk.label} ({blk.count.toLocaleString("id-ID")} Kasus)
+                    </option>
+                  ))}
+                </optgroup>
+
+                {/* Optgroup: Minggu Tunggal */}
+                <optgroup
+                  label="── Minggu Tunggal (Single Week) ──"
+                  className="bg-zinc-100 dark:bg-slate-900 text-zinc-500 font-bold"
+                >
+                  {availableWeeksList.map((w) => {
+                    const cnt = weekCounts[w] || 0;
+                    if (activeMonth !== "ALL" && cnt === 0) return null;
+                    return (
+                      <option
+                        key={w}
+                        value={String(w)}
+                        className="bg-white dark:bg-slate-900 text-zinc-900 dark:text-white"
+                      >
+                        Week W{w} ({cnt.toLocaleString("id-ID")} Kasus)
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              </select>
+            </div>
+
+            {/* Quick Toggle Button: 3 Minggu Terakhir */}
             <button
               type="button"
-              onClick={() => {
-                handleMonthSelect("ALL");
-                handleWeekSelect("ALL");
-                setStatusScope("ALL");
-              }}
-              className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+              onClick={() => handleWeekSelect(activeWeek === "LAST_3" ? "ALL" : "LAST_3")}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border shrink-0 ${
+                activeWeek === "LAST_3" || (activeWeek.startsWith("3W:") && activeWeek === `3W:${Math.max(1, (availableWeeksList[0] || 45) - 2)}-${availableWeeksList[0] || 45}`)
+                  ? "bg-emerald-600 text-white border-emerald-500 shadow-xs"
+                  : "bg-zinc-50 dark:bg-slate-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+              }`}
+              title="Filter cepat 3 minggu terakhir"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset Filter</span>
+              <span>⚡ 3 Minggu Terakhir</span>
             </button>
-          )}
+
+            {/* Filter Status Kasus */}
+            <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-slate-950 rounded-xl border border-zinc-200 dark:border-slate-800 text-xs">
+              {[
+                { id: "ALL", label: "Semua Status" },
+                { id: "PENDING", label: "🟡 Pending" },
+                { id: "IN_PROGRESS", label: "🔵 In Progress" },
+                { id: "RESOLVED", label: "🟢 Resolved" },
+                { id: "REJECT", label: "🔴 Reject" },
+              ].map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setStatusScope(s.id as typeof statusScope)}
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer text-[11px] ${
+                    statusScope === s.id
+                      ? "bg-white text-black dark:bg-slate-800 dark:text-white shadow-xs"
+                      : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            {hasActiveFilter && (
+              <button
+                type="button"
+                onClick={() => {
+                  handleMonthSelect("ALL");
+                  handleWeekSelect("ALL");
+                  setStatusScope("ALL");
+                  setReasonScope("ALL");
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset Filter</span>
+              </button>
+            )}
+          </div>
+
+          {/* Summary Pill */}
+          <div className="flex items-center gap-2 text-xs font-mono">
+            <span className="px-2.5 py-1 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-800/60 font-bold">
+              MAI: {stats.mai.total.toLocaleString("id-ID")}
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 font-bold">
+              MBI: {stats.mbi.total.toLocaleString("id-ID")}
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-zinc-100 dark:bg-slate-800 text-zinc-700 dark:text-slate-200 font-bold">
+              Total: {(stats.mai.total + stats.mbi.total).toLocaleString("id-ID")}
+            </span>
+          </div>
         </div>
 
-        {/* Summary Pill */}
-        <div className="flex items-center gap-2 text-xs font-mono">
-          <span className="px-2.5 py-1 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-800/60 font-bold">
-            MAI: {stats.mai.total.toLocaleString("id-ID")}
-          </span>
-          <span className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 font-bold">
-            MBI: {stats.mbi.total.toLocaleString("id-ID")}
-          </span>
-          <span className="px-2.5 py-1 rounded-lg bg-zinc-100 dark:bg-slate-800 text-zinc-700 dark:text-slate-200 font-bold">
-            Total: {(stats.mai.total + stats.mbi.total).toLocaleString("id-ID")}
-          </span>
+        {/* =========================================
+            ROW 2: QUICK FILTER 4 KENDALA FISIK UTAMA (REASON FILTER PILLS)
+        ========================================= */}
+        <div className="w-full flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-zinc-100 dark:border-slate-800/80">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-700 dark:text-slate-200 mr-0.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span className="text-[11px] uppercase tracking-wider font-extrabold">Fokus Kendala Fisik:</span>
+            </div>
+
+            {/* Pill: Semua Kendala */}
+            <button
+              type="button"
+              onClick={() => setReasonScope("ALL")}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                reasonScope === "ALL"
+                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
+                  : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-300 dark:hover:border-slate-700"
+              }`}
+            >
+              <span>Semua Kendala</span>
+              <span className="text-[10px] opacity-75 font-mono">
+                ({reasonCounts.all.toLocaleString("id-ID")})
+              </span>
+            </button>
+
+            {/* Pill: ⭐ 4 Kendala Fisik Utama (Gabungan) */}
+            <button
+              type="button"
+              onClick={() => setReasonScope("PRIMARY_4")}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                reasonScope === "PRIMARY_4"
+                  ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500 shadow-md shadow-emerald-500/25"
+                  : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+              }`}
+              title="Filter otomatis gabungan 4 Kendala Fisik Utama: Kurang, Lebih, Salah, Tidak Ada"
+            >
+              <span>⭐ 4 Kendala Fisik Utama</span>
+              <span className="text-[10px] font-mono font-black px-1.5 py-0.2 rounded-full bg-emerald-800 text-emerald-100 dark:bg-emerald-900 dark:text-emerald-200">
+                {reasonCounts.primary4.toLocaleString("id-ID")}
+              </span>
+            </button>
+
+            {/* 4 Individual Physical Reasons */}
+            {PRIMARY_4_PHYSICAL_REASONS.map((rz) => {
+              const isSelected = reasonScope === rz;
+              const color = REASON_COLOR_MAP[rz] || "#10b981";
+              const cnt = reasonCounts[rz] || 0;
+              return (
+                <button
+                  key={rz}
+                  type="button"
+                  onClick={() => setReasonScope(isSelected ? "ALL" : rz)}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                    isSelected
+                      ? "text-white shadow-xs font-black ring-2 ring-offset-1 ring-white/50"
+                      : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-400 dark:hover:border-slate-600"
+                  }`}
+                  style={
+                    isSelected
+                      ? { backgroundColor: color, borderColor: color }
+                      : {}
+                  }
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span>{rz}</span>
+                  <span className="text-[10px] opacity-80 font-mono">
+                    ({cnt.toLocaleString("id-ID")})
+                  </span>
+                </button>
+              );
+            })}
+
+            {/* Pill: Kendala Lainnya */}
+            <button
+              type="button"
+              onClick={() => setReasonScope(reasonScope === "OTHER" ? "ALL" : "OTHER")}
+              className={`px-2.5 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                reasonScope === "OTHER"
+                  ? "bg-zinc-700 text-white border-zinc-600"
+                  : "bg-zinc-50 dark:bg-slate-950 text-zinc-500 dark:text-slate-400 border-zinc-200 dark:border-slate-800 hover:text-zinc-800 dark:hover:text-zinc-200"
+              }`}
+              title="Kasus selain 4 kendala fisik utama (Recall, Damage, ED, dll)"
+            >
+              <span>Lainnya</span>
+              <span className="text-[10px] opacity-75 font-mono">
+                ({reasonCounts.other.toLocaleString("id-ID")})
+              </span>
+            </button>
+          </div>
+
+          {/* Active Filter Indicator Badge */}
+          {reasonScope !== "ALL" && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="px-2 py-0.5 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 font-semibold font-mono text-[11px]">
+                Fokus aktif: {reasonScope === "PRIMARY_4" ? "4 Kendala Fisik Utama" : reasonScope}
+              </span>
+              <button
+                type="button"
+                onClick={() => setReasonScope("ALL")}
+                className="text-xs text-zinc-400 hover:text-rose-500 font-bold"
+                title="Hapus filter kendala"
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

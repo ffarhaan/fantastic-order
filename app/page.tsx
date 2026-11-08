@@ -1032,6 +1032,8 @@ export default function Home() {
         s.startsWith("medika ") ||
         s.startsWith("cv ") ||
         s.startsWith("puskesmas") ||
+        s.startsWith("dc ") ||
+        s.includes("apotek") ||
         s.includes("00:00:00") ||
         s.includes("gmt") ||
         s.includes("wib") ||
