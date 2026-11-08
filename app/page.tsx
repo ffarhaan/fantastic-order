@@ -1135,9 +1135,6 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
         checkerMapMbiRef.current = next;
         setCheckerMapMbi(next);
       }
-      if (selectedWarehouseRef.current === "MBI") {
-        fetchQcOrders("MBI", true);
-      }
     }, "MBI");
 
     try {
@@ -1181,9 +1178,6 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
         const next = { ...cur, ...map };
         checkerMapMaiRef.current = next;
         setCheckerMapMai(next);
-      }
-      if (selectedWarehouseRef.current === "MAI") {
-        fetchQcOrders("MAI", true);
       }
     }, "MAI");
 
@@ -3019,6 +3013,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   // Precomputed SO Set per Warehouse: Depends ONLY on baseGroups and selectedWarehouse!
   // Decoupled from printedInvoices and qcOrders so polling QC or toggling print takes < 0.05ms instead of scanning 247,286 items!
   const existingSOSet = useMemo(() => {
+    if (filter !== "report_qc") return new Set<string>();
     const set = new Set<string>();
     const normalizeSO = (soStr: string) => soStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -3062,6 +3057,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   // Pending QC Queue: Orders physically checked in warehouse (GSheet Rekap Lengkap)
   // that do NOT yet have an Oracle invoice uploaded in the current warehouse.
   const pendingQcList = useMemo(() => {
+    if (filter !== "report_qc") return [];
     const normalizeSO = (soStr: string) => soStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
     return qcOrders.filter((qc) => {
       if (!qc.so_number || qc.so_number === "-" || qc.so_number === "#N/A") return false;
@@ -3072,9 +3068,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       // If Oracle already has this SO uploaded, it automatically exits Report QC and moves into Belum Terprint!
       return !existingSOSet.has(cleanSo) && !existingSOSet.has(normSo);
     });
-  }, [qcOrders, existingSOSet, selectedWarehouse]);
+  }, [qcOrders, existingSOSet, selectedWarehouse, filter]);
 
   const pendingQcGroups = useMemo<FakturGroup[]>(() => {
+    if (filter !== "report_qc" || pendingQcList.length === 0) return [];
     // Sort so newest arrived orders from GSheet (latest updated_at and highest sheet_row) are ALWAYS AT THE VERY TOP!
     const sorted = [...pendingQcList].sort((a, b) => {
       const timeA = new Date(a.updated_at || 0).getTime();
@@ -3129,7 +3126,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         qcUpdatedAt: qc.updated_at || "",
       };
     });
-  }, [pendingQcList, selectedWarehouse, qcDoneLocalMap]);
+  }, [pendingQcList, selectedWarehouse, qcDoneLocalMap, filter]);
 
   // 6A. Filtered Invoice Groups (Completely decoupled from pendingQcGroups so QC updates never re-filter 20,500 invoices!)
   const invoiceFiltered = useMemo(() => {
@@ -3229,7 +3226,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       return qcRes;
     }
     return invoiceFiltered;
-  }, [filter, pendingQcGroups, deferredSearch, invoiceFiltered]);
+  }, [filter, filter === "report_qc" ? pendingQcGroups : null, deferredSearch, invoiceFiltered]);
 
   const totalPages = Math.ceil(filtered.length / ROWS_PER_PAGE);
   const pageData = filtered.slice(page * ROWS_PER_PAGE, (page + 1) * ROWS_PER_PAGE);
