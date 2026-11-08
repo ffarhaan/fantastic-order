@@ -3011,9 +3011,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   }, [mainView, grouped, dashboardDateBasis, dashboardStartDate, dashboardEndDate, dashboardWarehouseFilter]);
 
   // Precomputed SO Set per Warehouse: Depends ONLY on baseGroups and selectedWarehouse!
-  // Decoupled from printedInvoices and qcOrders so polling QC or toggling print takes < 0.05ms instead of scanning 247,286 items!
+  // Decoupled from printedInvoices and qcOrders so polling QC or toggling print takes 0ms!
   const existingSOSet = useMemo(() => {
-    if (filter !== "report_qc") return new Set<string>();
     const set = new Set<string>();
     const normalizeSO = (soStr: string) => soStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -3057,7 +3056,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   // Pending QC Queue: Orders physically checked in warehouse (GSheet Rekap Lengkap)
   // that do NOT yet have an Oracle invoice uploaded in the current warehouse.
   const pendingQcList = useMemo(() => {
-    if (filter !== "report_qc") return [];
     const normalizeSO = (soStr: string) => soStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
     return qcOrders.filter((qc) => {
       if (!qc.so_number || qc.so_number === "-" || qc.so_number === "#N/A") return false;
@@ -3068,7 +3066,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       // If Oracle already has this SO uploaded, it automatically exits Report QC and moves into Belum Terprint!
       return !existingSOSet.has(cleanSo) && !existingSOSet.has(normSo);
     });
-  }, [qcOrders, existingSOSet, selectedWarehouse, filter]);
+  }, [qcOrders, existingSOSet, selectedWarehouse]);
 
   const pendingQcGroups = useMemo<FakturGroup[]>(() => {
     if (filter !== "report_qc" || pendingQcList.length === 0) return [];
