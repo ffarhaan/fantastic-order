@@ -13,6 +13,13 @@ const firebaseConfig = {
 };
 
 async function main() {
+  // Hanya broadcast sinyal pembaruan jika build berjalan di cloud Vercel (Production Deployment),
+  // BUKAN saat build uji coba lokal di laptop/terminal developer!
+  if (!process.env.VERCEL) {
+    console.log("ℹ️ [notify_build] Build lokal terdeteksi (bukan Vercel). Lewati pengiriman sinyal agar tidak memicu notifikasi prematur.");
+    process.exit(0);
+  }
+
   console.log("📢 [notify_build] Menyiarkan sinyal pembaruan sistem ke Firebase Firestore...");
   try {
     let buildId = "";
