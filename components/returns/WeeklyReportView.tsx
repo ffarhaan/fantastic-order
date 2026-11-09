@@ -11,12 +11,16 @@ import {
   CheckCircle2,
   Clock,
   ChevronDown,
+  CalendarRange,
+  Zap,
 } from "lucide-react";
 import { ShipmentReturnRecord, FakturRecord } from "@/lib/types";
+import { parseWeekFilterRange } from "./AnalisisView";
 
 interface WeeklyReportViewProps {
   returns: ShipmentReturnRecord[];
   records?: FakturRecord[];
+  initialWeekFilter?: string;
 }
 
 // Milestone config
@@ -98,8 +102,9 @@ function parseDateWeek(dateStr: string | null | undefined): number | null {
 export default function WeeklyReportView({
   returns = [],
   records = [],
+  initialWeekFilter = "all",
 }: WeeklyReportViewProps) {
-  const [selectedWeekFilter, setSelectedWeekFilter] = useState<number | "all">("all");
+  const [selectedWeekFilter, setSelectedWeekFilter] = useState<string>(initialWeekFilter);
   const [modalWeek, setModalWeek] = useState<number | null>(null);
 
   // Group returns and calculate stats per week
@@ -250,21 +255,92 @@ export default function WeeklyReportView({
     return list;
   }, [returns, records]);
 
+  const maxAvailableWeek = useMemo(() => {
+    if (weeklyData.length === 0) return 45;
+    return weeklyData[weeklyData.length - 1].week;
+  }, [weeklyData]);
+
+  const threeWeekBlocks = useMemo(() => {
+    const maxW = maxAvailableWeek;
+    const blocks: { id: string; min: number; max: number; label: string }[] = [];
+    for (let end = maxW; end >= 1; end -= 3) {
+      const start = Math.max(1, end - 2);
+      blocks.push({
+        id: `3W:${start}-${end}`,
+        min: start,
+        max: end,
+        label: `W${start} – W${end} (3 Minggu)`,
+      });
+    }
+    return blocks;
+  }, [maxAvailableWeek]);
+
+  const activeRange = useMemo(() => {
+    return parseWeekFilterRange(selectedWeekFilter, maxAvailableWeek);
+  }, [selectedWeekFilter, maxAvailableWeek]);
+
   // Filtered rows for table & chart
   const displayedWeeks = useMemo(() => {
-    if (selectedWeekFilter === "all") return weeklyData;
-    return weeklyData.filter((d) => d.week === selectedWeekFilter);
-  }, [weeklyData, selectedWeekFilter]);
+    if (!activeRange) return weeklyData;
+    return weeklyData.filter((d) => d.week >= activeRange.min && d.week <= activeRange.max);
+  }, [weeklyData, activeRange]);
 
-  // Max case count for chart scaling
+  // Summary stats for displayed weeks (Total cases, Invoices, Rates)
+  const summaryStats = useMemo(() => {
+    let totMaiApprove = 0;
+    let totMbiApprove = 0;
+    let totMaiInv = 0;
+    let totMbiInv = 0;
+    let totReject = 0;
+
+    for (const d of displayedWeeks) {
+      totMaiApprove += d.maiApprove;
+      totMbiApprove += d.mbiApprove;
+      totMaiInv += d.maiInv;
+      totMbiInv += d.mbiInv;
+      totReject += d.totReject;
+    }
+
+    const totCases = totMaiApprove + totMbiApprove;
+    const totInv = totMaiInv + totMbiInv;
+    const maiRate = totMaiInv > 0 ? (totMaiApprove / totMaiInv) * 100 : 0;
+    const mbiRate = totMbiInv > 0 ? (totMbiApprove / totMbiInv) * 100 : 0;
+    const totRate = totInv > 0 ? (totCases / totInv) * 100 : 0;
+
+    return {
+      totMaiApprove,
+      totMbiApprove,
+      totCases,
+      totMaiInv,
+      totMbiInv,
+      totInv,
+      totReject,
+      maiRate: Number(maiRate.toFixed(2)),
+      mbiRate: Number(mbiRate.toFixed(2)),
+      totRate: Number(totRate.toFixed(2)),
+    };
+  }, [displayedWeeks]);
+
+  // Max case count for chart scaling (adaptive to displayed data)
   const maxCasesInChart = useMemo(() => {
-    let m = 50;
-    for (const d of weeklyData) {
+    let m = 20;
+    for (const d of displayedWeeks) {
       if (d.maiApprove > m) m = d.maiApprove;
       if (d.mbiApprove > m) m = d.mbiApprove;
     }
-    return Math.max(100, Math.ceil(m / 10) * 10);
-  }, [weeklyData]);
+    return Math.max(20, Math.ceil(m / 10) * 10);
+  }, [displayedWeeks]);
+
+  // Dynamic Y-Axis steps
+  const yAxisSteps = useMemo(() => {
+    const step = Math.max(5, Math.ceil(maxCasesInChart / 5));
+    const steps: number[] = [];
+    for (let val = maxCasesInChart; val >= 0; val -= step) {
+      steps.push(val);
+    }
+    if (!steps.includes(0)) steps.push(0);
+    return steps;
+  }, [maxCasesInChart]);
 
   // Modal cases
   const modalWeekData = useMemo(() => {
@@ -276,7 +352,7 @@ export default function WeeklyReportView({
     <div className="space-y-6">
       {/* Top Filter Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-zinc-200 dark:border-slate-800 shadow-xs">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <label className="text-xs font-bold text-zinc-600 dark:text-zinc-400 flex items-center gap-1.5">
             <Filter className="w-3.5 h-3.5 text-zinc-500" />
             Filter Minggu:
@@ -285,23 +361,139 @@ export default function WeeklyReportView({
             <select
               value={selectedWeekFilter}
               onChange={(e) => {
-                const val = e.target.value;
-                setSelectedWeekFilter(val === "all" ? "all" : Number(val));
+                setSelectedWeekFilter(e.target.value);
               }}
-              className="appearance-none bg-zinc-100 dark:bg-slate-800 text-zinc-800 dark:text-zinc-200 text-xs font-bold px-3 py-1.5 pr-8 rounded-xl border border-zinc-200 dark:border-slate-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              className="appearance-none bg-zinc-100 dark:bg-slate-800 text-zinc-800 dark:text-zinc-200 text-xs font-bold px-3 py-1.5 pr-8 rounded-xl border border-zinc-200 dark:border-slate-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20 max-w-[270px] truncate"
             >
-              <option value="all">Semua Minggu</option>
-              {weeklyData.map((d) => (
-                <option key={d.week} value={d.week}>
-                  W{d.week} {MILESTONES[d.week] ? `(${MILESTONES[d.week].text})` : ""}
-                </option>
-              ))}
+              <option value="all">Semua Minggu (W1 – W{maxAvailableWeek})</option>
+              <option value="LAST_3" className="font-bold text-emerald-600 dark:text-emerald-400">
+                ⚡ 3 Minggu Terakhir (W{Math.max(1, maxAvailableWeek - 2)} – W{maxAvailableWeek})
+              </option>
+
+              <optgroup label="── Rentang 3 Mingguan (3 Weeks) ──" className="font-bold text-zinc-500">
+                {threeWeekBlocks.map((blk) => (
+                  <option key={blk.id} value={blk.id} className="text-zinc-900 dark:text-white">
+                    {blk.label}
+                  </option>
+                ))}
+              </optgroup>
+
+              <optgroup label="── Minggu Tunggal (Single Week) ──" className="font-bold text-zinc-500">
+                {weeklyData.slice().reverse().map((d) => (
+                  <option key={d.week} value={String(d.week)} className="text-zinc-900 dark:text-white">
+                    W{d.week} {MILESTONES[d.week] ? `(${MILESTONES[d.week].text})` : ""}
+                  </option>
+                ))}
+              </optgroup>
             </select>
             <ChevronDown className="w-3.5 h-3.5 text-zinc-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
+
+          {/* Quick Toggle Button: 3 Minggu Terakhir */}
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedWeekFilter(selectedWeekFilter === "LAST_3" ? "all" : "LAST_3");
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border shadow-2xs ${
+              selectedWeekFilter === "LAST_3" || (selectedWeekFilter.startsWith("3W:") && selectedWeekFilter === `3W:${Math.max(1, maxAvailableWeek - 2)}-${maxAvailableWeek}`)
+                ? "bg-emerald-600 text-white border-emerald-500 shadow-xs ring-2 ring-emerald-500/30"
+                : "bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-700 dark:text-zinc-200 border-zinc-200 dark:border-slate-700"
+            }`}
+            title="Tampilkan data 3 minggu terakhir"
+          >
+            <Zap className={`w-3.5 h-3.5 ${selectedWeekFilter === "LAST_3" ? "text-amber-300 fill-amber-300" : "text-amber-500"}`} />
+            <span>3 Minggu Terakhir</span>
+          </button>
         </div>
-        <div className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
-          {displayedWeeks.length} minggu ditampilkan
+
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+            <span className="font-bold text-zinc-900 dark:text-white">{displayedWeeks.length}</span> minggu ditampilkan
+          </div>
+        </div>
+      </div>
+
+      {/* Summary KPI Cards for Displayed Weeks */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-zinc-200 dark:border-slate-800 shadow-xs">
+          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
+            TOTAL KASUS ({displayedWeeks.length} MINGGU)
+          </span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-black font-mono text-zinc-900 dark:text-white">
+              {summaryStats.totCases}
+            </span>
+            <span className="text-xs text-zinc-500">
+              kasus
+            </span>
+          </div>
+          <div className="mt-2 text-[11px] text-zinc-500 flex items-center justify-between">
+            <span>Reject Outlet:</span>
+            <span className="font-bold font-mono text-rose-600 dark:text-rose-400">
+              {summaryStats.totReject}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-zinc-200 dark:border-slate-800 shadow-xs">
+          <span className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider block mb-1">
+            MAI CASERATE
+          </span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-black font-mono text-red-600 dark:text-red-400">
+              {summaryStats.maiRate}%
+            </span>
+            <span className="text-xs text-zinc-500">
+              ({summaryStats.totMaiApprove}/{summaryStats.totMaiInv.toLocaleString("id-ID")})
+            </span>
+          </div>
+          <div className="mt-2 text-[11px] text-zinc-500 flex items-center justify-between">
+            <span>Total Faktur MAI:</span>
+            <span className="font-bold font-mono text-zinc-800 dark:text-zinc-200">
+              {summaryStats.totMaiInv.toLocaleString("id-ID")}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-zinc-200 dark:border-slate-800 shadow-xs">
+          <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block mb-1">
+            MBI CASERATE
+          </span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-black font-mono text-blue-600 dark:text-blue-400">
+              {summaryStats.mbiRate}%
+            </span>
+            <span className="text-xs text-zinc-500">
+              ({summaryStats.totMbiApprove}/{summaryStats.totMbiInv.toLocaleString("id-ID")})
+            </span>
+          </div>
+          <div className="mt-2 text-[11px] text-zinc-500 flex items-center justify-between">
+            <span>Total Faktur MBI:</span>
+            <span className="font-bold font-mono text-zinc-800 dark:text-zinc-200">
+              {summaryStats.totMbiInv.toLocaleString("id-ID")}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-zinc-200 dark:border-slate-800 shadow-xs">
+          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block mb-1">
+            TOTAL ERROR RATE (COMBINED)
+          </span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+              {summaryStats.totRate}%
+            </span>
+            <span className="text-xs text-zinc-500">
+              tingkat kendala
+            </span>
+          </div>
+          <div className="mt-2 text-[11px] text-zinc-500 flex items-center justify-between">
+            <span>Total Faktur:</span>
+            <span className="font-bold font-mono text-zinc-800 dark:text-zinc-200">
+              {summaryStats.totInv.toLocaleString("id-ID")}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -312,16 +504,16 @@ export default function WeeklyReportView({
             Cases per Minggu
           </h2>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Cases per minggu — {selectedWeekFilter === "all" ? "Semua Minggu" : `W${selectedWeekFilter}`}
+            Cases per minggu — {activeRange ? activeRange.label : `Semua Minggu (W1 – W${maxAvailableWeek})`}
           </p>
         </div>
 
         {/* Grouped Bar Chart */}
         <div className="overflow-x-auto pb-4 pt-8">
-          <div className="min-w-[900px] h-64 relative flex items-end">
+          <div className={`${displayedWeeks.length > 8 ? "min-w-[900px]" : "max-w-2xl mx-auto w-full"} h-64 relative flex items-end`}>
             {/* Y-Axis Grid lines */}
             <div className="absolute inset-0 flex flex-col justify-between pointer-events-none border-b border-zinc-200 dark:border-slate-800">
-              {[100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 0].map((y) => (
+              {yAxisSteps.map((y) => (
                 <div key={y} className="flex items-center w-full">
                   <span className="text-[10px] text-zinc-400 font-mono w-6 text-right pr-2 select-none">
                     {y}
@@ -337,6 +529,7 @@ export default function WeeklyReportView({
                 const maiH = (d.maiApprove / maxCasesInChart) * 100;
                 const mbiH = (d.mbiApprove / maxCasesInChart) * 100;
                 const hasMilestone = Boolean(d.milestone);
+                const barMaxWidth = displayedWeeks.length <= 5 ? "max-w-[36px]" : "max-w-[12px]";
 
                 return (
                   <div
@@ -345,9 +538,9 @@ export default function WeeklyReportView({
                     className="flex-1 flex flex-col items-center justify-end h-full group cursor-pointer"
                   >
                     {/* Pair of bars: MAI (red) and MBI (blue) */}
-                    <div className="w-full flex items-end justify-center gap-0.5 h-[90%]">
+                    <div className="w-full flex items-end justify-center gap-1 h-[90%]">
                       {/* MAI Bar */}
-                      <div className="flex-1 flex flex-col items-center justify-end h-full max-w-[12px]">
+                      <div className={`flex-1 flex flex-col items-center justify-end h-full ${barMaxWidth}`}>
                         <span className="text-[9px] font-bold text-red-500 leading-none mb-1 opacity-90 group-hover:opacity-100 font-mono">
                           {d.maiApprove}
                         </span>
@@ -362,7 +555,7 @@ export default function WeeklyReportView({
                       </div>
 
                       {/* MBI Bar */}
-                      <div className="flex-1 flex flex-col items-center justify-end h-full max-w-[12px]">
+                      <div className={`flex-1 flex flex-col items-center justify-end h-full ${barMaxWidth}`}>
                         <span className="text-[9px] font-bold text-blue-500 leading-none mb-1 opacity-90 group-hover:opacity-100 font-mono">
                           {d.mbiApprove}
                         </span>
@@ -417,7 +610,7 @@ export default function WeeklyReportView({
             </span>
           </h2>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Filter: {selectedWeekFilter === "all" ? "Semua Minggu" : `W${selectedWeekFilter}`} · klik baris untuk detail
+            Filter: {activeRange ? activeRange.label : "Semua Minggu"} · klik baris untuk detail
           </p>
         </div>
 
@@ -485,6 +678,39 @@ export default function WeeklyReportView({
                 </tr>
               ))}
             </tbody>
+            {displayedWeeks.length > 1 && (
+              <tfoot className="border-t-2 border-zinc-300 dark:border-slate-700 bg-zinc-50/80 dark:bg-slate-800/80 font-bold text-xs">
+                <tr>
+                  <td className="py-2.5 px-3 uppercase tracking-wider font-extrabold text-zinc-800 dark:text-zinc-200">
+                    TOTAL ({displayedWeeks.length} W)
+                  </td>
+                  <td className="py-2.5 px-3 font-mono font-black text-red-600 dark:text-red-400">
+                    {summaryStats.totMaiApprove}
+                  </td>
+                  <td className="py-2.5 px-3 font-mono text-zinc-700 dark:text-zinc-300">
+                    {summaryStats.totMaiInv.toLocaleString("id-ID")}
+                  </td>
+                  <td className="py-2.5 px-3 font-mono font-black text-red-600 dark:text-red-400">
+                    {summaryStats.maiRate}%
+                  </td>
+                  <td className="py-2.5 px-3 font-mono font-black text-blue-600 dark:text-blue-400">
+                    {summaryStats.totMbiApprove}
+                  </td>
+                  <td className="py-2.5 px-3 font-mono text-zinc-700 dark:text-zinc-300">
+                    {summaryStats.totMbiInv.toLocaleString("id-ID")}
+                  </td>
+                  <td className="py-2.5 px-3 font-mono font-black text-blue-600 dark:text-blue-400">
+                    {summaryStats.mbiRate}%
+                  </td>
+                  <td className="py-2.5 px-3 font-mono font-black text-rose-600 dark:text-rose-400">
+                    {summaryStats.totReject > 0 ? summaryStats.totReject : "-"}
+                  </td>
+                  <td className="py-2.5 px-3 text-zinc-500 text-[10px]">
+                    Avg: {summaryStats.totRate}%
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>

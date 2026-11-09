@@ -2403,7 +2403,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* ─── TAB: WEEKLY ─── */}
       {activeTab === "weekly" && (
-        <WeeklyReportView returns={allReturns.length > 0 ? allReturns : returns} records={records} />
+        <WeeklyReportView
+          returns={allReturns.length > 0 ? allReturns : returns}
+          records={records}
+          initialWeekFilter={weekFilter !== "ALL" ? weekFilter : "all"}
+        />
       )}
 
       {/* ─── TAB: OPEN CASES ─── */}
