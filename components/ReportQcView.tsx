@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { QcCatatanBarangEntry } from "@/lib/qcParser";
 import { isSuperAdminUser } from "@/lib/firestoreService";
+import { subscribeToDoCheckerLive } from "@/lib/doCheckerService";
 
 export interface SoDetail {
   customerName: string;
@@ -337,16 +338,27 @@ export default function ReportQcView({
     }
   };
 
-  // Realtime Live Sync: Otomatis sinkronisasi langsung dari DO Checker Firebase setiap 5 detik
+  // Realtime Live WebSocket Listener: Langsung masuk DETIK ITU JUGA saat checker selesai di DO Checker
   useEffect(() => {
+    // 1. Initial fetch saat antrean Report QC dibuka
     onRefreshQc();
 
-    const interval = setInterval(() => {
+    // 2. Direct Real-Time WebSocket Listener ke Firebase RTDB DO Checker (<100ms / detik itu juga)
+    const unsub = subscribeToDoCheckerLive(() => {
+      // Checker baru saja selesai di https://checker-do.vercel.app/ -> Panggil antrean detik itu juga!
+      onRefreshQc();
+    });
+
+    // 3. Fallback heartbeat (60s) hanya sebagai jaring pengaman koneksi
+    const fallbackInterval = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       onRefreshQc();
-    }, 5000);
+    }, 60000);
 
-    return () => clearInterval(interval);
+    return () => {
+      unsub();
+      clearInterval(fallbackInterval);
+    };
   }, [onRefreshQc]);
 
   // Enriched Rekap SO list (Instant memoization, zero network storm)
