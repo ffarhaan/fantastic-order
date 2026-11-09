@@ -48,6 +48,7 @@ import { syncFaktursToTiDB, syncFaktursToTiDBBackground, syncMissingFaktursToTiD
 import MasterApotekModal from "@/components/MasterApotekModal";
 import MasterProductModal from "@/components/MasterProductModal";
 import LoginModal, { AppUser } from "@/components/LoginModal";
+import ReportQcView from "@/components/ReportQcView";
 import AccountApprovalModal from "@/components/AccountApprovalModal";
 import UserProfileModal from "@/components/UserProfileModal";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
@@ -1294,6 +1295,11 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
   const togglePrintRef = useRef<(group: FakturGroup) => void>(() => {});
   const toggleExpandRef = useRef<(key: string) => void>(() => {});
   const lastSpaceTimeRef = useRef(0);
+  const filterRef = useRef(filter);
+
+  useEffect(() => {
+    filterRef.current = filter;
+  }, [filter]);
 
   useEffect(() => {
     selectedRowIndexRef.current = selectedRowIndex;
@@ -3091,9 +3097,60 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       return !existingSOSet.has(cleanSo) && !existingSOSet.has(normSo);
     });
   }, [qcOrders, existingSOSet, selectedWarehouse]);
+  // SO to Full Details Map: Instant O(1) lookup for Report QC
+  const soDetailsMap = useMemo(() => {
+    const map = new Map<string, {
+      customerName: string;
+      orderDate: string;
+      transactionDate: string;
+      totalItems: number;
+      totalQty: number;
+      invoiceNumber?: string;
+    }>();
+    const normalizeSO = (soStr: string) => soStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+    for (let i = 0; i < baseGroups.length; i++) {
+      const g = baseGroups[i];
+      if ((g.entity || "MBI") === selectedWarehouse) {
+        if (g.so && g.so !== "-") {
+          const inv = g.invoiceNumber || g.cleanInv || "";
+          let totQty = 0;
+          if (Array.isArray(g.items)) {
+            for (let j = 0; j < g.items.length; j++) {
+              totQty += Number(g.items[j].qty) || 0;
+            }
+          }
+          const detail = {
+            customerName: g.customerName || "-",
+            orderDate: g.orderDate || "-",
+            transactionDate: g.transactionDate || g.orderDate || "-",
+            totalItems: g.totalItems || (g.items ? g.items.length : 0),
+            totalQty: totQty,
+            invoiceNumber: inv,
+          };
+
+          const rawSo = g.so.trim().toUpperCase();
+          map.set(rawSo, detail);
+          const normSo = normalizeSO(rawSo);
+          if (normSo) map.set(normSo, detail);
+
+          if (rawSo.length > 8 && /[,;\/\s\n\r]/.test(rawSo)) {
+            const parts = rawSo.split(/[,;\/\s\n\r]+/).filter(Boolean);
+            for (const p of parts) {
+              map.set(p, detail);
+              const np = normalizeSO(p);
+              if (np) map.set(np, detail);
+            }
+          }
+        }
+      }
+    }
+    return map;
+  }, [baseGroups, selectedWarehouse]);
+
 
   const pendingQcGroups = useMemo<FakturGroup[]>(() => {
-    if (filter !== "report_qc" || pendingQcList.length === 0) return [];
+    if ((filter as any) !== "report_qc" || pendingQcList.length === 0) return [];
     // Sort so newest arrived orders from GSheet (latest updated_at and highest sheet_row) are ALWAYS AT THE VERY TOP!
     const sorted = [...pendingQcList].sort((a, b) => {
       const timeA = new Date(a.updated_at || 0).getTime();
@@ -3152,7 +3209,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
   // 6A. Filtered Invoice Groups (Completely decoupled from pendingQcGroups so QC updates never re-filter 20,500 invoices!)
   const invoiceFiltered = useMemo(() => {
-    if (filter === "report_qc") return [];
+    if ((filter as any) === "report_qc") return [];
 
     let result = grouped.filter((g) => (g.entity || "MBI") === selectedWarehouse);
 
@@ -3232,7 +3289,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
   // 6B. Filtered Faktur Groups (Instant single-string matching & 0ms numeric sorting)
   const filtered = useMemo(() => {
-    if (filter === "report_qc") {
+    if ((filter as any) === "report_qc") {
       let qcRes = pendingQcGroups;
       if (deferredSearch.trim()) {
         const s = deferredSearch.toLowerCase().trim();
@@ -3248,7 +3305,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       return qcRes;
     }
     return invoiceFiltered;
-  }, [filter, filter === "report_qc" ? pendingQcGroups : null, deferredSearch, invoiceFiltered]);
+  }, [filter, (filter as any) === "report_qc" ? pendingQcGroups : null, deferredSearch, invoiceFiltered]);
 
   const totalPages = Math.ceil(filtered.length / ROWS_PER_PAGE);
   const pageData = filtered.slice(page * ROWS_PER_PAGE, (page + 1) * ROWS_PER_PAGE);
@@ -3265,7 +3322,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   }, [pageData.length, selectedRowIndex]);
 
   const unprintedCountInFiltered = useMemo(() => {
-    if (filter === "report_qc") return 0;
+    if ((filter as any) === "report_qc") return 0;
     if (filter === "belum") return filtered.length;
     if (filter === "sudah") return 0;
     let count = 0;
@@ -3404,6 +3461,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
       if (isInput) return;
       if (showApotekModalRef.current || showProductModalRef.current || showChangelogModalRef.current || showExportModalRef.current) return;
+      if ((filterRef.current as any) === "report_qc") return;
 
       const currentPages = pageDataRef.current;
       const maxRow = Math.max(0, currentPages.length - 1);
@@ -6036,7 +6094,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <button
             type="button"
             onClick={() => {
-              const nextFilter = filter === "report_qc" ? "all" : "report_qc";
+              const nextFilter = (filter as any) === "report_qc" ? "all" : "report_qc";
               setFilter(nextFilter);
               setPage(0);
               if (nextFilter === "report_qc") {
@@ -6044,14 +6102,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               }
             }}
             className={`py-1.5 px-1.5 flex flex-col justify-between items-center text-center cursor-pointer group transition-colors ${
-              filter === "report_qc"
+              (filter as any) === "report_qc"
                 ? (isDarkMode ? "bg-amber-950/50 ring-2 ring-inset ring-amber-400" : "bg-amber-100 ring-2 ring-inset ring-amber-600")
                 : (isDarkMode ? "hover:bg-slate-800/60" : "hover:bg-slate-100")
             }`}
             title="Klik untuk filter Antrean Report QC (Menunggu Faktur Oracle)"
           >
             <span className={`text-[10px] font-black uppercase tracking-wider ${
-              filter === "report_qc"
+              (filter as any) === "report_qc"
                 ? (isDarkMode ? "text-amber-300" : "text-amber-900")
                 : (isDarkMode ? "text-amber-400/90 group-hover:text-amber-300" : "text-amber-700 group-hover:text-amber-900")
             }`}>
@@ -6065,7 +6123,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               {pendingQcList.length}
             </div>
             <span className={`text-[9px] font-bold leading-none ${isDarkMode ? "text-amber-400/80" : "text-amber-700"}`}>
-              {filter === "report_qc" ? "● Aktif" : "Menunggu Faktur"}
+              {(filter as any) === "report_qc" ? "● Aktif" : "Menunggu Faktur"}
             </span>
           </button>
 
@@ -6332,6 +6390,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           )}
         </div>
 
+        {(filter as any) !== "report_qc" && (
+        <>
         {/* Filter Dropdowns - Modern Clean Row (Wilayah DK/LK untuk MBI & MAI) */}
         <div className={`p-2 rounded-xl border grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 shadow-xs transition-colors ${
           isDarkMode ? "bg-[#09090b] border-zinc-800" : "bg-white border-zinc-300"
@@ -6539,8 +6599,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             Geser horizontal untuk melihat kolom lainnya
           </div>
         </div>
+        </>
+        )}
 
-        {/* ===================================================================== */}
+        {(filter as any) === "report_qc" ? (
+          <ReportQcView
+            qcOrders={qcOrders}
+            warehouse={selectedWarehouse}
+            currentUser={currentUser}
+            isDarkMode={isDarkMode}
+            existingSOSet={existingSOSet}
+            soDetailsMap={soDetailsMap}
+            onRefreshQc={() => fetchQcOrders(selectedWarehouseRef.current, true)}
+            onCancelQcOrder={handleCancelQcOrder}
+          />
+        ) : (
+          <Fragment>
+          {/* ===================================================================== */}
         {/* 🔒 LOCKED COMPONENT: DAFTAR FAKTUR 14-COLUMN TABLE (LOCKED_RULES.md) */}
         {/* Struktur 14 kolom (termasuk Checker & Packer) dan navigasi di-LOCK. */}
         {/* ===================================================================== */}
@@ -6556,10 +6631,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 (isColVisible("kat_produk") ? 1 : 0) +
                 (isColVisible("jenis") ? 1 : 0) +
                 (isColVisible("pelanggan") ? 1 : 0) +
-                (filter === "report_qc" ? 1 : (isColVisible("tgl_faktur") ? 1 : 0)) +
+                ((filter as any) === "report_qc" ? 1 : (isColVisible("tgl_faktur") ? 1 : 0)) +
                 (isColVisible("tgl_order") ? 1 : 0) +
                 (isColVisible("kat") ? 1 : 0) +
-                (filter !== "report_qc" && isColVisible("dklk") ? 1 : 0) +
+                ((filter as any) !== "report_qc" && isColVisible("dklk") ? 1 : 0) +
                 (isColVisible("checker") ? 1 : 0) +
                 (isColVisible("packer") ? 1 : 0) +
                 (isColVisible("picker") ? 1 : 0) +
@@ -6588,7 +6663,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                       {/* Col 1: Print / Status QC */}
                       <th
-                        className={`px-2 py-2.5 ${filter === "report_qc" ? "min-w-[95px] w-24" : "w-12 min-w-[48px]"} text-center ${
+                        className={`px-2 py-2.5 ${(filter as any) === "report_qc" ? "min-w-[95px] w-24" : "w-12 min-w-[48px]"} text-center ${
                           freezeColLevel === "1"
                             ? "sticky left-[32px] z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
                             : freezeColLevel !== "none"
@@ -6596,7 +6671,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             : "border-r border-zinc-200 dark:border-zinc-800"
                         }`}
                       >
-                        {filter === "report_qc" ? "STATUS QC" : "Print"}
+                        {(filter as any) === "report_qc" ? "STATUS QC" : "Print"}
                       </th>
 
                       {/* Col 2: No SO */}
@@ -6678,7 +6753,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       )}
 
                       {/* Col 7b: Barang Catatan (J) for Report QC */}
-                      {filter === "report_qc" ? (
+                      {(filter as any) === "report_qc" ? (
                         <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Jumlah Barang Catatan dari Kolom J GSheet">
                           Barang Catatan (J)
                         </th>
@@ -6692,8 +6767,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                       {/* Col 8: Tgl Order */}
                       {isColVisible("tgl_order") && (
-                        <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title={filter === "report_qc" ? "Tanggal SO (Kolom E GSheet)" : "Tanggal Sales Order Masuk (Order Date)"}>
-                          {filter === "report_qc" ? "Tgl SO (E)" : "Tgl Order"}
+                        <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title={(filter as any) === "report_qc" ? "Tanggal SO (Dari Aplikasi DO Checker)" : "Tanggal Sales Order Masuk (Order Date)"}>
+                          {(filter as any) === "report_qc" ? "Tgl SO" : "Tgl Order"}
                         </th>
                       )}
 
@@ -6705,7 +6780,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       )}
 
                       {/* Col: Wilayah (DK / LK) - Regular invoice table only */}
-                      {filter !== "report_qc" && isColVisible("dklk") && (
+                      {(filter as any) !== "report_qc" && isColVisible("dklk") && (
                         <th className="px-2.5 py-2.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Wilayah Pengiriman (DK: Dalam Kota, LK: Luar Kota)">
                           DK / LK
                         </th>
@@ -6734,15 +6809,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
                       {/* Col 13: Done Print (Waktu) OR Waktu Kirim */}
                       {isColVisible("waktu_print") && (
-                        <th className="px-2.5 py-2.5 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title={filter === "report_qc" ? "Waktu Kirim (Kolom A GSheet)" : "Waktu Selesai Cetak Faktur"}>
-                          {filter === "report_qc" ? "Waktu Kirim (A)" : "Done Print (Waktu)"}
+                        <th className="px-2.5 py-2.5 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title={(filter as any) === "report_qc" ? "Waktu Kirim (Dari Aplikasi DO Checker)" : "Waktu Selesai Cetak Faktur"}>
+                          {(filter as any) === "report_qc" ? "Waktu Kirim" : "Done Print (Waktu)"}
                         </th>
                       )}
 
                       {/* Col 14: Total (+PPN) OR Total Qty/Item */}
                       {isColVisible("total") && (
-                        <th className="px-2.5 py-2.5 text-right whitespace-nowrap" title={filter === "report_qc" ? "Total Item / Qty SO (Kolom H/I GSheet)" : "Grand Total sudah termasuk PPN 11% (sesuai faktur fisik)"}>
-                          {filter === "report_qc" ? "Total Qty/Item" : "Total (+PPN)"}
+                        <th className="px-2.5 py-2.5 text-right whitespace-nowrap" title={(filter as any) === "report_qc" ? "Total Item / Qty (Dari Aplikasi DO Checker)" : "Grand Total sudah termasuk PPN 11% (sesuai faktur fisik)"}>
+                          {(filter as any) === "report_qc" ? "Total Qty/Item" : "Total (+PPN)"}
                         </th>
                       )}
                     </tr>
@@ -6761,11 +6836,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       <tr>
                         <td colSpan={visibleColCount} className={`text-center py-12 ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
                           <div className="flex flex-col items-center gap-2">
-                            <span className="text-3xl">{filter === "belum" ? "🎉" : filter === "report_qc" ? "📋" : "📄"}</span>
+                            <span className="text-3xl">{filter === "belum" ? "🎉" : (filter as any) === "report_qc" ? "📋" : "📄"}</span>
                             <span className="text-xs font-semibold">
                               {filter === "belum"
                                 ? "Semua faktur sudah dicetak (tidak ada yang belum)."
-                                : filter === "report_qc"
+                                : (filter as any) === "report_qc"
                                 ? "Tidak ada antrean Report QC yang menunggu faktur."
                                 : filter === "sudah"
                                 ? "Belum ada faktur yang dicetak."
@@ -7116,7 +7191,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           )}
 
                           {/* Col 7b: Barang Catatan (J) for Report QC */}
-                          {filter === "report_qc" ? (
+                          {(filter as any) === "report_qc" ? (
                             <td
                               className="px-2 py-1.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 font-mono text-[11px]"
                               onClick={(e) => e.stopPropagation()}
@@ -7198,7 +7273,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           )}
 
                           {/* Col 10: Wilayah (DK / LK) - Regular invoice table only */}
-                          {filter !== "report_qc" && isColVisible("dklk") && (
+                          {(filter as any) !== "report_qc" && isColVisible("dklk") && (
                             <td
                               className="px-2 py-1.5 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800"
                               onClick={(e) => e.stopPropagation()}
@@ -7609,6 +7684,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             </div>
           )}
         </div>
+          </Fragment>
+        )}
         </>
         )
       )}

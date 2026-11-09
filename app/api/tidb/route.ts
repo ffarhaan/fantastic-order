@@ -518,6 +518,71 @@ export async function GET(req: Request) {
           "Vercel-CDN-Cache-Control": "public, s-maxage=60",
         });
       }
+
+      // Direct Live Sync straight from the DO Checker app (Firebase RTDB, 0 dependency on GSheet)
+      if (warehouse === "MBI") {
+        try {
+          const fbRes = await fetch('https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app/done.json?orderBy="completedAt"&limitToLast=100');
+          if (fbRes.ok) {
+            const fbData = await fbRes.json();
+            if (fbData && typeof fbData === "object") {
+              const entries = Object.entries(fbData);
+              const liveRows: (string | number | null)[][] = [];
+              for (const [so, v] of entries) {
+                const cleanSo = String(so).trim();
+                if (!cleanSo || cleanSo === "-" || cleanSo === "#N/A") continue;
+                const d = v as any;
+                let waktuKirim = null;
+                if (d.completedAt) {
+                  const dt = new Date(Number(d.completedAt));
+                  if (!isNaN(dt.getTime())) {
+                    const day = String(dt.getDate()).padStart(2, "0");
+                    const mon = String(dt.getMonth() + 1).padStart(2, "0");
+                    const yr = dt.getFullYear();
+                    const H = String(dt.getHours()).padStart(2, "0");
+                    const M = String(dt.getMinutes()).padStart(2, "0");
+                    waktuKirim = `${day}/${mon}/${yr} ${H}:${M}`;
+                  }
+                }
+                const noDo = d.doNum ? String(d.doNum).trim() : null;
+                const cust = d.customer ? String(d.customer).trim() : null;
+                const checker = d.checkerName ? String(d.checkerName).trim() : "-";
+                const packer = d.packerName ? String(d.packerName).trim() : null;
+                const picker = d.pickerName ? String(d.pickerName).trim() : null;
+                const totItem = Number(d.itemCount) || 0;
+                const totQty = Number(d.totalQty) || totItem;
+
+                liveRows.push([
+                  "MBI", cleanSo, noDo, cust, waktuKirim, checker, packer, picker, totItem, totQty
+                ]);
+              }
+
+              if (liveRows.length > 0) {
+                const placeholders = liveRows.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QC_DONE')").join(", ");
+                await conn.execute(
+                  `INSERT INTO qc_reports (
+                    warehouse, so_number, no_do, customer_name, waktu_kirim,
+                    checker_name, packer_name, picker_name, total_item, total_qty, status
+                  ) VALUES ${placeholders}
+                  ON DUPLICATE KEY UPDATE
+                    no_do = IF(VALUES(no_do) IS NOT NULL AND VALUES(no_do) != '', VALUES(no_do), qc_reports.no_do),
+                    customer_name = IF(VALUES(customer_name) IS NOT NULL AND VALUES(customer_name) != '', VALUES(customer_name), qc_reports.customer_name),
+                    waktu_kirim = IF(VALUES(waktu_kirim) IS NOT NULL AND VALUES(waktu_kirim) != '', VALUES(waktu_kirim), qc_reports.waktu_kirim),
+                    checker_name = IF(VALUES(checker_name) IS NOT NULL AND VALUES(checker_name) != '-' AND VALUES(checker_name) != '', VALUES(checker_name), qc_reports.checker_name),
+                    packer_name = IF(VALUES(packer_name) IS NOT NULL AND VALUES(packer_name) != '', VALUES(packer_name), qc_reports.packer_name),
+                    picker_name = IF(VALUES(picker_name) IS NOT NULL AND VALUES(picker_name) != '', VALUES(picker_name), qc_reports.picker_name),
+                    total_item = IF(VALUES(total_item) > 0, VALUES(total_item), qc_reports.total_item),
+                    total_qty = IF(VALUES(total_qty) > 0, VALUES(total_qty), qc_reports.total_qty)`,
+                  liveRows.flat()
+                );
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Direct Firebase sync error:", e);
+        }
+      }
+
       const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
       const rows = (await conn.execute(
         `SELECT 
@@ -527,15 +592,18 @@ export async function GET(req: Request) {
            MAX(t.customer_name) as customer_name,
            MAX(t.so_date) as so_date,
            MAX(t.waktu_kirim) as waktu_kirim,
-           COALESCE(MAX(t.checker_name), '-') as checker_name,
-           MAX(t.packer_name) as packer_name,
-           MAX(t.picker_name) as picker_name,
+           COALESCE(NULLIF(MAX(t.checker_name), '-'), '-') as checker_name,
+           COALESCE(NULLIF(MAX(t.packer_name), '-'), '-') as packer_name,
+           COALESCE(NULLIF(MAX(t.picker_name), '-'), '-') as picker_name,
            COALESCE(MAX(t.kategori), '1P') as kategori,
            COALESCE(MAX(t.kategori_produk), 'FARMA') as kategori_produk,
            MAX(t.total_item) as total_item,
            MAX(t.total_qty) as total_qty,
            MAX(t.barang_catatan) as barang_catatan,
            COALESCE(MAX(t.is_done), '') as is_done,
+           MAX(t.done_by) as done_by,
+           MAX(t.done_at) as done_at,
+           MAX(t.noted_items) as noted_items,
            COALESCE(MAX(t.status), 'QC_DONE') as status,
            MAX(t.sheet_row) as sheet_row,
            MAX(t.updated_at) as updated_at
@@ -543,23 +611,23 @@ export async function GET(req: Request) {
            SELECT 
              warehouse, so_number, no_do, customer_name, so_date, waktu_kirim,
              checker_name, packer_name, picker_name, kategori, kategori_produk,
-             total_item, total_qty, barang_catatan, is_done, status, sheet_row, updated_at
+             total_item, total_qty, barang_catatan, is_done, done_by, done_at, noted_items, status, sheet_row, updated_at
            FROM qc_reports
-           WHERE warehouse = ? AND updated_at >= NOW() - INTERVAL 7 DAY
+           WHERE warehouse = ? AND updated_at >= NOW() - INTERVAL 30 DAY
            UNION ALL
            SELECT 
              ? as warehouse, so_number, NULL as no_do, NULL as customer_name, NULL as so_date, NULL as waktu_kirim,
              checker_name, packer_name, picker_name, '1P' as kategori, 'FARMA' as kategori_produk,
-             0 as total_item, 0 as total_qty, 0 as barang_catatan, '' as is_done, 'QC_DONE' as status, 0 as sheet_row, updated_at
+             0 as total_item, 0 as total_qty, 0 as barang_catatan, '' as is_done, NULL as done_by, NULL as done_at, NULL as noted_items, 'QC_DONE' as status, 0 as sheet_row, updated_at
            FROM ${tableName}
-           WHERE updated_at >= NOW() - INTERVAL 7 DAY
+           WHERE updated_at >= NOW() - INTERVAL 30 DAY
              AND so_number IS NOT NULL AND LENGTH(TRIM(so_number)) >= 3 AND so_number != '-'
          ) t
          LEFT JOIN cancelled_qc_sos cqs ON t.so_number = cqs.so_number
          WHERE cqs.so_number IS NULL
          GROUP BY t.so_number
          ORDER BY updated_at DESC, sheet_row DESC
-         LIMIT 500;`,
+         LIMIT 1500;`,
         [warehouse, warehouse, warehouse]
       )) as any[];
       const payload = { success: true, count: rows.length, data: rows };
@@ -1796,6 +1864,80 @@ export async function POST(req: Request) {
       body = {};
     }
     const action = searchParams.get("action") || body?.action;
+
+    // 0. Mark QC Done (Tindakan Admin: Selesai proses di Report QC)
+    // 0. Mark ALL QC Done (Tandai Semua Selesai Sekaligus - Bulletproof INSERT ... ON DUPLICATE KEY UPDATE)
+    if (action === "mark_all_qc_done") {
+      const so_numbers = (Array.isArray(body?.so_numbers) ? body.so_numbers : []).map((s: any) => String(s).trim()).filter(Boolean);
+      const warehouse = String(body?.warehouse || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
+      const userName = String(body?.user_name || body?.userName || "Admin").trim();
+      const nowFormatted = new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+
+      if (so_numbers.length > 0) {
+        for (let i = 0; i < so_numbers.length; i += 100) {
+          const chunk = so_numbers.slice(i, i + 100);
+          const placeholders = chunk.map(() => "(?, ?, 'DONE', ?, ?, 'QC_DONE')").join(", ");
+          const params = chunk.flatMap((so: string) => [warehouse, so, userName, nowFormatted]);
+          await conn.execute(
+            `INSERT INTO qc_reports (warehouse, so_number, is_done, done_by, done_at, status)
+             VALUES ${placeholders}
+             ON DUPLICATE KEY UPDATE 
+               is_done = VALUES(is_done),
+               done_by = VALUES(done_by),
+               done_at = VALUES(done_at),
+               updated_at = CURRENT_TIMESTAMP`,
+            params
+          );
+        }
+        delete memoryQcReportsCache[warehouse];
+
+        try {
+          await conn.execute(
+            `INSERT INTO activity_logs (user_name, user_email, action_type, module, target_id, details)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [userName, body?.user_email || "", "MARK_ALL_QC_DONE", "REPORT_QC", `${so_numbers.length} SOs`, `Menandai DONE ${so_numbers.length} SO sekaligus (${warehouse})`]
+          );
+        } catch {}
+      }
+
+      return Response.json({ success: true, count: so_numbers.length, done_by: userName, done_at: nowFormatted });
+    }
+
+    // 0. Mark Single QC Done (Bulletproof INSERT ... ON DUPLICATE KEY UPDATE)
+    if (action === "mark_qc_done") {
+      const so_number = String(body?.so_number || searchParams.get("so_number") || "").trim();
+      const warehouse = String(body?.warehouse || searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
+      const userName = String(body?.user_name || body?.userName || "Admin").trim();
+      const isDone = String(body?.is_done || "DONE").trim();
+      const nowFormatted = new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+
+      if (!so_number) {
+        return Response.json({ success: false, error: "Missing so_number" }, { status: 400 });
+      }
+
+      await conn.execute(
+        `INSERT INTO qc_reports (warehouse, so_number, is_done, done_by, done_at, status)
+         VALUES (?, ?, ?, ?, ?, 'QC_DONE')
+         ON DUPLICATE KEY UPDATE 
+           is_done = VALUES(is_done),
+           done_by = VALUES(done_by),
+           done_at = VALUES(done_at),
+           updated_at = CURRENT_TIMESTAMP`,
+        [warehouse, so_number, isDone, userName, nowFormatted]
+      );
+
+      delete memoryQcReportsCache[warehouse];
+
+      try {
+        await conn.execute(
+          `INSERT INTO activity_logs (user_name, user_email, action_type, module, target_id, details)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [userName, body?.user_email || "", "MARK_QC_DONE", "REPORT_QC", so_number, `Menandai DONE SO #${so_number} (${warehouse})`]
+        );
+      } catch {}
+
+      return Response.json({ success: true, message: `SO ${so_number} berhasil ditandai ${isDone} oleh ${userName}`, done_by: userName, done_at: nowFormatted });
+    }
 
     // 0. Cancel QC SO (Cancel by Oracle - keluarkan dari antrean Report QC)
     if (action === "cancel_qc_so") {
