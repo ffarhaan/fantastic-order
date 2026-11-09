@@ -1030,8 +1030,8 @@ export default function Home() {
     // Fallback: jika SO tidak cocok, coba cari via invoice number (LOCKED_RULES.md Section 6.6 poin 2)
     if (!entry && invoiceNo) {
       const invStr = String(Array.isArray(invoiceNo) ? invoiceNo[0] : invoiceNo).trim();
-      if (invStr && invStr !== "-" && targetMap[invStr]) {
-        entry = targetMap[invStr];
+      if (invStr && invStr !== "-") {
+        entry = targetMap[invStr] || qcCheckersMapRef.current[invStr];
       }
     }
 
@@ -1127,8 +1127,16 @@ export default function Home() {
         const val = { checker: c, packer: p, picker: k };
         m[so] = val;
         m[so.toUpperCase()] = val;
+        const noSpace = so.replace(/\s+/g, "");
+        m[noSpace] = val;
         const norm = so.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
         if (norm) m[norm] = val;
+
+        if (q.no_do && q.no_do !== "-") {
+          const doStr = String(q.no_do).trim();
+          m[doStr] = val;
+          m[doStr.toUpperCase()] = val;
+        }
       }
     }
   }, [qcOrders]);
