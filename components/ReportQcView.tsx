@@ -337,6 +337,18 @@ export default function ReportQcView({
     }
   };
 
+  // Realtime Live Sync: Otomatis sinkronisasi langsung dari DO Checker Firebase setiap 5 detik
+  useEffect(() => {
+    onRefreshQc();
+
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      onRefreshQc();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [onRefreshQc]);
+
   // Enriched Rekap SO list (Instant memoization, zero network storm)
   const enrichedOrders = useMemo(() => {
     return validWarehouseQcOrders.map((row) => {

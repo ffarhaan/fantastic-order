@@ -1080,7 +1080,7 @@ export default function Home() {
           const sig = d.data
             .map((r: any) => `${r.so_number}:${r.is_done}:${r.status}:${r.checker_name}:${r.packer_name}:${r.picker_name}:${r.barang_catatan}:${r.updated_at}`)
             .join("|");
-          if (fresh || lastQcSigRef.current[wh] !== sig) {
+          if (lastQcSigRef.current[wh] !== sig) {
             lastQcSigRef.current[wh] = sig;
             setQcOrders(d.data);
           }
