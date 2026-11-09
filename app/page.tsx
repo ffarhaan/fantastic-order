@@ -972,6 +972,7 @@ export default function Home() {
   const checkerMapMbiRef = useRef<Record<string, { checker: string; packer: string; picker?: string }>>({});
   const [checkerMapMai, setCheckerMapMai] = useState<Record<string, { checker: string; packer: string; picker?: string }>>({});
   const checkerMapMaiRef = useRef<Record<string, { checker: string; packer: string; picker?: string }>>({});
+  const qcCheckersMapRef = useRef<Record<string, { checker: string; packer: string; picker?: string }>>({});
 
   const getCheckerInfo = useCallback((so?: string, invoiceNo?: string | string[], invoiceKey?: string, entity?: string) => {
     // STRICT MULTI-WAREHOUSE ISOLATION (LOCKED_RULES.md Section 1.M & 6):
@@ -1034,6 +1035,29 @@ export default function Home() {
       }
     }
 
+    // Fallback 0-Detik: Jika belum ada di targetMap (terhambat cache CDN), ambil langsung dari memori qcOrders (DO Checker)
+    if (!entry) {
+      const qcMap = qcCheckersMapRef.current;
+      for (const raw of rawCandidates) {
+        if (!raw || raw === "-") continue;
+        const noSpace = raw.replace(/\s+/g, "");
+        const alpha = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+        entry = qcMap[raw] || qcMap[noSpace] || qcMap[alpha];
+        if (entry) break;
+
+        const oVar1 = raw.replace(/^0/i, "O");
+        const oVar2 = raw.replace(/^O/i, "0");
+        const oVarAll1 = raw.replace(/0/g, "O");
+        const oVarAll2 = raw.replace(/O/gi, "0");
+        const oVarAlpha1 = alpha.replace(/0/g, "O");
+        const oVarAlpha2 = alpha.replace(/O/g, "0");
+
+        entry = qcMap[oVar1] || qcMap[oVar2] || qcMap[oVarAll1] || qcMap[oVarAll2] ||
+                qcMap[oVarAlpha1] || qcMap[oVarAlpha2];
+        if (entry) break;
+      }
+    }
+
     if (!entry) return null;
 
     const isBadPersonnelName = (val?: string) => {
@@ -1088,6 +1112,26 @@ export default function Home() {
       picker: k || "-",
     };
   }, [checkerMapMbi, checkerMapMai]);
+
+  // 0-detik Memory Sync: Masukkan seluruh personil QC dari qcOrders ke qcCheckersMapRef
+  useEffect(() => {
+    if (!qcOrders || qcOrders.length === 0) return;
+    const m = qcCheckersMapRef.current;
+    for (const q of qcOrders) {
+      const so = (q.so_number || "").trim();
+      if (!so) continue;
+      const c = q.checker_name && q.checker_name !== "-" ? q.checker_name : "";
+      const p = q.packer_name && q.packer_name !== "-" ? q.packer_name : "";
+      const k = q.picker_name && q.picker_name !== "-" ? q.picker_name : "";
+      if (c || p || k) {
+        const val = { checker: c, packer: p, picker: k };
+        m[so] = val;
+        m[so.toUpperCase()] = val;
+        const norm = so.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+        if (norm) m[norm] = val;
+      }
+    }
+  }, [qcOrders]);
 
   // Fetch QC Reports (GSheet Rekap Lengkap / Rekap SO queue waiting for Oracle invoice)
   const lastQcSigRef = useRef<Record<string, string>>({});
@@ -4422,6 +4466,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         setPage(0);
         setLoading(false);
         showToast(`✓ Berhasil memuat ${touchedInvoiceInThisUpload.size} faktur (${parsed.length} baris data) dari ${fileNames.join(", ")}`);
+
+        // Instant refresh QC & Checkers upon upload so all personnel names are immediately locked in 0-detik
+        fetchQcOrders(currentWh, true);
+        fetch(`/api/tidb?action=get_checkers&warehouse=${currentWh}`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success && d.data) {
+              if (currentWh === "MAI") {
+                setCheckerMapMai((prev) => ({ ...prev, ...d.data }));
+                checkerMapMaiRef.current = { ...checkerMapMaiRef.current, ...d.data };
+              } else {
+                setCheckerMapMbi((prev) => ({ ...prev, ...d.data }));
+                checkerMapMbiRef.current = { ...checkerMapMbiRef.current, ...d.data };
+              }
+            }
+          })
+          .catch(() => {});
 
         // 6. Smart Dirty-Check & Guaranteed Sync for Unprinted / Daily Uploads:
         // - Always sync 100% if uploadedDocs <= 300 (e.g. daily export.xls), or if invoice is unprinted (!status_cetak), or if previously failed (unsyncedTiDBKeysSet).

@@ -522,7 +522,7 @@ export async function GET(req: Request) {
       // Direct Live Sync straight from the DO Checker app (Firebase RTDB, 0 dependency on GSheet)
       if (warehouse === "MBI") {
         try {
-          const fbRes = await fetch('https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app/done.json?orderBy="completedAt"&limitToLast=100');
+          const fbRes = await fetch('https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app/done.json?orderBy=%22completedAt%22&limitToLast=200');
           if (fbRes.ok) {
             const fbData = await fbRes.json();
             if (fbData && typeof fbData === "object") {
@@ -626,7 +626,7 @@ export async function GET(req: Request) {
              checker_name, packer_name, picker_name, kategori, kategori_produk,
              total_item, total_qty, barang_catatan, is_done, done_by, done_at, noted_items, status, sheet_row, updated_at
            FROM qc_reports
-           WHERE warehouse = ? AND updated_at >= NOW() - INTERVAL 30 DAY
+           WHERE warehouse = ? AND (updated_at >= NOW() - INTERVAL 90 DAY OR is_done != 'DONE' OR is_done IS NULL)
            UNION ALL
            SELECT 
              ? as warehouse, so_number, NULL as no_do, NULL as customer_name, NULL as so_date, NULL as waktu_kirim,
@@ -640,7 +640,7 @@ export async function GET(req: Request) {
          WHERE cqs.so_number IS NULL
          GROUP BY t.so_number
          ORDER BY updated_at DESC, sheet_row DESC
-         LIMIT 1500;`,
+         LIMIT 10000;`,
         [warehouse, warehouse, warehouse]
       )) as any[];
       const payload = { success: true, count: rows.length, data: rows };

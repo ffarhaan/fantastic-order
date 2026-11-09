@@ -286,6 +286,213 @@ const ReportQcRow = React.memo(
 );
 
 // ============================================================================
+// MEMOIZED CATATAN BARANG ROW COMPONENT (60-120 FPS Keyboard Navigation)
+// ============================================================================
+interface CatatanBarangRowProps {
+  item: QcCatatanBarangEntry;
+  rowIdx: number;
+  isSelectedRow: boolean;
+  selectedColIdx: number;
+  isDarkMode: boolean;
+  onSelectCell: (rowIdx: number, colIdx: number) => void;
+  onCopyCell: (item: QcCatatanBarangEntry, colIdx: number) => void;
+  setRowRef: (el: HTMLTableRowElement | null) => void;
+}
+
+const CatatanBarangRow = React.memo(
+  function CatatanBarangRow({
+    item,
+    rowIdx,
+    isSelectedRow,
+    selectedColIdx,
+    isDarkMode,
+    onSelectCell,
+    onCopyCell,
+    setRowRef,
+  }: CatatanBarangRowProps) {
+    const isTakeout = (item.noteType || "").toUpperCase().includes("TAKEOUT");
+    const isBatch = (item.noteType || "").toUpperCase().includes("BATCH");
+    const isMinus = (item.noteType || "").toUpperCase().includes("MINUS");
+
+    const getCellCls = (colIdx: number) =>
+      isSelectedRow && selectedColIdx === colIdx
+        ? isDarkMode
+          ? "ring-2 ring-amber-400 ring-inset bg-amber-500/20 text-white font-bold"
+          : "ring-2 ring-amber-500 ring-inset bg-amber-100 text-black font-bold"
+        : "";
+
+    return (
+      <tr
+        ref={setRowRef}
+        className={`transition-colors select-text ${
+          isSelectedRow
+            ? isDarkMode
+              ? "bg-slate-800/50 border-l-4 border-l-amber-400"
+              : "bg-amber-50/70 border-l-4 border-l-amber-500"
+            : isDarkMode
+            ? "hover:bg-slate-800/30"
+            : "hover:bg-slate-50"
+        }`}
+      >
+        {/* Col 0: Waktu Kirim */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 0)}
+          className={`px-3 py-2 text-cyan-400 font-bold whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(0)}`}
+        >
+          {item.waktuKirim}
+        </td>
+
+        {/* Col 1: NO DO */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 1)}
+          className={`px-3 py-2 font-medium text-slate-300 whitespace-nowrap cursor-pointer ${getCellCls(1)}`}
+        >
+          {item.noDo}
+        </td>
+
+        {/* Col 2: No SO */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 2)}
+          className={`px-3 py-2 whitespace-nowrap cursor-pointer ${getCellCls(2)}`}
+        >
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectCell(rowIdx, 2);
+              onCopyCell(item, 2);
+            }}
+            className="font-bold text-amber-300 hover:text-amber-100 flex items-center gap-1 group"
+            title="Klik untuk salin No SO (atau tekan C saat sel aktif)"
+          >
+            <span>{item.so}</span>
+            <span className="text-[10px] text-slate-400 group-hover:text-amber-300 opacity-60 group-hover:opacity-100 transition">
+              📋
+            </span>
+          </span>
+        </td>
+
+        {/* Col 3: Apotek / Pelanggan */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 3)}
+          className={`px-3 py-2 max-w-xs truncate font-sans text-slate-200 cursor-pointer ${getCellCls(3)}`}
+          title={item.customer || "-"}
+        >
+          {item.customer || "-"}
+        </td>
+
+        {/* Col 4: Nama Barang */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 4)}
+          className={`px-3 py-2 max-w-xs font-sans text-slate-200 font-medium cursor-pointer ${getCellCls(4)}`}
+          title={item.name}
+        >
+          {item.name}
+        </td>
+
+        {/* Col 5: Kode */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 5)}
+          className={`px-2.5 py-2 text-slate-400 whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(5)}`}
+        >
+          {item.kode}
+        </td>
+
+        {/* Col 6: Batch */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 6)}
+          className={`px-3 py-2 text-slate-300 whitespace-nowrap cursor-pointer ${getCellCls(6)}`}
+        >
+          {item.batch}
+        </td>
+
+        {/* Col 7: ED */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 7)}
+          className={`px-2.5 py-2 text-slate-300 whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(7)}`}
+        >
+          {item.ed || "-"}
+        </td>
+
+        {/* Col 8: Batch Baru */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 8)}
+          className={`px-3 py-2 whitespace-nowrap cursor-pointer ${getCellCls(8)}`}
+        >
+          {item.batchBaru && item.batchBaru !== "-" ? (
+            <span className="font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+              {item.batchBaru}
+            </span>
+          ) : (
+            <span className="text-slate-500">-</span>
+          )}
+        </td>
+
+        {/* Col 9: ED Baru */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 9)}
+          className={`px-2.5 py-2 whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(9)}`}
+        >
+          {item.edBaru && item.edBaru !== "-" ? (
+            <span className="font-bold text-cyan-300 bg-cyan-500/10 px-1.5 py-0.5 rounded border border-cyan-500/20">
+              {item.edBaru}
+            </span>
+          ) : (
+            <span className="text-slate-500">-</span>
+          )}
+        </td>
+
+        {/* Col 10: Qty */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 10)}
+          className={`px-2 py-2 text-center font-bold text-slate-200 cursor-pointer ${getCellCls(10)}`}
+        >
+          {item.qty}
+        </td>
+
+        {/* Col 11: Tipe Catatan */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 11)}
+          className={`px-3 py-2 text-center whitespace-nowrap cursor-pointer ${getCellCls(11)}`}
+        >
+          <span
+            className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-sans font-black tracking-wide ${
+              isTakeout
+                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                : isBatch
+                ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                : isMinus
+                ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                : "bg-slate-700/60 text-slate-300 border border-slate-600"
+            }`}
+          >
+            {item.noteType}
+          </span>
+        </td>
+
+        {/* Col 12: Keterangan */}
+        <td
+          onClick={() => onSelectCell(rowIdx, 12)}
+          className={`px-4 py-2 font-sans text-xs text-slate-300 max-w-sm cursor-pointer ${getCellCls(12)}`}
+        >
+          {item.keterangan || "-"}
+        </td>
+      </tr>
+    );
+  },
+  (prev, next) => {
+    if (!prev.isSelectedRow && !next.isSelectedRow) {
+      return prev.item === next.item && prev.isDarkMode === next.isDarkMode;
+    }
+    return (
+      prev.isSelectedRow === next.isSelectedRow &&
+      prev.selectedColIdx === next.selectedColIdx &&
+      prev.item === next.item &&
+      prev.isDarkMode === next.isDarkMode
+    );
+  }
+);
+
+// ============================================================================
 // MAIN VIEW COMPONENT
 // ============================================================================
 export default function ReportQcView({
@@ -312,6 +519,11 @@ export default function ReportQcView({
   const [selectedColIdx, setSelectedColIdx] = useState<number>(2); // Default to Col 2 (No SO)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
+
+  // Catatan Barang Spreadsheet Navigation (60-120 FPS Keyboard Navigation)
+  const [selectedCatatanRowIndex, setSelectedCatatanRowIndex] = useState<number>(0);
+  const [selectedCatatanColIdx, setSelectedCatatanColIdx] = useState<number>(2); // Default to Col 2 (No SO)
+  const catatanRowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -641,129 +853,87 @@ export default function ReportQcView({
     [showToast]
   );
 
-  // KEYBOARD NAVIGATION ZERO-LAG (Ref-based 120 FPS, isolated single listener)
-  const pagedOrdersRef = useRef(pagedOrders);
-  pagedOrdersRef.current = pagedOrders;
-  const selectedRowIndexRef = useRef(selectedRowIndex);
-  selectedRowIndexRef.current = selectedRowIndex;
-  const selectedColIdxRef = useRef(selectedColIdx);
-  selectedColIdxRef.current = selectedColIdx;
-  const subTabRef = useRef(subTab);
-  subTabRef.current = subTab;
-  const totalPagesRef = useRef(totalPages);
-  totalPagesRef.current = totalPages;
-  const handleMarkDoneRef = useRef(handleMarkDone);
-  handleMarkDoneRef.current = handleMarkDone;
-  const handleMarkAllDoneRef = useRef(handleMarkAllDone);
-  handleMarkAllDoneRef.current = handleMarkAllDone;
-  const copyCellContentRef = useRef(copyCellContent);
-  copyCellContentRef.current = copyCellContent;
+  // Copy helper Catatan Barang
+  const copyCatatanCellContent = useCallback(
+    (item: QcCatatanBarangEntry, colIdx: number) => {
+      if (!item) return;
+      let textToCopy = "";
+      let label = "Data";
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT" ||
-          target.tagName === "BUTTON" ||
-          target.isContentEditable)
-      ) {
-        return;
+      switch (colIdx) {
+        case 0:
+          textToCopy = item.waktuKirim;
+          label = "Waktu Kirim";
+          break;
+        case 1:
+          textToCopy = item.noDo;
+          label = "No DO";
+          break;
+        case 2:
+          textToCopy = item.so;
+          label = "No SO";
+          break;
+        case 3:
+          textToCopy = item.customer;
+          label = "Apotek / Pelanggan";
+          break;
+        case 4:
+          textToCopy = item.name;
+          label = "Nama Barang";
+          break;
+        case 5:
+          textToCopy = item.kode;
+          label = "Kode Barang";
+          break;
+        case 6:
+          textToCopy = item.batch;
+          label = "Batch";
+          break;
+        case 7:
+          textToCopy = item.ed || "-";
+          label = "ED";
+          break;
+        case 8:
+          textToCopy = item.batchBaru || "-";
+          label = "Batch Baru";
+          break;
+        case 9:
+          textToCopy = item.edBaru || "-";
+          label = "ED Baru";
+          break;
+        case 10:
+          textToCopy = String(item.qty || 1);
+          label = "Qty";
+          break;
+        case 11:
+          textToCopy = item.noteType;
+          label = "Tipe Catatan";
+          break;
+        case 12:
+          textToCopy = item.keterangan || "-";
+          label = "Keterangan";
+          break;
+        default:
+          textToCopy = item.so;
+          label = "No SO";
+          break;
       }
-      if (subTabRef.current !== "rekap") return;
 
-      const curOrders = pagedOrdersRef.current;
-      const maxRow = Math.max(0, curOrders.length - 1);
-      const curRowIdx = Math.min(selectedRowIndexRef.current, maxRow);
-      const currentRow = curOrders[curRowIdx];
-
-      // Copy on 'c' or 'Ctrl+C'
-      if (e.key === "c" || e.key === "C") {
-        if (e.repeat) return;
-        const textSelected = typeof window !== "undefined" && window.getSelection()?.toString();
-        if (textSelected && (e.ctrlKey || e.metaKey)) return;
-
-        if (currentRow) {
-          if (e.ctrlKey || e.metaKey) e.preventDefault();
-          copyCellContentRef.current(currentRow, selectedColIdxRef.current);
-          return;
+      if (textToCopy && textToCopy !== "-") {
+        if (typeof navigator !== "undefined" && navigator.clipboard) {
+          navigator.clipboard
+            .writeText(textToCopy)
+            .then(() => {
+              showToast(`📋 ${label} disalin: ${textToCopy}`);
+            })
+            .catch(() => {
+              showToast(`📋 ${label}: ${textToCopy}`);
+            });
         }
       }
-
-      // Space: Toggle DONE
-      if (e.key === " " || e.code === "Space") {
-        e.preventDefault();
-        if (e.repeat) return;
-        if (currentRow && !currentRow.is_done_flag) {
-          handleMarkDoneRef.current(currentRow.so_number);
-        }
-        return;
-      }
-
-      // Enter: Single or Batch DONE
-      if (e.key === "Enter") {
-        e.preventDefault();
-        if (e.repeat) return;
-        if (e.ctrlKey || e.shiftKey || e.metaKey) {
-          handleMarkAllDoneRef.current();
-        } else if (currentRow && !currentRow.is_done_flag) {
-          handleMarkDoneRef.current(currentRow.so_number);
-        }
-        return;
-      }
-
-      // Arrow navigation (Instant 120 FPS)
-      if (e.key === "ArrowDown" || e.key === "j") {
-        e.preventDefault();
-        const next = Math.min(maxRow, curRowIdx + 1);
-        selectedRowIndexRef.current = next;
-        setSelectedRowIndex(next);
-        rowRefs.current[next]?.scrollIntoView({ block: "nearest", behavior: "auto" });
-        return;
-      }
-      if (e.key === "ArrowUp" || e.key === "k") {
-        e.preventDefault();
-        const next = Math.max(0, curRowIdx - 1);
-        selectedRowIndexRef.current = next;
-        setSelectedRowIndex(next);
-        rowRefs.current[next]?.scrollIntoView({ block: "nearest", behavior: "auto" });
-        return;
-      }
-      if (e.key === "ArrowRight" || e.key === "l") {
-        e.preventDefault();
-        const nextCol = Math.min(10, selectedColIdxRef.current + 1);
-        selectedColIdxRef.current = nextCol;
-        setSelectedColIdx(nextCol);
-        return;
-      }
-      if (e.key === "ArrowLeft" || e.key === "h") {
-        e.preventDefault();
-        const nextCol = Math.max(0, selectedColIdxRef.current - 1);
-        selectedColIdxRef.current = nextCol;
-        setSelectedColIdx(nextCol);
-        return;
-      }
-      if (e.key === "PageDown") {
-        e.preventDefault();
-        setPage((p) => Math.min(totalPagesRef.current - 1, p + 1));
-        setSelectedRowIndex(0);
-        selectedRowIndexRef.current = 0;
-        return;
-      }
-      if (e.key === "PageUp") {
-        e.preventDefault();
-        setPage((p) => Math.max(0, p - 1));
-        setSelectedRowIndex(0);
-        selectedRowIndexRef.current = 0;
-        return;
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+    },
+    [showToast]
+  );
 
   // Catatan Barang list (HANYA dihitung saat subTab === 'catatan' agar Rekap SO 100% cepat)
   const catatanBarangList = useMemo(() => {
@@ -776,11 +946,21 @@ export default function ReportQcView({
 
       if (Array.isArray(row.noted_items) && row.noted_items.length > 0) {
         for (const item of row.noted_items) {
+          const soStr = item.so || row.so_number || "-";
+          const custStr =
+            item.customer && item.customer !== "-"
+              ? item.customer
+              : row.customer_name && row.customer_name !== "-"
+              ? row.customer_name
+              : soDetailsMap.get(soStr.toUpperCase())?.customerName ||
+                soDetailsMap.get(normalizeSO(soStr))?.customerName ||
+                "-";
+
           res.push({
             waktuKirim: item.waktuKirim || row.waktu_kirim || "-",
             noDo: item.noDo || row.no_do || "-",
-            so: item.so || row.so_number || "-",
-            customer: item.customer || row.customer_name || "-",
+            so: soStr,
+            customer: custStr,
             name: item.name || "-",
             kode: item.kode || "-",
             batch: item.batch || "-",
@@ -803,15 +983,227 @@ export default function ReportQcView({
         it.customer.toLowerCase().includes(q) ||
         it.name.toLowerCase().includes(q) ||
         it.kode.toLowerCase().includes(q) ||
-        it.noteType.toLowerCase().includes(q)
+        it.batch.toLowerCase().includes(q) ||
+        (it.batchBaru && it.batchBaru.toLowerCase().includes(q)) ||
+        it.noteType.toLowerCase().includes(q) ||
+        (it.keterangan && it.keterangan.toLowerCase().includes(q))
     );
-  }, [subTab, enrichedOrders, mainFilter, searchQuery]);
+  }, [subTab, enrichedOrders, mainFilter, searchQuery, soDetailsMap]);
 
   const totalCatatanPages = Math.ceil(catatanBarangList.length / PAGE_SIZE) || 1;
   const pagedCatatan = useMemo(() => {
     const start = catatanPage * PAGE_SIZE;
     return catatanBarangList.slice(start, start + PAGE_SIZE);
   }, [catatanBarangList, catatanPage]);
+
+  // KEYBOARD NAVIGATION ZERO-LAG (Ref-based 120 FPS, isolated single listener)
+  const pagedOrdersRef = useRef(pagedOrders);
+  pagedOrdersRef.current = pagedOrders;
+  const selectedRowIndexRef = useRef(selectedRowIndex);
+  selectedRowIndexRef.current = selectedRowIndex;
+  const selectedColIdxRef = useRef(selectedColIdx);
+  selectedColIdxRef.current = selectedColIdx;
+  const subTabRef = useRef(subTab);
+  subTabRef.current = subTab;
+  const totalPagesRef = useRef(totalPages);
+  totalPagesRef.current = totalPages;
+  const handleMarkDoneRef = useRef(handleMarkDone);
+  handleMarkDoneRef.current = handleMarkDone;
+  const handleMarkAllDoneRef = useRef(handleMarkAllDone);
+  handleMarkAllDoneRef.current = handleMarkAllDone;
+  const copyCellContentRef = useRef(copyCellContent);
+  copyCellContentRef.current = copyCellContent;
+
+  const pagedCatatanRef = useRef(pagedCatatan);
+  pagedCatatanRef.current = pagedCatatan;
+  const totalCatatanPagesRef = useRef(totalCatatanPages);
+  totalCatatanPagesRef.current = totalCatatanPages;
+  const selectedCatatanRowIndexRef = useRef(selectedCatatanRowIndex);
+  selectedCatatanRowIndexRef.current = selectedCatatanRowIndex;
+  const selectedCatatanColIdxRef = useRef(selectedCatatanColIdx);
+  selectedCatatanColIdxRef.current = selectedCatatanColIdx;
+  const copyCatatanCellContentRef = useRef(copyCatatanCellContent);
+  copyCatatanCellContentRef.current = copyCatatanCellContent;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.tagName === "BUTTON" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      // ---------------------------------------------------------------------
+      // TAB 1: REKAP SO KEYBOARD NAVIGATION (120 FPS)
+      // ---------------------------------------------------------------------
+      if (subTabRef.current === "rekap") {
+        const curOrders = pagedOrdersRef.current;
+        const maxRow = Math.max(0, curOrders.length - 1);
+        const curRowIdx = Math.min(selectedRowIndexRef.current, maxRow);
+        const currentRow = curOrders[curRowIdx];
+
+        // Copy on 'c' or 'Ctrl+C'
+        if (e.key === "c" || e.key === "C") {
+          if (e.repeat) return;
+          const textSelected = typeof window !== "undefined" && window.getSelection()?.toString();
+          if (textSelected && (e.ctrlKey || e.metaKey)) return;
+
+          if (currentRow) {
+            if (e.ctrlKey || e.metaKey) e.preventDefault();
+            copyCellContentRef.current(currentRow, selectedColIdxRef.current);
+            return;
+          }
+        }
+
+        // Space: Toggle DONE
+        if (e.key === " " || e.code === "Space") {
+          e.preventDefault();
+          if (e.repeat) return;
+          if (currentRow && !currentRow.is_done_flag) {
+            handleMarkDoneRef.current(currentRow.so_number);
+          }
+          return;
+        }
+
+        // Enter: Single or Batch DONE
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (e.repeat) return;
+          if (e.ctrlKey || e.shiftKey || e.metaKey) {
+            handleMarkAllDoneRef.current();
+          } else if (currentRow && !currentRow.is_done_flag) {
+            handleMarkDoneRef.current(currentRow.so_number);
+          }
+          return;
+        }
+
+        // Arrow navigation
+        if (e.key === "ArrowDown" || e.key === "j") {
+          e.preventDefault();
+          const next = Math.min(maxRow, curRowIdx + 1);
+          selectedRowIndexRef.current = next;
+          setSelectedRowIndex(next);
+          rowRefs.current[next]?.scrollIntoView({ block: "nearest", behavior: "auto" });
+          return;
+        }
+        if (e.key === "ArrowUp" || e.key === "k") {
+          e.preventDefault();
+          const next = Math.max(0, curRowIdx - 1);
+          selectedRowIndexRef.current = next;
+          setSelectedRowIndex(next);
+          rowRefs.current[next]?.scrollIntoView({ block: "nearest", behavior: "auto" });
+          return;
+        }
+        if (e.key === "ArrowRight" || e.key === "l") {
+          e.preventDefault();
+          const nextCol = Math.min(10, selectedColIdxRef.current + 1);
+          selectedColIdxRef.current = nextCol;
+          setSelectedColIdx(nextCol);
+          return;
+        }
+        if (e.key === "ArrowLeft" || e.key === "h") {
+          e.preventDefault();
+          const nextCol = Math.max(0, selectedColIdxRef.current - 1);
+          selectedColIdxRef.current = nextCol;
+          setSelectedColIdx(nextCol);
+          return;
+        }
+        if (e.key === "PageDown") {
+          e.preventDefault();
+          setPage((p) => Math.min(totalPagesRef.current - 1, p + 1));
+          setSelectedRowIndex(0);
+          selectedRowIndexRef.current = 0;
+          return;
+        }
+        if (e.key === "PageUp") {
+          e.preventDefault();
+          setPage((p) => Math.max(0, p - 1));
+          setSelectedRowIndex(0);
+          selectedRowIndexRef.current = 0;
+          return;
+        }
+        return;
+      }
+
+      // ---------------------------------------------------------------------
+      // TAB 2: CATATAN BARANG KEYBOARD NAVIGATION (120 FPS, 13 Columns)
+      // ---------------------------------------------------------------------
+      if (subTabRef.current === "catatan") {
+        const curCatatan = pagedCatatanRef.current;
+        const maxCatatanRow = Math.max(0, curCatatan.length - 1);
+        const curCatatanRowIdx = Math.min(selectedCatatanRowIndexRef.current, maxCatatanRow);
+        const currentItem = curCatatan[curCatatanRowIdx];
+
+        // Copy on 'c' or 'Ctrl+C'
+        if (e.key === "c" || e.key === "C") {
+          if (e.repeat) return;
+          const textSelected = typeof window !== "undefined" && window.getSelection()?.toString();
+          if (textSelected && (e.ctrlKey || e.metaKey)) return;
+
+          if (currentItem) {
+            if (e.ctrlKey || e.metaKey) e.preventDefault();
+            copyCatatanCellContentRef.current(currentItem, selectedCatatanColIdxRef.current);
+            return;
+          }
+        }
+
+        // Arrow navigation
+        if (e.key === "ArrowDown" || e.key === "j") {
+          e.preventDefault();
+          const next = Math.min(maxCatatanRow, curCatatanRowIdx + 1);
+          selectedCatatanRowIndexRef.current = next;
+          setSelectedCatatanRowIndex(next);
+          catatanRowRefs.current[next]?.scrollIntoView({ block: "nearest", behavior: "auto" });
+          return;
+        }
+        if (e.key === "ArrowUp" || e.key === "k") {
+          e.preventDefault();
+          const next = Math.max(0, curCatatanRowIdx - 1);
+          selectedCatatanRowIndexRef.current = next;
+          setSelectedCatatanRowIndex(next);
+          catatanRowRefs.current[next]?.scrollIntoView({ block: "nearest", behavior: "auto" });
+          return;
+        }
+        if (e.key === "ArrowRight" || e.key === "l") {
+          e.preventDefault();
+          const nextCol = Math.min(12, selectedCatatanColIdxRef.current + 1);
+          selectedCatatanColIdxRef.current = nextCol;
+          setSelectedColIdx(nextCol);
+          return;
+        }
+        if (e.key === "ArrowLeft" || e.key === "h") {
+          e.preventDefault();
+          const nextCol = Math.max(0, selectedCatatanColIdxRef.current - 1);
+          selectedCatatanColIdxRef.current = nextCol;
+          setSelectedColIdx(nextCol);
+          return;
+        }
+        if (e.key === "PageDown") {
+          e.preventDefault();
+          setCatatanPage((p) => Math.min(totalCatatanPagesRef.current - 1, p + 1));
+          setSelectedCatatanRowIndex(0);
+          selectedCatatanRowIndexRef.current = 0;
+          return;
+        }
+        if (e.key === "PageUp") {
+          e.preventDefault();
+          setCatatanPage((p) => Math.max(0, p - 1));
+          setSelectedCatatanRowIndex(0);
+          selectedCatatanRowIndexRef.current = 0;
+          return;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const onSelectCell = useCallback((rowIdx: number, colIdx: number) => {
     setSelectedRowIndex(rowIdx);
@@ -820,9 +1212,20 @@ export default function ReportQcView({
     selectedColIdxRef.current = colIdx;
   }, []);
 
+  const onSelectCatatanCell = useCallback((rowIdx: number, colIdx: number) => {
+    setSelectedCatatanRowIndex(rowIdx);
+    selectedCatatanRowIndexRef.current = rowIdx;
+    setSelectedCatatanColIdx(colIdx);
+    selectedCatatanColIdxRef.current = colIdx;
+  }, []);
+
   const onViewCatatan = useCallback((soNum: string) => {
     setSubTab("catatan");
     setSearchQuery(soNum);
+    setSelectedCatatanRowIndex(0);
+    selectedCatatanRowIndexRef.current = 0;
+    setSelectedCatatanColIdx(2);
+    selectedCatatanColIdxRef.current = 2;
   }, []);
 
   const canCancel = isSuperAdminUser(currentUser?.name);
@@ -872,6 +1275,10 @@ export default function ReportQcView({
             onClick={() => {
               setSubTab("catatan");
               setCatatanPage(0);
+              setSelectedCatatanRowIndex(0);
+              selectedCatatanRowIndexRef.current = 0;
+              setSelectedCatatanColIdx(2);
+              selectedCatatanColIdxRef.current = 2;
             }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               subTab === "catatan"
@@ -927,6 +1334,7 @@ export default function ReportQcView({
                 setPage(0);
                 setCatatanPage(0);
                 setSelectedRowIndex(0);
+                setSelectedCatatanRowIndex(0);
               }}
               placeholder="Cari No SO / DO / Apotek..."
               className={`w-44 sm:w-56 text-xs px-2.5 py-1.5 rounded-lg border outline-none transition font-sans ${
@@ -941,6 +1349,8 @@ export default function ReportQcView({
                   setSearchQuery("");
                   setPage(0);
                   setCatatanPage(0);
+                  setSelectedRowIndex(0);
+                  setSelectedCatatanRowIndex(0);
                 }}
                 className="absolute right-2 top-1.5 text-xs text-slate-400 hover:text-slate-200"
               >
@@ -1022,12 +1432,25 @@ export default function ReportQcView({
         <div>
           ⌨️ Navigasi: <span className="text-amber-300 font-bold">↑ / ↓</span> Baris &bull;{" "}
           <span className="text-amber-300 font-bold">← / →</span> Sel &bull;{" "}
-          <span className="text-cyan-300 font-bold">C / Ctrl+C</span> Salin &bull;{" "}
-          <span className="text-emerald-400 font-bold">Spasi</span> DONE &bull;{" "}
-          <span className="text-rose-400 font-black">!</span> Belum Ada Faktur (Prioritas Paling Atas)
+          <span className="text-cyan-300 font-bold">C / Ctrl+C</span> Salin
+          {subTab === "rekap" && (
+            <>
+              {" "}
+              &bull; <span className="text-emerald-400 font-bold">Spasi</span> DONE &bull;{" "}
+              <span className="text-rose-400 font-black">!</span> Belum Ada Faktur (Prioritas Paling Atas)
+            </>
+          )}
         </div>
         <div className="text-slate-400 font-mono text-[10px]">
-          Menampilkan {pagedOrders.length} dari {filteredRekapOrders.length} SO &bull; Hal {page + 1}/{totalPages}
+          {subTab === "rekap" ? (
+            <>
+              Menampilkan {pagedOrders.length} dari {filteredRekapOrders.length} SO &bull; Hal {page + 1}/{totalPages}
+            </>
+          ) : (
+            <>
+              Menampilkan {pagedCatatan.length} dari {catatanBarangList.length} Catatan &bull; Hal {catatanPage + 1}/{totalCatatanPages}
+            </>
+          )}
         </div>
       </div>
 
@@ -1152,10 +1575,13 @@ export default function ReportQcView({
                   <th className="px-3 py-2.5">Waktu Kirim</th>
                   <th className="px-3 py-2.5">NO DO</th>
                   <th className="px-3 py-2.5">No SO</th>
+                  <th className="px-3 py-2.5">Apotek / Pelanggan</th>
                   <th className="px-3 py-2.5">Nama Barang</th>
                   <th className="px-2.5 py-2.5">Kode</th>
                   <th className="px-3 py-2.5">Batch</th>
+                  <th className="px-2.5 py-2.5">ED</th>
                   <th className="px-3 py-2.5">Batch Baru</th>
+                  <th className="px-2.5 py-2.5">ED Baru</th>
                   <th className="px-2 py-2.5 text-center">Qty</th>
                   <th className="px-3 py-2.5 text-center">Tipe Catatan</th>
                   <th className="px-4 py-2.5">Keterangan</th>
@@ -1168,100 +1594,26 @@ export default function ReportQcView({
               >
                 {catatanBarangList.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-16 text-center text-xs text-slate-400 font-sans">
+                    <td colSpan={13} className="py-16 text-center text-xs text-slate-400 font-sans">
                       ✨ Tidak ada barang yang memiliki catatan! Seluruh SO siap diproses cetak invoice.
                     </td>
                   </tr>
                 ) : (
-                  pagedCatatan.map((item, idx) => {
-                    const isTakeout = item.noteType.includes("TAKEOUT");
-                    const isBatch = item.noteType.includes("BATCH");
-                    const isMinus = item.noteType.includes("MINUS");
-
-                    return (
-                      <tr
-                        key={`${item.so}-${item.kode}-${idx}`}
-                        className={`select-text transition-colors ${
-                          isDarkMode ? "hover:bg-slate-800/40" : "hover:bg-slate-50"
-                        }`}
-                      >
-                        <td className="px-3 py-2 text-cyan-400 font-bold whitespace-nowrap text-[11px] select-text">
-                          {item.waktuKirim}
-                        </td>
-
-                        <td className="px-3 py-2 font-medium text-slate-300 whitespace-nowrap select-text">
-                          {item.noDo}
-                        </td>
-
-                        <td className="px-3 py-2 whitespace-nowrap select-text">
-                          <span
-                            onClick={() => {
-                              if (typeof navigator !== "undefined" && navigator.clipboard) {
-                                navigator.clipboard.writeText(item.so);
-                                showToast(`📋 No SO disalin: ${item.so}`);
-                              }
-                            }}
-                            className="font-bold text-amber-300 hover:text-amber-100 cursor-pointer select-text flex items-center gap-1 group"
-                            title="Klik untuk langsung salin No SO"
-                          >
-                            <span>{item.so}</span>
-                            <span className="text-[10px] text-slate-400 group-hover:text-amber-300 opacity-60 group-hover:opacity-100 transition">
-                              📋
-                            </span>
-                          </span>
-                        </td>
-
-                        <td
-                          className="px-3 py-2 max-w-xs font-sans text-slate-200 font-medium select-text"
-                          title={item.name}
-                        >
-                          {item.name}
-                        </td>
-
-                        <td className="px-2.5 py-2 text-slate-400 whitespace-nowrap text-[11px] select-text">
-                          {item.kode}
-                        </td>
-
-                        <td className="px-3 py-2 text-slate-300 whitespace-nowrap select-text">
-                          {item.batch}
-                        </td>
-
-                        <td className="px-3 py-2 whitespace-nowrap select-text">
-                          {item.batchBaru && item.batchBaru !== "-" ? (
-                            <span className="font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
-                              {item.batchBaru}
-                            </span>
-                          ) : (
-                            <span className="text-slate-500">-</span>
-                          )}
-                        </td>
-
-                        <td className="px-2 py-2 text-center font-bold text-slate-200 select-text">
-                          {item.qty}
-                        </td>
-
-                        <td className="px-3 py-2 text-center whitespace-nowrap select-text">
-                          <span
-                            className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-sans font-black tracking-wide ${
-                              isTakeout
-                                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                                : isBatch
-                                ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
-                                : isMinus
-                                ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
-                                : "bg-slate-700/60 text-slate-300 border border-slate-600"
-                            }`}
-                          >
-                            {item.noteType}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-2 font-sans text-xs text-slate-300 max-w-sm select-text">
-                          {item.keterangan}
-                        </td>
-                      </tr>
-                    );
-                  })
+                  pagedCatatan.map((item, rowIdx) => (
+                    <CatatanBarangRow
+                      key={`${item.so}-${item.kode}-${rowIdx}`}
+                      item={item}
+                      rowIdx={rowIdx}
+                      isSelectedRow={rowIdx === selectedCatatanRowIndex}
+                      selectedColIdx={selectedCatatanColIdx}
+                      isDarkMode={isDarkMode}
+                      onSelectCell={onSelectCatatanCell}
+                      onCopyCell={copyCatatanCellContent}
+                      setRowRef={(el) => {
+                        catatanRowRefs.current[rowIdx] = el;
+                      }}
+                    />
+                  ))
                 )}
               </tbody>
             </table>
@@ -1282,14 +1634,22 @@ export default function ReportQcView({
               </span>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setCatatanPage((p) => Math.max(0, p - 1))}
+                  onClick={() => {
+                    setCatatanPage((p) => Math.max(0, p - 1));
+                    setSelectedCatatanRowIndex(0);
+                    selectedCatatanRowIndexRef.current = 0;
+                  }}
                   disabled={catatanPage === 0}
                   className="px-3 py-1 border rounded-lg font-semibold disabled:opacity-30 hover:bg-slate-800/40 transition cursor-pointer"
                 >
                   Sebelumnya
                 </button>
                 <button
-                  onClick={() => setCatatanPage((p) => Math.min(totalCatatanPages - 1, p + 1))}
+                  onClick={() => {
+                    setCatatanPage((p) => Math.min(totalCatatanPages - 1, p + 1));
+                    setSelectedCatatanRowIndex(0);
+                    selectedCatatanRowIndexRef.current = 0;
+                  }}
                   disabled={catatanPage >= totalCatatanPages - 1}
                   className="px-3 py-1 border rounded-lg font-semibold disabled:opacity-30 hover:bg-slate-800/40 transition cursor-pointer"
                 >
