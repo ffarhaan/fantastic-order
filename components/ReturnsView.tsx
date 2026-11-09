@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { ShipmentReturnRecord, FakturRecord } from "@/lib/types";
 import { broadcastRealtimeSignal, subscribeToRealtimeSignal, isSuperAdminUser, broadcastNewComplaint } from "@/lib/firestoreService";
+import { parsePersonNames } from "@/lib/personnelUtils";
 import { AppUser } from "@/components/LoginModal";
 import { recordActivityLog } from "@/lib/activityLogger";
 import {
@@ -1691,7 +1692,12 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       } else if (isUnassigned) {
         if (p && !['REJECT', '-', '#N/A', 'ADMIN', 'NONE', 'NULL'].includes(p)) return false;
       } else {
-        if (!p.includes(targetName)) return false;
+        const parsed = parsePersonNames(r.person);
+        const matchParsed = parsed.some((n) => {
+          const upper = n.toUpperCase();
+          return upper === targetName || upper.includes(targetName) || targetName.includes(upper);
+        });
+        if (!matchParsed && !p.includes(targetName)) return false;
       }
       // Search inside modal
       if (personnelDrillDownSearch.trim()) {
