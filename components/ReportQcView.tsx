@@ -322,7 +322,8 @@ export default function ReportQcView({
 
   const validWarehouseQcOrders = useMemo(() => {
     return qcOrders.filter((qc) => {
-      if (!qc.so_number || qc.so_number.trim().length < 3 || qc.so_number === "-" || qc.so_number === "#N/A") {
+      const cleanSo = (qc.so_number || "").trim();
+      if (!cleanSo || cleanSo.length < 3 || cleanSo === "-" || cleanSo === "#N/A" || cleanSo.toLowerCase() === "buset") {
         return false;
       }
       return (qc.warehouse || "MBI").toUpperCase() === warehouse;
