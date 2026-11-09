@@ -1693,11 +1693,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         if (p && !['REJECT', '-', '#N/A', 'ADMIN', 'NONE', 'NULL'].includes(p)) return false;
       } else {
         const parsed = parsePersonNames(r.person);
-        const matchParsed = parsed.some((n) => {
-          const upper = n.toUpperCase();
-          return upper === targetName || upper.includes(targetName) || targetName.includes(upper);
-        });
-        if (!matchParsed && !p.includes(targetName)) return false;
+        if (!parsed.includes(targetName) && !parsed.some((n) => n.toUpperCase() === targetName)) return false;
       }
       // Search inside modal
       if (personnelDrillDownSearch.trim()) {
