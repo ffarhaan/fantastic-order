@@ -575,6 +575,19 @@ export async function GET(req: Request) {
                     total_qty = IF(VALUES(total_qty) > 0, VALUES(total_qty), qc_reports.total_qty)`,
                   liveRows.flat()
                 );
+
+                // Also keep so_checkers in sync so invoice table has live checker/picker/packer from DO Checker
+                const checkerRows = liveRows.map((r) => [r[1], r[5], r[6], r[7]]);
+                const checkerPlaceholders = checkerRows.map(() => "(?, ?, ?, ?)").join(", ");
+                await conn.execute(
+                  `INSERT INTO so_checkers (so_number, checker_name, packer_name, picker_name)
+                   VALUES ${checkerPlaceholders}
+                   ON DUPLICATE KEY UPDATE
+                     checker_name = IF(VALUES(checker_name) IS NOT NULL AND VALUES(checker_name) != '-' AND VALUES(checker_name) != '', VALUES(checker_name), so_checkers.checker_name),
+                     packer_name = IF(VALUES(packer_name) IS NOT NULL AND VALUES(packer_name) != '', VALUES(packer_name), so_checkers.packer_name),
+                     picker_name = IF(VALUES(picker_name) IS NOT NULL AND VALUES(picker_name) != '', VALUES(picker_name), so_checkers.picker_name)`,
+                  checkerRows.flat()
+                );
               }
             }
           }
@@ -2006,195 +2019,14 @@ export async function POST(req: Request) {
       return Response.json({ success: true, logId: (res as any)?.insertId });
     }
 
-    // 0. Sync checkers from Google Sheets
+    // 0. Sync checkers from Google Sheets (PERMANENTLY DISCONNECTED per user mandate)
+    // All QC/Checker data is now synced directly App-to-App from DO Checker Firebase RTDB.
     if (action === "sync_checkers") {
-      const items = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
-      if (items.length === 0) {
-        return Response.json({ success: true, count: 0 });
-      }
-
-      const validRows: [string, string, string | null, string | null][] = [];
-      for (const item of items) {
-        const so = String(item.so || item.so_number || "").trim();
-        let checker = String(item.checker || item.checker_name || "").trim();
-        let packer = String(item.packer || item.packer_name || "").trim();
-        let picker = String(item.picker || item.picker_name || "").trim();
-
-        // Guard against misread customer names or dates
-        if (
-          packer.toLowerCase().startsWith("apotek") ||
-          packer.toLowerCase().startsWith("pt ") ||
-          packer.toLowerCase().startsWith("klinik") ||
-          packer.includes("00:00:00") ||
-          packer.includes("GMT")
-        ) {
-          packer = "";
-        }
-        if (
-          picker.includes("00:00:00") ||
-          picker.includes("GMT") ||
-          /^(mon|tue|wed|thu|fri|sat|sun)\s/i.test(picker)
-        ) {
-          picker = "";
-        }
-
-        if (!so || so === "-" || so === "#N/A" || (!checker && !packer && !picker)) continue;
-
-        validRows.push([so, checker || "-", packer || null, picker || null]);
-      }
-
-      const warehouse = (searchParams.get("warehouse") || body?.warehouse || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
-      const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
-      const recentDocId = warehouse === "MAI" ? "so_checkers_recent_mai" : "so_checkers_recent";
-
-      // High-speed Batch Upsert in chunks of 100
-      let updatedCount = 0;
-      const CHUNK_SIZE = 100;
-      for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
-        const chunk = validRows.slice(i, i + CHUNK_SIZE);
-        const placeholders = chunk.map(() => "(?, ?, ?, ?)").join(", ");
-        const flatParams = chunk.flat();
-
-        await conn.execute(
-          `INSERT INTO ${tableName} (so_number, checker_name, packer_name, picker_name)
-           VALUES ${placeholders}
-           ON DUPLICATE KEY UPDATE 
-             checker_name = IF(VALUES(checker_name) IS NOT NULL AND VALUES(checker_name) != '' AND VALUES(checker_name) != '-', VALUES(checker_name), ${tableName}.checker_name),
-             packer_name = IF(VALUES(packer_name) IS NOT NULL AND VALUES(packer_name) != '', VALUES(packer_name), ${tableName}.packer_name),
-             picker_name = IF(VALUES(picker_name) IS NOT NULL AND VALUES(picker_name) != '', VALUES(picker_name), ${tableName}.picker_name)`,
-          flatParams
-        );
-        updatedCount += chunk.length;
-      }
-
-      // Upsert rich QC report data into qc_reports (for "Report QC" pipeline queue)
-      const qcRows: (string | number | null)[][] = [];
-      for (const item of items) {
-        const so = String(item.so || item.so_number || "").trim();
-        if (!so || so === "-" || so === "#N/A") continue;
-        const noDo = String(item.no_do || item.do || "").trim() || null;
-        const cust = String(item.customer || item.customer_name || item.apotek || "").trim() || null;
-        const soDate = String(item.so_date || item.tanggal_so || "").trim() || null;
-        const waktuKirim = String(item.waktu_kirim || "").trim() || null;
-        const checker = String(item.checker || item.checker_name || "").trim() || "-";
-        const packer = String(item.packer || item.packer_name || "").trim() || null;
-        const picker = String(item.picker || item.picker_name || "").trim() || null;
-        const kat = String(item.kategori || "").trim() || null;
-        const katProd = String(item.kategori_produk || "").trim() || null;
-        const totItem = Number(item.total_item) || 0;
-        const totQty = Number(item.total_qty) || 0;
-        const hasExplicitCatatan = item.barang_catatan !== undefined && item.barang_catatan !== null && item.barang_catatan !== "";
-        const barangCatatan = hasExplicitCatatan ? (Number(item.barang_catatan) || 0) : null;
-        const isDone = String(item.is_done || item.done || "").trim();
-        const sheetRow = Number(item.sheet_row || item.row || item.row_number) || 0;
-
-        if (so && (checker !== "-" || packer || picker || cust || soDate || waktuKirim || noDo || isDone || (barangCatatan !== null && barangCatatan >= 0) || sheetRow > 0)) {
-          qcRows.push([warehouse, so, noDo, cust, soDate, waktuKirim, checker, packer, picker, kat, katProd, totItem, totQty, barangCatatan, isDone, sheetRow]);
-        }
-      }
-
-      if (qcRows.length > 0) {
-        for (let i = 0; i < qcRows.length; i += CHUNK_SIZE) {
-          const chunk = qcRows.slice(i, i + CHUNK_SIZE);
-          const placeholders = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QC_DONE')").join(", ");
-          await conn.execute(
-            `INSERT INTO qc_reports (
-              warehouse, so_number, no_do, customer_name, so_date, waktu_kirim,
-              checker_name, packer_name, picker_name, kategori, kategori_produk,
-              total_item, total_qty, barang_catatan, is_done, sheet_row, status
-            ) VALUES ${placeholders}
-            ON DUPLICATE KEY UPDATE 
-              no_do = IF(VALUES(no_do) IS NOT NULL AND VALUES(no_do) != '', VALUES(no_do), qc_reports.no_do),
-              customer_name = IF(VALUES(customer_name) IS NOT NULL AND VALUES(customer_name) != '', VALUES(customer_name), qc_reports.customer_name),
-              so_date = IF(VALUES(so_date) IS NOT NULL AND VALUES(so_date) != '', VALUES(so_date), qc_reports.so_date),
-              waktu_kirim = IF(VALUES(waktu_kirim) IS NOT NULL AND VALUES(waktu_kirim) != '', VALUES(waktu_kirim), qc_reports.waktu_kirim),
-              checker_name = IF(VALUES(checker_name) IS NOT NULL AND VALUES(checker_name) != '-' AND VALUES(checker_name) != '', VALUES(checker_name), qc_reports.checker_name),
-              packer_name = IF(VALUES(packer_name) IS NOT NULL AND VALUES(packer_name) != '', VALUES(packer_name), qc_reports.packer_name),
-              picker_name = IF(VALUES(picker_name) IS NOT NULL AND VALUES(picker_name) != '', VALUES(picker_name), qc_reports.picker_name),
-              kategori = IF(VALUES(kategori) IS NOT NULL AND VALUES(kategori) != '', VALUES(kategori), qc_reports.kategori),
-              kategori_produk = IF(VALUES(kategori_produk) IS NOT NULL AND VALUES(kategori_produk) != '', VALUES(kategori_produk), qc_reports.kategori_produk),
-              total_item = IF(VALUES(total_item) > 0, VALUES(total_item), qc_reports.total_item),
-              total_qty = IF(VALUES(total_qty) > 0, VALUES(total_qty), qc_reports.total_qty),
-              barang_catatan = IF(VALUES(barang_catatan) IS NOT NULL, VALUES(barang_catatan), qc_reports.barang_catatan),
-              is_done = IF(VALUES(is_done) IS NOT NULL AND VALUES(is_done) != '', VALUES(is_done), qc_reports.is_done),
-              sheet_row = IF(VALUES(sheet_row) > 0, VALUES(sheet_row), qc_reports.sheet_row),
-              updated_at = CURRENT_TIMESTAMP`,
-            chunk.flat()
-          );
-        }
-      }
-
-      // Immediately bust in-memory QC reports cache so next fetch is instant
-      delete memoryQcReportsCache[warehouse];
-
-      // Also propagate to Firestore for instant real-time WebSocket updates (<100ms, 0 byte on Vercel)
-      const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-      const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "fantastic-order";
-      if (apiKey && projectId && (validRows.length > 0 || qcRows.length > 0)) {
-        try {
-          const recentMap: Record<string, { c: string; p: string; k?: string }> = {};
-          // Take the most recent up to 500 items to avoid payload limits
-          const sliceRows = validRows.slice(-500);
-          for (const row of sliceRows) {
-            recentMap[row[0]] = { c: row[1], p: row[2] || "", k: row[3] || "" };
-          }
-          await fetch(
-            `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/app_data/${recentDocId}?key=${apiKey}&updateMask.fieldPaths=data&updateMask.fieldPaths=updatedAt`,
-            {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                fields: {
-                  data: { stringValue: JSON.stringify(recentMap) },
-                  updatedAt: { stringValue: new Date().toISOString() },
-                },
-              }),
-            }
-          ).catch((e) => console.warn(`[Sync Checkers ${warehouse}] Firestore patch failed:`, e));
-
-          // Realtime push for Report QC queue (instant <1s sync, 0 bytes on Vercel)
-          if (qcRows.length > 0) {
-            const qcDocId = warehouse === "MAI" ? "qc_recent_mai" : "qc_recent_mbi";
-            const recentQcItems = qcRows.slice(-100).map((r) => ({
-              warehouse: r[0],
-              so_number: r[1],
-              no_do: r[2],
-              customer_name: r[3],
-              so_date: r[4],
-              waktu_kirim: r[5],
-              checker_name: r[6],
-              packer_name: r[7],
-              picker_name: r[8],
-              kategori: r[9],
-              kategori_produk: r[10],
-              total_item: r[11],
-              total_qty: r[12],
-              barang_catatan: r[13],
-              is_done: r[14],
-              sheet_row: r[15],
-              status: "QC_DONE",
-              updated_at: new Date().toISOString(),
-            }));
-            await fetch(
-              `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/app_data/${qcDocId}?key=${apiKey}&updateMask.fieldPaths=data&updateMask.fieldPaths=updatedAt`,
-              {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  fields: {
-                    data: { stringValue: JSON.stringify(recentQcItems) },
-                    updatedAt: { stringValue: new Date().toISOString() },
-                  },
-                }),
-              }
-            ).catch((e) => console.warn(`[Sync QC Recent ${warehouse}] Firestore patch failed:`, e));
-          }
-        } catch (e) {
-          console.warn(`[Sync Checkers ${warehouse}] Firestore sync warning:`, e);
-        }
-      }
-
-      return Response.json({ success: true, count: updatedCount, warehouse });
+      return Response.json({
+        success: true,
+        count: 0,
+        message: "Google Sheets sync for checkers/QC has been permanently disconnected. All QC data is synced directly App-to-App from DO Checker Firebase."
+      });
     }
 
     // 0.1. Sync shipment errors from Google Sheets (Bulk sync / Sheet sync)
