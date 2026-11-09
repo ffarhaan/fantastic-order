@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { ShipmentReturnRecord, FakturRecord } from "@/lib/types";
 import { broadcastRealtimeSignal, subscribeToRealtimeSignal, isSuperAdminUser, broadcastNewComplaint } from "@/lib/firestoreService";
-import { parsePersonNames } from "@/lib/personnelUtils";
+import { parsePersonNames, OFFICIAL_MBI_PERSONNEL } from "@/lib/personnelUtils";
 import { AppUser } from "@/components/LoginModal";
 import { recordActivityLog } from "@/lib/activityLogger";
 import {
@@ -764,6 +764,50 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     reject_media_url: "",
     inprogress_type: "",
   });
+
+  // Master Personnel suggestions (60 Official MBI Personnel)
+  const [showPersonSuggestions, setShowPersonSuggestions] = useState(false);
+
+  const currentPersonQuery = useMemo(() => {
+    const raw = editForm.person || "";
+    const parts = raw.split(/[\/]/);
+    return (parts[parts.length - 1] || "").trim().toLowerCase();
+  }, [editForm.person]);
+
+  const editPersonSuggestions = useMemo(() => {
+    if (!currentPersonQuery) {
+      return OFFICIAL_MBI_PERSONNEL;
+    }
+    return OFFICIAL_MBI_PERSONNEL.filter((p) => p.toLowerCase().includes(currentPersonQuery));
+  }, [currentPersonQuery]);
+
+  const handleSelectPerson = useCallback((selectedName: string) => {
+    setEditForm((prev) => {
+      const current = prev.person || "";
+      const parts = current.split(/[\/]/);
+      parts.pop(); // Remove the current typed snippet
+      const existing = parts.map((p) => p.trim()).filter(Boolean);
+      existing.push(selectedName);
+      const newPerson = existing.join(" / ");
+
+      const updates: any = { person: newPerson };
+      if (newPerson.trim() && (prev.status === "Pending" || !prev.status)) {
+        updates.status = "In Progress";
+        if (prev.confirm !== "Approve") updates.confirm = "Approve";
+      }
+      return { ...prev, ...updates };
+    });
+    setShowPersonSuggestions(false);
+  }, []);
+
+  const handleAppendPersonSeparator = useCallback(() => {
+    setEditForm((prev) => {
+      const current = (prev.person || "").trim();
+      if (!current || current.endsWith("/")) return prev;
+      return { ...prev, person: `${current} / ` };
+    });
+    setShowPersonSuggestions(true);
+  }, []);
 
   useEffect(() => {
     if (selectedReturn) {
@@ -2062,10 +2106,22 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               />
             </div>
 
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
-                Personil Terkait {editForm.inprogress_type === "Klaim & Retur" ? "(Opsional untuk Klaim & Retur)" : "(Picker / Checker)"}
-              </label>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-0.5">
+                <label className="text-zinc-700 dark:text-slate-400 font-bold block">
+                  Personil Terkait {editForm.inprogress_type === "Klaim & Retur" ? "(Opsional untuk Klaim & Retur)" : "(Picker / Checker)"}
+                </label>
+                {editForm.person && editForm.person.trim() && !editForm.person.trim().endsWith("/") && (
+                  <button
+                    type="button"
+                    onClick={handleAppendPersonSeparator}
+                    className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800 cursor-pointer"
+                    title="Tambah personil ke-2 atau ke-3 dengan pemisah garis miring ( / )"
+                  >
+                    + Tambah Personil ( / )
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 value={editForm.person}
@@ -2077,10 +2133,43 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     if (editForm.confirm !== "Approve") updates.confirm = "Approve";
                   }
                   setEditForm({ ...editForm, ...updates });
+                  setShowPersonSuggestions(true);
                 }}
-                placeholder={editForm.inprogress_type === "Klaim & Retur" ? "Opsional (Boleh dikosongkan)" : "Nama picker / checker bersangkutan"}
+                onFocus={() => setShowPersonSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowPersonSuggestions(false), 250)}
+                placeholder={editForm.inprogress_type === "Klaim & Retur" ? "Opsional (Boleh dikosongkan)" : "Ketik nama personil (contoh: AGUS SUROSO / BUDI SUSANTO)"}
                 className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
               />
+
+              {/* Petunjuk format pemisah garis miring */}
+              <div className="mt-1 text-[11px] text-zinc-500 dark:text-slate-400 flex items-center justify-between">
+                <span>Wajib pakai tanda <strong className="text-blue-600 dark:text-blue-400 font-black px-1 bg-blue-50 dark:bg-blue-950/40 rounded border border-blue-200 dark:border-blue-800"> / </strong> jika 2 atau 3 personil</span>
+                <span className="text-[10px] text-zinc-400 dark:text-slate-500">Master: 60 Personil MBI</span>
+              </div>
+
+              {/* Suggestions Dropdown */}
+              {showPersonSuggestions && editPersonSuggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg shadow-2xl z-50 max-h-56 overflow-y-auto py-1">
+                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 border-b border-zinc-100 dark:border-slate-800 flex items-center justify-between">
+                    <span>Pilih Personil MBI ({editPersonSuggestions.length})</span>
+                    <span className="text-[9px] text-zinc-400 lowercase">klik nama untuk memasukkan</span>
+                  </div>
+                  {editPersonSuggestions.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleSelectPerson(name);
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-black dark:text-white hover:bg-blue-50 dark:hover:bg-blue-950/60 flex items-center justify-between transition-colors cursor-pointer border-b border-zinc-50 dark:border-slate-800/40 last:border-b-0"
+                    >
+                      <span className="font-bold">{name}</span>
+                      <span className="text-[10px] text-zinc-400 dark:text-slate-500 font-medium">Gudang MBI</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>
