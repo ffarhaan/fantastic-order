@@ -1263,6 +1263,25 @@ export async function GET(req: Request) {
         }
       }
 
+      // Transparent case counts for the active filter
+      const caseCountsResult = (await conn.execute(`
+        SELECT 
+          COUNT(*) as total_cases,
+          SUM(CASE WHEN person != '' AND person IS NOT NULL AND UPPER(TRIM(person)) NOT IN ('REJECT', '-', '#N/A', 'ADMIN', 'NONE', 'NULL') THEN 1 ELSE 0 END) as with_person_count,
+          SUM(CASE WHEN person = '' OR person IS NULL OR UPPER(TRIM(person)) IN ('REJECT', '-', '#N/A', 'ADMIN', 'NONE', 'NULL') THEN 1 ELSE 0 END) as unassigned_count,
+          SUM(CASE WHEN pbf = 'MBI' THEN 1 ELSE 0 END) as mbi_total,
+          SUM(CASE WHEN pbf = 'MAI' THEN 1 ELSE 0 END) as mai_total
+        FROM shipment_returns
+        WHERE 1=1 ${filterCondition}
+      `, statsParams)) as any[];
+      const caseCounts = caseCountsResult[0] || {
+        total_cases: 0,
+        with_person_count: 0,
+        unassigned_count: 0,
+        mbi_total: 0,
+        mai_total: 0,
+      };
+
       const rawReturns = (await conn.execute(`
         SELECT person, pbf, status
         FROM shipment_returns
@@ -1351,6 +1370,7 @@ export async function GET(req: Request) {
       return compressedJsonResponse(req, {
         success: true,
         personnel: rows,
+        caseCounts,
         rootCauses,
         reasons,
         pbfComparison,

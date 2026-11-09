@@ -52,6 +52,7 @@ import {
   LayoutGrid,
   Table,
   Video,
+  Eye,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import OverviewKpiView from "./returns/OverviewKpiView";
@@ -424,6 +425,13 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [allReturns, setAllReturns] = useState<ShipmentReturnRecord[]>(() => cachedAllReturnsData || []);
   const [personnelStats, setPersonnelStats] = useState<{
     personnel: any[];
+    caseCounts?: {
+      total_cases: number;
+      with_person_count: number;
+      unassigned_count: number;
+      mbi_total: number;
+      mai_total: number;
+    } | null;
     rootCauses: any[];
     reasons: any[];
     pbfComparison: any[];
@@ -701,6 +709,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       if (json.success) {
         setPersonnelStats({
           personnel: json.personnel || [],
+          caseCounts: json.caseCounts || null,
           rootCauses: json.rootCauses || [],
           reasons: json.reasons || [],
           pbfComparison: json.pbfComparison || [],
@@ -1601,6 +1610,123 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     if (!personnelStats?.reasons) return 0;
     return personnelStats.reasons.reduce((sum, r) => sum + Number(r.total || 0), 0);
   }, [personnelStats]);
+
+  // Transparent case counts matching 100% of the actual cases in the database
+  const personnelCaseCounts = useMemo(() => {
+    if (personnelStats?.caseCounts) {
+      const cc = personnelStats.caseCounts;
+      return {
+        total_cases: Number(cc.total_cases || 0),
+        with_person_count: Number(cc.with_person_count || 0),
+        unassigned_count: Number(cc.unassigned_count || 0),
+        mbi_total: Number(cc.mbi_total || 0),
+        mai_total: Number(cc.mai_total || 0),
+      };
+    }
+    // Fallback computed from current filtered returns if API response hasn't arrived
+    const filterM = monthFilter !== "ALL" ? Number(monthFilter) : 0;
+    let total = 0;
+    let withP = 0;
+    let unassigned = 0;
+    let mbi = 0;
+    let mai = 0;
+    const sourceList = allReturns.length > 0 ? allReturns : returns;
+    for (const r of sourceList) {
+      if (filterM > 0) {
+        const d = r.report_date || r.invoice_date || r.created_at || "";
+        const m = d ? new Date(d).getMonth() + 1 : Number(r.month) || 0;
+        if (m !== filterM) continue;
+      }
+      total++;
+      const p = (r.person || "").trim().toUpperCase();
+      if (p && !['REJECT', '-', '#N/A', 'ADMIN', 'NONE', 'NULL'].includes(p)) {
+        withP++;
+      } else {
+        unassigned++;
+      }
+      const pbf = (r.pbf || "MBI").toUpperCase();
+      if (pbf.includes("MAI")) mai++;
+      else mbi++;
+    }
+    return {
+      total_cases: total,
+      with_person_count: withP,
+      unassigned_count: unassigned,
+      mbi_total: mbi,
+      mai_total: mai,
+    };
+  }, [personnelStats, allReturns, returns, monthFilter]);
+
+  // Personnel Cases Drill-down state
+  const [personnelDrillDown, setPersonnelDrillDown] = useState<{
+    isOpen: boolean;
+    personName: string;
+    title: string;
+  } | null>(null);
+  const [personnelDrillDownSearch, setPersonnelDrillDownSearch] = useState("");
+
+  const personnelDrillDownRows = useMemo(() => {
+    if (!personnelDrillDown?.isOpen) return [];
+    const targetName = (personnelDrillDown.personName || "").trim().toUpperCase();
+    const isUnassigned = targetName === "UNASSIGNED" || targetName === "TANPA PERSONIL";
+    const isAll = targetName === "ALL" || targetName === "SEMUA";
+    const filterM = monthFilter !== "ALL" ? Number(monthFilter) : 0;
+    const sourceList = allReturns.length > 0 ? allReturns : returns;
+
+    return sourceList.filter((r) => {
+      // Month filter
+      if (filterM > 0) {
+        const d = r.report_date || r.invoice_date || r.created_at || "";
+        const m = d ? new Date(d).getMonth() + 1 : Number(r.month) || 0;
+        if (m !== filterM) return false;
+      }
+      // PBF filter
+      if (personnelFilterPbf !== "ALL") {
+        if ((r.pbf || "MBI").toUpperCase() !== personnelFilterPbf) return false;
+      }
+      // Person match
+      const p = (r.person || "").trim().toUpperCase();
+      if (isAll) {
+        // keep all
+      } else if (isUnassigned) {
+        if (p && !['REJECT', '-', '#N/A', 'ADMIN', 'NONE', 'NULL'].includes(p)) return false;
+      } else {
+        if (!p.includes(targetName)) return false;
+      }
+      // Search inside modal
+      if (personnelDrillDownSearch.trim()) {
+        const q = personnelDrillDownSearch.toLowerCase();
+        const str = `${r.invoice_no || ""} ${r.so_no || ""} ${r.customer_name || ""} ${r.product_name || ""} ${r.reason || ""} ${r.person || ""} ${r.status || ""}`.toLowerCase();
+        if (!str.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [personnelDrillDown, allReturns, returns, monthFilter, personnelFilterPbf, personnelDrillDownSearch]);
+
+  const handleExportPersonnelDrillDown = useCallback(() => {
+    if (!personnelDrillDownRows.length) return;
+    const formatted = personnelDrillDownRows.map((r, i) => ({
+      No: i + 1,
+      PBF: r.pbf || "MBI",
+      "No. Faktur": r.invoice_no || "-",
+      "No. SO": r.so_no || "-",
+      "Nama Pelanggan": r.customer_name || "-",
+      "Nama Produk": r.product_name || "-",
+      Qty: r.qty || 1,
+      "No. Batch": r.batch_no || "-",
+      "Alasan Kendala": r.reason || "-",
+      "Akar Penyebab": r.root_cause || "-",
+      "Personil Terkait": r.person || "-",
+      Status: r.status || "-",
+      "Tanggal Lapor": r.report_date || r.invoice_date || "-",
+      "Tindakan Solusi": r.action || "-",
+    }));
+    const ws = XLSX.utils.json_to_sheet(formatted);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Kasus_Personil");
+    const safeTitle = (personnelDrillDown?.personName || "Semua").replace(/[^a-zA-Z0-9_-]/g, "_");
+    XLSX.writeFile(wb, `Bukti_Kasus_Personil_${safeTitle}_${new Date().toISOString().split("T")[0]}.xlsx`);
+  }, [personnelDrillDownRows, personnelDrillDown]);
 
   const totalPages = Math.ceil(total / limit);
 
@@ -4277,46 +4403,114 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       {/* ─── TAB 2: LEADERBOARD PERSONIL (PELAKU KESALAHAN GUDANG) ─── */}
       {activeTab === "leaderboard" && (
         <div className="space-y-4 animate-in fade-in duration-150">
-          {/* Top Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-zinc-200 dark:border-slate-800 shadow-xs">
-              <span className="text-[11px] font-bold text-zinc-500 dark:text-slate-400 uppercase tracking-wider block">
-                Total Kesalahan Personil Gudang
-              </span>
-              <h3 className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-1">
-                {totalPersonnelErrors.toLocaleString("id-ID")} Kasus
-              </h3>
-              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">
-                Tercatat di data shipment return
+          {/* Top Summary Cards (100% Transparan & Sesuai Data Kasus Riil) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Card 1: Total Kasus Riil Database */}
+            <div
+              onClick={() => setPersonnelDrillDown({ isOpen: true, personName: "ALL", title: "Semua Bukti Kasus Komplain Riil" })}
+              className="p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-zinc-200 dark:border-slate-800 shadow-xs hover:border-indigo-400 dark:hover:border-indigo-600 transition-all cursor-pointer group flex flex-col justify-between"
+              title="Klik untuk melihat 100% data kasus riil"
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">
+                    TOTAL KASUS KOMPLAIN
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    Data Riil ↗
+                  </span>
+                </div>
+                <h3 className="text-2xl font-black text-zinc-900 dark:text-white mt-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                  {personnelCaseCounts.total_cases.toLocaleString("id-ID")} Kasus
+                </h3>
+              </div>
+              <div className="mt-2 pt-2 border-t border-zinc-100 dark:border-slate-800/80 text-[11px] flex items-center justify-between text-zinc-500 dark:text-slate-400 font-medium">
+                <span>MBI: <strong className="text-zinc-800 dark:text-zinc-200">{personnelCaseCounts.mbi_total}</strong></span>
+                <span>MAI: <strong className="text-zinc-800 dark:text-zinc-200">{personnelCaseCounts.mai_total}</strong></span>
+              </div>
+            </div>
+
+            {/* Card 2: Teridentifikasi Personil */}
+            <div
+              className="p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-zinc-200 dark:border-slate-800 shadow-xs flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold text-rose-600 dark:text-rose-400 uppercase tracking-wider block">
+                    TERIDENTIFIKASI PERSONIL
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                    {personnelCaseCounts.total_cases > 0 ? ((personnelCaseCounts.with_person_count / personnelCaseCounts.total_cases) * 100).toFixed(0) : 0}% Terdata
+                  </span>
+                </div>
+                <h3 className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-1">
+                  {personnelCaseCounts.with_person_count.toLocaleString("id-ID")} Kasus
+                </h3>
+              </div>
+              <p className="mt-2 pt-2 border-t border-zinc-100 dark:border-slate-800/80 text-[11px] text-zinc-500 dark:text-slate-400 font-medium">
+                {filteredPersonnel.length} personil ({totalPersonnelErrors} total atribusi)
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-zinc-200 dark:border-slate-800 shadow-xs">
-              <span className="text-[11px] font-bold text-zinc-500 dark:text-slate-400 uppercase tracking-wider block">
-                Jumlah Personil Terlibat
-              </span>
-              <h3 className="text-2xl font-black text-zinc-900 dark:text-white mt-1">
-                {filteredPersonnel.length} Orang
-              </h3>
-              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">
-                {personnelFilterPbf === "MAI" ? "Picker & Checker MAI" : personnelFilterPbf === "MBI" ? "Picker & Checker MBI" : "Picker & Checker MBI & MAI"}
+            {/* Card 3: Tanpa Personil / Klaim Retur */}
+            <div
+              onClick={() => setPersonnelDrillDown({ isOpen: true, personName: "UNASSIGNED", title: "Kasus Tanpa Nama Personil / Klaim Retur" })}
+              className="p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-zinc-200 dark:border-slate-800 shadow-xs hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer group flex flex-col justify-between"
+              title="Klik untuk melihat kasus tanpa nama personil"
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
+                    TANPA PERSONIL / RETUR
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                    Opsional ↗
+                  </span>
+                </div>
+                <h3 className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1 group-hover:text-amber-700 transition-colors">
+                  {personnelCaseCounts.unassigned_count.toLocaleString("id-ID")} Kasus
+                </h3>
+              </div>
+              <p className="mt-2 pt-2 border-t border-zinc-100 dark:border-slate-800/80 text-[11px] text-zinc-500 dark:text-slate-400 font-medium truncate">
+                Klaim kondisi / retur administratif
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-zinc-200 dark:border-slate-800 shadow-xs">
-              <span className="text-[11px] font-bold text-zinc-500 dark:text-slate-400 uppercase tracking-wider block">
-                Rata-rata Kasus per Personil
-              </span>
-              <h3 className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">
-                {filteredPersonnel.length
-                  ? (totalPersonnelErrors / filteredPersonnel.length).toFixed(1)
-                  : 0}{" "}
-                Kasus
-              </h3>
-              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">
-                Tingkat distribusi kesalahan
+            {/* Card 4: Rata-rata per Personil */}
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-zinc-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-extrabold text-zinc-500 dark:text-slate-400 uppercase tracking-wider block">
+                  RATA-RATA KASUS / PERSONIL
+                </span>
+                <h3 className="text-2xl font-black text-zinc-900 dark:text-white mt-1">
+                  {filteredPersonnel.length
+                    ? (totalPersonnelErrors / filteredPersonnel.length).toFixed(1)
+                    : 0}{" "}
+                  Kasus
+                </h3>
+              </div>
+              <p className="mt-2 pt-2 border-t border-zinc-100 dark:border-slate-800/80 text-[11px] text-zinc-400 dark:text-slate-500 font-medium truncate">
+                Tingkat konsentrasi beban kesalahan
               </p>
             </div>
+          </div>
+
+          {/* Banner Transparansi Rekonsiliasi Data Kasus */}
+          <div className="p-3.5 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/60 text-xs flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-2.5 text-indigo-950 dark:text-indigo-200">
+              <ShieldAlert className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <div className="leading-relaxed text-[11px]">
+                <strong className="text-xs">Transparansi Data Kasus:</strong> Dari total <strong>{personnelCaseCounts.total_cases.toLocaleString("id-ID")} kasus komplain</strong> di database pada periode ini, <strong>{personnelCaseCounts.with_person_count} kasus ({personnelCaseCounts.total_cases > 0 ? ((personnelCaseCounts.with_person_count / personnelCaseCounts.total_cases) * 100).toFixed(0) : 0}%)</strong> telah teridentifikasi nama personilnya ({totalPersonnelErrors} catatan atribusi ke {filteredPersonnel.length} personil). Sisanya sebanyak <strong>{personnelCaseCounts.unassigned_count} kasus</strong> merupakan klaim kondisi barang/retur administrasi (nama personil opsional).
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPersonnelDrillDown({ isOpen: true, personName: "ALL", title: "Semua Bukti Kasus Komplain Riil" })}
+              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Buka Bukti Kasus Riil</span>
+            </button>
           </div>
 
           {/* Top 3 Spotlight Cards (Matching Friend's Apps Script App) */}
@@ -4825,13 +5019,18 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                         <td className="py-3 px-4 text-center">
                           <button
                             type="button"
-                            onClick={() => {
-                              setSearch(p.person);
-                              setActiveTab("list");
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-800 dark:text-slate-200 font-bold text-[11px] transition-colors cursor-pointer"
+                            onClick={() =>
+                              setPersonnelDrillDown({
+                                isOpen: true,
+                                personName: p.person,
+                                title: `Bukti Kasus Riil: ${p.person}`,
+                              })
+                            }
+                            className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 font-bold text-[11px] transition-colors cursor-pointer flex items-center gap-1 mx-auto shadow-2xs"
+                            title="Klik untuk membuka rincian kasus riil personil ini"
                           >
-                            Lihat Tiket
+                            <Eye className="w-3 h-3" />
+                            <span>Lihat Kasus ({p.total_cases})</span>
                           </button>
                         </td>
                       </tr>
@@ -4840,6 +5039,180 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL DRILL-DOWN: BUKTI KASUS PERSONIL (100% TRANSPARAN SESUAI DATA KASUS) ─── */}
+      {personnelDrillDown?.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-zinc-200 dark:border-slate-800 max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-zinc-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-zinc-50/50 dark:bg-slate-950/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                  <User className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-zinc-900 dark:text-white flex items-center gap-2">
+                    <span>{personnelDrillDown.title}</span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                      {personnelDrillDownRows.length} Kasus
+                    </span>
+                  </h3>
+                  <p className="text-xs text-zinc-500 dark:text-slate-400 mt-0.5">
+                    Data riil dari database shipment returns ({monthFilter === "ALL" ? "Semua Bulan" : `Bulan ${monthFilter}`} • {personnelFilterPbf === "ALL" ? "MBI & MAI" : personnelFilterPbf})
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportPersonnelDrillDown}
+                  disabled={personnelDrillDownRows.length === 0}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Ekspor Excel</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPersonnelDrillDown(null)}
+                  className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Search inside modal */}
+            <div className="p-3 border-b border-zinc-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center gap-2">
+              <Search className="w-4 h-4 text-zinc-400" />
+              <input
+                type="text"
+                value={personnelDrillDownSearch}
+                onChange={(e) => setPersonnelDrillDownSearch(e.target.value)}
+                placeholder="Cari nomor faktur, no SO, apotek, produk, kendala, atau status..."
+                className="w-full bg-transparent text-xs text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:outline-none"
+              />
+              {personnelDrillDownSearch && (
+                <button
+                  type="button"
+                  onClick={() => setPersonnelDrillDownSearch("")}
+                  className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 font-bold"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Table list */}
+            <div className="overflow-y-auto flex-1 p-4 sm:p-5">
+              {personnelDrillDownRows.length === 0 ? (
+                <div className="py-16 text-center text-zinc-500 text-xs">
+                  Tidak ada catatan kasus yang cocok dengan kriteria ini.
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-zinc-200 dark:border-slate-800">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-zinc-100 dark:bg-slate-950 text-zinc-600 dark:text-slate-400 font-bold sticky top-0 z-10 border-b border-zinc-200 dark:border-slate-800">
+                      <tr>
+                        <th className="py-2.5 px-3 text-center w-10">No</th>
+                        <th className="py-2.5 px-3">Faktur / SO</th>
+                        <th className="py-2.5 px-3">Apotek / Pelanggan</th>
+                        <th className="py-2.5 px-3">Produk &amp; Qty</th>
+                        <th className="py-2.5 px-3">Kendala &amp; Penyebab</th>
+                        <th className="py-2.5 px-3">Personil Terkait</th>
+                        <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3 text-center">Bukti Media</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200 dark:divide-slate-800 font-medium">
+                      {personnelDrillDownRows.map((r, idx) => {
+                        const isResolved = (r.status || "").toLowerCase().includes("resolved");
+                        const isReject = (r.status || "").toLowerCase().includes("reject");
+                        return (
+                          <tr key={r.id || idx} className="hover:bg-zinc-50 dark:hover:bg-slate-800/50 transition-colors">
+                            <td className="py-2.5 px-3 text-center font-mono text-zinc-400">{idx + 1}</td>
+                            <td className="py-2.5 px-3 font-mono">
+                              <span className="font-bold text-indigo-600 dark:text-indigo-400">#{r.invoice_no || "-"}</span>
+                              <div className="text-[10px] text-zinc-500">SO: {r.so_no || "-"}</div>
+                            </td>
+                            <td className="py-2.5 px-3 font-bold text-zinc-900 dark:text-white max-w-[180px] truncate" title={r.customer_name}>
+                              {r.customer_name || "-"}
+                            </td>
+                            <td className="py-2.5 px-3 max-w-[200px] truncate" title={r.product_name}>
+                              <div className="text-zinc-800 dark:text-zinc-200 truncate">{r.product_name || "-"}</div>
+                              <div className="text-[10px] text-zinc-500 font-mono">Qty: <strong>{r.qty || 1}</strong></div>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="text-zinc-800 dark:text-zinc-200">{r.reason || "-"}</div>
+                              {r.root_cause && <div className="text-[10px] text-zinc-500 font-mono">Penyebab: {r.root_cause}</div>}
+                            </td>
+                            <td className="py-2.5 px-3 font-bold font-mono text-rose-600 dark:text-rose-400">
+                              {r.person || <span className="text-zinc-400 font-normal italic">- (Tanpa Nama)</span>}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  isResolved
+                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                    : isReject
+                                    ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                                    : "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                                }`}
+                              >
+                                {r.status || "In Progress"}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                              <div className="flex items-center justify-center gap-1.5">
+                                {r.photo_url && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewPhotoUrl(r.photo_url || null)}
+                                    className="p-1 rounded-md text-zinc-500 hover:text-indigo-600 hover:bg-zinc-100 dark:hover:bg-slate-800"
+                                    title="Lihat Foto Bukti"
+                                  >
+                                    <Camera className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {r.video_url && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewVideoUrl(r.video_url || null)}
+                                    className="p-1 rounded-md text-zinc-500 hover:text-purple-600 hover:bg-zinc-100 dark:hover:bg-slate-800"
+                                    title="Putar Video Unboxing"
+                                  >
+                                    <Video className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {!r.photo_url && !r.video_url && <span className="text-zinc-300 dark:text-zinc-600">-</span>}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 border-t border-zinc-200 dark:border-slate-800 flex justify-between items-center bg-zinc-50 dark:bg-slate-950 text-xs">
+              <span className="text-zinc-500">
+                Menampilkan <strong>{personnelDrillDownRows.length}</strong> kasus
+              </span>
+              <button
+                type="button"
+                onClick={() => setPersonnelDrillDown(null)}
+                className="px-4 py-1.5 rounded-xl border border-zinc-200 dark:border-slate-700 text-zinc-700 dark:text-zinc-300 font-bold hover:bg-zinc-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}
