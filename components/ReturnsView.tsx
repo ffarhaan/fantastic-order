@@ -5204,6 +5204,49 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               Komplain ini disetujui (ACC) sebagai kesalahan pihak PBF dan dialihkan ke tahap <strong>In Progress</strong>.
             </div>
 
+            {/* Box Peringatan Cek Foto Packing */}
+            <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-400 dark:border-amber-700/80 space-y-2">
+              <div className="font-extrabold text-amber-900 dark:text-amber-300 flex items-center gap-2 text-xs">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span className="uppercase tracking-wide">⚠️ Peringatan: Sudah Cek Foto Packing PBF?</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-amber-950 dark:text-amber-100 font-medium">
+                Pastikan Anda sudah membuka &amp; memeriksa <strong>Foto Packingan Gudang</strong> serta <strong>Foto Bukti Komplain Apotek</strong> sebelum melakukan ACC:
+              </p>
+              <ul className="text-[11px] space-y-1 pl-4 list-disc text-amber-900 dark:text-amber-200">
+                <li>
+                  Jika <strong>BUKAN kesalahan gudang</strong> ➔ Klik <em>Periksa Kembali</em>, lalu pilih <strong>Reject</strong> pada menu Tindakan.
+                </li>
+                <li>
+                  Jika <strong>FIX kesalahan gudang</strong> ➔ Pilih jenis penanganan di bawah dan klik tombol <strong>Ya, Sudah Pasti (ACC)</strong>.
+                </li>
+              </ul>
+              {(selectedReturn?.photo_url || selectedReturn?.video_url) && (
+                <div className="pt-1.5 flex flex-wrap gap-2 border-t border-amber-200 dark:border-amber-900/60">
+                  {selectedReturn?.photo_url && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPhotoUrl(selectedReturn.photo_url || null)}
+                      className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-200/80 hover:bg-amber-300 dark:bg-amber-900/60 dark:hover:bg-amber-800 text-amber-950 dark:text-amber-100 flex items-center gap-1 cursor-pointer transition-all"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Buka Foto Bukti Komplain</span>
+                    </button>
+                  )}
+                  {selectedReturn?.video_url && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewVideoUrl(selectedReturn.video_url || null)}
+                      className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-purple-100 hover:bg-purple-200 dark:bg-purple-950 dark:hover:bg-purple-900 text-purple-900 dark:text-purple-200 flex items-center gap-1 cursor-pointer transition-all"
+                    >
+                      <Video className="w-3.5 h-3.5" />
+                      <span>Putar Video Unboxing</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Pilihan 2 Jenis In Progress */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300 block">
