@@ -23,6 +23,7 @@ interface ReportQcViewProps {
   soDetailsMap: Map<string, SoDetail>;
   onRefreshQc: () => Promise<void>;
   onCancelQcOrder?: (soNum: string) => Promise<void>;
+  onOpenAnnouncement?: () => void;
 }
 
 const PAGE_SIZE = 50; // 50 baris per halaman identik dengan Laptop 1 (60-120 FPS tanpa lag)
@@ -296,6 +297,7 @@ export default function ReportQcView({
   soDetailsMap,
   onRefreshQc,
   onCancelQcOrder,
+  onOpenAnnouncement,
 }: ReportQcViewProps) {
   const [subTab, setSubTab] = useState<"rekap" | "catatan">("rekap");
   const [mainFilter, setMainFilter] = useState<"queue" | "all">("queue");
@@ -888,6 +890,17 @@ export default function ReportQcView({
               {totalCatatanCount} Barang
             </span>
           </button>
+
+          {onOpenAnnouncement && (
+            <button
+              onClick={onOpenAnnouncement}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/25 transition active:scale-95 cursor-pointer ml-1"
+              title="Buka Update Penting & How to Use Report QC"
+            >
+              <span>🚨</span>
+              <span>Panduan Alur Baru</span>
+            </button>
+          )}
         </div>
 
         {/* Right Controls: Batch DONE, Search, Main Filter, and Refresh */}

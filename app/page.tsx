@@ -58,6 +58,7 @@ import CustomersView from "@/components/CustomersView";
 import DatabaseStatsModal from "@/components/DatabaseStatsModal";
 import ActivityLogModal from "@/components/ActivityLogModal";
 import HowToUseModal from "@/components/HowToUseModal";
+import QcAnnouncementModal from "@/components/QcAnnouncementModal";
 import { recordActivityLog } from "@/lib/activityLogger";
 import {
   LayoutDashboard,
@@ -452,6 +453,25 @@ export default function Home() {
   }, [mainView]);
   const [showDbStatsModal, setShowDbStatsModal] = useState(false);
   const [showHowToUseModal, setShowHowToUseModal] = useState(false);
+  const [showQcAnnouncement, setShowQcAnnouncement] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const seen = localStorage.getItem("has_seen_qc_sop_announcement_v1");
+        if (!seen) {
+          setShowQcAnnouncement(true);
+        }
+      } catch {}
+    }
+  }, []);
+
+  const handleDismissQcAnnouncement = useCallback(() => {
+    setShowQcAnnouncement(false);
+    try {
+      localStorage.setItem("has_seen_qc_sop_announcement_v1", "true");
+    } catch {}
+  }, []);
   const [returnsOverviewStats, setReturnsOverviewStats] = useState<{ totalAll: number; totalResolved: number; totalPending: number; totalMbi: number; totalMai: number } | null>(null);
   const [filter, setFilter] = useState<Filter>("belum");
   const [qcOrders, setQcOrders] = useState<any[]>([]);
@@ -6612,6 +6632,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             soDetailsMap={soDetailsMap}
             onRefreshQc={() => fetchQcOrders(selectedWarehouseRef.current, true)}
             onCancelQcOrder={handleCancelQcOrder}
+            onOpenAnnouncement={() => setShowQcAnnouncement(true)}
           />
         ) : (
           <Fragment>
@@ -7693,6 +7714,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       </div>
 
       {/* Master Modals */}
+      <QcAnnouncementModal
+        isOpen={showQcAnnouncement}
+        onClose={handleDismissQcAnnouncement}
+      />
       <HowToUseModal
         isOpen={showHowToUseModal}
         onClose={() => setShowHowToUseModal(false)}
