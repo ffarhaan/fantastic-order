@@ -657,8 +657,10 @@ export default function ReportQcView({
     const q = searchQuery.toLowerCase().trim();
 
     const list = enrichedOrders.filter((row) => {
-      // Hanya pindah ke filter "Semua" jika SUDAH DONE dan SUDAH ADA nomor faktur resminya!
-      if (mainFilter === "queue" && row.is_done_flag && row.is_invoiced) {
+      // Filter Antrean Aktif (Baru Selesai QC):
+      // Hanya menampilkan order yang MASIH AKTIF / BELUM SELESAI (!is_done_flag) dan belum ada fakturnya (!is_invoiced).
+      // Begitu sudah DONE atau sudah terbit faktur resminya -> otomatis pindah ke filter "Semua"!
+      if (mainFilter === "queue" && (row.is_done_flag || row.is_invoiced)) {
         return false;
       }
 
@@ -702,7 +704,7 @@ export default function ReportQcView({
 
   // Counts
   const queueCount = useMemo(() => {
-    return enrichedOrders.filter((r) => !(r.is_done_flag && r.is_invoiced)).length;
+    return enrichedOrders.filter((r) => !r.is_done_flag && !r.is_invoiced).length;
   }, [enrichedOrders]);
 
   const allCount = enrichedOrders.length;
