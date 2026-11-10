@@ -1157,6 +1157,13 @@ export async function parseExcelFile(
   file: File,
   productOverrides?: Record<string, string>
 ): Promise<FakturRecord[]> {
+  // Prevent browser crash / OOM on massive multi-month Oracle files (> 30 MB)
+  if (file.size > 30 * 1024 * 1024) {
+    throw new Error(
+      `⚠️ File Terlalu Besar (${(file.size / (1024 * 1024)).toFixed(1)} MB): Rentang tanggal export dari Oracle terlalu panjang (misal: ditarik dari September s/d November). Harap filter rentang tanggal di Oracle untuk 1-3 hari terakhir saja (contoh: 08-Nov-2026 s/d 10-Nov-2026) agar ukuran file normal (~1-2 MB) dan bisa langsung selesai diproses dalam 2 detik.`
+    );
+  }
+
   const buffer = await file.arrayBuffer();
 
   // 1. Try HTML format for Oracle .xls exports
@@ -1292,8 +1299,11 @@ export async function parseExcelFile(
 
     throw new Error("⚠️ File Ditolak: Hanya file XXCUST resmi yang memiliki kolom Entity (MBI LE / MAI LE) yang diizinkan untuk diupload.");
   } catch (err: any) {
-    if (err && err.message && err.message.includes("File Ditolak")) {
-      throw err;
+    if (err && err.message) {
+      if (err.message.includes("File Ditolak") || err.message.includes("File Terlalu Besar")) {
+        throw err;
+      }
+      throw new Error(`⚠️ Gagal Membaca File: ${err.message}`);
     }
     throw new Error("⚠️ File Ditolak: Hanya file XXCUST resmi yang memiliki kolom Entity (MBI LE / MAI LE) yang diizinkan untuk diupload.");
   }
