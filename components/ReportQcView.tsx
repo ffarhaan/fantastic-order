@@ -1155,6 +1155,30 @@ export default function ReportQcView({
           }
         }
 
+        // Enter / Shift+Enter navigation
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (e.repeat) return;
+          const next = e.shiftKey
+            ? Math.max(0, curCatatanRowIdx - 1)
+            : Math.min(maxCatatanRow, curCatatanRowIdx + 1);
+          selectedCatatanRowIndexRef.current = next;
+          setSelectedCatatanRowIndex(next);
+          catatanRowRefs.current[next]?.scrollIntoView({ block: "nearest", behavior: "auto" });
+          return;
+        }
+
+        // Tab / Shift+Tab navigation
+        if (e.key === "Tab") {
+          e.preventDefault();
+          const nextCol = e.shiftKey
+            ? Math.max(0, selectedCatatanColIdxRef.current - 1)
+            : Math.min(12, selectedCatatanColIdxRef.current + 1);
+          selectedCatatanColIdxRef.current = nextCol;
+          setSelectedCatatanColIdx(nextCol);
+          return;
+        }
+
         // Arrow navigation
         if (e.key === "ArrowDown" || e.key === "j") {
           e.preventDefault();
@@ -1176,14 +1200,14 @@ export default function ReportQcView({
           e.preventDefault();
           const nextCol = Math.min(12, selectedCatatanColIdxRef.current + 1);
           selectedCatatanColIdxRef.current = nextCol;
-          setSelectedColIdx(nextCol);
+          setSelectedCatatanColIdx(nextCol);
           return;
         }
         if (e.key === "ArrowLeft" || e.key === "h") {
           e.preventDefault();
           const nextCol = Math.max(0, selectedCatatanColIdxRef.current - 1);
           selectedCatatanColIdxRef.current = nextCol;
-          setSelectedColIdx(nextCol);
+          setSelectedCatatanColIdx(nextCol);
           return;
         }
         if (e.key === "PageDown") {
