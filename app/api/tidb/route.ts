@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 let memoryQcReportsCache: Record<string, { payload: any; ts: number }> = {};
 let memoryCheckCache: { payload: any; ts: number } | null = null;
 let memoryCheckersCache: Record<string, { payload: any; ts: number }> = {};
+let lastArchiveSyncTs: Record<string, number> = {};
 
 function compressedJsonResponse(
   req: Request,
@@ -593,48 +594,45 @@ export async function GET(req: Request) {
                      picker_name = IF(VALUES(picker_name) IS NOT NULL AND VALUES(picker_name) != '', VALUES(picker_name), so_checkers.picker_name)`,
                   checkerRows.flat()
                 );
-                // Live sync archive notes for items that have notes
-                if (isFresh) {
+                // Live sync 100% of archive notes directly from DO Checker Firebase RTDB
+                const lastSync = lastArchiveSyncTs[warehouse] || 0;
+                if (isFresh || now - lastSync > 10000) {
+                  lastArchiveSyncTs[warehouse] = now;
                   try {
-                    const archShallowRes = await fetch('https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app/archive.json?shallow=true');
-                    if (archShallowRes.ok) {
-                      const archData = await archShallowRes.json();
+                    const archRes = await fetch('https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app/archive.json');
+                    if (archRes.ok) {
+                      const archData = await archRes.json();
                       if (archData && typeof archData === 'object') {
-                        const archKeys = Object.keys(archData).slice(-40);
-                        if (archKeys.length > 0) {
-                          const missingRows = (await conn.execute(
-                            `SELECT so_number FROM qc_reports WHERE warehouse = 'MBI' AND so_number IN (${archKeys.map(() => '?').join(',')}) AND (barang_catatan IS NULL OR barang_catatan = 0 OR noted_items IS NULL)`,
-                            archKeys
-                          )) as any[];
-                          const missingSos = (missingRows || []).map((r: any) => r.so_number);
-                          if (missingSos.length > 0) {
-                            await Promise.all(missingSos.map(async (so: string) => {
-                              try {
-                                const itRes = await fetch(`https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app/archive/${so}.json`);
-                                if (!itRes.ok) return;
-                                const arch = await itRes.json();
-                                if (!arch || !Array.isArray(arch.items)) return;
-                                let waktuKirim = '-';
-                                if (arch.completedAt) {
-                                  const wibDt = new Date(Number(arch.completedAt) + 7 * 60 * 60 * 1000);
-                                  const day = String(wibDt.getUTCDate()).padStart(2, '0');
-                                  const mon = String(wibDt.getUTCMonth() + 1).padStart(2, '0');
-                                  const yr = wibDt.getUTCFullYear();
-                                  const H = String(wibDt.getUTCHours()).padStart(2, '0');
-                                  const M = String(wibDt.getUTCMinutes()).padStart(2, '0');
-                                  waktuKirim = `${day}/${mon}/${yr} ${H}:${M}`;
-                                }
-                                const meta = { waktuKirim, noDo: arch.doNum || '-', so, customer: arch.customer || '-' };
-                                const notes = extractNotedItems(arch.items, meta);
-                                if (notes.length > 0) {
-                                  await conn.execute(
-                                    `UPDATE qc_reports SET barang_catatan = ?, noted_items = ? WHERE so_number = ? AND warehouse = 'MBI'`,
-                                    [notes.length, JSON.stringify(notes), so]
-                                  );
-                                }
-                              } catch {}
-                            }));
+                        const notedRows: [string, string, number, string][] = [];
+                        for (const [so, v] of Object.entries(archData)) {
+                          const d = v as any;
+                          if (!d || !Array.isArray(d.items)) continue;
+                          let waktuKirim = '-';
+                          if (d.completedAt) {
+                            const wibDt = new Date(Number(d.completedAt) + 7 * 60 * 60 * 1000);
+                            const day = String(wibDt.getUTCDate()).padStart(2, '0');
+                            const mon = String(wibDt.getUTCMonth() + 1).padStart(2, '0');
+                            const yr = wibDt.getUTCFullYear();
+                            const H = String(wibDt.getUTCHours()).padStart(2, '0');
+                            const M = String(wibDt.getUTCMinutes()).padStart(2, '0');
+                            waktuKirim = `${day}/${mon}/${yr} ${H}:${M}`;
                           }
+                          const meta = { waktuKirim, noDo: d.doNum || '-', so, customer: d.customer || '-' };
+                          const notes = extractNotedItems(d.items, meta);
+                          if (notes.length > 0) {
+                            notedRows.push(["MBI", so, notes.length, JSON.stringify(notes)]);
+                          }
+                        }
+                        if (notedRows.length > 0) {
+                          const placeholders = notedRows.map(() => "(?, ?, ?, ?)").join(", ");
+                          await conn.execute(
+                            `INSERT INTO qc_reports (warehouse, so_number, barang_catatan, noted_items)
+                             VALUES ${placeholders}
+                             ON DUPLICATE KEY UPDATE
+                               barang_catatan = VALUES(barang_catatan),
+                               noted_items = VALUES(noted_items)`,
+                            notedRows.flat()
+                          );
                         }
                       }
                     }
