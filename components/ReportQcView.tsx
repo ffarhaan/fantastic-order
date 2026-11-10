@@ -507,7 +507,7 @@ export default function ReportQcView({
   onOpenAnnouncement,
 }: ReportQcViewProps) {
   const [subTab, setSubTab] = useState<"rekap" | "catatan">("rekap");
-  const [mainFilter, setMainFilter] = useState<"queue" | "all">("queue");
+  const [mainFilter, setMainFilter] = useState<"queue" | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState<number>(0);
   const [catatanPage, setCatatanPage] = useState<number>(0);
@@ -974,8 +974,6 @@ export default function ReportQcView({
     const q = searchQuery.toLowerCase().trim();
 
     for (const row of enrichedOrders) {
-      if (mainFilter === "queue" && row.is_done_flag && row.is_invoiced) continue;
-
       if (Array.isArray(row.noted_items) && row.noted_items.length > 0) {
         for (const item of row.noted_items) {
           const soStr = item.so || row.so_number || "-";
@@ -1278,6 +1276,7 @@ export default function ReportQcView({
   const onViewCatatan = useCallback((soNum: string) => {
     setSubTab("catatan");
     setSearchQuery(soNum);
+    setCatatanPage(0);
     setSelectedCatatanRowIndex(0);
     selectedCatatanRowIndexRef.current = 0;
     setSelectedCatatanColIdx(2);
