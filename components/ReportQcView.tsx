@@ -1363,6 +1363,14 @@ export default function ReportQcView({
               <span>Panduan Alur Baru</span>
             </button>
           )}
+
+          <span
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 ml-1"
+            title="Koneksi Real-time ke DO Checker Aktif (<100ms)"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>DO Checker Live</span>
+          </span>
         </div>
 
         {/* Right Controls: Batch DONE, Search, Main Filter, and Refresh */}

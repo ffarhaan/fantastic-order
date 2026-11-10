@@ -430,4 +430,43 @@ Arsitektur upload cepat ini telah diuji dan terbukti memberikan respon kilat ins
 > 16. Integritas SO-Invoice Report QC: SO yang sudah memiliki faktur wajib otomatis keluar dari antrean Menunggu Faktur detik itu juga melalui pencocokan multi-dimensi.
 > 17. Arsitektur Upload Kilat & Non-Blocking Persistence: Optimistic instant UI update (<100ms), pruning data client-side, dan direct in-memory cache injection tanpa full re-download.
 > 18. Arsitektur Sinkronisasi Instan Report QC (<1 Detik & 0-Byte Vercel Origin): Siaran langsung via Firestore WebSocket (`qc_recent_mbi` dan `qc_recent_mai`), invalidasi instan cache serverless, dukungan query bypass `fresh=true`, dan eliminasi penundaan CDN 60 detik tanpa menambah beban Fast Origin Vercel.
+> 19. Aturan Baku Laptop 2 (Report QC & Catatan Barang): 100% cermin DO Checker tanpa pemotongan data (`slice`), transparansi mutlak catatan kendala barang, zero silent failure, dan navigasi instan 1-klik.
 
+---
+
+### 9. ATURAN BAKU TERKUNCI LAPTOP 2: MODUL REPORT QC & CATATAN BARANG (PENGGANTI GOOGLE SHEETS & DIRECT MIRROR DO CHECKER - LOCKED TOTAL)
+
+Bagian ini adalah mandat permanen dan baku untuk pengoperasian **Laptop 2** (Meja Kerja QC, Checker, & Catatan Barang). Modul ini menggantikan Google Spreadsheet secara penuh dengan integrasi real-time langsung ke aplikasi DO Checker:
+
+1. **Mandat Pengganti Google Sheets & Direct Live Mirror DO Checker**:
+   - Laptop 2 difungsikan untuk memantau **Rekap SO** dan rincian **Catatan Barang** secara otomatis tanpa ketergantungan pada Google Spreadsheet manual.
+   - Sumber kebenaran tunggal (*Single Source of Truth*) terhubung langsung ke Firebase RTDB DO Checker (`checkermbi-default-rtdb`) dan database TiDB Serverless.
+   - Begitu staf gudang menyelesaikan QC di aplikasi DO Checker, data wajib masuk ke Laptop 2 detik itu juga (<100ms) melalui koneksi WebSocket live listener.
+
+2. **Larangan Mutlak Pemotongan Data (Zero-Slicing & Zero-Assumption Mandate)**:
+   - Dilarang keras melakukan pemotongan key atau pembacaan sebagian (larangan mutlak `slice(-40)` atau pembatasan sejenis).
+   - 100% dari seluruh data `/archive.json` wajib dibaca secara utuh tanpa ada nomor Sales Order (SO) yang terlewat.
+   - Seluruh entri catatan barang pada setiap baris item wajib dianalisis secara akurat sesuai jenisnya:
+     - `PERUBAHAN BATCH`
+     - `QTY MINUS`
+     - `TAKEOUT`
+     - `TANPA SHIPMENT`
+
+3. **Jaminan Transparansi Mutlak Status Catatan Barang (Zero Hidden Notes Mandate)**:
+   - **Tampilan Rekap SO**:
+     - Setiap baris SO yang memiliki catatan kendala WAJIB menampilkan badge peringatan amber: **`⚠️ X Catatan`**.
+     - Setiap baris SO yang bersih/bebas kendala WAJIB menampilkan badge siap hijau: **`✓ 0 (Siap)`**.
+     - DILARANG KERAS ada SO yang memiliki catatan di DO Checker namun tertulis 0 di layar Laptop 2.
+   - **Navigasi Cepat 1-Klik Tanpa Pop-up**:
+     - Mengklik tombol `⚠️ X Catatan` pada baris SO wajib langsung memindahkan antarmuka ke tab **Catatan Barang** dengan filter otomatis terfokus ke No SO tersebut.
+     - Pengguna dapat langsung melihat rincian: Nama Barang, Kode Barang, Batch Asal, Batch Baru / Qty Minus, Tipe Kendala, dan Keterangan Fisik.
+
+4. **Transparansi Kendala Operasional & Status Koneksi (Zero Silent Failures)**:
+   - Sistem wajib menyediakan indikator visual status sinkronisasi real-time (`DO Checker Live Sync`) yang transparan.
+   - Jika terjadi gangguan jaringan, kegagalan pengambilan data, atau server timeout, sistem DILARANG KERAS gagal secara senyap (*silent fail*). Sistem WAJIB menampilkan toast / notifikasi transparan yang memberitahukan akar masalah ke pengguna.
+   - Tombol refresh manual wajib memaksa pembacaan segar (`fresh=true`) langsung dari Firebase RTDB dan TiDB tanpa terhalang cache browser atau CDN.
+
+5. **Independensi Tindakan Admin (`DONE`) & Integritas Antrean**:
+   - Tindakan menandai **`✓ DONE`** (shortcut `Spasi` atau tombol) pada antrean Rekap SO adalah hak kontrol admin di Laptop 2.
+   - Status `DONE` tersimpan permanen di database TiDB dengan stempel nama admin (`done_by`) dan waktu pengerjaan (`done_at`).
+   - SO yang sudah `DONE` dan sudah terbit faktur resminya dari Oracle otomatis berpindah ke filter **"Semua"**, menjaga antrean **"Baru Selesai QC"** tetap bersih, fokus, dan bebas clutter.

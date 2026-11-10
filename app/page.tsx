@@ -519,6 +519,11 @@ export default function Home() {
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
   const [dragOver, setDragOver] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3500);
+  }, []);
   const [showApotekModal, setShowApotekModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showChangelogModal, setShowChangelogModal] = useState(false);
@@ -1156,12 +1161,20 @@ export default function Home() {
             lastQcSigRef.current[wh] = sig;
             setQcOrders(d.data);
           }
+          if (fresh) {
+            showToast(`✓ Data Report QC & Catatan Barang diperbarui (${d.data.length} SO)!`);
+          }
         }
+      } else if (fresh) {
+        showToast(`⚠️ Kendala sinkronisasi Report QC: ${d?.error || "Gagal memuat data terbaru."}`);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.warn("Failed to fetch qc_reports:", e);
+      if (fresh) {
+        showToast(`⚠️ Kendala koneksi Report QC: ${e?.message || "Koneksi terputus."}`);
+      }
     }
-  }, []);
+  }, [showToast]);
 
 const handleCancelQcOrder = useCallback(async (soNum: string) => {
     if (!soNum) return;
@@ -1445,10 +1458,7 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
     invoiceProgressionRef.current = invoiceProgression;
   }, [invoiceProgression]);
 
-  const showToast = useCallback((msg: string) => {
-    setToastMsg(msg);
-    setTimeout(() => setToastMsg(null), 3500);
-  }, []);
+
 
 
   const handleUpdateCategory = useCallback(

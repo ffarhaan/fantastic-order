@@ -19,6 +19,11 @@ Setiap kali pengguna meminta perbaikan, optimasi performa, atau fitur baru pada 
    - Wajib mempertahankan prinsip *Non-Destructive Overwrite* (data lengkap dari `XXCUST` seperti No SO, nama cabang apotek spesifik, dan rincian item dilarang ditimpa oleh nilai `-` atau nama induk generik) dan *Zero SO Stripping* (dilarang mengosongkan/membuang No SO pada transaksi ORA/export).
    - Wajib mempertahankan validasi ketat file `XXCUST` resmi dan *Mismatch Rejection* antar gudang (`MBI LE` vs `MAI LE`).
 
-4. **Kewajiban Saat Perbaikan, Optimasi Performa, atau Fitur Baru**:
+4. **DILARANG KERAS Memotong atau Mengabaikan Data Report QC & Catatan Barang (Mandat Laptop 2)**:
+   - Wajib membaca 100% data arsip DO Checker Firebase RTDB (`/archive.json`) secara utuh tanpa `slice` atau filter key parsial.
+   - Dilarang keras menyembunyikan catatan kendala barang (Perubahan Batch, Qty Minus, Takeout, Tanpa Shipment). Setiap SO yang memiliki catatan di DO Checker wajib transparan menampilkan `⚠️ X Catatan` dan rincian itemnya dapat dilihat langsung di tab Catatan Barang.
+   - Segala bentuk kendala jaringan atau kegagalan fetch wajib ditampilkan secara transparan kepada pengguna (*zero silent failures*).
+
+5. **Kewajiban Saat Perbaikan, Optimasi Performa, atau Fitur Baru**:
    - Selalu baca [`LOCKED_RULES.md`](./LOCKED_RULES.md) sebelum merancang atau menulis perubahan kode pada `lib/parser.ts`, `app/page.tsx`, `lib/firestoreService.ts`, maupun `app/api/tidb/route.ts`.
    - Segala bentuk perubahan terhadap aturan di atas **DILARANG KERAS** dilakukan tanpa izin eksplisit dari pengguna.
