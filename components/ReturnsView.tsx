@@ -86,6 +86,16 @@ export const formatDate = (dateStr: string | null | undefined): string => {
   try {
     const cleanStr = String(dateStr).trim();
     if (!cleanStr) return "-";
+    if (/^\d{5}$/.test(cleanStr)) {
+      const serial = Number(cleanStr);
+      const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
+      if (!isNaN(d.getTime())) {
+        const dd = String(d.getDate()).padStart(2, "0");
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const yyyy = d.getFullYear();
+        return `${dd}/${mm}/${yyyy}`;
+      }
+    }
     if (/^\d{4}-\d{2}-\d{2}/.test(cleanStr)) {
       const [y, m, d] = cleanStr.split("T")[0].split("-");
       return `${d}/${m}/${y}`;
