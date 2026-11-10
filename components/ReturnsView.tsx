@@ -197,6 +197,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     [invoiceDateMap]
   );
   const [loading, setLoading] = useState(() => !cachedReturnsData);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -540,11 +541,15 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       const res = await fetch(url);
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
+        setFetchError(null);
         setAllReturns(json.data);
         cachedAllReturnsData = json.data;
+      } else if (!json.success && json.error) {
+        setFetchError(json.error);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("fetchAllReturns error:", e);
+      setFetchError(e?.message || String(e));
     }
   }, []);
 
@@ -907,15 +912,21 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       const res = await fetch(`/api/tidb?${params.toString()}`);
       const data = await res.json();
       if (data.success) {
+        setFetchError(null);
         setReturns(data.data || []);
         setTotal(data.total || 0);
         if (data.stats) setStats(data.stats);
         cachedReturnsData = data.data || [];
         cachedTotalCount = data.total || 0;
         if (data.stats) cachedReturnsStats = data.stats;
+      } else {
+        const errMsg = data.error || "Gagal memuat data shipment returns dari database.";
+        console.error("fetchReturns failed:", errMsg);
+        setFetchError(errMsg);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to fetch returns:", err);
+      setFetchError(err?.message || String(err));
     } finally {
       if (!silent) setLoading(false);
     }
@@ -2652,6 +2663,35 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       {/* Tab 8: Daftar Retur (Data Kasus) */}
       {activeTab === "list" && (
         <div className="space-y-4 animate-in fade-in duration-150">
+          {fetchError && (
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-sm">Gagal Mengambil Data dari TiDB Database</h4>
+                  <p className="text-xs text-rose-700 dark:text-rose-300/90 mt-0.5 font-medium">
+                    {fetchError.includes("usage quota") || fetchError.includes("1105")
+                      ? "⚠️ Kuota penggunaan database TiDB Cloud telah habis (Usage Quota Exhausted / Error 1105). Query ke database sedang dibatasi oleh TiDB Cloud hingga spending limit disesuaikan."
+                      : fetchError}
+                  </p>
+                  {fetchError.includes("usage quota") && (
+                    <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">
+                      👉 Solusi: Buka dashboard <a href="https://tidbcloud.com" target="_blank" rel="noreferrer" className="underline font-bold">tidbcloud.com</a> &rarr; Pilih Cluster &rarr; Atur <strong>Spending Limit</strong> agar akses dibuka kembali.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchReturns(false, true)}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Coba Lagi</span>
+              </button>
+            </div>
+          )}
+
           {/* Top 6 Metric Cards matching Apps Script layout */}
           {showKpiSummary && (
             <div className="space-y-2.5">
@@ -3417,11 +3457,19 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <span className="font-semibold text-xs">Memuat data tiket komplain...</span>
           </div>
         ) : returns.length === 0 ? (
-          <div className="py-12 text-center text-zinc-400 bg-white dark:bg-[#0a0f1c] rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-xs">
-            <RotateCcw className="w-8 h-8 mx-auto text-zinc-400 mb-2 opacity-50" />
-            <p className="font-semibold text-xs text-zinc-600 dark:text-slate-400">Tidak ada tiket komplain yang cocok</p>
-            <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">Gunakan kata kunci lain atau ubah status filter.</p>
-          </div>
+          fetchError ? (
+            <div className="py-8 text-center text-rose-600 dark:text-rose-300 bg-rose-50/50 dark:bg-rose-950/20 rounded-2xl border border-rose-200 dark:border-rose-900/40 p-6 shadow-xs">
+              <AlertTriangle className="w-8 h-8 mx-auto text-rose-500 mb-2" />
+              <p className="font-bold text-xs">Gagal Memuat Data dari Database</p>
+              <p className="text-[11px] text-rose-500/90 dark:text-rose-400 mt-1 font-mono break-all max-w-md mx-auto">{fetchError}</p>
+            </div>
+          ) : (
+            <div className="py-12 text-center text-zinc-400 bg-white dark:bg-[#0a0f1c] rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-xs">
+              <RotateCcw className="w-8 h-8 mx-auto text-zinc-400 mb-2 opacity-50" />
+              <p className="font-semibold text-xs text-zinc-600 dark:text-slate-400">Tidak ada tiket komplain yang cocok</p>
+              <p className="text-[11px] text-zinc-400 dark:text-slate-500 mt-1">Gunakan kata kunci lain atau ubah status filter.</p>
+            </div>
+          )
         ) : (
           returns.map((r) => {
             const isResolved = (r.status || "").toLowerCase().includes("resolved") || (r.status || "").toLowerCase().includes("selesai");
@@ -3659,9 +3707,19 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               ) : returns.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-16 text-center text-zinc-400">
-                    <RotateCcw className="w-8 h-8 mx-auto text-zinc-400 mb-2 opacity-50" />
-                    <p className="font-semibold text-sm text-zinc-600 dark:text-slate-400">Tidak ada tiket komplain/retur yang cocok</p>
-                    <p className="text-xs text-zinc-400 dark:text-slate-500 mt-1">Gunakan kata kunci lain atau ubah status filter.</p>
+                    {fetchError ? (
+                      <div className="text-rose-600 dark:text-rose-300 max-w-lg mx-auto p-4 rounded-2xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40">
+                        <AlertTriangle className="w-8 h-8 mx-auto text-rose-500 mb-2" />
+                        <p className="font-bold text-sm">Gagal Mengambil Data dari Database</p>
+                        <p className="text-xs text-rose-500/90 dark:text-rose-400 mt-1 font-mono break-all">{fetchError}</p>
+                      </div>
+                    ) : (
+                      <>
+                        <RotateCcw className="w-8 h-8 mx-auto text-zinc-400 mb-2 opacity-50" />
+                        <p className="font-semibold text-sm text-zinc-600 dark:text-slate-400">Tidak ada tiket komplain/retur yang cocok</p>
+                        <p className="text-xs text-zinc-400 dark:text-slate-500 mt-1">Gunakan kata kunci lain atau ubah status filter.</p>
+                      </>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -4117,9 +4175,19 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               ) : returns.length === 0 ? (
                 <tr>
                   <td colSpan={14} className="py-16 text-center text-zinc-400">
-                    <RotateCcw className="w-8 h-8 mx-auto text-zinc-400 mb-2 opacity-50" />
-                    <p className="font-semibold text-sm text-zinc-600 dark:text-slate-400">Tidak ada tiket komplain/retur yang cocok</p>
-                    <p className="text-xs text-zinc-400 dark:text-slate-500 mt-1">Gunakan kata kunci lain atau ubah status filter.</p>
+                    {fetchError ? (
+                      <div className="text-rose-600 dark:text-rose-300 max-w-lg mx-auto p-4 rounded-2xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40">
+                        <AlertTriangle className="w-8 h-8 mx-auto text-rose-500 mb-2" />
+                        <p className="font-bold text-sm">Gagal Mengambil Data dari Database</p>
+                        <p className="text-xs text-rose-500/90 dark:text-rose-400 mt-1 font-mono break-all">{fetchError}</p>
+                      </div>
+                    ) : (
+                      <>
+                        <RotateCcw className="w-8 h-8 mx-auto text-zinc-400 mb-2 opacity-50" />
+                        <p className="font-semibold text-sm text-zinc-600 dark:text-slate-400">Tidak ada tiket komplain/retur yang cocok</p>
+                        <p className="text-xs text-zinc-400 dark:text-slate-500 mt-1">Gunakan kata kunci lain atau ubah status filter.</p>
+                      </>
+                    )}
                   </td>
                 </tr>
               ) : (

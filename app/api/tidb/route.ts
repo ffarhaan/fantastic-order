@@ -969,12 +969,12 @@ export async function GET(req: Request) {
       const rows = await conn.execute(dataSql, [...params, limit, offset]);
 
       // Quick statistics
-      let statsCondition = "";
+      let statsCondition = " WHERE customer_name != '#N/A' AND customer_name != '' AND customer_name IS NOT NULL";
       const statsQueryParams: (string | number)[] = [];
       if (monthParam && monthParam !== "ALL") {
         const mNum = Number(monthParam);
         const mStr = String(mNum).padStart(2, '0');
-        statsCondition = " WHERE (month = ? OR report_date LIKE ? OR invoice_date LIKE ?)";
+        statsCondition += " AND (month = ? OR report_date LIKE ? OR invoice_date LIKE ?)";
         statsQueryParams.push(mNum, `%-${mStr}-%`, `%-${mStr}-%`);
       }
 
