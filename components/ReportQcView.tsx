@@ -657,10 +657,10 @@ export default function ReportQcView({
     const q = searchQuery.toLowerCase().trim();
 
     const list = enrichedOrders.filter((row) => {
-      // Filter Antrean Aktif (Baru Selesai QC):
-      // Hanya menampilkan order yang MASIH AKTIF / BELUM SELESAI (!is_done_flag) dan belum ada fakturnya (!is_invoiced).
-      // Begitu sudah DONE atau sudah terbit faktur resminya -> otomatis pindah ke filter "Semua"!
-      if (mainFilter === "queue" && (row.is_done_flag || row.is_invoiced)) {
+      // Filter Antrean Aktif (Menunggu Faktur / Belum Ada Invoice):
+      // Menampilkan seluruh SO yang BELUM MEMPUNYAI NO INVOICE (!row.is_invoiced).
+      // Begitu fakturnya terbit di Oracle -> otomatis keluar dari antrean ini dan hanya ada di filter "Semua".
+      if (mainFilter === "queue" && row.is_invoiced) {
         return false;
       }
 
@@ -734,7 +734,7 @@ export default function ReportQcView({
 
   // Counts
   const queueCount = useMemo(() => {
-    return enrichedOrders.filter((r) => !r.is_done_flag && !r.is_invoiced).length;
+    return enrichedOrders.filter((r) => !r.is_invoiced).length;
   }, [enrichedOrders]);
 
   const allCount = enrichedOrders.length;
@@ -1322,7 +1322,7 @@ export default function ReportQcView({
                 subTab === "rekap" ? "bg-amber-400 text-slate-950" : "bg-slate-800 text-slate-400"
               }`}
             >
-              {mainFilter === "queue" ? `${queueCount} Baru Selesai` : `${allCount} Semua`}
+              {mainFilter === "queue" ? `${queueCount} Menunggu Faktur` : `${allCount} Semua`}
             </span>
           </button>
 
@@ -1442,7 +1442,7 @@ export default function ReportQcView({
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              Baru Selesai QC ({queueCount})
+              Menunggu Faktur ({queueCount})
             </button>
             <button
               onClick={() => {

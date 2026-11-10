@@ -24,6 +24,10 @@ Setiap kali pengguna meminta perbaikan, optimasi performa, atau fitur baru pada 
    - Dilarang keras menyembunyikan catatan kendala barang (Perubahan Batch, Qty Minus, Takeout, Tanpa Shipment). Setiap SO yang memiliki catatan di DO Checker wajib transparan menampilkan `⚠️ X Catatan` dan rincian itemnya dapat dilihat langsung di tab Catatan Barang.
    - Segala bentuk kendala jaringan atau kegagalan fetch wajib ditampilkan secara transparan kepada pengguna (*zero silent failures*).
 
-5. **Kewajiban Saat Perbaikan, Optimasi Performa, atau Fitur Baru**:
+5. **DILARANG KERAS Mengurangi Hitungan Kartu Report QC (Mandat Menunggu Faktur)**:
+   - Kartu `REPORT QC` di header dan antrean aktif wajib 100% menghitung dan menampilkan seluruh SO yang belum memiliki No Invoice di Oracle (`!is_invoiced`).
+   - Dilarang keras mengurangi hitungan atau mengeluarkan SO dari antrean hanya karena admin telah menandai `✓ DONE` pada SO tersebut. SO hanya boleh keluar dari hitungan jika fakturnya sudah terbit di Oracle.
+
+6. **Kewajiban Saat Perbaikan, Optimasi Performa, atau Fitur Baru**:
    - Selalu baca [`LOCKED_RULES.md`](./LOCKED_RULES.md) sebelum merancang atau menulis perubahan kode pada `lib/parser.ts`, `app/page.tsx`, `lib/firestoreService.ts`, maupun `app/api/tidb/route.ts`.
    - Segala bentuk perubahan terhadap aturan di atas **DILARANG KERAS** dilakukan tanpa izin eksplisit dari pengguna.

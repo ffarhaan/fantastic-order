@@ -3173,12 +3173,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       if (!qc.so_number || qc.so_number.trim().length < 3 || qc.so_number === "-" || qc.so_number === "#N/A") return false;
       // STRICT ISOLATION per LOCKED_RULES.md: MBI only sees MBI, MAI only sees MAI
       if ((qc.warehouse || "MBI").toUpperCase() !== selectedWarehouse) return false;
-      // Jika sudah ditandai DONE oleh admin, otomatis selesai dan keluar dari antrean aktif pending!
-      const isDone = qc.is_done === "DONE" || String(qc.is_done || "").toUpperCase() === "DONE";
-      if (isDone) return false;
+
       const cleanSo = qc.so_number.trim().toUpperCase();
       const normSo = normalizeSO(cleanSo);
-      // If Oracle already has this SO uploaded, it automatically exits Report QC and moves into Belum Terprint!
+      // Mandat Baku Terkunci: Kartu Report QC menampilkan JUMLAH SO YANG BELUM MEMPUNYAI NO INVOICE.
+      // Dilarang memotong/mengurangi hitungan hanya karena admin menandai DONE di QC.
+      // SO HANYA keluar dari hitungan ini jika faktur resminya SUDAH TERBIT di Oracle (ada di existingSOSet).
       return !existingSOSet.has(cleanSo) && !existingSOSet.has(normSo);
     });
   }, [qcOrders, existingSOSet, selectedWarehouse]);

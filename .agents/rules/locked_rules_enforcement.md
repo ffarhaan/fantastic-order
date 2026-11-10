@@ -13,3 +13,6 @@ Setiap kali pengguna meminta perbaikan, optimasi performa, atau fitur baru pada 
    - Wajib membaca 100% data arsip DO Checker Firebase RTDB (`/archive.json`) secara utuh tanpa pemotongan (`slice`).
    - Dilarang keras menyembunyikan catatan kendala barang (Perubahan Batch, Qty Minus, Takeout, Tanpa Shipment). Setiap SO yang memiliki catatan di DO Checker wajib transparan menampilkan `⚠️ X Catatan` dan rincian itemnya dapat dilihat langsung di tab Catatan Barang.
    - Segala bentuk kendala jaringan atau kegagalan fetch wajib ditampilkan secara transparan kepada pengguna (*zero silent failures*).
+5. **DILARANG KERAS** mengurangi hitungan **kartu Report QC (Mandat Menunggu Faktur)**:
+   - Kartu `REPORT QC` di header dan antrean aktif wajib 100% menghitung dan menampilkan seluruh SO yang belum memiliki No Invoice di Oracle (`!is_invoiced`).
+   - Dilarang keras mengurangi hitungan atau mengeluarkan SO dari antrean hanya karena admin telah menandai `✓ DONE` pada SO tersebut. SO hanya boleh keluar dari hitungan jika fakturnya sudah terbit di Oracle.

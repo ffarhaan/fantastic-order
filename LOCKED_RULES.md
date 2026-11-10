@@ -469,4 +469,10 @@ Bagian ini adalah mandat permanen dan baku untuk pengoperasian **Laptop 2** (Mej
 5. **Independensi Tindakan Admin (`DONE`) & Integritas Antrean**:
    - Tindakan menandai **`✓ DONE`** (shortcut `Spasi` atau tombol) pada antrean Rekap SO adalah hak kontrol admin di Laptop 2.
    - Status `DONE` tersimpan permanen di database TiDB dengan stempel nama admin (`done_by`) dan waktu pengerjaan (`done_at`).
-   - SO yang sudah `DONE` dan sudah terbit faktur resminya dari Oracle otomatis berpindah ke filter **"Semua"**, menjaga antrean **"Baru Selesai QC"** tetap bersih, fokus, dan bebas clutter.
+   - SO yang sudah `DONE` dan sudah terbit faktur resminya dari Oracle otomatis berpindah ke filter **"Semua"**, menjaga antrean **"Menunggu Faktur"** tetap bersih, fokus, dan bebas clutter.
+
+6. **Mandat Penghitungan Kartu Report QC & Filter Menunggu Faktur (100% Berbasis Ketiadaan No Invoice - LOCKED TOTAL)**:
+   - Kartu **REPORT QC** di header utama dan antrean aktif **Menunggu Faktur** di tab Rekap SO WAJIB secara mutlak menghitung dan menampilkan **SELURUH SO YANG BELUM MEMPUNYAI NO INVOICE** (`!is_invoiced` / belum ada di `existingSOSet`).
+   - **DILARANG KERAS** memotong, menyaring keluar, atau mengurangi hitungan SO hanya karena admin telah menandai `✓ DONE` pada SO tersebut.
+   - Status `✓ DONE` adalah konfirmasi admin bahwa fisik/catatan barang telah diperiksa, BUKAN tanda bahwa faktur Oracle telah terbit.
+   - Suatu SO **HANYA BOLEH KELUAR** dari antrean Menunggu Faktur dan hitungan kartu Report QC jika nomor fakturnya **SUDAH BENAR-BENAR TERBIT DI ORACLE** (`existingSOSet.has(cleanSo)` / `existingSOSet.has(normSo)`).
