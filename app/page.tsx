@@ -3226,14 +3226,36 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
   const pendingQcGroups = useMemo<FakturGroup[]>(() => {
     if ((filter as any) !== "report_qc" || pendingQcList.length === 0) return [];
-    // Sort so newest arrived orders from GSheet (latest updated_at and highest sheet_row) are ALWAYS AT THE VERY TOP!
+    
+    const parseWaktuKirim = (w: string | null | undefined): number => {
+      if (!w) return 0;
+      const str = String(w).trim();
+      const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+      if (m) {
+        const d = parseInt(m[1], 10);
+        const mo = parseInt(m[2], 10) - 1;
+        const y = parseInt(m[3], 10);
+        const h = parseInt(m[4] || "0", 10);
+        const min = parseInt(m[5] || "0", 10);
+        const s = parseInt(m[6] || "0", 10);
+        return new Date(y, mo, d, h, min, s).getTime();
+      }
+      const t = new Date(str).getTime();
+      return isNaN(t) ? 0 : t;
+    };
+
+    // Sort so newest arrived orders (latest waktu_kirim, sheet_row, updated_at) are ALWAYS AT THE VERY TOP with zero shuffle
     const sorted = [...pendingQcList].sort((a, b) => {
+      const wtA = parseWaktuKirim(a.waktu_kirim);
+      const wtB = parseWaktuKirim(b.waktu_kirim);
+      if (wtB !== wtA) return wtB - wtA;
+      const rowA = Number(a.sheet_row) || 0;
+      const rowB = Number(b.sheet_row) || 0;
+      if (rowB !== rowA) return rowB - rowA;
       const timeA = new Date(a.updated_at || 0).getTime();
       const timeB = new Date(b.updated_at || 0).getTime();
       if (timeB !== timeA) return timeB - timeA;
-      const rowA = Number(a.sheet_row) || 0;
-      const rowB = Number(b.sheet_row) || 0;
-      return rowB - rowA;
+      return String(b.so_number || "").localeCompare(String(a.so_number || ""));
     });
 
     return sorted.map((qc) => {

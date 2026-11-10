@@ -674,7 +674,28 @@ export default function ReportQcView({
       return true;
     });
 
-    // SORTING: Prioritas 1: Yang BELUM ADA INVOICE (!is_invoiced) PALING ATAS!
+    // SORTING MANDAT STABIL 100%:
+    // 1. Yang BELUM ADA INVOICE (!is_invoiced) PALING ATAS!
+    // 2. Yang BELUM DONE (!is_done_flag) di atas yang SUDAH DONE!
+    // 3. Waktu Kirim Riil Scan Gudang (waktu_kirim) TERBARU PALING ATAS!
+    // 4. Deterministic tie-breaker nomor SO agar urutan 100% paten & tidak loncat-loncat.
+    const parseWaktuKirim = (w: string | null | undefined): number => {
+      if (!w) return 0;
+      const str = String(w).trim();
+      const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+      if (m) {
+        const d = parseInt(m[1], 10);
+        const mo = parseInt(m[2], 10) - 1;
+        const y = parseInt(m[3], 10);
+        const h = parseInt(m[4] || "0", 10);
+        const min = parseInt(m[5] || "0", 10);
+        const s = parseInt(m[6] || "0", 10);
+        return new Date(y, mo, d, h, min, s).getTime();
+      }
+      const t = new Date(str).getTime();
+      return isNaN(t) ? 0 : t;
+    };
+
     return list.sort((a, b) => {
       // 1. Belum ber-invoice di atas yang sudah ber-invoice
       if (!a.is_invoiced && b.is_invoiced) return -1;
@@ -684,14 +705,23 @@ export default function ReportQcView({
       if (!a.is_done_flag && b.is_done_flag) return -1;
       if (a.is_done_flag && !b.is_done_flag) return 1;
 
-      // 3. Urutkan berdasarkan waktu kirim / sheet row terbaru
+      // 3. Urutkan berdasarkan waktu_kirim riil scan gudang (terbaru di atas)
+      const wtA = parseWaktuKirim(a.waktu_kirim);
+      const wtB = parseWaktuKirim(b.waktu_kirim);
+      if (wtB !== wtA) return wtB - wtA;
+
+      // 4. Sheet row terbaru
       const rowA = Number(a.sheet_row) || 0;
       const rowB = Number(b.sheet_row) || 0;
       if (rowB !== rowA) return rowB - rowA;
 
+      // 5. Updated at server terbaru
       const timeA = new Date(a.updated_at || 0).getTime();
       const timeB = new Date(b.updated_at || 0).getTime();
-      return timeB - timeA;
+      if (timeB !== timeA) return timeB - timeA;
+
+      // 6. Tie-breaker mutlak nomor SO (Zero Shuffling guarantee)
+      return String(b.so_number || "").localeCompare(String(a.so_number || ""));
     });
   }, [enrichedOrders, mainFilter, searchQuery]);
 

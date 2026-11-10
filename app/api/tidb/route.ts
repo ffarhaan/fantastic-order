@@ -511,12 +511,14 @@ export async function GET(req: Request) {
       const warehouse = (searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
       const isFresh = searchParams.get("fresh") === "true";
       const now = Date.now();
-      if (!isFresh && memoryQcReportsCache[warehouse] && (now - memoryQcReportsCache[warehouse].ts < 30000)) {
-        return compressedJsonResponse(req, memoryQcReportsCache[warehouse].payload, {
-          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
-          "CDN-Cache-Control": "public, s-maxage=60",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=60",
-        });
+      const noCacheHeaders = {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "CDN-Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
+      };
+
+      if (!isFresh && memoryQcReportsCache[warehouse] && (now - memoryQcReportsCache[warehouse].ts < 5000)) {
+        return compressedJsonResponse(req, memoryQcReportsCache[warehouse].payload, noCacheHeaders);
       }
 
       // Direct Live Sync straight from the DO Checker app (Firebase RTDB, 0 dependency on GSheet)
@@ -534,13 +536,15 @@ export async function GET(req: Request) {
                 const d = v as any;
                 let waktuKirim = null;
                 if (d.completedAt) {
-                  const dt = new Date(Number(d.completedAt));
-                  if (!isNaN(dt.getTime())) {
-                    const day = String(dt.getDate()).padStart(2, "0");
-                    const mon = String(dt.getMonth() + 1).padStart(2, "0");
-                    const yr = dt.getFullYear();
-                    const H = String(dt.getHours()).padStart(2, "0");
-                    const M = String(dt.getMinutes()).padStart(2, "0");
+                  const ts = Number(d.completedAt);
+                  if (!isNaN(ts) && ts > 0) {
+                    // Konversi ke WIB (Asia/Jakarta, UTC+7) agar presisi identik dengan waktu riil gudang
+                    const wibDt = new Date(ts + 7 * 60 * 60 * 1000);
+                    const day = String(wibDt.getUTCDate()).padStart(2, "0");
+                    const mon = String(wibDt.getUTCMonth() + 1).padStart(2, "0");
+                    const yr = wibDt.getUTCFullYear();
+                    const H = String(wibDt.getUTCHours()).padStart(2, "0");
+                    const M = String(wibDt.getUTCMinutes()).padStart(2, "0");
                     waktuKirim = `${day}/${mon}/${yr} ${H}:${M}`;
                   }
                 }
@@ -646,15 +650,7 @@ export async function GET(req: Request) {
       const payload = { success: true, count: rows.length, data: rows };
       memoryQcReportsCache[warehouse] = { payload, ts: Date.now() };
 
-      return compressedJsonResponse(
-        req,
-        payload,
-        {
-          "Cache-Control": isFresh ? "no-store, no-cache, must-revalidate" : "public, s-maxage=60, stale-while-revalidate=300",
-          "CDN-Cache-Control": isFresh ? "no-store" : "public, s-maxage=60",
-          "Vercel-CDN-Cache-Control": isFresh ? "no-store" : "public, s-maxage=60",
-        }
-      );
+      return compressedJsonResponse(req, payload, noCacheHeaders);
     }
 
     // ==========================================
