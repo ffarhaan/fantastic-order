@@ -4,19 +4,11 @@ import { useState, useMemo, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { FakturGroup } from "@/lib/types";
 import {
-  Building2,
   Download,
   FileSpreadsheet,
-  Layers,
-  Calendar,
-  Filter,
-  AlertTriangle,
   RotateCcw,
-  SlidersHorizontal,
-  Search,
   ChevronDown,
   ChevronUp,
-  CheckSquare,
 } from "lucide-react";
 
 export type ExportSpecialFilter = "all" | "retur" | "double" | "retur_or_double";
@@ -74,7 +66,6 @@ const ALL_EXPORT_COLUMNS = [
 ] as const;
 
 type ExportColumnId = (typeof ALL_EXPORT_COLUMNS)[number]["id"];
-
 const DEFAULT_SELECTED_COLS: ExportColumnId[] = ALL_EXPORT_COLUMNS.map((c) => c.id);
 
 const MONTH_NAME_MAP: Record<string, string> = {
@@ -108,22 +99,15 @@ function orderDateToIso(dStr: string): string | null {
   const s = String(dStr).trim();
   const pad = (n: number | string) => String(n).padStart(2, "0");
 
-  // DD/MM/YYYY
   const mSlash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (mSlash) {
-    return `${mSlash[3]}-${pad(mSlash[2])}-${pad(mSlash[1])}`;
-  }
-  // YYYY-MM-DD or YYYY/MM/DD
+  if (mSlash) return `${mSlash[3]}-${pad(mSlash[2])}-${pad(mSlash[1])}`;
+
   const mIso = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
-  if (mIso) {
-    return `${mIso[1]}-${pad(mIso[2])}-${pad(mIso[3])}`;
-  }
-  // DD-MM-YYYY
+  if (mIso) return `${mIso[1]}-${pad(mIso[2])}-${pad(mIso[3])}`;
+
   const mDash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
-  if (mDash) {
-    return `${mDash[3]}-${pad(mDash[2])}-${pad(mDash[1])}`;
-  }
-  // Oracle DD-MMM-YYYY or DD-MMM-YY (e.g. 11-NOV-2026)
+  if (mDash) return `${mDash[3]}-${pad(mDash[2])}-${pad(mDash[1])}`;
+
   const mMon = s.match(/^(\d{1,2})[-\s]([A-Za-z]{3})[-\s](\d{2,4})/);
   if (mMon) {
     const mon = MONTH_NAME_MAP[mMon[2].toUpperCase()];
@@ -135,28 +119,13 @@ function orderDateToIso(dStr: string): string | null {
   return null;
 }
 
-function isoToDisplayDate(iso: string): string {
-  if (!iso) return "-";
-  const parts = iso.split("-");
-  if (parts.length === 3) {
-    return `${parts[2]}/${parts[1]}/${parts[0]}`;
-  }
-  return iso;
-}
-
 function formatPrintTime(dStr?: string | null): string {
   if (!dStr) return "-";
   try {
     const d = new Date(dStr);
     if (isNaN(d.getTime())) return dStr;
     const pad = (n: number) => String(n).padStart(2, "0");
-    const day = pad(d.getDate());
-    const month = pad(d.getMonth() + 1);
-    const year = d.getFullYear();
-    const hours = pad(d.getHours());
-    const minutes = pad(d.getMinutes());
-    const seconds = pad(d.getSeconds());
-    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   } catch {
     return dStr;
   }
@@ -188,6 +157,9 @@ export default function ExportExcelModal({
   initialSearch = "",
   resolveChecker,
 }: ExportExcelModalProps) {
+  const [activeTab, setActiveTab] = useState<"quick" | "custom">("quick");
+  const [quickWarehouse, setQuickWarehouse] = useState<"ALL" | "MBI" | "MAI">("ALL");
+
   const [warehouseFilter, setWarehouseFilter] = useState<"ALL" | "MBI" | "MAI">("ALL");
   const [dateBasis, setDateBasis] = useState<"order" | "transaction">("order");
   const [startDate, setStartDate] = useState<string>("");
@@ -201,15 +173,15 @@ export default function ExportExcelModal({
   const [specialFilter, setSpecialFilter] = useState<ExportSpecialFilter>("all");
   const [splitSpecialSheets, setSplitSpecialSheets] = useState<boolean>(false);
   const [exportGranularity, setExportGranularity] = useState<ExportGranularity>("summary");
-  const [showColumnPicker, setShowColumnPicker] = useState<boolean>(false);
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [selectedCols, setSelectedCols] = useState<Set<ExportColumnId>>(() => new Set(DEFAULT_SELECTED_COLS));
 
-  // Sync initial props cleanly whenever modal opens (prevents stale date/filter carryover)
   useEffect(() => {
     if (isOpen) {
-      if (initialWarehouse === "MBI" || initialWarehouse === "MAI" || initialWarehouse === "ALL") {
-        setWarehouseFilter(initialWarehouse as "ALL" | "MBI" | "MAI");
-      }
+      const initWh =
+        initialWarehouse === "MBI" || initialWarehouse === "MAI" ? initialWarehouse : "ALL";
+      setWarehouseFilter(initWh);
+      setQuickWarehouse("ALL");
       setStartDate(initialStartDate || "");
       setEndDate(initialEndDate || "");
       setDateBasis(initialDateBasis || "order");
@@ -221,6 +193,11 @@ export default function ExportExcelModal({
       setKlasFilter(initialKlasFilter || "all");
       setSearchQuery(initialSearch || "");
       setSplitSpecialSheets(false);
+      setShowAdvanced(false);
+      // Buka langsung tab Custom jika user membuka modal sambil filter khusus aktif
+      const hasPresetSpecial =
+        initialSpecialFilter && initialSpecialFilter !== "all";
+      setActiveTab(hasPresetSpecial ? "custom" : "quick");
     }
   }, [
     isOpen,
@@ -237,38 +214,24 @@ export default function ExportExcelModal({
     initialSearch,
   ]);
 
-  const availableDates = useMemo(() => {
-    const isoDates: string[] = [];
-    groups.forEach((g) => {
-      const dStr = dateBasis === "transaction" ? (g.transactionDate || g.orderDate) : g.orderDate;
-      const iso = orderDateToIso(dStr);
-      if (iso) isoDates.push(iso);
-    });
-    isoDates.sort();
-    return {
-      min: isoDates.length > 0 ? isoDates[0] : "",
-      max: isoDates.length > 0 ? isoDates[isoDates.length - 1] : "",
-    };
-  }, [groups, dateBasis]);
-
-  // System-wide raw totals (100% unfiltered) for transparency
-  const systemTotals = useMemo(() => {
-    let totalAll = 0;
-    let totalMbi = 0;
-    let totalMai = 0;
-    let totalRetur = 0;
-    let totalDouble = 0;
+  const quickCounts = useMemo(() => {
+    let all = 0;
+    let retur = 0;
+    let double = 0;
+    let returOrDouble = 0;
+    let unprinted = 0;
     for (const g of groups) {
-      totalAll++;
-      if ((g.entity || "MBI") === "MAI") totalMai++;
-      else totalMbi++;
-      if (g.isRetur) totalRetur++;
-      if (g.isDoubleInv) totalDouble++;
+      const ent = (g.entity || "MBI") === "MAI" ? "MAI" : "MBI";
+      if (quickWarehouse !== "ALL" && ent !== quickWarehouse) continue;
+      all++;
+      if (g.isRetur) retur++;
+      if (g.isDoubleInv) double++;
+      if (g.isRetur || g.isDoubleInv) returOrDouble++;
+      if (!g.allPrinted) unprinted++;
     }
-    return { totalAll, totalMbi, totalMai, totalRetur, totalDouble };
-  }, [groups]);
+    return { all, retur, double, returOrDouble, unprinted };
+  }, [groups, quickWarehouse]);
 
-  // Filter matching data across all warehouses BEFORE specialFilter (used for live Retur / Double INV counters)
   const preSpecialFilteredData = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return groups.filter((g) => {
@@ -310,13 +273,11 @@ export default function ExportExcelModal({
     searchQuery,
   ]);
 
-  // Live counts for Special Filter buttons (matches selected warehouseFilter)
   const specialCounts = useMemo(() => {
     let all = 0;
     let retur = 0;
     let double = 0;
     let returOrDouble = 0;
-
     for (const g of preSpecialFilteredData) {
       const ent = g.entity || "MBI";
       if (warehouseFilter !== "ALL" && ent !== warehouseFilter) continue;
@@ -325,7 +286,6 @@ export default function ExportExcelModal({
       if (g.isDoubleInv) double++;
       if (g.isRetur || g.isDoubleInv) returOrDouble++;
     }
-
     return { all, retur, double, returOrDouble };
   }, [preSpecialFilteredData, warehouseFilter]);
 
@@ -350,7 +310,6 @@ export default function ExportExcelModal({
     let doubleCount = 0;
     let itemCount = 0;
     let totalRp = 0;
-
     for (const g of list) {
       if (g.so && g.so !== "-") soSet.add(g.so);
       if (g.allPrinted) sudahCount++;
@@ -360,7 +319,6 @@ export default function ExportExcelModal({
       itemCount += g.items?.length || g.totalItems || 1;
       totalRp += (g.totalHarga || 0) * 1.11;
     }
-
     return {
       fakturCount: list.length,
       soCount: soSet.size,
@@ -382,18 +340,6 @@ export default function ExportExcelModal({
     return metricsAll;
   }, [warehouseFilter, metricsMbi, metricsMai, metricsAll]);
 
-  const hasActiveCustomFilters =
-    Boolean(startDate) ||
-    Boolean(endDate) ||
-    statusFilter !== "all" ||
-    jenisFilter !== "all" ||
-    katFilter !== "all" ||
-    dklkFilter !== "all" ||
-    klasFilter !== "all" ||
-    Boolean(searchQuery.trim()) ||
-    specialFilter !== "all" ||
-    warehouseFilter !== "ALL";
-
   const handleResetAllFilters = () => {
     setWarehouseFilter("ALL");
     setStartDate("");
@@ -406,19 +352,12 @@ export default function ExportExcelModal({
     setSearchQuery("");
     setSpecialFilter("all");
     setSplitSpecialSheets(false);
+    setExportGranularity("summary");
   };
 
   const handlePresetAll = () => {
     setStartDate("");
     setEndDate("");
-  };
-
-  const handlePresetToday = () => {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-    setStartDate(today);
-    setEndDate(today);
   };
 
   const handlePreset7Days = () => {
@@ -441,7 +380,7 @@ export default function ExportExcelModal({
     setSelectedCols((prev) => {
       const next = new Set(prev);
       if (next.has(colId)) {
-        if (next.size <= 1) return prev; // Keep at least 1 column
+        if (next.size <= 1) return prev;
         next.delete(colId);
       } else {
         next.add(colId);
@@ -450,14 +389,8 @@ export default function ExportExcelModal({
     });
   };
 
-  // Build rows for sheet (100% full dataset, never paginated/sliced)
   const formatRows = (list: FakturGroup[], forceAllCols = false) => {
-    const sorted = [...list].sort((a, b) => {
-      const na = parseInvNum(a.invoiceNumber);
-      const nb = parseInvNum(b.invoiceNumber);
-      return na - nb;
-    });
-
+    const sorted = [...list].sort((a, b) => parseInvNum(a.invoiceNumber) - parseInvNum(b.invoiceNumber));
     const useCol = (id: ExportColumnId) => forceAllCols || selectedCols.has(id);
 
     const buildBaseRow = (g: FakturGroup, idx: number, overrideDpp?: number) => {
@@ -543,67 +476,25 @@ export default function ExportExcelModal({
     return sorted.map((g, idx) => buildBaseRow(g, idx));
   };
 
-  const getExportFilename = (warehouseTag: string, isFullAllSystem = false) => {
-    let filename = `Fantastic_Order_${warehouseTag}`;
-    if (isFullAllSystem) {
-      const pad = (n: number) => String(n).padStart(2, "0");
-      const d = new Date();
-      return `${filename}_Keseluruhan_Sistem_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.xlsx`;
-    }
-    if (specialFilter === "retur") filename += "_Hanya_Retur";
-    else if (specialFilter === "double") filename += "_Hanya_Double_INV";
-    else if (specialFilter === "retur_or_double") filename += "_Retur_dan_Double_INV";
-    if (exportGranularity === "detail") filename += "_Detail_Item";
-    filename += dateBasis === "order" ? "_TglOrder_SO" : "_TglFaktur_Tx";
-    if (startDate && endDate) {
-      filename += `_${startDate}_sd_${endDate}`;
-    } else if (startDate) {
-      filename += `_dari_${startDate}`;
-    } else if (endDate) {
-      filename += `_sd_${endDate}`;
-    } else {
-      const pad = (n: number) => String(n).padStart(2, "0");
-      const d = new Date();
-      filename += `_Semua_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    }
-    return filename + ".xlsx";
+  const todayStamp = () => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const d = new Date();
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
 
-  const handleDownloadFullSystem = () => {
-    if (groups.length === 0) {
-      alert("Tidak ada data faktur di sistem.");
-      return;
-    }
-    const allMbi = groups.filter((g) => (g.entity || "MBI") === "MBI");
-    const allMai = groups.filter((g) => (g.entity || "MBI") === "MAI");
-    const allRetur = groups.filter((g) => Boolean(g.isRetur));
-    const allDouble = groups.filter((g) => Boolean(g.isDoubleInv));
-
-    const mMbi = calcMetrics(allMbi);
-    const mMai = calcMetrics(allMai);
-    const mAll = calcMetrics(groups);
-
-    const wb = XLSX.utils.book_new();
-    if (allMbi.length > 0) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(allMbi, true)), "Gudang MBI");
-    }
-    if (allMai.length > 0) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(allMai, true)), "Gudang MAI");
-    }
-    if (allRetur.length > 0) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(allRetur, true)), "Semua Retur");
-    }
-    if (allDouble.length > 0) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(allDouble, true)), "Semua Double INV");
-    }
-
-    const summaryRows = [
+  const buildSummarySheet = (list: FakturGroup[]) => {
+    const mbi = list.filter((g) => (g.entity || "MBI") === "MBI");
+    const mai = list.filter((g) => (g.entity || "MBI") === "MAI");
+    const mMbi = calcMetrics(mbi);
+    const mMai = calcMetrics(mai);
+    const mAll = calcMetrics(list);
+    return [
       {
         "Entitas Gudang": "PT Medika Bina Investama (MBI)",
         Kode: "MBI",
         "Total SO": mMbi.soCount,
         "Total Faktur": mMbi.fakturCount,
-        "Retur": mMbi.returCount,
+        Retur: mMbi.returCount,
         "Double INV": mMbi.doubleCount,
         "Belum Dicetak": mMbi.belumCount,
         "Sudah Dicetak": mMbi.sudahCount,
@@ -614,914 +505,692 @@ export default function ExportExcelModal({
         Kode: "MAI",
         "Total SO": mMai.soCount,
         "Total Faktur": mMai.fakturCount,
-        "Retur": mMai.returCount,
+        Retur: mMai.returCount,
         "Double INV": mMai.doubleCount,
         "Belum Dicetak": mMai.belumCount,
         "Sudah Dicetak": mMai.sudahCount,
         "Total Nilai (Rp)": Math.round(mMai.totalRp),
       },
       {
-        "Entitas Gudang": "TOTAL KESELURUHAN SISTEM (MBI + MAI)",
+        "Entitas Gudang": "TOTAL KESELURUHAN",
         Kode: "TOTAL",
         "Total SO": mAll.soCount,
         "Total Faktur": mAll.fakturCount,
-        "Retur": mAll.returCount,
+        Retur: mAll.returCount,
         "Double INV": mAll.doubleCount,
         "Belum Dicetak": mAll.belumCount,
         "Sudah Dicetak": mAll.sudahCount,
         "Total Nilai (Rp)": Math.round(mAll.totalRp),
       },
     ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Ringkasan Rekap");
-    XLSX.writeFile(wb, getExportFilename("MBI_dan_MAI", true));
-    onClose();
   };
 
-  // Universal Custom Download Handler
-  const handleDownload = (targetMode?: "ALL_SPLIT_SHEETS" | "MBI_ONLY" | "MAI_ONLY") => {
-    const mode =
-      targetMode ||
-      (warehouseFilter === "MBI" ? "MBI_ONLY" : warehouseFilter === "MAI" ? "MAI_ONLY" : "ALL_SPLIT_SHEETS");
+  // Ekspor Cepat 1-Klik
+  const handleQuickExport = (kind: "all" | "retur" | "double" | "retur_double" | "unprinted") => {
+    const scoped = groups.filter((g) => {
+      const ent = (g.entity || "MBI") === "MAI" ? "MAI" : "MBI";
+      return quickWarehouse === "ALL" || ent === quickWarehouse;
+    });
 
-    const appendSpecialSplitIfEnabled = (wb: XLSX.WorkBook, sourceList: FakturGroup[]) => {
-      if (!splitSpecialSheets) return;
-      const returRows = sourceList.filter((g) => Boolean(g.isRetur));
-      const doubleRows = sourceList.filter((g) => Boolean(g.isDoubleInv));
-      if (returRows.length > 0) {
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(returRows)), "Khusus Retur");
-      }
-      if (doubleRows.length > 0) {
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(doubleRows)), "Khusus Double INV");
-      }
-    };
-
-    if (mode === "MBI_ONLY") {
-      if (dataMbi.length === 0) {
-        alert("Tidak ada data faktur MBI yang sesuai kriteria filter.");
-        return;
-      }
-      const wb = XLSX.utils.book_new();
-      if (splitSpecialSheets && specialFilter === "retur_or_double") {
-        appendSpecialSplitIfEnabled(wb, dataMbi);
-      } else {
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(dataMbi)), "Gudang MBI");
-        appendSpecialSplitIfEnabled(wb, dataMbi);
-      }
-      XLSX.writeFile(wb, getExportFilename("MBI"));
-      onClose();
-      return;
+    let targetList = scoped;
+    let label = "Keseluruhan_Sistem";
+    if (kind === "retur") {
+      targetList = scoped.filter((g) => Boolean(g.isRetur));
+      label = "Khusus_Retur";
+    } else if (kind === "double") {
+      targetList = scoped.filter((g) => Boolean(g.isDoubleInv));
+      label = "Khusus_Double_INV";
+    } else if (kind === "retur_double") {
+      targetList = scoped.filter((g) => Boolean(g.isRetur || g.isDoubleInv));
+      label = "Retur_dan_Double_INV";
+    } else if (kind === "unprinted") {
+      targetList = scoped.filter((g) => !g.allPrinted);
+      label = "Belum_Terprint";
     }
 
-    if (mode === "MAI_ONLY") {
-      if (dataMai.length === 0) {
-        alert("Tidak ada data faktur MAI yang sesuai kriteria filter.");
-        return;
-      }
-      const wb = XLSX.utils.book_new();
-      if (splitSpecialSheets && specialFilter === "retur_or_double") {
-        appendSpecialSplitIfEnabled(wb, dataMai);
-      } else {
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(dataMai)), "Gudang MAI");
-        appendSpecialSplitIfEnabled(wb, dataMai);
-      }
-      XLSX.writeFile(wb, getExportFilename("MAI"));
-      onClose();
-      return;
-    }
-
-    if (baseFilteredData.length === 0) {
-      alert("Tidak ada data faktur yang sesuai dengan kriteria filter.");
+    if (targetList.length === 0) {
+      alert("Tidak ada data yang cocok untuk diunduh pada pilihan ini.");
       return;
     }
 
     const wb = XLSX.utils.book_new();
+    const mbiRows = targetList.filter((g) => (g.entity || "MBI") === "MBI");
+    const maiRows = targetList.filter((g) => (g.entity || "MBI") === "MAI");
 
-    if (dataMbi.length > 0) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(dataMbi)), "Gudang MBI");
+    if (kind === "all") {
+      if (mbiRows.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(mbiRows, true)), "Gudang MBI");
+      if (maiRows.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(maiRows, true)), "Gudang MAI");
+      const allRet = targetList.filter((g) => Boolean(g.isRetur));
+      const allDbl = targetList.filter((g) => Boolean(g.isDoubleInv));
+      if (allRet.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(allRet, true)), "Semua Retur");
+      if (allDbl.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(allDbl, true)), "Semua Double INV");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildSummarySheet(targetList)), "Ringkasan Rekap");
+    } else if (kind === "retur_double") {
+      const retRows = targetList.filter((g) => Boolean(g.isRetur));
+      const dblRows = targetList.filter((g) => Boolean(g.isDoubleInv));
+      if (retRows.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(retRows, true)), "Khusus Retur");
+      if (dblRows.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(dblRows, true)), "Khusus Double INV");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildSummarySheet(targetList)), "Ringkasan Rekap");
+    } else {
+      if (quickWarehouse === "ALL") {
+        if (mbiRows.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(mbiRows, true)), "Gudang MBI");
+        if (maiRows.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(maiRows, true)), "Gudang MAI");
+      } else {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(targetList, true)), `Gudang ${quickWarehouse}`);
+      }
     }
-    if (dataMai.length > 0) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(dataMai)), "Gudang MAI");
+
+    const whTag = quickWarehouse === "ALL" ? "MBI_dan_MAI" : quickWarehouse;
+    XLSX.writeFile(wb, `Fantastic_Order_${whTag}_${label}_${todayStamp()}.xlsx`);
+    onClose();
+  };
+
+  // Ekspor Custom (1 Tombol Utama)
+  const handleCustomDownload = () => {
+    const targetList =
+      warehouseFilter === "MBI" ? dataMbi : warehouseFilter === "MAI" ? dataMai : baseFilteredData;
+
+    if (targetList.length === 0) {
+      alert("Tidak ada data faktur yang sesuai kriteria filter.");
+      return;
     }
-    appendSpecialSplitIfEnabled(wb, baseFilteredData);
 
-    const summaryRows = [
-      {
-        "Entitas Gudang": "PT Medika Bina Investama (MBI)",
-        Kode: "MBI",
-        "Total SO": metricsMbi.soCount,
-        "Total Faktur": metricsMbi.fakturCount,
-        "Retur": metricsMbi.returCount,
-        "Double INV": metricsMbi.doubleCount,
-        "Belum Dicetak": metricsMbi.belumCount,
-        "Sudah Dicetak": metricsMbi.sudahCount,
-        "Total Nilai (Rp)": Math.round(metricsMbi.totalRp),
-      },
-      {
-        "Entitas Gudang": "PT Medika Akses Investama (MAI)",
-        Kode: "MAI",
-        "Total SO": metricsMai.soCount,
-        "Total Faktur": metricsMai.fakturCount,
-        "Retur": metricsMai.returCount,
-        "Double INV": metricsMai.doubleCount,
-        "Belum Dicetak": metricsMai.belumCount,
-        "Sudah Dicetak": metricsMai.sudahCount,
-        "Total Nilai (Rp)": Math.round(metricsMai.totalRp),
-      },
-      {
-        "Entitas Gudang": "TOTAL GABUNGAN (MBI + MAI)",
-        Kode: "TOTAL",
-        "Total SO": metricsAll.soCount,
-        "Total Faktur": metricsAll.fakturCount,
-        "Retur": metricsAll.returCount,
-        "Double INV": metricsAll.doubleCount,
-        "Belum Dicetak": metricsAll.belumCount,
-        "Sudah Dicetak": metricsAll.sudahCount,
-        "Total Nilai (Rp)": Math.round(metricsAll.totalRp),
-      },
-    ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Ringkasan Rekap");
+    const wb = XLSX.utils.book_new();
+    const appendSpecialSplit = (source: FakturGroup[]) => {
+      if (!splitSpecialSheets) return;
+      const retRows = source.filter((g) => Boolean(g.isRetur));
+      const dblRows = source.filter((g) => Boolean(g.isDoubleInv));
+      if (retRows.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(retRows)), "Khusus Retur");
+      if (dblRows.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(dblRows)), "Khusus Double INV");
+    };
 
-    XLSX.writeFile(wb, getExportFilename("MBI_dan_MAI_Terpisah"));
+    if (warehouseFilter === "ALL") {
+      if (dataMbi.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(dataMbi)), "Gudang MBI");
+      if (dataMai.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(dataMai)), "Gudang MAI");
+      appendSpecialSplit(targetList);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildSummarySheet(targetList)), "Ringkasan Rekap");
+    } else {
+      if (splitSpecialSheets && specialFilter === "retur_or_double") {
+        appendSpecialSplit(targetList);
+      } else {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(formatRows(targetList)), `Gudang ${warehouseFilter}`);
+        appendSpecialSplit(targetList);
+      }
+    }
+
+    let suffix = "";
+    if (specialFilter === "retur") suffix += "_Khusus_Retur";
+    else if (specialFilter === "double") suffix += "_Khusus_Double_INV";
+    else if (specialFilter === "retur_or_double") suffix += "_Retur_Double";
+    if (exportGranularity === "detail") suffix += "_Detail_Item";
+
+    const whTag = warehouseFilter === "ALL" ? "MBI_dan_MAI" : warehouseFilter;
+    XLSX.writeFile(wb, `Fantastic_Order_${whTag}${suffix}_${todayStamp()}.xlsx`);
     onClose();
   };
 
   if (!isOpen) return null;
 
+  const boxCls = isDarkMode
+    ? "bg-[#121215] border-zinc-800 text-zinc-100"
+    : "bg-zinc-50 border-zinc-200 text-zinc-900";
+  const inputCls = isDarkMode
+    ? "bg-[#09090b] border-zinc-800 text-zinc-100"
+    : "bg-white border-zinc-300 text-zinc-900";
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/65"
       onClick={onClose}
     >
       <div
-        className={`relative w-full max-w-3xl rounded-2xl shadow-2xl border overflow-hidden flex flex-col transition-all ${
+        className={`relative w-full max-w-2xl rounded-xl border shadow-2xl overflow-hidden flex flex-col ${
           isDarkMode
-            ? "bg-[#0c1426] border-slate-700/80 text-slate-100 shadow-black/80"
-            : "bg-white border-slate-200 text-slate-800 shadow-xl"
+            ? "bg-[#09090b] border-zinc-800 text-zinc-100"
+            : "bg-white border-zinc-200 text-zinc-900"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
+        {/* Clean Neutral Header */}
         <div
-          className={`px-5 py-3.5 border-b flex items-center justify-between gap-2 ${
-            isDarkMode
-              ? "bg-[#0e1935] border-slate-800"
-              : "bg-gradient-to-r from-blue-700 via-indigo-700 to-indigo-800 text-white"
+          className={`px-5 py-3.5 border-b flex items-center justify-between gap-3 ${
+            isDarkMode ? "bg-[#09090b] border-zinc-800" : "bg-white border-zinc-200"
           }`}
         >
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center text-base shadow-xs">
-              <FileSpreadsheet className="w-4 h-4 text-white" />
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg border border-blue-500/30 bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+              <FileSpreadsheet className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="font-extrabold text-sm sm:text-base text-white tracking-tight flex items-center gap-2 flex-wrap">
-                <span>Ekspor Data Daftar Faktur (Custom & Keseluruhan)</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 font-mono font-bold">
-                  {systemTotals.totalAll.toLocaleString("id-ID")} Total Faktur di Sistem
-                </span>
+              <h2 className="font-bold text-sm sm:text-base tracking-tight">
+                Ekspor Excel Daftar Faktur
               </h2>
-              <p className="text-[11px] text-blue-100 font-medium">
-                Tarik 100% seluruh data sistem tanpa batas halaman, atau custom filter Retur, Double INV, & Kolom
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Total di sistem: <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{groups.length.toLocaleString("id-ID")}</span> faktur siap ditarik utuh
               </p>
             </div>
           </div>
+
           <button
             type="button"
             onClick={onClose}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-white/80 hover:text-white hover:bg-white/20 transition-colors text-xs font-bold cursor-pointer shrink-0"
-            title="Tutup (Esc)"
+            className="w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-bold cursor-pointer"
+            title="Tutup"
           >
             ✕
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-4 sm:p-5 space-y-3.5 text-xs sm:text-sm overflow-y-auto max-h-[78vh] custom-scrollbar">
-          {/* Quick Banner: Reset / Ekspor Keseluruhan */}
-          <div
-            className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 ${
-              isDarkMode
-                ? "bg-emerald-950/30 border-emerald-800/60 text-emerald-200"
-                : "bg-emerald-50 border-emerald-200 text-emerald-950"
-            }`}
-          >
-            <div className="text-[11px] leading-snug">
-              <div className="font-extrabold flex items-center gap-1.5">
-                <span>📦 Ekspor Keseluruhan Sistem (Tanpa Ada yang Terlewat)</span>
-              </div>
-              <div className="opacity-80 mt-0.5">
-                Total di sistem: <strong>{systemTotals.totalAll.toLocaleString("id-ID")} faktur</strong> (MBI:{" "}
-                {systemTotals.totalMbi.toLocaleString("id-ID")} • MAI: {systemTotals.totalMai.toLocaleString("id-ID")} • Retur:{" "}
-                {systemTotals.totalRetur.toLocaleString("id-ID")} • Double INV: {systemTotals.totalDouble.toLocaleString("id-ID")})
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5">
-              {hasActiveCustomFilters && (
-                <button
-                  type="button"
-                  onClick={handleResetAllFilters}
-                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border flex items-center gap-1 cursor-pointer transition ${
-                    isDarkMode
-                      ? "bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700"
-                      : "bg-white border-emerald-300 text-emerald-800 hover:bg-emerald-100"
-                  }`}
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Reset Semua Filter</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleDownloadFullSystem}
-                disabled={systemTotals.totalAll === 0}
-                className="px-3 py-1.5 rounded-lg text-[11px] font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center gap-1.5 cursor-pointer transition active:scale-95 disabled:opacity-50"
-                title="Unduh 100% seluruh data sistem (Sheet MBI, Sheet MAI, Sheet Retur, Sheet Double INV, dan Ringkasan)"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Ekspor Keseluruhan ({systemTotals.totalAll.toLocaleString("id-ID")})</span>
-              </button>
-            </div>
-          </div>
-
-          {/* 1. PEMISAHAN ENTITAS GUDANG */}
-          <div
-            className={`p-3.5 rounded-xl border space-y-2.5 ${
-              isDarkMode ? "bg-[#111c33] border-slate-700/60" : "bg-slate-50 border-slate-200"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span
-                className={`font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 ${
-                  isDarkMode ? "text-slate-300" : "text-slate-700"
-                }`}
-              >
-                <Building2 className="w-3.5 h-3.5 text-blue-500" />
-                <span>1. Pilih Entitas Gudang:</span>
-              </span>
-              <span className={`text-[10px] font-semibold ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                Sesuai Filter: {metricsAll.fakturCount.toLocaleString("id-ID")} Faktur ({metricsAll.soCount.toLocaleString("id-ID")} SO)
-              </span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setWarehouseFilter("ALL")}
-                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
-                  warehouseFilter === "ALL"
-                    ? "bg-slate-900 text-white border-slate-700 shadow-md ring-2 ring-indigo-500/50 dark:bg-white dark:text-black"
-                    : isDarkMode
-                    ? "bg-slate-800/80 border-slate-700/80 text-slate-300 hover:bg-slate-700/80"
-                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="font-extrabold text-xs flex items-center gap-1">
-                    <Layers className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Semua Gudang</span>
-                  </div>
-                </div>
-                <div
-                  className={`text-[10px] mt-0.5 font-semibold ${
-                    warehouseFilter === "ALL" ? (isDarkMode ? "text-slate-700" : "text-indigo-200") : "opacity-75"
-                  }`}
-                >
-                  Dipisah Sheet MBI & MAI
-                </div>
-                <div className="mt-1 font-mono text-[11px] font-bold">
-                  {metricsAll.fakturCount.toLocaleString("id-ID")} Faktur
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setWarehouseFilter("MBI")}
-                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
-                  warehouseFilter === "MBI"
-                    ? "bg-blue-600 text-white border-blue-500 shadow-md ring-2 ring-blue-400/50"
-                    : isDarkMode
-                    ? "bg-slate-800/80 border-slate-700/80 text-slate-300 hover:bg-slate-700/80"
-                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <div className="font-extrabold text-xs flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
-                  <span>Gudang MBI</span>
-                </div>
-                <div className={`text-[10px] mt-0.5 ${warehouseFilter === "MBI" ? "text-blue-100" : "opacity-75"}`}>
-                  PT Medika Bina Investama
-                </div>
-                <div className="mt-1 font-mono text-[11px] font-bold">
-                  {metricsMbi.fakturCount.toLocaleString("id-ID")} Faktur ({metricsMbi.soCount.toLocaleString("id-ID")} SO)
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setWarehouseFilter("MAI")}
-                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative ${
-                  warehouseFilter === "MAI"
-                    ? "bg-emerald-600 text-white border-emerald-500 shadow-md ring-2 ring-emerald-400/50"
-                    : isDarkMode
-                    ? "bg-slate-800/80 border-slate-700/80 text-slate-300 hover:bg-slate-700/80"
-                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <div className="font-extrabold text-xs flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-                  <span>Gudang MAI</span>
-                </div>
-                <div className={`text-[10px] mt-0.5 ${warehouseFilter === "MAI" ? "text-emerald-100" : "opacity-75"}`}>
-                  PT Medika Akses Investama
-                </div>
-                <div className="mt-1 font-mono text-[11px] font-bold">
-                  {metricsMai.fakturCount.toLocaleString("id-ID")} Faktur ({metricsMai.soCount.toLocaleString("id-ID")} SO)
-                </div>
-              </button>
-            </div>
-          </div>
-
-          {/* 2. FILTER TIPE FAKTUR KHUSUS (SEMUA / RETUR / DOUBLE INV) */}
-          <div
-            className={`p-3.5 rounded-xl border space-y-2.5 ${
-              isDarkMode ? "bg-[#111c33] border-slate-700/60" : "bg-slate-50 border-slate-200"
-            }`}
-          >
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <span
-                className={`font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 ${
-                  isDarkMode ? "text-slate-300" : "text-slate-700"
-                }`}
-              >
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                <span>2. Filter Khusus (Retur & Double Invoice):</span>
-              </span>
-              {specialFilter !== "all" && (
-                <button
-                  type="button"
-                  onClick={() => setSpecialFilter("all")}
-                  className="text-[10px] font-bold text-blue-500 hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Tampilkan Semua</span>
-                </button>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <button
-                type="button"
-                onClick={() => setSpecialFilter("all")}
-                className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                  specialFilter === "all"
-                    ? "bg-blue-600 text-white border-blue-500 shadow-md ring-2 ring-blue-400/40"
-                    : isDarkMode
-                    ? "bg-slate-800/80 border-slate-700/80 text-slate-300 hover:bg-slate-700/80"
-                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <div className="font-bold text-[11px]">Semua Faktur</div>
-                <div className="font-mono text-xs font-black mt-0.5">{specialCounts.all.toLocaleString("id-ID")}</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSpecialFilter("retur")}
-                className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                  specialFilter === "retur"
-                    ? "bg-amber-600 text-white border-amber-500 shadow-md ring-2 ring-amber-400/40"
-                    : isDarkMode
-                    ? "bg-slate-800/80 border-slate-700/80 text-slate-300 hover:bg-slate-700/80"
-                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <div className="font-bold text-[11px]">Khusus Retur</div>
-                <div className="font-mono text-xs font-black mt-0.5">{specialCounts.retur.toLocaleString("id-ID")}</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSpecialFilter("double")}
-                className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                  specialFilter === "double"
-                    ? "bg-rose-600 text-white border-rose-500 shadow-md ring-2 ring-rose-400/40"
-                    : isDarkMode
-                    ? "bg-slate-800/80 border-slate-700/80 text-slate-300 hover:bg-slate-700/80"
-                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <div className="font-bold text-[11px]">Khusus Double INV</div>
-                <div className="font-mono text-xs font-black mt-0.5">{specialCounts.double.toLocaleString("id-ID")}</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSpecialFilter("retur_or_double")}
-                className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                  specialFilter === "retur_or_double"
-                    ? "bg-purple-600 text-white border-purple-500 shadow-md ring-2 ring-purple-400/40"
-                    : isDarkMode
-                    ? "bg-slate-800/80 border-slate-700/80 text-slate-300 hover:bg-slate-700/80"
-                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <div className="font-bold text-[11px]">Retur & Double INV</div>
-                <div className="font-mono text-xs font-black mt-0.5">{specialCounts.returOrDouble.toLocaleString("id-ID")}</div>
-              </button>
-            </div>
-
-            <label className="flex items-center gap-2 pt-1 cursor-pointer select-none text-[11px] font-semibold">
-              <input
-                type="checkbox"
-                checked={splitSpecialSheets}
-                onChange={(e) => setSplitSpecialSheets(e.target.checked)}
-                className="accent-indigo-600 rounded w-3.5 h-3.5 cursor-pointer"
-              />
-              <span className={isDarkMode ? "text-slate-300" : "text-slate-700"}>
-                Tambahkan sheet terpisah khusus <strong>&quot;Khusus Retur&quot;</strong> &amp;{" "}
-                <strong>&quot;Khusus Double INV&quot;</strong> di dalam file Excel
-              </span>
-            </label>
-          </div>
-
-          {/* 3. ACUAN & RENTANG TANGGAL */}
-          <div
-            className={`p-3.5 rounded-xl border space-y-2.5 ${
-              isDarkMode ? "bg-[#111c33] border-slate-700/60" : "bg-slate-50 border-slate-200"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span
-                className={`font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 ${
-                  isDarkMode ? "text-slate-300" : "text-slate-700"
-                }`}
-              >
-                <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-                <span>3. Rentang Tanggal (Kosongkan untuk Semua Tanggal):</span>
-              </span>
-              {availableDates.min && availableDates.max && (
-                <span className={`text-[10px] ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                  Rentang Data: {isoToDisplayDate(availableDates.min)} s/d {isoToDisplayDate(availableDates.max)}
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setDateBasis("order")}
-                className={`p-2 rounded-lg text-left border transition-all cursor-pointer text-xs font-bold ${
-                  dateBasis === "order"
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : isDarkMode
-                    ? "bg-slate-800/80 border-slate-700 text-slate-300"
-                    : "bg-white border-slate-200 text-slate-700"
-                }`}
-              >
-                📦 Tanggal Masuk SO (Order)
-              </button>
-              <button
-                type="button"
-                onClick={() => setDateBasis("transaction")}
-                className={`p-2 rounded-lg text-left border transition-all cursor-pointer text-xs font-bold ${
-                  dateBasis === "transaction"
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : isDarkMode
-                    ? "bg-slate-800/80 border-slate-700 text-slate-300"
-                    : "bg-white border-slate-200 text-slate-700"
-                }`}
-              >
-                📄 Tanggal Terfaktur (Tx Date)
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label className={`block text-[11px] font-semibold mb-1 ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-                  Dari Tanggal:
-                </label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className={`w-full px-2.5 py-1.5 rounded-lg border text-xs font-medium outline-hidden ${
-                    isDarkMode ? "bg-[#0c1426] border-slate-700 text-slate-200" : "bg-white border-slate-300 text-slate-800"
-                  }`}
-                />
-              </div>
-              <div>
-                <label className={`block text-[11px] font-semibold mb-1 ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-                  Hingga Tanggal:
-                </label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className={`w-full px-2.5 py-1.5 rounded-lg border text-xs font-medium outline-hidden ${
-                    isDarkMode ? "bg-[#0c1426] border-slate-700 text-slate-200" : "bg-white border-slate-300 text-slate-800"
-                  }`}
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className={`text-[10px] font-semibold mr-1 ${isDarkMode ? "text-slate-500" : "text-slate-400"}`}>
-                Preset:
-              </span>
-              {[
-                { label: "Semua Tanggal", fn: handlePresetAll, active: !startDate && !endDate },
-                { label: "Hari Ini", fn: handlePresetToday, active: false },
-                { label: "7 Hari Terakhir", fn: handlePreset7Days, active: false },
-                { label: "Bulan Ini", fn: handlePresetThisMonth, active: false },
-              ].map((p) => (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={p.fn}
-                  className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition-all cursor-pointer ${
-                    p.active
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : isDarkMode
-                      ? "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
-                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 4. FILTER CUSTOM TAMBAHAN & KATA KUNCI */}
-          <div
-            className={`p-3.5 rounded-xl border space-y-2.5 ${
-              isDarkMode ? "bg-[#111c33] border-slate-700/60" : "bg-slate-50 border-slate-200"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span
-                className={`font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 ${
-                  isDarkMode ? "text-slate-300" : "text-slate-700"
-                }`}
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-500" />
-                <span>4. Filter Custom Tambahan & Format Baris:</span>
-              </span>
-            </div>
-
-            {/* Search custom */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter kata kunci opsional (No Invoice, No SO, Pelanggan, Produk)..."
-                className={`w-full pl-8 pr-8 py-1.5 rounded-lg border text-xs font-medium outline-hidden ${
-                  isDarkMode
-                    ? "bg-[#0c1426] border-slate-700 text-slate-200 placeholder:text-slate-500"
-                    : "bg-white border-slate-300 text-slate-800 placeholder:text-slate-400"
-                }`}
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              <div>
-                <label className={`block text-[10px] font-semibold mb-1 ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-                  Status Cetak
-                </label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as "all" | "printed" | "unprinted")}
-                  className={`w-full px-2 py-1.5 rounded-lg border text-xs font-medium outline-hidden ${
-                    isDarkMode ? "bg-[#0c1426] border-slate-700 text-slate-200" : "bg-white border-slate-300 text-slate-800"
-                  }`}
-                >
-                  <option value="all">Semua</option>
-                  <option value="printed">Sudah Cetak</option>
-                  <option value="unprinted">Belum Cetak</option>
-                </select>
-              </div>
-
-              <div>
-                <label className={`block text-[10px] font-semibold mb-1 ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-                  Jenis (ORA/DOO)
-                </label>
-                <select
-                  value={jenisFilter}
-                  onChange={(e) => setJenisFilter(e.target.value as "all" | "ORA" | "DOO")}
-                  className={`w-full px-2 py-1.5 rounded-lg border text-xs font-medium outline-hidden ${
-                    isDarkMode ? "bg-[#0c1426] border-slate-700 text-slate-200" : "bg-white border-slate-300 text-slate-800"
-                  }`}
-                >
-                  <option value="all">Semua</option>
-                  <option value="ORA">ORA</option>
-                  <option value="DOO">DOO</option>
-                </select>
-              </div>
-
-              <div>
-                <label className={`block text-[10px] font-semibold mb-1 ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-                  Prioritas
-                </label>
-                <select
-                  value={katFilter}
-                  onChange={(e) => setKatFilter(e.target.value as "all" | "1P" | "2P" | "3P")}
-                  className={`w-full px-2 py-1.5 rounded-lg border text-xs font-medium outline-hidden ${
-                    isDarkMode ? "bg-[#0c1426] border-slate-700 text-slate-200" : "bg-white border-slate-300 text-slate-800"
-                  }`}
-                >
-                  <option value="all">Semua</option>
-                  <option value="1P">1P</option>
-                  <option value="2P">2P</option>
-                  <option value="3P">3P</option>
-                </select>
-              </div>
-
-              <div>
-                <label className={`block text-[10px] font-semibold mb-1 ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-                  Wilayah
-                </label>
-                <select
-                  value={dklkFilter}
-                  onChange={(e) => setDklkFilter(e.target.value as "all" | "DK" | "LK")}
-                  className={`w-full px-2 py-1.5 rounded-lg border text-xs font-medium outline-hidden ${
-                    isDarkMode ? "bg-[#0c1426] border-slate-700 text-slate-200" : "bg-white border-slate-300 text-slate-800"
-                  }`}
-                >
-                  <option value="all">Semua</option>
-                  <option value="DK">DK</option>
-                  <option value="LK">LK</option>
-                </select>
-              </div>
-
-              <div>
-                <label className={`block text-[10px] font-semibold mb-1 ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-                  Produk
-                </label>
-                <select
-                  value={klasFilter}
-                  onChange={(e) =>
-                    setKlasFilter(e.target.value as "all" | "prekursor" | "oot" | "ccp" | "alkes" | "farma")
-                  }
-                  className={`w-full px-2 py-1.5 rounded-lg border text-xs font-medium outline-hidden ${
-                    isDarkMode ? "bg-[#0c1426] border-slate-700 text-slate-200" : "bg-white border-slate-300 text-slate-800"
-                  }`}
-                >
-                  <option value="all">Semua</option>
-                  <option value="farma">Farma</option>
-                  <option value="alkes">Alkes</option>
-                  <option value="ccp">CCP</option>
-                  <option value="prekursor">Prekursor</option>
-                  <option value="oot">OOT</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Granularity + Column Picker */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setExportGranularity("summary")}
-                className={`p-2 rounded-lg border text-left text-[11px] font-bold cursor-pointer transition ${
-                  exportGranularity === "summary"
-                    ? "bg-indigo-600 text-white border-indigo-500"
-                    : isDarkMode
-                    ? "bg-[#0c1426] border-slate-700 text-slate-300"
-                    : "bg-white border-slate-200 text-slate-700"
-                }`}
-              >
-                📋 Per Faktur (1 Baris = 1 Faktur) — {activeMetrics.fakturCount.toLocaleString("id-ID")} baris
-              </button>
-              <button
-                type="button"
-                onClick={() => setExportGranularity("detail")}
-                className={`p-2 rounded-lg border text-left text-[11px] font-bold cursor-pointer transition ${
-                  exportGranularity === "detail"
-                    ? "bg-indigo-600 text-white border-indigo-500"
-                    : isDarkMode
-                    ? "bg-[#0c1426] border-slate-700 text-slate-300"
-                    : "bg-white border-slate-200 text-slate-700"
-                }`}
-              >
-                💊 Detail Item Barang (1 Baris = 1 Item) — {activeMetrics.itemCount.toLocaleString("id-ID")} baris
-              </button>
-            </div>
-
-            {/* Collapsible Custom Column Selector */}
-            <div
-              className={`rounded-lg border ${
-                isDarkMode ? "bg-[#0c1426] border-slate-700/80" : "bg-white border-slate-200"
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => setShowColumnPicker((v) => !v)}
-                className="w-full px-3 py-2 flex items-center justify-between text-[11px] font-bold cursor-pointer"
-              >
-                <span className="flex items-center gap-1.5">
-                  <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
-                  <span>
-                    Custom Kolom Excel ({selectedCols.size}/{ALL_EXPORT_COLUMNS.length} kolom aktif)
-                  </span>
-                </span>
-                {showColumnPicker ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-
-              {showColumnPicker && (
-                <div className="px-3 pb-3 pt-1 border-t border-slate-200 dark:border-slate-800 space-y-2">
-                  <div className="flex items-center gap-2 text-[10px]">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCols(new Set(DEFAULT_SELECTED_COLS))}
-                      className="text-blue-500 hover:underline font-bold cursor-pointer"
-                    >
-                      Pilih Semua Kolom
-                    </button>
-                    <span>•</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelectedCols(
-                          new Set([
-                            "no",
-                            "entity_code",
-                            "no_so",
-                            "no_invoice",
-                            "special_note",
-                            "order_date",
-                            "tx_date",
-                            "pelanggan",
-                            "status_cetak",
-                            "grand_total",
-                          ])
-                        )
-                      }
-                      className="text-indigo-500 hover:underline font-bold cursor-pointer"
-                    >
-                      Kolom Ringkas
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                    {ALL_EXPORT_COLUMNS.map((col) => {
-                      const active = selectedCols.has(col.id);
-                      return (
-                        <label
-                          key={col.id}
-                          className={`flex items-center gap-1.5 px-2 py-1 rounded border text-[11px] cursor-pointer select-none ${
-                            active
-                              ? isDarkMode
-                                ? "bg-blue-950/40 border-blue-700/60 text-blue-200"
-                                : "bg-blue-50 border-blue-200 text-blue-900 font-semibold"
-                              : isDarkMode
-                              ? "bg-slate-900 border-slate-800 text-slate-500"
-                              : "bg-slate-50 border-slate-200 text-slate-400"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={active}
-                            onChange={() => toggleColumn(col.id)}
-                            className="accent-blue-600 rounded w-3 h-3 cursor-pointer"
-                          />
-                          <span className="truncate">{col.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 5. PRATINJAU HASIL FILTER AKHIR */}
-          <div
-            className={`p-3.5 rounded-xl border space-y-2.5 ${
-              isDarkMode ? "bg-[#0b1222] border-slate-700/80" : "bg-blue-50/70 border-blue-200 text-blue-950"
-            }`}
-          >
-            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider opacity-80">
-              <span className="flex items-center gap-1.5">
-                <Filter className="w-3.5 h-3.5 text-blue-500" />
-                <span>Pratinjau Hasil yang Akan Diekspor:</span>
-              </span>
-              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-extrabold text-xs">
-                Rp {formatRupiah(activeMetrics.totalRp)}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className={`p-2 rounded-lg border text-center ${isDarkMode ? "bg-[#111c33] border-slate-700/60" : "bg-white border-blue-100"}`}>
-                <div className="text-[10px] text-slate-500 font-medium">Total SO</div>
-                <div className="text-base font-extrabold font-mono text-blue-600 dark:text-blue-400">
-                  {activeMetrics.soCount.toLocaleString("id-ID")}
-                </div>
-              </div>
-              <div className={`p-2 rounded-lg border text-center ${isDarkMode ? "bg-[#111c33] border-slate-700/60" : "bg-white border-blue-100"}`}>
-                <div className="text-[10px] text-slate-500 font-medium">
-                  {exportGranularity === "detail" ? "Total Baris Item" : "Total Faktur"}
-                </div>
-                <div className="text-base font-extrabold font-mono text-indigo-600 dark:text-indigo-400">
-                  {(exportGranularity === "detail" ? activeMetrics.itemCount : activeMetrics.fakturCount).toLocaleString("id-ID")}
-                </div>
-              </div>
-              <div className={`p-2 rounded-lg border text-center ${isDarkMode ? "bg-[#111c33] border-slate-700/60" : "bg-white border-blue-100"}`}>
-                <div className="text-[10px] text-slate-500 font-medium">Retur</div>
-                <div className="text-base font-extrabold font-mono text-amber-600 dark:text-amber-400">
-                  {activeMetrics.returCount.toLocaleString("id-ID")}
-                </div>
-              </div>
-              <div className={`p-2 rounded-lg border text-center ${isDarkMode ? "bg-[#111c33] border-slate-700/60" : "bg-white border-blue-100"}`}>
-                <div className="text-[10px] text-slate-500 font-medium">Double INV</div>
-                <div className="text-base font-extrabold font-mono text-rose-600 dark:text-rose-400">
-                  {activeMetrics.doubleCount.toLocaleString("id-ID")}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
+        {/* 2 Simple Mode Tabs */}
         <div
-          className={`px-5 py-3 border-t flex flex-wrap items-center justify-between gap-2.5 ${
-            isDarkMode ? "bg-[#0e1935] border-slate-800" : "bg-slate-50 border-slate-200"
+          className={`px-5 pt-3 pb-2.5 border-b flex items-center gap-2 ${
+            isDarkMode ? "bg-[#0c0c0f] border-zinc-800" : "bg-zinc-50 border-zinc-200"
           }`}
         >
           <button
             type="button"
-            onClick={onClose}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-              isDarkMode ? "hover:bg-slate-800 text-slate-400" : "hover:bg-slate-200 text-slate-600"
+            onClick={() => setActiveTab("quick")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer border ${
+              activeTab === "quick"
+                ? "bg-blue-700 text-white border-blue-600"
+                : isDarkMode
+                ? "bg-transparent border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                : "bg-white border-zinc-200 text-zinc-600 hover:text-zinc-900"
             }`}
           >
-            Batal
+            1. Ekspor Cepat (Langsung Unduh)
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("custom")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer border ${
+              activeTab === "custom"
+                ? "bg-blue-700 text-white border-blue-600"
+                : isDarkMode
+                ? "bg-transparent border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                : "bg-white border-zinc-200 text-zinc-600 hover:text-zinc-900"
+            }`}
+          >
+            2. Ekspor Custom (Atur Filter &amp; Kolom)
+          </button>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {warehouseFilter === "ALL" && (
-              <>
+        {/* Body */}
+        <div className="p-4 sm:p-5 overflow-y-auto max-h-[72vh] space-y-3.5">
+          {activeTab === "quick" ? (
+            <>
+              {/* Quick Warehouse Selector */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold text-zinc-600 dark:text-zinc-300">
+                  Pilih Gudang yang Mau Diunduh:
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {(["ALL", "MBI", "MAI"] as const).map((wh) => (
+                    <button
+                      key={wh}
+                      type="button"
+                      onClick={() => setQuickWarehouse(wh)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer ${
+                        quickWarehouse === wh
+                          ? "bg-blue-600/15 border-blue-500/40 text-blue-700 dark:text-blue-300"
+                          : isDarkMode
+                          ? "bg-[#121215] border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                          : "bg-white border-zinc-300 text-zinc-600 hover:text-zinc-900"
+                      }`}
+                    >
+                      {wh === "ALL" ? "Semua (MBI + MAI)" : `Gudang ${wh}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 4 Main 1-Click Cards + 1 Unprinted Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* Semua Data Sistem (Biru) */}
                 <button
                   type="button"
-                  onClick={() => handleDownload("MBI_ONLY")}
-                  disabled={metricsMbi.fakturCount === 0}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
-                    metricsMbi.fakturCount === 0
-                      ? "opacity-50 cursor-not-allowed bg-slate-800 text-slate-500 border-slate-700"
-                      : "bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 border-blue-500/30"
+                  onClick={() => handleQuickExport("all")}
+                  disabled={quickCounts.all === 0}
+                  className={`p-3.5 rounded-xl border border-l-4 text-left flex items-center justify-between gap-3 cursor-pointer disabled:opacity-45 ${
+                    isDarkMode
+                      ? "bg-[#121215] border-zinc-800 border-l-blue-500 hover:bg-zinc-900"
+                      : "bg-white border-zinc-200 border-l-blue-600 hover:bg-blue-50/40"
                   }`}
                 >
-                  <Download className="w-3 h-3" />
-                  <span>MBI Saja ({metricsMbi.fakturCount.toLocaleString("id-ID")})</span>
+                  <div>
+                    <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                      Semua Data Sistem (100%)
+                    </div>
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      <span className="font-mono font-bold text-blue-700 dark:text-blue-400">
+                        {quickCounts.all.toLocaleString("id-ID")}
+                      </span>{" "}
+                      faktur (tanpa terlewat)
+                    </div>
+                  </div>
+                  <span className="px-3 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-bold shrink-0">
+                    Unduh
+                  </span>
                 </button>
 
+                {/* Khusus Retur (Kuning) */}
                 <button
                   type="button"
-                  onClick={() => handleDownload("MAI_ONLY")}
-                  disabled={metricsMai.fakturCount === 0}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
-                    metricsMai.fakturCount === 0
-                      ? "opacity-50 cursor-not-allowed bg-slate-800 text-slate-500 border-slate-700"
-                      : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border-emerald-500/30"
+                  onClick={() => handleQuickExport("retur")}
+                  disabled={quickCounts.retur === 0}
+                  className={`p-3.5 rounded-xl border border-l-4 text-left flex items-center justify-between gap-3 cursor-pointer disabled:opacity-45 ${
+                    isDarkMode
+                      ? "bg-[#121215] border-zinc-800 border-l-amber-500 hover:bg-zinc-900"
+                      : "bg-white border-zinc-200 border-l-amber-500 hover:bg-amber-50/40"
                   }`}
                 >
-                  <Download className="w-3 h-3" />
-                  <span>MAI Saja ({metricsMai.fakturCount.toLocaleString("id-ID")})</span>
+                  <div>
+                    <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                      Khusus Retur Saja
+                    </div>
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      <span className="font-mono font-bold text-amber-700 dark:text-amber-400">
+                        {quickCounts.retur.toLocaleString("id-ID")}
+                      </span>{" "}
+                      faktur retur
+                    </div>
+                  </div>
+                  <span className="px-3 py-1.5 rounded-lg border border-amber-500/35 bg-amber-500/12 text-amber-800 dark:text-amber-300 text-xs font-bold shrink-0">
+                    Unduh
+                  </span>
                 </button>
-              </>
-            )}
 
-            <button
-              type="button"
-              onClick={() => handleDownload()}
-              disabled={activeMetrics.fakturCount === 0}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer ${
-                activeMetrics.fakturCount === 0
-                  ? "opacity-50 cursor-not-allowed bg-slate-400 text-white"
-                  : warehouseFilter === "MBI"
-                  ? "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/30 active:scale-95"
-                  : warehouseFilter === "MAI"
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30 active:scale-95"
-                  : "bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700 text-white shadow-indigo-600/30 active:scale-95"
-              }`}
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>
-                {warehouseFilter === "ALL"
-                  ? `Unduh Custom (${metricsAll.fakturCount.toLocaleString("id-ID")} Faktur)`
-                  : warehouseFilter === "MBI"
-                  ? `Unduh Excel MBI (${metricsMbi.fakturCount.toLocaleString("id-ID")} Faktur)`
-                  : `Unduh Excel MAI (${metricsMai.fakturCount.toLocaleString("id-ID")} Faktur)`}
+                {/* Khusus Double INV (Merah) */}
+                <button
+                  type="button"
+                  onClick={() => handleQuickExport("double")}
+                  disabled={quickCounts.double === 0}
+                  className={`p-3.5 rounded-xl border border-l-4 text-left flex items-center justify-between gap-3 cursor-pointer disabled:opacity-45 ${
+                    isDarkMode
+                      ? "bg-[#121215] border-zinc-800 border-l-rose-500 hover:bg-zinc-900"
+                      : "bg-white border-zinc-200 border-l-rose-600 hover:bg-rose-50/40"
+                  }`}
+                >
+                  <div>
+                    <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                      Khusus Double Invoice Saja
+                    </div>
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      <span className="font-mono font-bold text-rose-700 dark:text-rose-400">
+                        {quickCounts.double.toLocaleString("id-ID")}
+                      </span>{" "}
+                      faktur double inv
+                    </div>
+                  </div>
+                  <span className="px-3 py-1.5 rounded-lg border border-rose-500/35 bg-rose-500/12 text-rose-800 dark:text-rose-300 text-xs font-bold shrink-0">
+                    Unduh
+                  </span>
+                </button>
+
+                {/* Retur & Double INV (Hijau) */}
+                <button
+                  type="button"
+                  onClick={() => handleQuickExport("retur_double")}
+                  disabled={quickCounts.returOrDouble === 0}
+                  className={`p-3.5 rounded-xl border border-l-4 text-left flex items-center justify-between gap-3 cursor-pointer disabled:opacity-45 ${
+                    isDarkMode
+                      ? "bg-[#121215] border-zinc-800 border-l-emerald-500 hover:bg-zinc-900"
+                      : "bg-white border-zinc-200 border-l-emerald-600 hover:bg-emerald-50/40"
+                  }`}
+                >
+                  <div>
+                    <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                      Retur &amp; Double INV (2 Sheet)
+                    </div>
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                        {quickCounts.returOrDouble.toLocaleString("id-ID")}
+                      </span>{" "}
+                      faktur terpisah per sheet
+                    </div>
+                  </div>
+                  <span className="px-3 py-1.5 rounded-lg border border-emerald-500/35 bg-emerald-500/12 text-emerald-800 dark:text-emerald-300 text-xs font-bold shrink-0">
+                    Unduh
+                  </span>
+                </button>
+              </div>
+
+              {/* Belum Terprint Bar */}
+              <button
+                type="button"
+                onClick={() => handleQuickExport("unprinted")}
+                disabled={quickCounts.unprinted === 0}
+                className={`w-full p-3 rounded-xl border text-left flex items-center justify-between gap-3 cursor-pointer disabled:opacity-45 ${
+                  isDarkMode
+                    ? "bg-[#121215] border-zinc-800 hover:bg-zinc-900"
+                    : "bg-zinc-50 border-zinc-200 hover:bg-zinc-100"
+                }`}
+              >
+                <div className="text-xs">
+                  <span className="font-bold text-zinc-900 dark:text-zinc-100">
+                    Atau unduh yang Belum Terprint saja
+                  </span>
+                  <span className="text-zinc-500 dark:text-zinc-400 ml-2">
+                    (<span className="font-mono font-bold">{quickCounts.unprinted.toLocaleString("id-ID")}</span> faktur antre)
+                  </span>
+                </div>
+                <span className="px-3 py-1 rounded-lg border border-zinc-300 dark:border-zinc-700 text-xs font-bold text-zinc-800 dark:text-zinc-200 shrink-0">
+                  Unduh Belum Print
+                </span>
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Custom Filter: 3 Clean Blocks */}
+              <div className={`p-3.5 rounded-xl border space-y-3 ${boxCls}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold">1. Pilih Gudang &amp; Tipe Khusus</span>
+                  <button
+                    type="button"
+                    onClick={handleResetAllFilters}
+                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
+                      Gudang
+                    </label>
+                    <select
+                      value={warehouseFilter}
+                      onChange={(e) => setWarehouseFilter(e.target.value as any)}
+                      className={`w-full px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${inputCls}`}
+                    >
+                      <option value="ALL">Semua Gudang ({metricsAll.fakturCount.toLocaleString("id-ID")})</option>
+                      <option value="MBI">Gudang MBI ({metricsMbi.fakturCount.toLocaleString("id-ID")})</option>
+                      <option value="MAI">Gudang MAI ({metricsMai.fakturCount.toLocaleString("id-ID")})</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
+                      Fokus Retur / Double Invoice
+                    </label>
+                    <select
+                      value={specialFilter}
+                      onChange={(e) => setSpecialFilter(e.target.value as ExportSpecialFilter)}
+                      className={`w-full px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${inputCls}`}
+                    >
+                      <option value="all">Semua Faktur ({specialCounts.all.toLocaleString("id-ID")})</option>
+                      <option value="retur">Khusus Retur ({specialCounts.retur.toLocaleString("id-ID")})</option>
+                      <option value="double">Khusus Double INV ({specialCounts.double.toLocaleString("id-ID")})</option>
+                      <option value="retur_or_double">Retur &amp; Double INV ({specialCounts.returOrDouble.toLocaleString("id-ID")})</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Tanggal */}
+              <div className={`p-3.5 rounded-xl border space-y-2.5 ${boxCls}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold">2. Rentang Tanggal (Opsional)</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handlePresetAll}
+                      className={`px-2 py-1 rounded-md border text-xs font-semibold cursor-pointer ${
+                        !startDate && !endDate
+                          ? "bg-blue-600/15 border-blue-500/40 text-blue-700 dark:text-blue-300"
+                          : inputCls
+                      }`}
+                    >
+                      Semua
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePreset7Days}
+                      className={`px-2 py-1 rounded-md border text-xs font-semibold cursor-pointer ${inputCls}`}
+                    >
+                      7 Hari
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePresetThisMonth}
+                      className={`px-2 py-1 rounded-md border text-xs font-semibold cursor-pointer ${inputCls}`}
+                    >
+                      Bulan Ini
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
+                      Acuan Tanggal
+                    </label>
+                    <select
+                      value={dateBasis}
+                      onChange={(e) => setDateBasis(e.target.value as "order" | "transaction")}
+                      className={`w-full px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${inputCls}`}
+                    >
+                      <option value="order">Tanggal Order (SO)</option>
+                      <option value="transaction">Tanggal Faktur (Tx)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
+                      Dari Tanggal
+                    </label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className={`w-full px-2.5 py-1.5 rounded-lg border text-xs font-mono font-semibold ${inputCls}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
+                      Sampai Tanggal
+                    </label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className={`w-full px-2.5 py-1.5 rounded-lg border text-xs font-mono font-semibold ${inputCls}`}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Opsi Lanjutan & Kolom (Lipatan Rapi) */}
+              <div className={`rounded-xl border overflow-hidden ${boxCls}`}>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced((v) => !v)}
+                  className="w-full px-3.5 py-2.5 flex items-center justify-between text-xs font-bold cursor-pointer hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  <span>3. Opsi Lanjutan &amp; Pilih Kolom Excel ({selectedCols.size}/{ALL_EXPORT_COLUMNS.length} kolom)</span>
+                  {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+
+                {showAdvanced && (
+                  <div className="px-3.5 pb-3.5 pt-2 border-t border-zinc-200 dark:border-zinc-800 space-y-3">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Cari No Invoice, No SO, atau Nama Apotek (opsional)..."
+                      className={`w-full px-3 py-1.5 rounded-lg border text-xs font-medium ${inputCls}`}
+                    />
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as any)}
+                        className={`px-2 py-1.5 rounded-lg border text-xs font-semibold ${inputCls}`}
+                      >
+                        <option value="all">Semua Status Cetak</option>
+                        <option value="unprinted">Belum Terprint</option>
+                        <option value="printed">Sudah Terprint</option>
+                      </select>
+
+                      <select
+                        value={jenisFilter}
+                        onChange={(e) => setJenisFilter(e.target.value as any)}
+                        className={`px-2 py-1.5 rounded-lg border text-xs font-semibold ${inputCls}`}
+                      >
+                        <option value="all">Semua Jenis (DOO &amp; ORA)</option>
+                        <option value="DOO">DOO</option>
+                        <option value="ORA">ORA</option>
+                      </select>
+
+                      <select
+                        value={katFilter}
+                        onChange={(e) => setKatFilter(e.target.value as any)}
+                        className={`px-2 py-1.5 rounded-lg border text-xs font-semibold ${inputCls}`}
+                      >
+                        <option value="all">Semua Kategori</option>
+                        <option value="1P">1P</option>
+                        <option value="2P">2P</option>
+                        <option value="3P">3P</option>
+                      </select>
+
+                      <select
+                        value={dklkFilter}
+                        onChange={(e) => setDklkFilter(e.target.value as any)}
+                        className={`px-2 py-1.5 rounded-lg border text-xs font-semibold ${inputCls}`}
+                      >
+                        <option value="all">Semua Wilayah</option>
+                        <option value="DK">Dalam Kota (DK)</option>
+                        <option value="LK">Luar Kota (LK)</option>
+                      </select>
+
+                      <select
+                        value={klasFilter}
+                        onChange={(e) => setKlasFilter(e.target.value as any)}
+                        className={`px-2 py-1.5 rounded-lg border text-xs font-semibold ${inputCls}`}
+                      >
+                        <option value="all">Semua Produk</option>
+                        <option value="farma">FARMA</option>
+                        <option value="alkes">ALKES</option>
+                        <option value="ccp">CCP</option>
+                        <option value="prekursor">PREKURSOR</option>
+                        <option value="oot">OOT</option>
+                      </select>
+
+                      <select
+                        value={exportGranularity}
+                        onChange={(e) => setExportGranularity(e.target.value as ExportGranularity)}
+                        className={`px-2 py-1.5 rounded-lg border text-xs font-semibold ${inputCls}`}
+                      >
+                        <option value="summary">1 Baris = 1 Faktur</option>
+                        <option value="detail">1 Baris = 1 Barang</option>
+                      </select>
+                    </div>
+
+                    <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={splitSpecialSheets}
+                        onChange={(e) => setSplitSpecialSheets(e.target.checked)}
+                        className="accent-blue-600 rounded w-3.5 h-3.5 cursor-pointer"
+                      />
+                      <span>Pisahkan sheet &quot;Khusus Retur&quot; &amp; &quot;Khusus Double INV&quot; di dalam file</span>
+                    </label>
+
+                    <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold">Kolom Excel:</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCols(new Set(DEFAULT_SELECTED_COLS))}
+                          className="text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                        >
+                          Centang Semua
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        {ALL_EXPORT_COLUMNS.map((col) => {
+                          const checked = selectedCols.has(col.id);
+                          return (
+                            <label
+                              key={col.id}
+                              className={`flex items-center gap-1.5 px-2 py-1 rounded border text-xs cursor-pointer ${
+                                checked
+                                  ? "border-blue-500/35 bg-blue-500/10 font-semibold"
+                                  : isDarkMode
+                                  ? "border-zinc-800 text-zinc-400"
+                                  : "border-zinc-200 text-zinc-500"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleColumn(col.id)}
+                                className="accent-blue-600 rounded w-3.5 h-3.5"
+                              />
+                              <span className="truncate">{col.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Clean Single Footer */}
+        <div
+          className={`px-5 py-3 border-t flex flex-wrap items-center justify-between gap-3 ${
+            isDarkMode ? "bg-[#0c0c0f] border-zinc-800" : "bg-zinc-50 border-zinc-200"
+          }`}
+        >
+          {activeTab === "custom" ? (
+            <>
+              <div className="text-xs text-zinc-600 dark:text-zinc-300 flex flex-wrap items-center gap-2">
+                <span>
+                  Hasil: <strong className="font-mono text-zinc-900 dark:text-white">{activeMetrics.fakturCount.toLocaleString("id-ID")}</strong> faktur
+                </span>
+                <span className="text-zinc-400">·</span>
+                <span>
+                  Retur: <strong className="font-mono text-amber-700 dark:text-amber-400">{activeMetrics.returCount.toLocaleString("id-ID")}</strong>
+                </span>
+                <span className="text-zinc-400">·</span>
+                <span>
+                  Double: <strong className="font-mono text-rose-700 dark:text-rose-400">{activeMetrics.doubleCount.toLocaleString("id-ID")}</strong>
+                </span>
+                <span className="text-zinc-400">·</span>
+                <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                  Rp {formatRupiah(activeMetrics.totalRp)}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCustomDownload}
+                disabled={activeMetrics.fakturCount === 0}
+                className="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-45"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Unduh Excel ({activeMetrics.fakturCount.toLocaleString("id-ID")})</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                Klik salah satu kotak di atas untuk langsung mengunduh file Excel.
               </span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3.5 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 text-xs font-bold cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                Tutup
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

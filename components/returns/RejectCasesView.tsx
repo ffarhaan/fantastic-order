@@ -67,7 +67,7 @@ export default function RejectCasesView({ returns = [] }: RejectCasesViewProps) 
   }, [rejectCases, searchQuery]);
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-150">
+    <div className="space-y-5">
       {/* Top Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="p-4 rounded-2xl border border-rose-200 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-950/20 shadow-2xs space-y-1">
@@ -143,7 +143,7 @@ export default function RejectCasesView({ returns = [] }: RejectCasesViewProps) 
                 {/* Progress bar */}
                 <div className="w-full h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-rose-500 to-amber-500 rounded-full"
+                    className="h-full bg-rose-600 rounded-full"
                     style={{ width: `${Math.min(100, ot.pct * 3)}%` }}
                   />
                 </div>
@@ -175,7 +175,7 @@ export default function RejectCasesView({ returns = [] }: RejectCasesViewProps) 
           <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-zinc-100/80 dark:bg-zinc-800/80 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10 backdrop-blur-sm text-zinc-700 dark:text-zinc-300 font-bold">
+                <tr className="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10 text-zinc-700 dark:text-zinc-300 font-bold">
                   <th className="py-3 px-3">PBF</th>
                   <th className="py-3 px-3">No. Faktur</th>
                   <th className="py-3 px-3">Apotek / Outlet</th>

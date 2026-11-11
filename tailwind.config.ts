@@ -7,7 +7,12 @@ const config: Config = {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        sans: ["var(--font-ibm-plex-sans)", "system-ui", "-apple-system", "sans-serif"],
+        mono: ["var(--font-jetbrains-mono)", "Cascadia Mono", "Consolas", "monospace"],
+      },
+    },
   },
   plugins: [],
 };

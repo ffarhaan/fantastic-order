@@ -15,6 +15,30 @@ let lastArchiveSyncTs: Record<string, number> = {};
 let lastDoneSyncSig: Record<string, string> = {};
 let lastArchiveSyncSig: Record<string, string> = {};
 
+function getVersionedCacheHeaders(searchParams: URLSearchParams): Record<string, string> {
+  const isFreshReq = searchParams.get("fresh") === "true" || searchParams.has("_t");
+  if (isFreshReq) {
+    return {
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+      "CDN-Cache-Control": "no-store",
+      "Vercel-CDN-Cache-Control": "no-store",
+    };
+  }
+  const versionParam = (searchParams.get("_v") || "").trim();
+  if (versionParam && versionParam !== "0") {
+    return {
+      "Cache-Control": "public, max-age=15, stale-while-revalidate=30",
+      "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+      "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+    };
+  }
+  return {
+    "Cache-Control": "public, max-age=10, s-maxage=20, stale-while-revalidate=60",
+    "CDN-Cache-Control": "public, s-maxage=20, stale-while-revalidate=60",
+    "Vercel-CDN-Cache-Control": "public, s-maxage=20, stale-while-revalidate=60",
+  };
+}
+
 function compressedJsonResponse(
   req: Request,
   data: unknown,
@@ -996,28 +1020,18 @@ export async function GET(req: Request) {
 
       const dataSql = `
         SELECT 
-          sr.id, sr.pbf, sr.report_date, sr.month, sr.week, sr.so_no, sr.customer_name,
-          sr.invoice_no, sr.invoice_date, sr.product_name, sr.batch_no, sr.expiry_date,
-          sr.qty, sr.reason, sr.person, sr.root_cause, sr.note, sr.status,
-          sr.confirm, sr.action, sr.nota_retur_no, sr.resolved_date, sr.category, sr.created_at,
-          sr.video_url, sr.reject_reason, sr.reject_media_url, sr.inprogress_type,
-          CASE WHEN sr.photo_url IS NOT NULL AND CHAR_LENGTH(sr.photo_url) > 0 THEN 1 ELSE 0 END AS has_photo,
-          CASE WHEN sr.video_url IS NOT NULL AND CHAR_LENGTH(sr.video_url) > 0 THEN 1 ELSE 0 END AS has_video,
-          ${includePhoto ? "sr.photo_url" : "CASE WHEN CHAR_LENGTH(sr.photo_url) < 256 THEN sr.photo_url ELSE NULL END AS photo_url"},
-          COALESCE(
-            NULLIF(fa.order_date, ''),
-            NULLIF(fa.transaction_date, ''),
-            NULLIF(sr.invoice_date, '')
-          ) AS matched_invoice_date
-        FROM shipment_returns sr
-        LEFT JOIN (
-          SELECT no_faktur, MAX(order_date) as order_date, MAX(transaction_date) as transaction_date 
-          FROM fakturs_archive 
-          WHERE no_faktur != '' AND no_faktur IS NOT NULL
-          GROUP BY no_faktur
-        ) fa ON sr.invoice_no = fa.no_faktur
-        ${whereClause.replace(/\b(invoice_no|so_no|customer_name|product_name|reason|person|batch_no|expiry_date|root_cause|note|status|pbf|category|month|week|report_date|invoice_date|action|nota_retur_no|resolved_date|inprogress_type)\b/g, 'sr.$1')}
-        ORDER BY CASE WHEN sr.report_date IS NOT NULL AND sr.report_date != '' THEN sr.report_date ELSE '1970-01-01' END DESC, sr.id DESC 
+          id, pbf, report_date, month, week, so_no, customer_name,
+          invoice_no, invoice_date, product_name, batch_no, expiry_date,
+          qty, reason, person, root_cause, note, status,
+          confirm, action, nota_retur_no, resolved_date, category, created_at,
+          video_url, reject_reason, reject_media_url, inprogress_type,
+          CASE WHEN photo_url IS NOT NULL AND CHAR_LENGTH(photo_url) > 0 THEN 1 ELSE 0 END AS has_photo,
+          CASE WHEN video_url IS NOT NULL AND CHAR_LENGTH(video_url) > 0 THEN 1 ELSE 0 END AS has_video,
+          ${includePhoto ? "photo_url" : "CASE WHEN CHAR_LENGTH(photo_url) < 256 THEN photo_url ELSE NULL END AS photo_url"},
+          NULLIF(invoice_date, '') AS matched_invoice_date
+        FROM shipment_returns
+        ${whereClause}
+        ORDER BY CASE WHEN report_date IS NOT NULL AND report_date != '' THEN report_date ELSE '1970-01-01' END DESC, id DESC 
         LIMIT ? OFFSET ?
       `;
       const rows = await conn.execute(dataSql, [...params, limit, offset]);
@@ -1051,10 +1065,8 @@ export async function GET(req: Request) {
         FROM shipment_returns ${statsCondition};
       `, statsQueryParams)) as any[];
 
-      const isFreshReq = searchParams.get("fresh") === "true" || searchParams.has("_t");
-
       return compressedJsonResponse(
-        req, 
+        req,
         {
           success: true,
           total: Number(countResult?.total || 0),
@@ -1078,11 +1090,7 @@ export async function GET(req: Request) {
           limit,
           offset,
         },
-        {
-          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
-          "CDN-Cache-Control": "public, s-maxage=60",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=60",
-        }
+        getVersionedCacheHeaders(searchParams)
       );
     }
 
@@ -1511,11 +1519,7 @@ export async function GET(req: Request) {
         pbfComparison,
         selectedMonth: monthParam || "ALL",
         selectedWeek: weekParam || "ALL",
-      }, {
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
-        "CDN-Cache-Control": "public, s-maxage=60",
-        "Vercel-CDN-Cache-Control": "public, s-maxage=60",
-      });
+      }, getVersionedCacheHeaders(searchParams));
     }
 
     if (action === "fetch_all") {
@@ -2936,12 +2940,6 @@ export async function POST(req: Request) {
         return Response.json({ success: false, error: "Missing return id" }, { status: 400 });
       }
 
-      let existingRow: any = null;
-      try {
-        const rows = (await conn.execute("SELECT * FROM shipment_returns WHERE id = ? LIMIT 1", [id])) as any[];
-        existingRow = rows?.[0];
-      } catch {}
-
       await conn.execute(
         `UPDATE shipment_returns SET 
           pbf = COALESCE(?, pbf),
@@ -3000,37 +2998,13 @@ export async function POST(req: Request) {
         ]
       );
 
-      forwardToGSheetWebhook(conn, {
-        actionType: "update",
-        pbf: pbf ?? existingRow?.pbf,
-        namaApotek: customer_name ?? existingRow?.customer_name,
-        invoiceNo: invoice_no ?? existingRow?.invoice_no,
-        soNo: so_no ?? existingRow?.so_no,
-        productName: product_name ?? existingRow?.product_name,
-        qty: qty ?? existingRow?.qty,
-        batchNo: batch_no ?? existingRow?.batch_no,
-        expiryDate: expiry_date ?? existingRow?.expiry_date,
-        reason: reason ?? existingRow?.reason,
-        invoiceDate: invoice_date ?? existingRow?.invoice_date,
-        reportDate: report_date ?? existingRow?.report_date,
-        category: category ?? existingRow?.category,
-        confirm: confirm ?? existingRow?.confirm,
-        action: returnAction ?? existingRow?.action,
-        notaReturNo: nota_retur_no ?? existingRow?.nota_retur_no,
-        resolvedDate: resolved_date ?? existingRow?.resolved_date,
-        status: status ?? existingRow?.status,
-        note: note ?? existingRow?.note,
-        person: person ?? existingRow?.person,
-        rootCause: root_cause ?? existingRow?.root_cause,
-      });
-
       // Automatically persist to activity_logs
       try {
         const actorName = body.user_name || "Admin";
         const actorEmail = body.user_email || "";
         const isResolved = status === "Resolved";
         const actType = isResolved ? "RESOLVE_RETURN" : "UPDATE_RETURN";
-        const actDetails = `${isResolved ? "Menyelesaikan (Resolve)" : "Mengubah"} komplain #${id} (Faktur #${invoice_no || existingRow?.invoice_no || "-"})`;
+        const actDetails = `${isResolved ? "Menyelesaikan (Resolve)" : "Mengubah"} komplain #${id} (Faktur #${invoice_no || "-"})`;
 
         await conn.execute(
           `INSERT INTO activity_logs (user_name, user_email, action_type, module, target_id, details, metadata)
@@ -3042,7 +3016,7 @@ export async function POST(req: Request) {
             "SHIPMENT_ERROR",
             String(id),
             actDetails,
-            JSON.stringify({ id, invoice_no: invoice_no || existingRow?.invoice_no, status, action: returnAction }),
+            JSON.stringify({ id, invoice_no: invoice_no || null, status, action: returnAction }),
           ]
         );
       } catch (logErr) {

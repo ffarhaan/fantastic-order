@@ -255,7 +255,7 @@ export default function WeeklyQc2View({
   }, [selectedWeekCases]);
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-150">
+    <div className="space-y-5">
       {/* Header Cards: QC2 Milestones Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xs space-y-1">
@@ -428,7 +428,7 @@ export default function WeeklyQc2View({
         <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-zinc-100/80 dark:bg-zinc-800/80 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10 backdrop-blur-sm text-zinc-700 dark:text-zinc-300 font-bold">
+              <tr className="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10 text-zinc-700 dark:text-zinc-300 font-bold">
                 <th className="py-3 px-3">Minggu</th>
                 <th className="py-3 px-3">Total Faktur</th>
                 <th className="py-3 px-3 text-red-600 dark:text-red-400">Kasus MAI</th>
@@ -519,11 +519,11 @@ export default function WeeklyQc2View({
       {selectedWeek !== null && (
         <div
           onClick={() => setSelectedWeek(null)}
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-4xl max-h-[90vh] rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+            className="w-full max-w-4xl max-h-[90vh] rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden"
           >
             {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50 dark:bg-zinc-950/50">

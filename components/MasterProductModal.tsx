@@ -90,7 +90,7 @@ export default function MasterProductModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75">
       <div className={`border rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden transition-colors ${
         isDarkMode ? "bg-[#0e1628] border-slate-700/80 text-slate-100 shadow-black/60" : "bg-white border-slate-200 text-slate-800"
       }`}>
@@ -99,7 +99,7 @@ export default function MasterProductModal({
           isDarkMode ? "bg-[#142038] border-slate-700/80" : "bg-slate-50 border-slate-200"
         }`}>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-600 text-white flex items-center justify-center font-bold text-base shadow-sm">
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-base shadow-sm">
               💊
             </div>
             <div>

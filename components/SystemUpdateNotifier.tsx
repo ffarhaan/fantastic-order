@@ -112,10 +112,10 @@ export default function SystemUpdateNotifier() {
     return (
       <button
         onClick={() => setIsDismissed(false)}
-        className="fixed bottom-5 right-5 z-[9999] flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all text-xs font-bold animate-bounce border border-blue-400/40"
+        className="fixed bottom-5 right-5 z-[9999] flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-xl transition-colors text-xs font-bold border border-blue-400/40"
         title="Klik untuk membuka notifikasi pembaruan sistem"
       >
-        <Sparkles className="w-4 h-4 text-amber-300 animate-spin" />
+        <Sparkles className="w-4 h-4 text-amber-300" />
         <span>Update Tersedia! Klik untuk Refresh</span>
       </button>
     );
@@ -123,23 +123,22 @@ export default function SystemUpdateNotifier() {
 
   // Full prominent notification modal/card
   return (
-    <div className="fixed inset-x-0 top-4 z-[9999] flex justify-center px-4 pointer-events-none animate-in fade-in slide-in-from-top-6 duration-300">
-      <div className="pointer-events-auto max-w-xl w-full bg-slate-900/95 dark:bg-zinc-950/95 text-white backdrop-blur-xl border-2 border-blue-500/80 rounded-2xl shadow-[0_20px_50px_rgba(37,99,235,0.35)] overflow-hidden">
+    <div className="fixed inset-x-0 top-4 z-[9999] flex justify-center px-4 pointer-events-none">
+      <div className="pointer-events-auto max-w-xl w-full bg-zinc-950 text-white border border-blue-500/70 rounded-2xl shadow-2xl overflow-hidden">
         {/* Progress bar countdown */}
         {!isAutoReloadPaused && (
           <div className="w-full bg-slate-800 h-1">
             <div
-              className="bg-gradient-to-r from-blue-400 to-cyan-400 h-1 transition-all duration-1000 ease-linear"
+              className="bg-blue-500 h-1 transition-all duration-1000 ease-linear"
               style={{ width: `${(countdown / 15) * 100}%` }}
             />
           </div>
         )}
 
         <div className="p-4 sm:p-5 flex items-start gap-4">
-          {/* Animated Icon */}
+          {/* Status Icon */}
           <div className="p-3 bg-blue-600/20 border border-blue-500/40 rounded-xl text-blue-400 shrink-0 relative">
-            <BellRing className="w-6 h-6 animate-pulse" />
-            <span className="absolute -top-1 -right-1 w-3 h-3 bg-cyan-400 rounded-full animate-ping" />
+            <BellRing className="w-6 h-6" />
           </div>
 
           {/* Text Content */}
@@ -173,7 +172,7 @@ export default function SystemUpdateNotifier() {
             <div className="flex flex-wrap items-center gap-2.5 mt-3 pt-2 border-t border-zinc-800/80">
               <button
                 onClick={handleRefresh}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/30 transition cursor-pointer"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                 <span>
@@ -184,14 +183,14 @@ export default function SystemUpdateNotifier() {
               {!isAutoReloadPaused ? (
                 <button
                   onClick={() => setIsAutoReloadPaused(true)}
-                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-zinc-300 text-xs font-medium rounded-lg transition cursor-pointer"
+                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium rounded-lg transition-colors cursor-pointer"
                 >
                   Jeda Auto-Refresh
                 </button>
               ) : (
                 <button
                   onClick={handleDismiss}
-                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-zinc-300 text-xs font-medium rounded-lg transition cursor-pointer"
+                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium rounded-lg transition-colors cursor-pointer"
                 >
                   Nanti Saja
                 </button>

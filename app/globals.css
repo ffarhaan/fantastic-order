@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  body {
+    font-feature-settings: "cv05" 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+}
+
 @layer utilities {
   /* Hide scrollbar for Chrome, Safari and Opera */
   .no-scrollbar::-webkit-scrollbar {

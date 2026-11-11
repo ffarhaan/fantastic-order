@@ -416,8 +416,8 @@ export default function LoginModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/90 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
-      <div className="relative w-full max-w-4xl bg-[#0b0c13] text-zinc-100 rounded-3xl border border-zinc-800 shadow-2xl overflow-hidden flex flex-col md:flex-row my-auto will-change-transform">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/90 overflow-y-auto">
+      <div className="relative w-full max-w-4xl bg-[#0b0c13] text-zinc-100 rounded-3xl border border-zinc-800 shadow-2xl overflow-hidden flex flex-col md:flex-row my-auto">
         
         {/* Optional Close Button if user is already authenticated */}
         {currentUser && onClose && (
@@ -434,11 +434,7 @@ export default function LoginModal({
         {/* ========================================================= */}
         {/* SISI KIRI (SAMBUTAN RESMI & LIVE CLOCK)                   */}
         {/* ========================================================= */}
-        <div className="md:w-1/2 p-6 sm:p-8 md:p-10 bg-gradient-to-br from-[#0c0e1a] via-[#080913] to-[#04050a] border-b md:border-b-0 md:border-r border-zinc-800/80 flex flex-col justify-between relative overflow-hidden">
-          {/* Ambient decorative glowing orbs */}
-          <div className="absolute -top-20 -left-20 w-64 h-64 bg-blue-600/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-indigo-600/10 rounded-full blur-2xl pointer-events-none" />
-
+        <div className="md:w-1/2 p-6 sm:p-8 md:p-10 bg-[#080910] border-b md:border-b-0 md:border-r border-zinc-800/80 flex flex-col justify-between relative overflow-hidden">
           <div className="relative z-10 my-auto py-2">
             <span className="inline-block text-xs font-extrabold uppercase tracking-[0.2em] text-blue-400 mb-2">
               Selamat Datang di
@@ -460,7 +456,7 @@ export default function LoginModal({
 
               <div className="flex flex-col items-end gap-1">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                   <span>Server Online</span>
                 </span>
                 <span className="text-[10px] text-zinc-500">Cloud Sync Aktif</span>
@@ -515,13 +511,13 @@ export default function LoginModal({
 
             {/* Error & Success Alerts */}
             {errorMessage && (
-              <div className="mb-3.5 p-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs flex items-center gap-2 animate-in fade-in">
+              <div className="mb-3.5 p-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
                 <span>{errorMessage}</span>
               </div>
             )}
             {successMessage && (
-              <div className="mb-3.5 p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs flex items-center gap-2 animate-in fade-in">
+              <div className="mb-3.5 p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
                 <span>{successMessage}</span>
               </div>
@@ -591,7 +587,7 @@ export default function LoginModal({
                 <button
                   type="submit"
                   disabled={isVerifying}
-                  className="w-full py-3 px-4 text-xs font-extrabold rounded-xl text-white shadow-lg shadow-blue-600/25 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3 px-4 text-xs font-extrabold rounded-xl text-white shadow-sm bg-blue-600 hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isVerifying ? (
                     <>
@@ -683,7 +679,7 @@ export default function LoginModal({
                 <button
                   type="submit"
                   disabled={isVerifying}
-                  className="w-full mt-1 py-2.5 px-4 text-xs font-extrabold rounded-xl text-white shadow-lg shadow-emerald-600/25 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full mt-1 py-2.5 px-4 text-xs font-extrabold rounded-xl text-white shadow-sm bg-emerald-600 hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isVerifying ? (
                     <>
@@ -702,10 +698,10 @@ export default function LoginModal({
               /* ======================================================== */
               /* TAB 2, STEP 2: MENUNGGU ACC ADMIN SEBELUM OTP DIKIRIM    */
               /* ======================================================== */
-              <div className="space-y-4 animate-in fade-in duration-200">
+              <div className="space-y-4">
                 <div className="p-5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-center space-y-2">
                   <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center">
-                    <Clock className="w-5 h-5 animate-pulse" />
+                    <Clock className="w-5 h-5" />
                   </div>
                   <h4 className="text-sm font-extrabold text-white">
                     Menunggu Persetujuan (ACC) Admin
@@ -754,7 +750,7 @@ export default function LoginModal({
               /* ======================================================== */
               /* TAB 2, STEP 3: INPUT KODE OTP (SETELAH DI-ACC ADMIN)     */
               /* ======================================================== */
-              <form onSubmit={handleVerifyOtp} className="space-y-3.5 animate-in fade-in duration-200">
+              <form onSubmit={handleVerifyOtp} className="space-y-3.5">
                 <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-center">
                   <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 mx-auto flex items-center justify-center mb-1.5">
                     <Mail className="w-4 h-4" />
@@ -790,7 +786,7 @@ export default function LoginModal({
                 <button
                   type="submit"
                   disabled={isVerifying || regOtp.length < 6}
-                  className="w-full py-2.5 px-4 text-xs font-extrabold rounded-xl text-white shadow-lg shadow-emerald-600/25 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full py-2.5 px-4 text-xs font-extrabold rounded-xl text-white shadow-sm bg-emerald-600 hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isVerifying ? (
                     <>

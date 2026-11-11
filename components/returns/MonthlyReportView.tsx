@@ -183,7 +183,7 @@ export default function MonthlyReportView({
   }, [returns, records]);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-6">
       {/* ─── 1. GRID MONTHLY CARDS (MAI RED & MBI BLUE) ─── */}
       <div className="space-y-4">
         {/* MAI ROW */}

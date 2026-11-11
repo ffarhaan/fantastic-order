@@ -63,7 +63,7 @@ export default function ChangePasswordModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/70 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/70">
       <div
         className={`w-full max-w-sm rounded-xl p-4 shadow-xl border transition-all ${
           isDarkMode
@@ -177,7 +177,7 @@ export default function ChangePasswordModal({
               className={`flex-1 py-1.5 text-xs font-bold rounded-lg text-white shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer ${
                 loading
                   ? "opacity-60 cursor-not-allowed bg-slate-500"
-                  : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 text-white shadow-blue-500/20"
+                  : "bg-blue-600 hover:bg-blue-700 text-white"
               }`}
             >
               <span>{loading ? "Menyimpan..." : "Simpan Password Baru"}</span>

@@ -286,7 +286,7 @@ export default function AccountApprovalModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 overflow-y-auto">
       <div
         className={`relative w-full max-w-3xl rounded-3xl border shadow-2xl overflow-hidden my-auto flex flex-col max-h-[90vh] ${
           isDarkMode
@@ -301,7 +301,7 @@ export default function AccountApprovalModal({
           }`}
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-amber-500/20">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500 flex items-center justify-center text-black shadow-sm">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
@@ -369,7 +369,7 @@ export default function AccountApprovalModal({
             <Sliders className="w-4 h-4" />
             <span>Persetujuan &amp; Hak Akses</span>
             {pendingProfiles.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-black font-black animate-pulse">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-black font-black">
                 {pendingProfiles.length} Baru
               </span>
             )}
@@ -485,7 +485,7 @@ export default function AccountApprovalModal({
                             <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 ${
                               isSelf
                                 ? "bg-amber-500 text-black shadow-sm"
-                                : "bg-gradient-to-tr from-indigo-500 to-purple-600 text-white shadow-sm"
+                                : "bg-blue-600 text-white shadow-sm"
                             }`}>
                               {acc.displayName.charAt(0).toUpperCase()}
                             </div>
@@ -1012,7 +1012,7 @@ export default function AccountApprovalModal({
 
         {/* Modal: Quick Edit Password (Inline dialog for Farhan) */}
         {editingUser && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/75">
             <div
               className={`w-full max-w-sm rounded-2xl border p-5 shadow-2xl ${
                 isDarkMode

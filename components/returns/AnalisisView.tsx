@@ -945,7 +945,7 @@ export default function AnalisisView({
     reasonScope !== "ALL";
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-6">
       {/* =========================================
           FILTER BAR: PER BULAN, PER WEEK (3 MINGGU), STATUS & 4 KENDALA FISIK UTAMA
       ========================================= */}
@@ -1149,7 +1149,7 @@ export default function AnalisisView({
               onClick={() => setReasonScope("PRIMARY_4")}
               className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
                 reasonScope === "PRIMARY_4"
-                  ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500 shadow-md shadow-emerald-500/25"
+                  ? "bg-emerald-600 text-white border-emerald-500 shadow-sm"
                   : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
               }`}
               title="Filter otomatis gabungan 4 Kendala Fisik Utama: Kurang, Lebih, Salah, Tidak Ada"
@@ -1618,12 +1618,12 @@ export default function AnalisisView({
           MODAL DRILL-DOWN: BUKTI & DAFTAR RINCIAN KASUS RIIL DATABASE (100% TRANSPARAN)
       ========================================= */}
       {drillDownModal.isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#0c101d] border border-zinc-200 dark:border-slate-800 rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-6">
+          <div className="bg-white dark:bg-[#0c101d] border border-zinc-200 dark:border-slate-800 rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
             {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-zinc-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-zinc-50/50 dark:bg-slate-950/60">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black shrink-0 border border-indigo-200 dark:border-indigo-800">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black shrink-0 border border-blue-200 dark:border-blue-800">
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
@@ -1852,7 +1852,7 @@ export default function AnalisisView({
       {/* MEDIA PREVIEW MODAL */}
       {previewMedia && (
         <div
-          className="fixed inset-0 z-60 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-60 bg-black/85 flex items-center justify-center p-4"
           onClick={() => setPreviewMedia(null)}
         >
           <div

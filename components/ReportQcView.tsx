@@ -240,7 +240,7 @@ const ReportQcRow = React.memo(
                   e.stopPropagation();
                   onMarkDone(row.so_number);
                 }}
-                className="rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold px-3.5 py-1 text-xs shadow-md shadow-emerald-950 flex items-center gap-1.5 transition-all cursor-pointer"
+                className="rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-1 text-xs shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
                 title="Tandai Selesai Diproses oleh Admin (Shortcut: Spasi)"
               >
                 <span>✓</span>
@@ -1360,7 +1360,7 @@ export default function ReportQcView({
           {onOpenAnnouncement && (
             <button
               onClick={onOpenAnnouncement}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/25 transition active:scale-95 cursor-pointer ml-1"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-500/15 text-blue-300 border border-blue-500/30 hover:bg-blue-500/25 transition-colors cursor-pointer ml-1"
               title="Buka Update Penting & How to Use Report QC"
             >
               <span>🚨</span>
@@ -1372,7 +1372,7 @@ export default function ReportQcView({
             className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 ml-1"
             title="Koneksi Real-time ke DO Checker Aktif (<100ms)"
           >
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
             <span>DO Checker Live</span>
           </span>
         </div>
@@ -1383,7 +1383,7 @@ export default function ReportQcView({
           {mainFilter === "queue" && queueCount > 0 && subTab === "rekap" && (
             <button
               onClick={handleMarkAllDone}
-              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-950/40 flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
               title="Tandai semua SO di halaman ini sebagai DONE (Shortcut: Ctrl+Enter / Shift+Enter)"
             >
               <span>✓✓</span>

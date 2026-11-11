@@ -717,8 +717,8 @@ export default function WeeklyReportView({
 
       {/* Week Detail Modal */}
       {modalWeekData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-zinc-200 dark:border-slate-800 max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-zinc-200 dark:border-slate-800 max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden">
             {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-zinc-200 dark:border-slate-800 flex items-center justify-between">
               <div>

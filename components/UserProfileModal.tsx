@@ -132,9 +132,9 @@ export default function UserProfileModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 overflow-y-auto">
       <div
-        className={`relative w-full max-w-md rounded-3xl border shadow-2xl overflow-hidden my-auto transition-all ${
+        className={`relative w-full max-w-md rounded-3xl border shadow-2xl overflow-hidden my-auto ${
           isDarkMode
             ? "bg-[#0b0c13] border-zinc-800 text-zinc-100 shadow-black/80"
             : "bg-white border-zinc-200 text-zinc-900 shadow-xl"
@@ -147,7 +147,7 @@ export default function UserProfileModal({
           }`}
         >
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-sm font-bold text-xs">
+            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-sm font-bold text-xs">
               {userName.charAt(0).toUpperCase()}
             </div>
             <div>
@@ -258,12 +258,12 @@ export default function UserProfileModal({
           <div
             className={`p-4 rounded-2xl border ${
               isDarkMode
-                ? "bg-gradient-to-br from-indigo-950/20 via-zinc-900/60 to-purple-950/20 border-indigo-500/30"
-                : "bg-gradient-to-br from-indigo-50 via-white to-purple-50 border-indigo-200"
+                ? "bg-blue-950/20 border-blue-500/30"
+                : "bg-blue-50/70 border-blue-200"
             }`}
           >
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5 text-xs font-extrabold text-indigo-400">
+              <div className="flex items-center gap-1.5 text-xs font-extrabold text-blue-500 dark:text-blue-400">
                 <KeyRound className="w-4 h-4" />
                 <span>Password Akun Anda</span>
               </div>

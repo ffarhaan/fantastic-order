@@ -11,16 +11,16 @@ export default function QcAnnouncementModal({ isOpen, onClose }: QcAnnouncementM
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-[#0c1222] border-2 border-indigo-500/80 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75">
+      <div className="bg-white dark:bg-[#0c1222] border border-blue-500/60 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="p-4 bg-gradient-to-r from-indigo-900/40 via-blue-900/30 to-purple-900/30 border-b border-indigo-500/30 flex items-center justify-between">
+        <div className="p-4 bg-blue-950/25 border-b border-blue-500/25 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <span className="text-xl">🚨</span>
             <div>
               <h3 className="text-sm font-black text-zinc-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                 <span>Update Penting Tracker</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500 text-white animate-pulse">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-600 text-white">
                   Wajib Baca
                 </span>
               </h3>
@@ -131,7 +131,7 @@ export default function QcAnnouncementModal({ isOpen, onClose }: QcAnnouncementM
           <button
             type="button"
             onClick={onClose}
-            className="w-full py-2.5 px-4 rounded-xl font-black text-xs text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-4 rounded-xl font-black text-xs text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
           >
             <span>Siap, Mengerti &amp; Terapkan ➔</span>
           </button>

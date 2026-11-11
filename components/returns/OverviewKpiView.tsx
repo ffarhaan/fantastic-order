@@ -151,7 +151,7 @@ export default function OverviewKpiView({
   }, [returns, records]);
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-150">
+    <div className="space-y-5">
       {/* Top 6 Metric Cards matching Apps Script layout */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {/* Card 1: TOTAL CASES MAI */}
@@ -277,7 +277,7 @@ export default function OverviewKpiView({
                 </div>
                 <div className="w-full h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full"
+                    className="h-full bg-blue-600 rounded-full"
                     style={{ width: `${Math.min(100, rc.pct)}%` }}
                   />
                 </div>
@@ -310,7 +310,7 @@ export default function OverviewKpiView({
                 </div>
                 <div className="w-full h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-blue-500 to-teal-500 rounded-full"
+                    className="h-full bg-emerald-600 rounded-full"
                     style={{ width: `${Math.min(100, rz.pct)}%` }}
                   />
                 </div>

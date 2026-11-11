@@ -63,7 +63,7 @@ export default function DatabaseStatsModal({
   const storage = stats?.storage || {};
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70">
       <div
         className={`relative w-full max-w-lg rounded-2xl border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] ${
           isDarkMode ? "bg-[#0b101b] border-slate-800 text-white" : "bg-white border-zinc-200 text-zinc-900"
@@ -74,7 +74,7 @@ export default function DatabaseStatsModal({
           isDarkMode ? "border-slate-800 bg-slate-900/50" : "border-zinc-100 bg-zinc-50"
         }`}>
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-sm">
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-sm">
               <Database className="w-5 h-5" />
             </div>
             <div>
@@ -123,7 +123,7 @@ export default function DatabaseStatsModal({
             {/* Progress Bar */}
             <div className="w-full bg-zinc-200 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden mb-2">
               <div
-                className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full transition-all duration-500 rounded-full"
+                className="bg-emerald-500 h-full transition-all duration-300 rounded-full"
                 style={{ width: `${Math.max(1, storage.percentage || 1)}%` }}
               />
             </div>

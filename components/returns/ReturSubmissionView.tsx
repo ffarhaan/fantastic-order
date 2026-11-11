@@ -482,7 +482,7 @@ export default function ReturSubmissionView({
               {summary.total}
             </span>
             {summary.pending > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black bg-amber-500 text-white animate-pulse">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black bg-amber-500 text-white">
                 {summary.pending} Pending
               </span>
             )}
@@ -587,7 +587,7 @@ export default function ReturSubmissionView({
             <div className="overflow-x-auto max-h-[640px] overflow-y-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-zinc-100/80 dark:bg-zinc-800/80 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10 backdrop-blur-sm text-zinc-700 dark:text-zinc-300 font-bold">
+                  <tr className="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10 text-zinc-700 dark:text-zinc-300 font-bold">
                     <th className="py-3 px-3">ID Retur</th>
                     <th className="py-3 px-3">Tgl Pengajuan</th>
                     <th className="py-3 px-3">PBF</th>
@@ -783,14 +783,14 @@ export default function ReturSubmissionView({
             </div>
 
             {submitSuccessMsg && (
-              <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+              <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-semibold flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                 <span>{submitSuccessMsg}</span>
               </div>
             )}
 
             {submitErrMsg && (
-              <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+              <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
                 <span>{submitErrMsg}</span>
               </div>
@@ -1095,7 +1095,7 @@ export default function ReturSubmissionView({
       {lightboxImg && (
         <div
           onClick={() => setLightboxImg(null)}
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in"
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
         >
           <button
             type="button"
@@ -1118,11 +1118,11 @@ export default function ReturSubmissionView({
       {selectedItem && (
         <div
           onClick={() => setSelectedItem(null)}
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+            className="w-full max-w-lg rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden"
           >
             <div className="p-5 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50 dark:bg-zinc-950/50">
               <div>
@@ -1196,7 +1196,7 @@ export default function ReturSubmissionView({
                         key={i}
                         type="button"
                         onClick={() => setLightboxImg(imgUrl)}
-                        className="w-16 h-16 rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:scale-105 transition-transform"
+                        className="w-16 h-16 rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 cursor-pointer"
                       >
                         <img src={imgUrl} alt="Foto" className="w-full h-full object-cover" />
                       </button>

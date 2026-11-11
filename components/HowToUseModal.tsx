@@ -55,7 +55,7 @@ export default function HowToUseModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/80 backdrop-blur-xs animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/80">
       <div
         className={`border rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden transition-colors ${
           isDark
@@ -70,7 +70,7 @@ export default function HowToUseModal({
           }`}
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-base shadow-sm">
+            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-base shadow-sm">
               <BookOpen className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -144,7 +144,7 @@ export default function HowToUseModal({
         }`}>
           {/* TAB 1: ALUR UTAMA (QUICK START) */}
           {activeTab === "quick" && (
-            <div className="space-y-4 animate-in fade-in duration-150">
+            <div className="space-y-4">
               <div className={`p-4 rounded-xl border ${
                 isDark
                   ? "bg-blue-950/40 border-blue-800/80 text-blue-200"
@@ -225,7 +225,7 @@ export default function HowToUseModal({
 
           {/* TAB 2: DAFTAR FAKTUR */}
           {activeTab === "workspace" && (
-            <div className="space-y-4 animate-in fade-in duration-150">
+            <div className="space-y-4">
               {/* Highlight Box: DOO vs ORA & Strict Key Isolation */}
               <div className={`p-4 rounded-xl border shadow-sm ${
                 isDark ? "bg-[#142038] border-slate-700" : "bg-white border-blue-200 shadow-blue-50/50"
@@ -368,7 +368,7 @@ export default function HowToUseModal({
 
           {/* TAB 3: SHIPMENT ERROR */}
           {activeTab === "returns" && (
-            <div className="space-y-4 animate-in fade-in duration-150">
+            <div className="space-y-4">
               {/* Header Box */}
               <div className={`p-4 rounded-xl border ${
                 isDark
@@ -591,7 +591,7 @@ export default function HowToUseModal({
 
           {/* TAB 4: MASTER APOTEK */}
           {activeTab === "apotek" && (
-            <div className="space-y-4 animate-in fade-in duration-150">
+            <div className="space-y-4">
               <div className={`p-4 rounded-xl border shadow-xs ${
                 isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
               }`}>
@@ -638,7 +638,7 @@ export default function HowToUseModal({
 
           {/* TAB 5: MASTER PRODUK */}
           {activeTab === "produk" && (
-            <div className="space-y-4 animate-in fade-in duration-150">
+            <div className="space-y-4">
               <div className={`p-4 rounded-xl border shadow-xs ${
                 isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
               }`}>
@@ -670,7 +670,7 @@ export default function HowToUseModal({
 
           {/* TAB 6: SHORTCUTS KEYBOARD */}
           {activeTab === "shortcuts" && (
-            <div className="space-y-4 animate-in fade-in duration-150">
+            <div className="space-y-4">
               <div className={`p-4 rounded-xl border shadow-xs ${
                 isDark ? "bg-[#142038] border-slate-700" : "bg-white border-slate-200"
               }`}>
@@ -746,7 +746,7 @@ export default function HowToUseModal({
                   if (onAcknowledgeWorkflow) onAcknowledgeWorkflow();
                   onClose();
                 }}
-                className="px-4 py-1.5 rounded-xl font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-1.5 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>Paham, Mulai Bekerja ✓</span>

@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { ShipmentReturnRecord, FakturRecord } from "@/lib/types";
 import { broadcastRealtimeSignal, subscribeToRealtimeSignal, isSuperAdminUser, broadcastNewComplaint } from "@/lib/firestoreService";
-import { parsePersonNames, OFFICIAL_MBI_PERSONNEL } from "@/lib/personnelUtils";
+import { parsePersonNames } from "@/lib/personnelUtils";
 import { AppUser } from "@/components/LoginModal";
-import { recordActivityLog } from "@/lib/activityLogger";
+import ReturnsAccordionEditor, { ReturnEditFormState, buildReturnEditFormState } from "./returns/ReturnsAccordionEditor";
 import {
   AlertCircle,
   AlertTriangle,
@@ -172,6 +172,51 @@ let cachedReturnsData: ShipmentReturnRecord[] | null = null;
 let cachedTotalCount: number = 0;
 let cachedReturnsStats: any = null;
 let cachedAllReturnsData: ShipmentReturnRecord[] | null = null;
+let cachedRealtimeVersion: number = 0;
+let cachedDataVersion: number = 0;
+
+function classifyReturnStatus(status?: string | null, inprogressType?: string | null) {
+  const st = (status || "").trim().toLowerCase();
+  if (st === "resolved" || st.includes("selesai")) return { bucket: "resolved" as const, isOp: false };
+  if (st === "rejected" || st.includes("reject") || st.includes("tolak")) return { bucket: "rejected" as const, isOp: false };
+  if (st.includes("in progress")) return { bucket: "in_progress" as const, isOp: inprogressType === "Operasional" };
+  return { bucket: "pending" as const, isOp: false };
+}
+
+function applyStatsStatusTransition(
+  prev: any,
+  oldStatus?: string | null,
+  oldType?: string | null,
+  newStatus?: string | null,
+  newType?: string | null
+) {
+  if (!prev) return prev;
+  const from = classifyReturnStatus(oldStatus, oldType);
+  const to = classifyReturnStatus(newStatus, newType);
+  if (from.bucket === to.bucket && (from.bucket !== "in_progress" || from.isOp === to.isOp)) {
+    return prev;
+  }
+  const next = { ...prev };
+  if (from.bucket === "pending") next.totalPending = Math.max(0, (Number(next.totalPending) || 0) - 1);
+  else if (from.bucket === "resolved") next.totalResolved = Math.max(0, (Number(next.totalResolved) || 0) - 1);
+  else if (from.bucket === "rejected") next.totalReject = Math.max(0, (Number(next.totalReject) || 0) - 1);
+  else if (from.bucket === "in_progress") {
+    next.totalInProgress = Math.max(0, (Number(next.totalInProgress) || 0) - 1);
+    if (from.isOp) next.totalInProgressOperasional = Math.max(0, (Number(next.totalInProgressOperasional) || 0) - 1);
+    else next.totalInProgressKlaim = Math.max(0, (Number(next.totalInProgressKlaim) || 0) - 1);
+  }
+
+  if (to.bucket === "pending") next.totalPending = (Number(next.totalPending) || 0) + 1;
+  else if (to.bucket === "resolved") next.totalResolved = (Number(next.totalResolved) || 0) + 1;
+  else if (to.bucket === "rejected") next.totalReject = (Number(next.totalReject) || 0) + 1;
+  else if (to.bucket === "in_progress") {
+    next.totalInProgress = (Number(next.totalInProgress) || 0) + 1;
+    if (to.isOp) next.totalInProgressOperasional = (Number(next.totalInProgressOperasional) || 0) + 1;
+    else next.totalInProgressKlaim = (Number(next.totalInProgressKlaim) || 0) + 1;
+  }
+  cachedReturnsStats = next;
+  return next;
+}
 
 export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records, currentUser }: ReturnsViewProps) {
   const [returns, setReturns] = useState<ShipmentReturnRecord[]>(() => cachedReturnsData || []);
@@ -384,9 +429,34 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     } catch {}
   };
 
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobileViewport(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  const realtimeVersionRef = useRef<number>(cachedRealtimeVersion);
+  const ownMutationUntilRef = useRef<number>(0);
+  const pendingSignalRefreshRef = useRef<boolean>(false);
+  const lastPersonnelSigRef = useRef<string>("");
+
+  const markOwnMutation = useCallback((broadcastTs?: number | void) => {
+    ownMutationUntilRef.current = Date.now() + 4500;
+    cachedAllReturnsData = null;
+    lastPersonnelSigRef.current = "";
+    if (typeof broadcastTs === "number" && broadcastTs > 0) {
+      realtimeVersionRef.current = Math.max(realtimeVersionRef.current, broadcastTs);
+      cachedRealtimeVersion = realtimeVersionRef.current;
+      cachedDataVersion = realtimeVersionRef.current;
+    }
+  }, []);
+
   // Master Customer & Apotek suggestions
   const [masterCustNames, setMasterCustNames] = useState<string[]>([]);
-  const [showEditCustomerSuggestions, setShowEditCustomerSuggestions] = useState(false);
   const [showAddCustomerSuggestions, setShowAddCustomerSuggestions] = useState(false);
 
   useEffect(() => {
@@ -420,10 +490,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     if (records && records.length > 0) {
       for (const r of records) addClean(r.customerName);
     }
-    for (const r of returns) addClean(r.customer_name);
 
     return list.sort((a, b) => a.localeCompare(b));
-  }, [masterCustNames, records, returns]);
+  }, [masterCustNames, records]);
 
   // Tab & Analytics State
   const [activeTab, setActiveTab] = useState<
@@ -541,7 +610,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const resolvedCasesCount = stats.totalResolved !== undefined ? Number(stats.totalResolved) : statusMetrics.resolved;
   const rejectedCasesCount = stats.totalReject !== undefined ? Number(stats.totalReject) : statusMetrics.rejected;
 
-  // Fetch all returns for analytic tabs (prioritizes memory cache, backed by Edge CDN)
+  // Fetch all returns for analytic tabs (prioritizes memory cache, backed by Versioned Edge CDN)
   const fetchAllReturns = useCallback(async (forceFresh = false) => {
     // If not forcing fresh and we already have cached data in memory, prioritize instant memory read (<1ms)
     if (!forceFresh && cachedAllReturnsData && cachedAllReturnsData.length > 0) {
@@ -549,8 +618,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       return;
     }
     try {
-      const url = `/api/tidb?action=returns&limit=5000`;
-      const res = await fetch(url);
+      const q = new URLSearchParams({ action: "returns", limit: "5000" });
+      if (forceFresh) {
+        q.set("fresh", "true");
+        q.set("_t", String(Date.now()));
+      } else if (realtimeVersionRef.current > 0) {
+        q.set("_v", String(realtimeVersionRef.current));
+      }
+      const res = await fetch(`/api/tidb?${q.toString()}`, forceFresh ? { cache: "no-store" } : undefined);
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setFetchError(null);
@@ -698,9 +773,12 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       const json = await res.json();
       if (json.success) {
         alert(`✓ Berhasil mengimpor ${json.count || items.length} data Shipment Error dari ${file.name}`);
-        fetchReturns();
-        fetchPersonnelStats();
-        broadcastRealtimeSignal("returns");
+        ownMutationUntilRef.current = Date.now() + 4500;
+        cachedAllReturnsData = null;
+        lastPersonnelSigRef.current = "";
+        const ts = await broadcastRealtimeSignal("returns");
+        markOwnMutation(ts);
+        fetchReturns(false, true);
       } else {
         alert(`Gagal mengimpor: ${json.error || "Terjadi kesalahan"}`);
       }
@@ -713,7 +791,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   };
 
-  const fetchPersonnelStats = useCallback(async (selectedMonth = monthFilter, selectedWeek = weekFilter, selectedReason = personnelReasonFilter) => {
+  const fetchPersonnelStats = useCallback(async (
+    selectedMonth = monthFilter,
+    selectedWeek = weekFilter,
+    selectedReason = personnelReasonFilter,
+    forceFresh = false
+  ) => {
+    const sig = `${selectedMonth}|${selectedWeek}|${selectedReason}|${realtimeVersionRef.current}`;
+    if (!forceFresh && lastPersonnelSigRef.current === sig) return;
     setLoadingStats(true);
     try {
       const q = new URLSearchParams({ 
@@ -722,9 +807,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       if (selectedMonth && selectedMonth !== "ALL") q.set("month", selectedMonth);
       if (selectedWeek && selectedWeek !== "ALL") q.set("week", selectedWeek);
       if (selectedReason && selectedReason !== "ALL") q.set("reason", selectedReason);
-      const res = await fetch(`/api/tidb?${q.toString()}`);
+      if (forceFresh) {
+        q.set("fresh", "true");
+        q.set("_t", String(Date.now()));
+      } else if (realtimeVersionRef.current > 0) {
+        q.set("_v", String(realtimeVersionRef.current));
+      }
+      const res = await fetch(`/api/tidb?${q.toString()}`, forceFresh ? { cache: "no-store" } : undefined);
       const json = await res.json();
       if (json.success) {
+        lastPersonnelSigRef.current = sig;
         setPersonnelStats({
           personnel: json.personnel || [],
           caseCounts: json.caseCounts || null,
@@ -741,8 +833,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   }, [monthFilter, weekFilter, personnelReasonFilter]);
 
   useEffect(() => {
-    fetchPersonnelStats();
-  }, [fetchPersonnelStats]);
+    if (activeTab === "leaderboard") {
+      fetchPersonnelStats();
+    }
+  }, [activeTab, fetchPersonnelStats]);
 
   const handleCopyComplaintLink = () => {
     if (typeof window !== "undefined") {
@@ -754,8 +848,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
   };
 
-  // Editable return fields state (all columns)
-  const [editForm, setEditForm] = useState({
+  // Form state kept for Approve / Reject confirmation modals
+  const [editForm, setEditForm] = useState<ReturnEditFormState>({
     pbf: "MBI",
     customer_name: "",
     invoice_no: "",
@@ -782,78 +876,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     inprogress_type: "",
   });
 
-  // Master Personnel suggestions (60 Official MBI Personnel)
-  const [showPersonSuggestions, setShowPersonSuggestions] = useState(false);
-
-  const currentPersonQuery = useMemo(() => {
-    const raw = editForm.person || "";
-    const parts = raw.split(/[\/]/);
-    return (parts[parts.length - 1] || "").trim().toLowerCase();
-  }, [editForm.person]);
-
-  const editPersonSuggestions = useMemo(() => {
-    if (!currentPersonQuery) {
-      return OFFICIAL_MBI_PERSONNEL;
-    }
-    return OFFICIAL_MBI_PERSONNEL.filter((p) => p.toLowerCase().includes(currentPersonQuery));
-  }, [currentPersonQuery]);
-
-  const handleSelectPerson = useCallback((selectedName: string) => {
-    setEditForm((prev) => {
-      const current = prev.person || "";
-      const parts = current.split(/[\/]/);
-      parts.pop(); // Remove the current typed snippet
-      const existing = parts.map((p) => p.trim()).filter(Boolean);
-      existing.push(selectedName);
-      const newPerson = existing.join(" / ");
-
-      const updates: any = { person: newPerson };
-      if (newPerson.trim() && (prev.status === "Pending" || !prev.status)) {
-        updates.status = "In Progress";
-        if (prev.confirm !== "Approve") updates.confirm = "Approve";
-      }
-      return { ...prev, ...updates };
-    });
-    setShowPersonSuggestions(false);
-  }, []);
-
-  const handleAppendPersonSeparator = useCallback(() => {
-    setEditForm((prev) => {
-      const current = (prev.person || "").trim();
-      if (!current || current.endsWith("/")) return prev;
-      return { ...prev, person: `${current} / ` };
-    });
-    setShowPersonSuggestions(true);
-  }, []);
-
   useEffect(() => {
     if (selectedReturn) {
-      setEditForm({
-        pbf: selectedReturn.pbf || "MBI",
-        customer_name: selectedReturn.customer_name || "",
-        invoice_no: selectedReturn.invoice_no || "",
-        so_no: selectedReturn.so_no || "",
-        product_name: selectedReturn.product_name || "",
-        qty: selectedReturn.qty || 1,
-        batch_no: selectedReturn.batch_no || "",
-        expiry_date: selectedReturn.expiry_date || "",
-        reason: selectedReturn.reason || "",
-        invoice_date: selectedReturn.invoice_date || "",
-        report_date: selectedReturn.report_date ? selectedReturn.report_date.split("T")[0] : "",
-        category: selectedReturn.category || "",
-        confirm: selectedReturn.confirm || "",
-        action: selectedReturn.action || "",
-        nota_retur_no: selectedReturn.nota_retur_no || "",
-        resolved_date: selectedReturn.resolved_date || "",
-        status: selectedReturn.status || "Pending",
-        note: selectedReturn.note || "",
-        person: selectedReturn.person || "",
-        root_cause: selectedReturn.root_cause || "",
-        video_url: selectedReturn.video_url || "",
-        reject_reason: selectedReturn.reject_reason || "",
-        reject_media_url: selectedReturn.reject_media_url || "",
-        inprogress_type: selectedReturn.inprogress_type || "",
-      });
+      setEditForm(buildReturnEditFormState(selectedReturn));
     }
   }, [selectedReturn]);
 
@@ -882,12 +907,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     inprogress_type: "",
   });
 
-  const editCustomerSuggestions = useMemo(() => {
-    const q = (editForm.customer_name || "").trim().toLowerCase();
-    if (!q || q.length < 2) return [];
-    return customerSuggestionsList.filter((name) => name.toLowerCase().includes(q)).slice(0, 8);
-  }, [editForm.customer_name, customerSuggestionsList]);
-
   const addCustomerSuggestions = useMemo(() => {
     const q = (newForm.customer_name || "").trim().toLowerCase();
     if (!q || q.length < 2) return [];
@@ -906,7 +925,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const limit = 50;
   const lastFocusFetchRef = useRef<number>(Date.now());
 
-  const fetchReturns = useCallback(async (silent = false, _forceFresh = false) => {
+  const fetchReturns = useCallback(async (silent = false, forceFresh = false) => {
     if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -920,8 +939,17 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       if (categoryFilter !== "ALL") params.set("category", categoryFilter);
       if (monthFilter !== "ALL") params.set("month", monthFilter);
       if (weekFilter !== "ALL") params.set("week", weekFilter);
+      if (forceFresh) {
+        params.set("fresh", "true");
+        params.set("_t", String(Date.now()));
+      } else if (realtimeVersionRef.current > 0) {
+        params.set("_v", String(realtimeVersionRef.current));
+      }
 
-      const res = await fetch(`/api/tidb?${params.toString()}`);
+      const res = await fetch(
+        `/api/tidb?${params.toString()}`,
+        forceFresh ? { cache: "no-store" } : undefined
+      );
       const data = await res.json();
       if (data.success) {
         setFetchError(null);
@@ -931,6 +959,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         cachedReturnsData = data.data || [];
         cachedTotalCount = data.total || 0;
         if (data.stats) cachedReturnsStats = data.stats;
+        cachedDataVersion = realtimeVersionRef.current;
       } else {
         const errMsg = data.error || "Gagal memuat data shipment returns dari database.";
         console.error("fetchReturns failed:", errMsg);
@@ -951,6 +980,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   activeTabRef.current = activeTab;
   const fetchAllReturnsRef = useRef(fetchAllReturns);
   fetchAllReturnsRef.current = fetchAllReturns;
+  const fetchPersonnelStatsRef = useRef(fetchPersonnelStats);
+  fetchPersonnelStatsRef.current = fetchPersonnelStats;
 
   // Single query for active page when filters change (Limit 50 - <50ms)
   useEffect(() => {
@@ -961,33 +992,80 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   // Real-time Firestore cross-browser signal (Mounted ONCE with Zero Listener Churn)
   useEffect(() => {
     let debounceTimer: any = null;
-    const unsubRealtime = subscribeToRealtimeSignal("returns", () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        fetchReturnsRef.current(true, true);
-        if (activeTabRef.current !== "list") {
-          fetchAllReturnsRef.current(true);
-        }
-        fetchPersonnelStats();
-      }, 500);
-    });
-
-    const onFocus = () => {
-      const now = Date.now();
-      // Throttle focus refetch to at most once per 5 minutes to prevent origin leakage
-      if (now - lastFocusFetchRef.current > 300000) {
-        lastFocusFetchRef.current = now;
-        fetchReturnsRef.current(true);
+    const triggerRemoteSync = () => {
+      // Use versioned URL (_v=signalTs): misses CDN once for fresh DB read, then caches at edge for peers
+      fetchReturnsRef.current(true, false);
+      if (activeTabRef.current !== "list") {
+        fetchAllReturnsRef.current(false);
+      }
+      if (activeTabRef.current === "leaderboard") {
+        fetchPersonnelStatsRef.current();
       }
     };
-    window.addEventListener("focus", onFocus);
+
+    const unsubRealtime = subscribeToRealtimeSignal(
+      "returns",
+      (val) => {
+        realtimeVersionRef.current = Math.max(realtimeVersionRef.current, val);
+        cachedRealtimeVersion = realtimeVersionRef.current;
+
+        // Ignore our own broadcast echo so optimistic UI never flickers/reverts
+        if (Date.now() < ownMutationUntilRef.current) {
+          return;
+        }
+
+        cachedAllReturnsData = null;
+        lastPersonnelSigRef.current = "";
+
+        // Defer network sync if this browser tab is hidden/inactive
+        if (typeof document !== "undefined" && document.hidden) {
+          pendingSignalRefreshRef.current = true;
+          return;
+        }
+
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(triggerRemoteSync, 400);
+      },
+      (initVal) => {
+        realtimeVersionRef.current = Math.max(realtimeVersionRef.current, initVal);
+        cachedRealtimeVersion = realtimeVersionRef.current;
+        if (cachedReturnsData && initVal > cachedDataVersion) {
+          cachedAllReturnsData = null;
+          lastPersonnelSigRef.current = "";
+          if (typeof document !== "undefined" && document.hidden) {
+            pendingSignalRefreshRef.current = true;
+          } else {
+            fetchReturnsRef.current(true, false);
+          }
+        }
+      }
+    );
+
+    const onFocusOrVisible = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (pendingSignalRefreshRef.current) {
+        pendingSignalRefreshRef.current = false;
+        lastFocusFetchRef.current = Date.now();
+        triggerRemoteSync();
+        return;
+      }
+      const now = Date.now();
+      // Throttle passive focus refetch to at most once per 5 minutes to prevent origin leakage
+      if (now - lastFocusFetchRef.current > 300000) {
+        lastFocusFetchRef.current = now;
+        fetchReturnsRef.current(true, false);
+      }
+    };
+    window.addEventListener("focus", onFocusOrVisible);
+    document.addEventListener("visibilitychange", onFocusOrVisible);
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       unsubRealtime();
-      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("focus", onFocusOrVisible);
+      document.removeEventListener("visibilitychange", onFocusOrVisible);
     };
-  }, [fetchPersonnelStats]);
+  }, []);
 
   // INSTANT OPTIMISTIC DELETE (<1ms) - Identik dengan kecepatan Meja Kerja Faktur
   const handleDeleteReturn = async (id: number, invoiceNo: string) => {
@@ -1000,45 +1078,53 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
 
     // 1. INSTANT OPTIMISTIC PURGE (<1ms) - Seketika hilang dari layar
-    const deletedItem = returns.find((r) => r.id === id);
-    setReturns((prev) => prev.filter((r) => r.id !== id));
+    const deletedItem = returns.find((r) => r.id === id) || allReturns.find((r) => r.id === id);
+    setReturns((prev) => {
+      const next = prev.filter((r) => r.id !== id);
+      cachedReturnsData = next;
+      return next;
+    });
     setAllReturns((prev) => prev.filter((r) => r.id !== id));
-    if (cachedReturnsData) {
-      cachedReturnsData = cachedReturnsData.filter((r) => r.id !== id);
-    }
     if (cachedAllReturnsData) {
       cachedAllReturnsData = cachedAllReturnsData.filter((r) => r.id !== id);
     }
-    setTotal((prev) => Math.max(0, prev - 1));
+    setTotal((prev) => {
+      const next = Math.max(0, prev - 1);
+      cachedTotalCount = next;
+      return next;
+    });
     if (selectedReturn?.id === id) {
       setSelectedReturn(null);
     }
 
     // Optimistic Local Stats Decrement
     if (deletedItem) {
-      const st = (deletedItem.status || "").toLowerCase();
+      const cls = classifyReturnStatus(deletedItem.status, deletedItem.inprogress_type);
       setStats((prev: any) => {
         const next = { ...prev };
-        if (st.includes("in progress")) {
-          next.totalInProgress = Math.max(0, (next.totalInProgress || 1) - 1);
-          if (deletedItem.inprogress_type === "Operasional") {
-            next.totalInProgressOperasional = Math.max(0, (next.totalInProgressOperasional || 1) - 1);
+        next.totalAll = Math.max(0, (Number(next.totalAll) || 1) - 1);
+        if (cls.bucket === "in_progress") {
+          next.totalInProgress = Math.max(0, (Number(next.totalInProgress) || 1) - 1);
+          if (cls.isOp) {
+            next.totalInProgressOperasional = Math.max(0, (Number(next.totalInProgressOperasional) || 1) - 1);
           } else {
-            next.totalInProgressKlaim = Math.max(0, (next.totalInProgressKlaim || 1) - 1);
+            next.totalInProgressKlaim = Math.max(0, (Number(next.totalInProgressKlaim) || 1) - 1);
           }
-        } else if (st.includes("pending")) {
-          next.totalPending = Math.max(0, (next.totalPending || 1) - 1);
-        } else if (st.includes("resolved")) {
-          next.totalResolved = Math.max(0, (next.totalResolved || 1) - 1);
-        } else if (st.includes("reject")) {
-          next.totalReject = Math.max(0, (next.totalReject || 1) - 1);
+        } else if (cls.bucket === "pending") {
+          next.totalPending = Math.max(0, (Number(next.totalPending) || 1) - 1);
+        } else if (cls.bucket === "resolved") {
+          next.totalResolved = Math.max(0, (Number(next.totalResolved) || 1) - 1);
+        } else if (cls.bucket === "rejected") {
+          next.totalReject = Math.max(0, (Number(next.totalReject) || 1) - 1);
         }
+        cachedReturnsStats = next;
         return next;
       });
     }
 
     // 2. Background Asynchronous Persistence (Non-Blocking 0ms UI delay)
     try {
+      markOwnMutation();
       const res = await fetch(`/api/tidb?action=delete_return&id=${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1051,14 +1137,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       const data = await res.json().catch(() => ({ success: false, error: "Gagal membaca respon server" }));
 
       if (data.success) {
-        broadcastRealtimeSignal("returns");
-        recordActivityLog({
-          action_type: "DELETE_RETURN",
-          module: "SHIPMENT_ERROR",
-          target_id: String(id),
-          details: `Menghapus tiket komplain #${id} untuk faktur ${invoiceNo || "-"}`,
-          metadata: { id, invoice_no: invoiceNo },
-        });
+        const ts = await broadcastRealtimeSignal("returns");
+        markOwnMutation(ts);
       } else {
         alert("Gagal menghapus data di cloud: " + (data.error || "Unknown error"));
         fetchReturns(true, true);
@@ -1074,42 +1154,57 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       alert("Akses Ditolak: Akun Anda tidak memiliki hak akses mengubah Shipment Error.");
       return;
     }
+    const targetItem = returns.find((r) => r.id === id) || allReturns.find((r) => r.id === id);
+    const resolvedDate = newStatus === "Resolved" ? new Date().toISOString().split("T")[0] : null;
+    setReturns((prev) => {
+      const next = prev.map((r) => (r.id === id ? { ...r, status: newStatus, resolved_date: resolvedDate || r.resolved_date } : r));
+      cachedReturnsData = next;
+      return next;
+    });
+    if (targetItem) {
+      setStats((prev: any) =>
+        applyStatsStatusTransition(prev, targetItem.status, targetItem.inprogress_type, newStatus, targetItem.inprogress_type)
+      );
+    }
+    if (selectedReturn?.id === id) {
+      setSelectedReturn((prev) => (prev ? { ...prev, status: newStatus } : null));
+    }
+
     setIsUpdating(true);
     try {
+      markOwnMutation();
       const res = await fetch("/api/tidb?action=update_return", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id,
+          invoice_no: targetItem?.invoice_no,
           status: newStatus,
-          resolved_date: newStatus === "Resolved" ? new Date().toISOString().split("T")[0] : null,
+          resolved_date: resolvedDate,
+          user_name: currentUser?.name || "Admin",
+          user_email: currentUser?.email || "",
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setReturns((prev) =>
-          prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r))
-        );
-        if (selectedReturn?.id === id) {
-          setSelectedReturn((prev) => (prev ? { ...prev, status: newStatus } : null));
-        }
-        broadcastRealtimeSignal("returns");
-        await recordActivityLog({
-          action_type: newStatus === "Resolved" ? "RESOLVE_RETURN" : "UPDATE_RETURN",
-          module: "SHIPMENT_ERROR",
-          target_id: String(id),
-          details: `Mengubah status komplain #${id} menjadi ${newStatus}`,
-          metadata: { id, status: newStatus },
-        });
+        const ts = await broadcastRealtimeSignal("returns");
+        markOwnMutation(ts);
+      } else {
+        alert("Gagal memperbarui status komplain: " + (data.error || "Unknown error"));
+        fetchReturns(true, true);
       }
     } catch (err) {
       alert("Gagal memperbarui status komplain.");
+      fetchReturns(true, true);
     } finally {
       setIsUpdating(false);
     }
   };
 
-  const handleSaveEdit = async (param?: boolean | React.MouseEvent) => {
+  const handleSaveEdit = async (
+    param?: boolean | React.MouseEvent,
+    formOverride?: ReturnEditFormState
+  ) => {
     const skipDeliveryConfirm = param === true;
     if (!selectedReturn) return;
     if (!canEditReturns) {
@@ -1122,14 +1217,17 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       return;
     }
 
+    const activeForm = formOverride ?? editForm;
+
     // Form Guard Tahap 4: REJECTED wajib sertakan alasan penolakan + Konfirmasi
-    const isRejecting = editForm.status === "Rejected" || editForm.confirm === "Reject";
+    const isRejecting = activeForm.status === "Rejected" || activeForm.confirm === "Reject";
     if (isRejecting) {
-      if (!editForm.note || !editForm.note.trim()) {
+      if (!activeForm.note || !activeForm.note.trim()) {
+        setEditForm(activeForm);
         setValidationModal({
           isOpen: true,
           title: "Catatan Alasan Reject Wajib Diisi",
-          subtitle: `Faktur #${editForm.invoice_no || selectedReturn.invoice_no} • ${editForm.customer_name || selectedReturn.customer_name}`,
+          subtitle: `Faktur #${activeForm.invoice_no || selectedReturn.invoice_no} • ${activeForm.customer_name || selectedReturn.customer_name}`,
           message: "Tiket yang ditolak (Reject) wajib menyertakan alasan penolakan pada kolom Catatan Balasan Logistik.",
           missingFields: ["Catatan Balasan Logistik / Alasan Penolakan"],
           note: "Catatan ini akan langsung terbaca oleh apotek pengaju komplain sebagai kejelasan penolakan.",
@@ -1139,37 +1237,39 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         return;
       }
       if (!skipDeliveryConfirm && selectedReturn.status !== "Rejected") {
+        setEditForm(activeForm);
         setShowConfirmRejectModal(true);
         return;
       }
     }
 
     // Form Guard Tahap 2: ACC / IN PROGRESS konfirmasi kesalahan PBF
-    const isApproveAcc = editForm.status === "In Progress" || editForm.confirm === "Approve";
+    const isApproveAcc = activeForm.status === "In Progress" || activeForm.confirm === "Approve";
     if (isApproveAcc && !skipDeliveryConfirm && selectedReturn.status !== "In Progress") {
+      setEditForm(activeForm);
       setShowConfirmApproveModal(true);
       return;
     }
 
     // Deteksi apakah jenis komplain adalah Klaim & Retur (personil tidak wajib)
-    const isKlaimRetur = editForm.inprogress_type === "Klaim & Retur" || selectedReturn.inprogress_type === "Klaim & Retur" || (
-      !editForm.inprogress_type && ![
+    const isKlaimRetur = activeForm.inprogress_type === "Klaim & Retur" || selectedReturn.inprogress_type === "Klaim & Retur" || (
+      !activeForm.inprogress_type && ![
         "fisik yang dikirim kurang",
         "fisik yang dikirim lebih",
         "fisik yang dikirim salah",
         "fisik yang dikirim tidak ada",
       ].some((k) =>
         (selectedReturn.description || "").toLowerCase().includes(k) ||
-        (editForm.reason || "").toLowerCase().includes(k)
+        (activeForm.reason || "").toLowerCase().includes(k)
       )
     );
 
     // Form Guard Tahap 2 (Proses 1): Tiket yang SEDANG In Progress wajib lengkapi investigasi gudang
-    const isCurrentlyInProgress = selectedReturn.status === "In Progress" && editForm.status === "In Progress";
+    const isCurrentlyInProgress = selectedReturn.status === "In Progress" && activeForm.status === "In Progress";
     if (isCurrentlyInProgress) {
-      const hasAction = editForm.action && editForm.action.trim() && editForm.action !== "-" && editForm.action !== "#N/A";
-      const hasRootCause = editForm.root_cause && editForm.root_cause.trim() && editForm.root_cause !== "-" && editForm.root_cause !== "#N/A";
-      const hasPerson = editForm.person && editForm.person.trim() && editForm.person !== "-" && editForm.person !== "#N/A";
+      const hasAction = activeForm.action && activeForm.action.trim() && activeForm.action !== "-" && activeForm.action !== "#N/A";
+      const hasRootCause = activeForm.root_cause && activeForm.root_cause.trim() && activeForm.root_cause !== "-" && activeForm.root_cause !== "#N/A";
+      const hasPerson = activeForm.person && activeForm.person.trim() && activeForm.person !== "-" && activeForm.person !== "#N/A";
       const isPersonRequired = !isKlaimRetur;
 
       if (!hasAction || !hasRootCause || (isPersonRequired && !hasPerson)) {
@@ -1178,10 +1278,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         if (!hasRootCause) missing.push("Penyebab Kesalahan (Root Cause)");
         if (isPersonRequired && !hasPerson) missing.push("Personil Terkait (Picker / Checker)");
 
+        setEditForm(activeForm);
         setValidationModal({
           isOpen: true,
           title: "Data Investigasi Belum Lengkap",
-          subtitle: `Faktur #${editForm.invoice_no || selectedReturn.invoice_no} • ${editForm.customer_name || selectedReturn.customer_name}`,
+          subtitle: `Faktur #${activeForm.invoice_no || selectedReturn.invoice_no} • ${activeForm.customer_name || selectedReturn.customer_name}`,
           message: "Untuk menyimpan tiket pada tahap In Progress, Anda wajib melengkapi data investigasi berikut:",
           missingFields: missing,
           note: isKlaimRetur ? "Catatan: Untuk jenis Klaim & Retur, nama personil opsional." : "Setelah data lengkap, fisik barang pengganti dapat disiapkan dan dikirim ke apotek.",
@@ -1193,11 +1294,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
 
     // Form Guard Tahap 3 (Proses 2): RESOLVED konfirmasi penerimaan barang di apotek & kelengkapan investigasi
-    const isResolving = editForm.status === "Resolved";
+    const isResolving = activeForm.status === "Resolved";
     if (isResolving) {
-      const hasAction = editForm.action && editForm.action.trim() && editForm.action !== "-" && editForm.action !== "#N/A";
-      const hasRootCause = editForm.root_cause && editForm.root_cause.trim() && editForm.root_cause !== "-" && editForm.root_cause !== "#N/A";
-      const hasPerson = editForm.person && editForm.person.trim() && editForm.person !== "-" && editForm.person !== "#N/A";
+      const hasAction = activeForm.action && activeForm.action.trim() && activeForm.action !== "-" && activeForm.action !== "#N/A";
+      const hasRootCause = activeForm.root_cause && activeForm.root_cause.trim() && activeForm.root_cause !== "-" && activeForm.root_cause !== "#N/A";
+      const hasPerson = activeForm.person && activeForm.person.trim() && activeForm.person !== "-" && activeForm.person !== "#N/A";
       const isPersonRequired = !isKlaimRetur;
 
       if (!hasAction || !hasRootCause || (isPersonRequired && !hasPerson)) {
@@ -1206,10 +1307,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         if (!hasRootCause) missing.push("Penyebab Kesalahan (Root Cause)");
         if (isPersonRequired && !hasPerson) missing.push("Personil Terkait (Picker / Checker)");
 
+        setEditForm(activeForm);
         setValidationModal({
           isOpen: true,
           title: "Tiket Belum Dapat Diselesaikan",
-          subtitle: `Faktur #${editForm.invoice_no || selectedReturn.invoice_no} • ${editForm.customer_name || selectedReturn.customer_name}`,
+          subtitle: `Faktur #${activeForm.invoice_no || selectedReturn.invoice_no} • ${activeForm.customer_name || selectedReturn.customer_name}`,
           message: "Tiket belum bisa ditandai selesai karena data solusi/penyebab belum lengkap:",
           missingFields: missing,
           note: isKlaimRetur ? "Untuk jenis Klaim & Retur, nama personil boleh dikosongkan." : "Silakan lengkapi tindakan solusi, penyebab kesalahan, dan personil terkait sebelum tiket diselesaikan.",
@@ -1220,7 +1322,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       }
 
       if (!skipDeliveryConfirm && selectedReturn.status !== "Resolved") {
-        setConfirmResolveItem({ ...selectedReturn, ...editForm });
+        setEditForm(activeForm);
+        setConfirmResolveItem({ ...selectedReturn, ...activeForm });
         return;
       }
     }
@@ -1231,68 +1334,50 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     setShowDeliveryPrepModal(false);
     setSelectedReturn(null);
 
-    const isResolved = editForm.status === "Resolved";
+    const isResolved = activeForm.status === "Resolved";
     const resolvedDate = isResolved
-      ? editForm.resolved_date || new Date().toISOString().split("T")[0]
-      : editForm.resolved_date;
+      ? activeForm.resolved_date || new Date().toISOString().split("T")[0]
+      : activeForm.resolved_date;
 
     const updatedItem = {
       ...selectedReturn,
-      ...editForm,
+      ...activeForm,
       resolved_date: resolvedDate,
     };
 
-    setReturns((prev) =>
-      prev.map((r) => (r.id === selectedReturn.id ? updatedItem : r))
-    );
+    setReturns((prev) => {
+      const next = prev.map((r) => (r.id === selectedReturn.id ? updatedItem : r));
+      cachedReturnsData = next;
+      return next;
+    });
     setAllReturns((prev) =>
       prev.map((r) => (r.id === selectedReturn.id ? updatedItem : r))
     );
-    if (cachedReturnsData) {
-      cachedReturnsData = cachedReturnsData.map((r) => (r.id === selectedReturn.id ? updatedItem : r));
-    }
     if (cachedAllReturnsData) {
       cachedAllReturnsData = cachedAllReturnsData.map((r) => (r.id === selectedReturn.id ? updatedItem : r));
     }
 
-    // Optimistic Local Stats Sync
-    const oldSt = (selectedReturn.status || "").toLowerCase();
-    const newSt = (editForm.status || "").toLowerCase();
-    if (oldSt !== newSt || selectedReturn.inprogress_type !== editForm.inprogress_type) {
-      setStats((prev: any) => {
-        const next = { ...prev };
-        if (oldSt.includes("pending")) next.totalPending = Math.max(0, (next.totalPending || 1) - 1);
-        if (oldSt.includes("in progress")) {
-          next.totalInProgress = Math.max(0, (next.totalInProgress || 1) - 1);
-          if (selectedReturn.inprogress_type === "Operasional") {
-            next.totalInProgressOperasional = Math.max(0, (next.totalInProgressOperasional || 1) - 1);
-          } else {
-            next.totalInProgressKlaim = Math.max(0, (next.totalInProgressKlaim || 1) - 1);
-          }
-        }
-        if (newSt.includes("in progress")) {
-          next.totalInProgress = (next.totalInProgress || 0) + 1;
-          if (editForm.inprogress_type === "Operasional") {
-            next.totalInProgressOperasional = (next.totalInProgressOperasional || 0) + 1;
-          } else {
-            next.totalInProgressKlaim = (next.totalInProgressKlaim || 0) + 1;
-          }
-        }
-        if (newSt.includes("resolved")) next.totalResolved = (next.totalResolved || 0) + 1;
-        if (newSt.includes("reject")) next.totalReject = (next.totalReject || 0) + 1;
-        return next;
-      });
-    }
+    // Optimistic Local Stats Sync (semua transisi status)
+    setStats((prev: any) =>
+      applyStatsStatusTransition(
+        prev,
+        selectedReturn.status,
+        selectedReturn.inprogress_type,
+        activeForm.status,
+        activeForm.inprogress_type
+      )
+    );
 
-    // 2. Background Asynchronous Persistence (0ms UI freeze)
+    // 2. Background Asynchronous Persistence (0ms UI freeze, 0 duplicate activity_log POST)
     const payload = {
       id: selectedReturn.id,
-      ...editForm,
+      ...activeForm,
       resolved_date: resolvedDate,
       user_name: currentUser?.name || "Admin",
       user_email: currentUser?.email || "",
     };
 
+    markOwnMutation();
     fetch("/api/tidb?action=update_return", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1300,21 +1385,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }).then(async (res) => {
       const data = await res.json().catch(() => ({ success: false }));
       if (data.success) {
-        broadcastRealtimeSignal("returns");
-        recordActivityLog({
-          action_type: isResolved ? "RESOLVE_RETURN" : "UPDATE_RETURN",
-          module: "SHIPMENT_ERROR",
-          target_id: String(selectedReturn.id),
-          details: `${isResolved ? "Menyelesaikan (Resolve)" : "Mengubah"} komplain faktur #${selectedReturn.invoice_no || selectedReturn.id} (${selectedReturn.customer_name || ""})`,
-          metadata: {
-            id: selectedReturn.id,
-            invoice_no: selectedReturn.invoice_no,
-            customer_name: selectedReturn.customer_name,
-            status: editForm.status,
-            action: editForm.action,
-            note: editForm.note,
-          },
-        });
+        const ts = await broadcastRealtimeSignal("returns");
+        markOwnMutation(ts);
       } else {
         alert("Gagal update data di cloud: " + (data.error || "Unknown error"));
         fetchReturns(true, true);
@@ -1445,35 +1517,33 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     };
 
     // 1. INSTANT OPTIMISTIC RESOLVE (<1ms)
-    setReturns((prev) =>
-      prev.map((r) => (r.id === item.id ? resolvedItem : r))
-    );
+    setReturns((prev) => {
+      const next = prev.map((r) => (r.id === item.id ? resolvedItem : r));
+      cachedReturnsData = next;
+      return next;
+    });
     setAllReturns((prev) =>
       prev.map((r) => (r.id === item.id ? resolvedItem : r))
     );
-    if (cachedReturnsData) {
-      cachedReturnsData = cachedReturnsData.map((r) => (r.id === item.id ? resolvedItem : r));
-    }
     if (cachedAllReturnsData) {
       cachedAllReturnsData = cachedAllReturnsData.map((r) => (r.id === item.id ? resolvedItem : r));
     }
 
     // Optimistic Local Stats Sync
-    setStats((prev: any) => {
-      const next = { ...prev };
-      next.totalInProgress = Math.max(0, (next.totalInProgress || 1) - 1);
-      if (item.inprogress_type === "Operasional") {
-        next.totalInProgressOperasional = Math.max(0, (next.totalInProgressOperasional || 1) - 1);
-      } else {
-        next.totalInProgressKlaim = Math.max(0, (next.totalInProgressKlaim || 1) - 1);
-      }
-      next.totalResolved = (next.totalResolved || 0) + 1;
-      return next;
-    });
+    setStats((prev: any) =>
+      applyStatsStatusTransition(
+        prev,
+        item.status,
+        item.inprogress_type,
+        "Resolved",
+        item.inprogress_type
+      )
+    );
 
-    // 2. Background Asynchronous Persistence (0ms UI wait)
+    // 2. Background Asynchronous Persistence (0ms UI wait, 0 duplicate activity_log POST)
     const payload: any = {
       id: item.id,
+      invoice_no: item.invoice_no,
       status: "Resolved",
       resolved_date: today,
       user_name: currentUser?.name || "Admin",
@@ -1486,6 +1556,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     if (item.confirm) payload.confirm = item.confirm;
     if (item.note) payload.note = item.note;
 
+    markOwnMutation();
     fetch("/api/tidb?action=update_return", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1493,19 +1564,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }).then(async (res) => {
       const data = await res.json().catch(() => ({ success: false }));
       if (data.success) {
-        broadcastRealtimeSignal("returns");
-        recordActivityLog({
-          action_type: "RESOLVE_RETURN",
-          module: "SHIPMENT_ERROR",
-          target_id: String(item.id),
-          details: `Menyelesaikan (Resolve) komplain faktur #${item.invoice_no || item.id} (${item.customer_name || ""})`,
-          metadata: {
-            id: item.id,
-            invoice_no: item.invoice_no,
-            status: "Resolved",
-            resolved_date: today,
-          },
-        });
+        const ts = await broadcastRealtimeSignal("returns");
+        markOwnMutation(ts);
       } else {
         alert("Gagal menyelesaikan tiket di cloud: " + (data.error || "Unknown error"));
         fetchReturns(true, true);
@@ -1528,6 +1588,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
     setIsUpdating(true);
     try {
+      markOwnMutation();
       const res = await fetch("/api/tidb?action=create_return", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1564,8 +1625,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           reject_media_url: "",
           inprogress_type: "",
         });
+        const ts = await broadcastRealtimeSignal("returns");
+        markOwnMutation(ts);
         fetchReturns(false, true);
-        broadcastRealtimeSignal("returns");
         broadcastNewComplaint({
           id: String(data.id || newForm.invoice_no),
           customer_name: newForm.customer_name,
@@ -1574,13 +1636,6 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           pbf: newForm.pbf,
           timestamp: Date.now(),
         }).catch(() => {});
-        await recordActivityLog({
-          action_type: "CREATE_RETURN",
-          module: "SHIPMENT_ERROR",
-          target_id: String(newForm.invoice_no || newForm.customer_name),
-          details: `Menambahkan komplain baru untuk apotek ${newForm.customer_name} (faktur #${newForm.invoice_no || "-"})`,
-          metadata: { ...newForm },
-        });
       } else {
         alert("Gagal menambahkan komplain: " + data.error);
       }
@@ -1770,654 +1825,44 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
   const totalPages = Math.ceil(total / limit);
 
-  const renderAccordionContent = (r: any) => (
-    <div className="bg-white dark:bg-[#0d1424] border border-zinc-300 dark:border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm space-y-3 text-left">
-      {/* Header Bar */}
-      <div className="flex flex-wrap items-center justify-between border-b border-zinc-200 dark:border-slate-800 pb-2.5 gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 dark:bg-indigo-400"></span>
-          <h4 className="font-bold text-xs sm:text-sm text-black dark:text-white">
-            Tiket #{r.id} - Faktur {r.invoice_no || "-"}
-          </h4>
-          <span className="text-xs text-zinc-500 dark:text-slate-400 font-semibold truncate">
-            ({editForm.customer_name || r.customer_name})
-          </span>
+  const handleCloseSelectedReturn = useCallback(() => {
+    setSelectedReturn(null);
+  }, []);
 
-          {/* Status Tiket (Hanya Teks/Badge Otomatis di Sebelah Nama Apotek) */}
-          <span
-            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold transition-all shadow-2xs ${
-              editForm.status === "In Progress"
-                ? "bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800"
-                : editForm.status === "Resolved"
-                ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-800"
-                : editForm.status === "Rejected"
-                ? "bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-950/80 dark:text-rose-300 dark:border-rose-800"
-                : "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800"
-            }`}
-          >
-            {editForm.status === "In Progress" ? (
-              <>
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                <span>In Progress</span>
-              </>
-            ) : editForm.status === "Resolved" ? (
-              <>
-                <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                <span>Resolved</span>
-              </>
-            ) : editForm.status === "Rejected" ? (
-              <>
-                <XCircle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                <span>Rejected</span>
-              </>
-            ) : (
-              <>
-                <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                <span>Pending</span>
-              </>
-            )}
-          </span>
-        </div>
+  const handlePreviewVideoUrl = useCallback((url: string) => {
+    setPreviewVideoUrl(url || null);
+  }, []);
 
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {(r.photo_url || (r as any).has_photo) && (
-            <button
-              type="button"
-              onClick={() => handlePreviewPhoto(r)}
-              disabled={loadingPhotoId === r.id}
-              className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 disabled:opacity-50"
-            >
-              <Maximize2 className="w-3 h-3" />
-              <span>{loadingPhotoId === r.id ? "Memuat..." : "Lihat Foto Bukti"}</span>
-            </button>
-          )}
+  const handleDeleteReturnRef = useRef(handleDeleteReturn);
+  handleDeleteReturnRef.current = handleDeleteReturn;
+  const handleAccordionDelete = useCallback((id: number, invoiceNo: string) => {
+    handleDeleteReturnRef.current(id, invoiceNo);
+  }, []);
 
-          {r.video_url && (
-            <button
-              type="button"
-              onClick={() => setPreviewVideoUrl(r.video_url || null)}
-              className="text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 cursor-pointer bg-purple-50 dark:bg-purple-950/40 px-2.5 py-1 rounded-lg border border-purple-200 dark:border-purple-800"
-            >
-              <Video className="w-3 h-3" />
-              <span>Putar Video Unboxing</span>
-            </button>
-          )}
-        </div>
-      </div>
+  const handleSaveEditRef = useRef(handleSaveEdit);
+  handleSaveEditRef.current = handleSaveEdit;
+  const handleAccordionSubmitSave = useCallback((formSnapshot: ReturnEditFormState) => {
+    handleSaveEditRef.current(false, formSnapshot);
+  }, []);
 
-      {/* Form Edit Ringkas & Lengkap (3 Bagian Rapi) */}
-      <div className="space-y-3 text-xs">
-        {!canEditReturns && (
-          <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-500 text-xs font-semibold flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-            <span>Mode Hanya Lihat: Akun Anda tidak memiliki hak akses mengubah modul Shipment Error. Hubungi Farhan (Super Admin) untuk meminta akses.</span>
-          </div>
-        )}
-        {/* Bagian 1: Data Faktur & Merchant */}
-        <div className="bg-zinc-50 dark:bg-slate-950/80 p-2.5 sm:p-3 rounded-lg border border-zinc-200 dark:border-slate-800 space-y-2">
-          <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-400 block">
-            1. Data Faktur & Merchant
-          </span>
-          <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
-            {/* Nama Apotek with Suggestion */}
-            <div className="relative sm:col-span-3">
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
-                Nama Apotek / Merchant
-              </label>
-              <input
-                type="text"
-                value={editForm.customer_name}
-                onChange={(e) => {
-                  setEditForm({ ...editForm, customer_name: e.target.value });
-                  setShowEditCustomerSuggestions(true);
-                }}
-                onFocus={() => setShowEditCustomerSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowEditCustomerSuggestions(false), 250)}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-              />
-              {showEditCustomerSuggestions && editCustomerSuggestions.length > 0 && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto py-1">
-                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-slate-500 border-b border-zinc-100 dark:border-slate-800">
-                    Saran Nama Apotek ({editCustomerSuggestions.length})
-                  </div>
-                  {editCustomerSuggestions.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setEditForm({ ...editForm, customer_name: name });
-                        setShowEditCustomerSuggestions(false);
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-slate-800 flex items-center justify-between transition-colors cursor-pointer border-b border-zinc-50 dark:border-slate-800/40 last:border-b-0"
-                    >
-                      <span className="font-semibold truncate">{name}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">PBF</label>
-              <select
-                value={editForm.pbf}
-                onChange={(e) => setEditForm({ ...editForm, pbf: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-              >
-                <option value="MBI">MBI</option>
-                <option value="MAI">MAI</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">No. Faktur</label>
-              <input
-                type="text"
-                value={editForm.invoice_no}
-                onChange={(e) => setEditForm({ ...editForm, invoice_no: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-indigo-700 dark:text-indigo-400 font-mono font-bold"
-              />
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tgl Faktur</label>
-              <input
-                type="date"
-                value={editForm.invoice_date ? editForm.invoice_date.split("T")[0] : ""}
-                onChange={(e) => setEditForm({ ...editForm, invoice_date: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tgl Lapor / Kejadian</label>
-              <input
-                type="date"
-                value={editForm.report_date ? editForm.report_date.split("T")[0] : ""}
-                onChange={(e) => setEditForm({ ...editForm, report_date: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-rose-700 dark:text-rose-400 font-mono font-semibold"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">No. Sales Order (SO)</label>
-              <input
-                type="text"
-                value={editForm.so_no}
-                onChange={(e) => setEditForm({ ...editForm, so_no: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Kategori</label>
-              <select
-                value={editForm.category}
-                onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-              >
-                <option value="">-- Belum --</option>
-                <option value="1P">1P</option>
-                <option value="2P">2P</option>
-                <option value="3P">3P</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Bagian 2: Produk & Detail Retur */}
-        <div className="bg-zinc-50 dark:bg-slate-950/80 p-2.5 sm:p-3 rounded-lg border border-zinc-200 dark:border-slate-800 space-y-2">
-          <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400 block">
-            2. Detail Produk & Kendala (Reason)
-          </span>
-          <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
-            <div className="sm:col-span-3">
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Nama Produk</label>
-              <input
-                type="text"
-                value={editForm.product_name}
-                onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-              />
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Kuantitas (Qty)</label>
-              <input
-                type="number"
-                min="1"
-                value={editForm.qty}
-                onChange={(e) => setEditForm({ ...editForm, qty: Number(e.target.value) || 1 })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-              />
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Batch Number</label>
-              <input
-                type="text"
-                value={editForm.batch_no}
-                onChange={(e) => setEditForm({ ...editForm, batch_no: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Expiry Date (ED)</label>
-              <input
-                type="text"
-                value={editForm.expiry_date}
-                onChange={(e) => setEditForm({ ...editForm, expiry_date: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white"
-              />
-            </div>
-
-            <div className="sm:col-span-3">
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Alasan / Kendala Dilaporkan (Dari Pelapor)</label>
-              <input
-                type="text"
-                list="complaint-reasons-list"
-                value={editForm.reason}
-                onChange={(e) => setEditForm({ ...editForm, reason: e.target.value })}
-                placeholder="Pilih atau ketik alasan..."
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-amber-800 dark:text-amber-300 font-bold"
-              />
-              <datalist id="complaint-reasons-list">
-                {COMPLAINT_REASONS.map((r) => (
-                  <option key={r} value={r} />
-                ))}
-              </datalist>
-            </div>
-
-            <div className="sm:col-span-3">
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Catatan Tambahan dari Pengaju Komplain (Note Pelapor)</label>
-              <input
-                type="text"
-                value={editForm.note}
-                onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
-                placeholder="Keterangan fisik barang, kondisi segel, dll dari pihak apotek/pelapor"
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-medium"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Bagian 3: Balasan & Tindak Lanjut dari Pihak Kita / Gudang */}
-        <div className="bg-blue-50/40 dark:bg-slate-950/90 p-2.5 sm:p-3 rounded-lg border border-blue-200 dark:border-blue-900/40 space-y-3">
-          <div className="flex items-center justify-between border-b border-blue-200/60 dark:border-blue-900/40 pb-1.5">
-            <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
-              <span>🏢 3. Balasan & Tindak Lanjut Pihak Gudang / Logistik (Investigasi, Solusi & Keputusan)</span>
-            </span>
-            <span className="text-[10px] text-zinc-500 font-medium">
-              *Mengisi Tindakan / Penyebab otomatis mengaktifkan status <strong className="text-blue-600 dark:text-blue-400">In Progress</strong>
-            </span>
-          </div>
-
-          {/* Baris 3.1: Investigasi & Solusi Gudang */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
-                Tindakan Solusi Gudang (Action)
-              </label>
-              <input
-                type="text"
-                value={editForm.action}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const updates: any = { action: val };
-                  // Auto In-Progress jika tindakan diisi saat masih Pending
-                  if (val.trim() && (editForm.status === "Pending" || !editForm.status)) {
-                    updates.status = "In Progress";
-                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
-                  }
-                  setEditForm({ ...editForm, ...updates });
-                }}
-                placeholder="Tukar fisik / Kirim susulan / dll"
-                className="w-full bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-800 rounded-lg p-1.5 text-blue-900 dark:text-blue-200 font-bold focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
-                Penyebab Kesalahan (Root Cause)
-              </label>
-              <input
-                type="text"
-                value={editForm.root_cause}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const updates: any = { root_cause: val };
-                  // Auto In-Progress jika penyebab diisi saat masih Pending
-                  if (val.trim() && (editForm.status === "Pending" || !editForm.status)) {
-                    updates.status = "In Progress";
-                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
-                  }
-                  setEditForm({ ...editForm, ...updates });
-                }}
-                placeholder="Human error / Salah ambil picker / dll"
-                className="w-full bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-800 rounded-lg p-1.5 text-blue-900 dark:text-blue-200 font-medium focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="relative">
-              <div className="flex items-center justify-between mb-0.5">
-                <label className="text-zinc-700 dark:text-slate-400 font-bold block">
-                  Personil Terkait {editForm.inprogress_type === "Klaim & Retur" ? "(Opsional untuk Klaim & Retur)" : "(Picker / Checker)"}
-                </label>
-                {editForm.person && editForm.person.trim() && !editForm.person.trim().endsWith("/") && (
-                  <button
-                    type="button"
-                    onClick={handleAppendPersonSeparator}
-                    className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800 cursor-pointer"
-                    title="Tambah personil ke-2 atau ke-3 dengan pemisah garis miring ( / )"
-                  >
-                    + Tambah Personil ( / )
-                  </button>
-                )}
-              </div>
-              <input
-                type="text"
-                value={editForm.person}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const updates: any = { person: val };
-                  if (val.trim() && (editForm.status === "Pending" || !editForm.status)) {
-                    updates.status = "In Progress";
-                    if (editForm.confirm !== "Approve") updates.confirm = "Approve";
-                  }
-                  setEditForm({ ...editForm, ...updates });
-                  setShowPersonSuggestions(true);
-                }}
-                onFocus={() => setShowPersonSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowPersonSuggestions(false), 250)}
-                placeholder={editForm.inprogress_type === "Klaim & Retur" ? "Opsional (Boleh dikosongkan)" : "Ketik nama personil (contoh: AGUS SUROSO / BUDI SUSANTO)"}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-bold"
-              />
-
-              {/* Petunjuk format pemisah garis miring */}
-              <div className="mt-1 text-[11px] text-zinc-500 dark:text-slate-400 flex items-center justify-between">
-                <span>Wajib pakai tanda <strong className="text-blue-600 dark:text-blue-400 font-black px-1 bg-blue-50 dark:bg-blue-950/40 rounded border border-blue-200 dark:border-blue-800"> / </strong> jika 2 atau 3 personil</span>
-                <span className="text-[10px] text-zinc-400 dark:text-slate-500">Master: 60 Personil MBI</span>
-              </div>
-
-              {/* Suggestions Dropdown */}
-              {showPersonSuggestions && editPersonSuggestions.length > 0 && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg shadow-2xl z-50 max-h-56 overflow-y-auto py-1">
-                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 border-b border-zinc-100 dark:border-slate-800 flex items-center justify-between">
-                    <span>Pilih Personil MBI ({editPersonSuggestions.length})</span>
-                    <span className="text-[9px] text-zinc-400 lowercase">klik nama untuk memasukkan</span>
-                  </div>
-                  {editPersonSuggestions.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleSelectPerson(name);
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-black dark:text-white hover:bg-blue-50 dark:hover:bg-blue-950/60 flex items-center justify-between transition-colors cursor-pointer border-b border-zinc-50 dark:border-slate-800/40 last:border-b-0"
-                    >
-                      <span className="font-bold">{name}</span>
-                      <span className="text-[10px] text-zinc-400 dark:text-slate-500 font-medium">Gudang MBI</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">No. Nota Retur</label>
-              <input
-                type="text"
-                value={editForm.nota_retur_no}
-                onChange={(e) => setEditForm({ ...editForm, nota_retur_no: e.target.value })}
-                placeholder="Nomor nota retur (jika ada)"
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
-              />
-            </div>
-          </div>
-
-          {/* Baris 3.2: Konfirmasi & Status Keputusan Tiket */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-blue-100 dark:border-slate-800/80">
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">
-                1. Validitas Komplain
-              </label>
-              <select
-                value={editForm.confirm}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const updates: any = { confirm: val };
-                  if (val === "Approve") {
-                    updates.status = "In Progress";
-                    if (!editForm.inprogress_type) {
-                      const isOp = [
-                        "fisik yang dikirim kurang",
-                        "fisik yang dikirim lebih",
-                        "fisik yang dikirim salah",
-                        "fisik yang dikirim tidak ada",
-                      ].some((k) =>
-                        (selectedReturn?.description || "").toLowerCase().includes(k) ||
-                        (editForm.reason || "").toLowerCase().includes(k)
-                      );
-                      updates.inprogress_type = isOp ? "Operasional" : "Klaim & Retur";
-                    }
-                  } else if (val === "Reject") {
-                    updates.status = "Rejected";
-                    updates.resolved_date = "";
-                  } else {
-                    updates.status = "Pending";
-                  }
-                  setEditForm({ ...editForm, ...updates });
-                }}
-                className={`w-full border rounded-lg p-1.5 font-bold transition-colors ${
-                  editForm.confirm === "Approve"
-                    ? "bg-blue-50 dark:bg-blue-950/60 border-blue-400 text-blue-800 dark:text-blue-300"
-                    : editForm.confirm === "Reject"
-                    ? "bg-rose-50 dark:bg-rose-950/60 border-rose-400 text-rose-800 dark:text-rose-300"
-                    : "bg-white dark:bg-slate-900 border-zinc-300 dark:border-slate-700 text-black dark:text-white"
-                }`}
-              >
-                <option value="">-- Belum Ditentukan --</option>
-                <option value="Approve">🔵 Valid (Kesalahan PBF)</option>
-                <option value="Reject">🔴 Reject (Bukan Kesalahan PBF)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Tgl Penyelesaian (Resolved Date)</label>
-              <input
-                type="date"
-                value={editForm.resolved_date ? editForm.resolved_date.split("T")[0] : ""}
-                onChange={(e) => setEditForm({ ...editForm, resolved_date: e.target.value })}
-                className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-black dark:text-white font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="text-zinc-700 dark:text-slate-400 font-bold block mb-0.5">Days Until Close</label>
-              <div className={`p-1.5 border rounded-lg font-mono font-bold text-xs flex items-center justify-between ${
-                calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status, editForm.invoice_date) === "#N/A"
-                  ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800"
-                  : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
-              }`}>
-                <span>{calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status, editForm.invoice_date) === "#N/A" ? "#N/A (Belum Close)" : `${calculateDaysUntilClose(editForm.report_date, editForm.resolved_date, editForm.status, editForm.invoice_date)} hari`}</span>
-                <span className="text-[10px] font-normal text-zinc-500">Today: {calculateDaysUntilToday(editForm.report_date)} hr</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Baris 3.3: Spesifik In Progress / Reject Details */}
-          {(editForm.confirm === "Approve" || editForm.status === "In Progress") && (
-            <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 rounded-xl space-y-2">
-              <label className="text-xs font-bold text-blue-900 dark:text-blue-300 block">
-                Jenis Alur In Progress:
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditForm({ ...editForm, inprogress_type: "Operasional" })}
-                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                    editForm.inprogress_type === "Operasional"
-                      ? "bg-blue-600 text-white border-blue-700 shadow-sm"
-                      : "bg-white dark:bg-slate-900 text-zinc-700 dark:text-slate-300 border-blue-200 dark:border-blue-900/40 hover:border-blue-400"
-                  }`}
-                >
-                  <div className="font-extrabold text-xs flex items-center gap-1.5">
-                    <Package className="w-4 h-4" />
-                    <span>In Progress (Operasional)</span>
-                  </div>
-                  <p className={`text-[10px] mt-0.5 ${editForm.inprogress_type === "Operasional" ? "text-blue-100" : "text-zinc-500 dark:text-slate-400"}`}>
-                    Kelalaian fisik pengiriman: Fisik kurang, lebih, salah, tidak ada (Penyiapan barang &amp; antar driver).
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setEditForm({ ...editForm, inprogress_type: "Klaim & Retur" })}
-                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                    editForm.inprogress_type === "Klaim & Retur"
-                      ? "bg-blue-600 text-white border-blue-700 shadow-sm"
-                      : "bg-white dark:bg-slate-900 text-zinc-700 dark:text-slate-300 border-blue-200 dark:border-blue-900/40 hover:border-blue-400"
-                  }`}
-                >
-                  <div className="font-extrabold text-xs flex items-center gap-1.5">
-                    <FileText className="w-4 h-4" />
-                    <span>In Progress (Klaim &amp; Retur)</span>
-                  </div>
-                  <p className={`text-[10px] mt-0.5 ${editForm.inprogress_type === "Klaim & Retur" ? "text-blue-100" : "text-zinc-500 dark:text-slate-400"}`}>
-                    Retur administratif &amp; kondisi barang: Damage On Delivery, ED dekat, recall, salah SKU, dll.
-                  </p>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {(editForm.confirm === "Reject" || editForm.status === "Rejected") && (
-            <div className="p-3 bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 rounded-xl space-y-2.5">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-rose-900 dark:text-rose-300">
-                <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>Form Penolakan Transparan (Akan Tampil di Link Tracking Apotek)</span>
-              </div>
-              <div>
-                <label className="text-[11px] font-bold text-zinc-700 dark:text-slate-300 block mb-1">
-                  Alasan Penolakan PBF (Wajib Diisi):
-                </label>
-                <textarea
-                  rows={2}
-                  value={editForm.reject_reason || editForm.note}
-                  onChange={(e) => setEditForm({ ...editForm, reject_reason: e.target.value, note: e.target.value })}
-                  placeholder="Contoh: Dus luar utuh bersegel dan tidak ada video unboxing saat paket diterima..."
-                  className="w-full bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 rounded-lg p-2 text-xs text-zinc-900 dark:text-white"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-bold text-zinc-700 dark:text-slate-300 block mb-1">
-                  Link / Bukti Media Penolakan dari Tim PBF (Opsional):
-                </label>
-                <input
-                  type="text"
-                  value={editForm.reject_media_url || ""}
-                  onChange={(e) => setEditForm({ ...editForm, reject_media_url: e.target.value })}
-                  placeholder="URL Foto/Video Bukti CCTV Gudang atau Packing List..."
-                  className="w-full bg-white dark:bg-slate-900 border border-zinc-300 dark:border-slate-700 rounded-lg p-1.5 text-xs text-zinc-900 dark:text-white font-mono"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Bukti Media Apotek */}
-          {(selectedReturn?.video_url || editForm.video_url) && (
-            <div className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/50 rounded-xl">
-              <Video className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-purple-900 dark:text-purple-300 truncate">
-                  Tersedia Video Unboxing dari Apotek
-                </p>
-                <p className="text-[10px] text-purple-700 dark:text-purple-400">
-                  Video direkam saat pembukaan paket oleh apotek (durasi max 10 menit).
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewVideoUrl(selectedReturn?.video_url || editForm.video_url || null)}
-                className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 flex items-center gap-1"
-              >
-                <Video className="w-3.5 h-3.5" />
-                <span>Putar Video</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Footer Bar: Actions & Links */}
-      <div className="flex flex-wrap items-center justify-between border-t border-zinc-200 dark:border-slate-800 pt-3 gap-2">
-        <span className="text-[11px] text-zinc-500 dark:text-slate-400 font-medium">
-          Tersimpan di Master Database TiDB Cloud
-        </span>
-
-        <div className="flex items-center gap-2">
-          {/* Delete Return Button */}
-          {canDeleteReturns && (
-            <button
-              type="button"
-              onClick={() => handleDeleteReturn(r.id, r.invoice_no)}
-              disabled={isUpdating}
-              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:text-red-300 rounded-xl text-xs font-bold border border-red-300 dark:border-red-800 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="Hapus komplain ini dari database"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Hapus</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setSelectedReturn(null)}
-            className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-black dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold border border-zinc-300 dark:border-slate-700 transition-all"
-          >
-            Tutup
-          </button>
-
-          {canEditReturns ? (
-            <button
-              type="button"
-              onClick={() => handleSaveEdit(false)}
-              disabled={isUpdating}
-              className="px-4 py-1.5 bg-black hover:bg-zinc-800 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {isUpdating ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <CheckCircle2 className="w-3.5 h-3.5" />
-              )}
-              <span>{isUpdating ? "Menyimpan..." : "Simpan Perubahan"}</span>
-            </button>
-          ) : (
-            <span className="px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-500 text-xs font-bold">
-              🔒 Read-Only
-            </span>
-          )}
-
-          {onSelectCustomer && (
-            <button
-              type="button"
-              onClick={() => {
-                const c = r.customer_name;
-                setSelectedReturn(null);
-                onSelectCustomer(c);
-              }}
-              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold flex items-center gap-1 ml-2"
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>Lihat Master Customer</span>
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+  const renderAccordionEditor = (r: ShipmentReturnRecord) => (
+    <ReturnsAccordionEditor
+      record={r}
+      canEditReturns={canEditReturns}
+      canDeleteReturns={canDeleteReturns}
+      isUpdating={isUpdating}
+      loadingPhotoId={loadingPhotoId}
+      customerSuggestionsList={customerSuggestionsList}
+      complaintReasons={COMPLAINT_REASONS}
+      calculateDaysUntilToday={calculateDaysUntilToday}
+      calculateDaysUntilClose={calculateDaysUntilClose}
+      onPreviewPhoto={handlePreviewPhoto}
+      onPreviewVideo={handlePreviewVideoUrl}
+      onClose={handleCloseSelectedReturn}
+      onDelete={handleAccordionDelete}
+      onSubmitSave={handleAccordionSubmitSave}
+      onSelectCustomer={onSelectCustomer}
+    />
   );
 
   // Benchmark monthly invoices matching Apps Script
@@ -2445,7 +1890,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const resolutionRate = totApproved > 0 ? ((stats.totalResolved / totApproved) * 100).toFixed(1) : "0.0";
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-200">
+    <div className="space-y-4">
       {/* View Switcher Tabs (Apps Script Navigation Suite) */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 dark:border-slate-800 pb-3">
         <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-slate-900 rounded-2xl border border-zinc-200 dark:border-slate-800 overflow-x-auto max-w-full">
@@ -2626,6 +2071,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
         <OpenCasesView
           returns={allReturns.length > 0 ? allReturns : returns}
           onRefreshParentReturns={() => {
+            markOwnMutation();
             fetchReturns(true, true);
             fetchAllReturns(true);
           }}
@@ -2645,7 +2091,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* Tab 8: Daftar Retur (Data Kasus) */}
       {activeTab === "list" && (
-        <div className="space-y-4 animate-in fade-in duration-150">
+        <div className="space-y-4">
           {fetchError && (
             <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
               <div className="flex items-start gap-3">
@@ -2744,7 +2190,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                       <span>PENDING</span>
                     </span>
                     {statusFilter === "Pending" ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-amber-500 text-black flex items-center gap-1 shadow-xs animate-in zoom-in-95">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-amber-500 text-black flex items-center gap-1 shadow-xs">
                         <Check className="w-3 h-3 stroke-[3]" />
                         <span>AKTIF</span>
                       </span>
@@ -2762,7 +2208,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   <div className="text-[10px] font-medium truncate">
                     {statusFilter === "Pending" ? (
                       <span className="text-amber-800 dark:text-amber-300 font-bold flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                         Sedang Difilter (Klik untuk reset)
                       </span>
                     ) : (
@@ -2777,8 +2223,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 <div
                   className={`relative overflow-hidden rounded-2xl border p-2.5 sm:p-3 flex flex-col justify-between transition-all select-none ${
                     statusFilter.startsWith("In Progress")
-                      ? "border-blue-400 dark:border-blue-400 ring-4 ring-blue-500/20 dark:ring-blue-400/20 bg-blue-500/15 dark:bg-blue-950/70 shadow-lg shadow-blue-500/10 scale-[1.01]"
-                      : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-700 bg-white dark:bg-slate-900 hover:shadow-md`
+                      ? "border-blue-400 dark:border-blue-400 ring-2 ring-blue-500/20 bg-blue-500/10 dark:bg-blue-950/60 shadow-sm"
+                      : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-700 bg-white dark:bg-slate-900`
                   }`}
                   title="Klik untuk filter tiket In Progress. Klik lagi untuk reset."
                 >
@@ -2796,7 +2242,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                         <span>IN PROGRESS</span>
                       </span>
                       {statusFilter.startsWith("In Progress") ? (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-blue-500 text-white flex items-center gap-1 shadow-xs animate-in zoom-in-95">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-blue-500 text-white flex items-center gap-1 shadow-xs">
                           <Check className="w-3 h-3 stroke-[3]" />
                           <span>AKTIF</span>
                         </span>
@@ -2873,7 +2319,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                       <span>RESOLVED</span>
                     </span>
                     {statusFilter === "Resolved" ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-emerald-500 text-white flex items-center gap-1 shadow-xs animate-in zoom-in-95">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-emerald-500 text-white flex items-center gap-1 shadow-xs">
                         <Check className="w-3 h-3 stroke-[3]" />
                         <span>AKTIF</span>
                       </span>
@@ -2891,7 +2337,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   <div className="text-[10px] font-medium truncate">
                     {statusFilter === "Resolved" ? (
                       <span className="text-emerald-800 dark:text-emerald-300 font-bold flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                         Sedang Difilter (Klik untuk reset)
                       </span>
                     ) : (
@@ -2908,10 +2354,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     setStatusFilter(statusFilter === "Rejected" ? "ALL" : "Rejected");
                     setPage(0);
                   }}
-                  className={`relative overflow-hidden rounded-2xl border p-2.5 sm:p-3 flex flex-col justify-between cursor-pointer touch-manipulation transition-all select-none ${
+                  className={`relative overflow-hidden rounded-2xl border p-2.5 sm:p-3 flex flex-col justify-between cursor-pointer touch-manipulation transition-colors select-none ${
                     statusFilter === "Rejected"
-                      ? "border-rose-400 dark:border-rose-400 ring-4 ring-rose-500/20 dark:ring-rose-400/20 bg-rose-500/15 dark:bg-rose-950/70 shadow-lg shadow-rose-500/10 scale-[1.01]"
-                      : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-rose-400 dark:hover:border-rose-700 bg-white dark:bg-slate-900 hover:shadow-md`
+                      ? "border-rose-400 dark:border-rose-400 ring-2 ring-rose-500/20 bg-rose-500/10 dark:bg-rose-950/60 shadow-sm"
+                      : `${statusFilter !== "ALL" ? "opacity-50 hover:opacity-100" : "opacity-90 hover:opacity-100"} border-slate-200 dark:border-slate-800 hover:border-rose-400 dark:hover:border-rose-700 bg-white dark:bg-slate-900`
                   }`}
                   title="Klik untuk filter tiket Ditolak (Rejected). Klik lagi untuk reset."
                 >
@@ -2922,7 +2368,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                       <span>REJECTED</span>
                     </span>
                     {statusFilter === "Rejected" ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-rose-500 text-white flex items-center gap-1 shadow-xs animate-in zoom-in-95">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-rose-500 text-white flex items-center gap-1 shadow-xs">
                         <Check className="w-3 h-3 stroke-[3]" />
                         <span>AKTIF</span>
                       </span>
@@ -2940,7 +2386,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   <div className="text-[10px] font-medium truncate">
                     {statusFilter === "Rejected" ? (
                       <span className="text-rose-800 dark:text-rose-300 font-bold flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
                         Sedang Difilter (Klik untuk reset)
                       </span>
                     ) : (
@@ -3063,7 +2509,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               <button
                 type="button"
                 onClick={() => setShowAddModal(true)}
-                className="py-1.5 px-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                className="py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Input Komplain</span>
@@ -3072,10 +2518,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 type="button"
                 onClick={() => importFileRef.current?.click()}
                 disabled={isImporting}
-                className="py-1.5 px-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                className="py-1.5 px-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
                 title="Impor Data Excel / CSV"
               >
-                <Download className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 rotate-180 ${isImporting ? "animate-bounce" : ""}`} />
+                <Download className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 rotate-180" />
                 <span>{isImporting ? "Mengimpor..." : "Impor Excel"}</span>
               </button>
               <button
@@ -3231,7 +2677,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 const m = e.target.value;
                 setMonthFilter(m);
                 setPage(0);
-                fetchPersonnelStats(m, weekFilter);
+                if (activeTabRef.current === "leaderboard") {
+                  fetchPersonnelStats(m, weekFilter);
+                }
               }}
               className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
             >
@@ -3261,7 +2709,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 const w = e.target.value;
                 setWeekFilter(w);
                 setPage(0);
-                fetchPersonnelStats(monthFilter, w);
+                if (activeTabRef.current === "leaderboard") {
+                  fetchPersonnelStats(monthFilter, w);
+                }
               }}
               className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-slate-200 dark:bg-slate-950 focus:outline-none cursor-pointer pr-1"
             >
@@ -3361,7 +2811,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 </button>
 
                 {showColMenu && (
-                  <div className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl bg-white dark:bg-[#0c1222] border border-zinc-200 dark:border-zinc-700 shadow-xl p-3 text-xs space-y-2 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl bg-white dark:bg-[#0c1222] border border-zinc-200 dark:border-zinc-700 shadow-xl p-3 text-xs space-y-2">
                     <div className="flex items-center justify-between pb-1.5 border-b border-zinc-200 dark:border-zinc-800 font-bold text-zinc-800 dark:text-zinc-200">
                       <span>Pilih Kolom Tampil</span>
                       {hiddenCols.length > 0 && (
@@ -3423,16 +2873,17 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               if (activeTab !== "list") fetchAllReturns(true);
             }}
             disabled={loading}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition-all active:scale-95 shadow-sm"
+            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition-colors shadow-sm"
             title="Refresh Data"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-400" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-blue-400" : ""}`} />
           </button>
         </div>
       </div>
 
       {/* â”€â”€â”€ Enterprise Returns Table â”€â”€â”€ */}
       {/* ─── Mobile Cards View (Khusus Tampilan HP / Layar Kecil) ─── */}
+      {isMobileViewport !== false && (
       <div className="block md:hidden space-y-3 pb-24 max-w-full overflow-hidden">
         {loading && returns.length === 0 ? (
           <div className="py-12 text-center text-zinc-400 bg-white dark:bg-[#0a0f1c] rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6 shadow-xs">
@@ -3591,9 +3042,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                         type="button"
                         onClick={() => handlePreviewPhoto(r)}
                         disabled={loadingPhotoId === r.id}
-                        className="h-9 py-2 px-3 rounded-xl text-xs font-bold bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300 border border-violet-200 dark:border-violet-800 hover:scale-105 transition-all touch-manipulation cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+                        className="h-9 py-2 px-3 rounded-xl text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-colors touch-manipulation cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
                       >
-                        <Camera className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+                        <Camera className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                         <span>{loadingPhotoId === r.id ? "Memuat..." : "Foto"}</span>
                       </button>
                     )}
@@ -3601,9 +3052,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                       <button
                         type="button"
                         onClick={() => setPreviewVideoUrl(r.video_url || null)}
-                        className="h-9 py-2 px-3 rounded-xl text-xs font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:scale-105 transition-all touch-manipulation cursor-pointer inline-flex items-center gap-1.5"
+                        className="h-9 py-2 px-3 rounded-xl text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-colors touch-manipulation cursor-pointer inline-flex items-center gap-1.5"
                       >
-                        <Video className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        <Video className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                         <span>Video</span>
                       </button>
                     )}
@@ -3627,9 +3078,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     <button
                       type="button"
                       onClick={() => setSelectedReturn((prev) => (prev?.id === r.id ? null : r))}
-                      className={`h-9 py-2 px-3.5 rounded-xl text-xs font-bold transition-all touch-manipulation cursor-pointer ${
+                      className={`h-9 py-2 px-3.5 rounded-xl text-xs font-bold transition-colors touch-manipulation cursor-pointer ${
                         isExpanded
-                          ? "bg-black text-white dark:bg-indigo-600"
+                          ? "bg-black text-white dark:bg-blue-600"
                           : "bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-100 dark:border-zinc-700"
                       }`}
                     >
@@ -3640,8 +3091,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
                 {/* Mobile Expanded Form */}
                 {isExpanded && (
-                  <div className="mt-3 pt-3 border-t border-indigo-200 dark:border-indigo-900/60 animate-in fade-in duration-150">
-                    {renderAccordionContent(r)}
+                  <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-900/60">
+                    {renderAccordionEditor(r)}
                   </div>
                 )}
               </div>
@@ -3649,8 +3100,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           })
         )}
       </div>
+      )}
 
       {/* ─── Enterprise Returns Table (Desktop & Tablet) ─── */}
+      {isMobileViewport !== true && (
       <div className="hidden md:block rounded-2xl border border-zinc-300 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
         {tableViewMode === "smart" ? (
           /* ══════════════════════════════════════════════════════════════════════ */
@@ -3735,7 +3188,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                                 e.stopPropagation();
                                 handleDirectApprove(r);
                               }}
-                              className="w-full py-1.5 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-[11px] inline-flex items-center justify-center gap-1 shadow-xs transition-all cursor-pointer"
+                              className="w-full py-1.5 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-black text-[11px] inline-flex items-center justify-center gap-1 shadow-xs transition-colors cursor-pointer"
                               title="ACC Komplain ini (Proses ke In Progress)"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
@@ -3748,7 +3201,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                                 e.stopPropagation();
                                 handleRequestResolveReturn(r);
                               }}
-                              className="w-full py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-[11px] inline-flex items-center justify-center gap-1 shadow-xs transition-all cursor-pointer"
+                              className="w-full py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] inline-flex items-center justify-center gap-1 shadow-xs transition-colors cursor-pointer"
                               title="Tandai kasus ini selesai (Resolved)"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
@@ -3866,10 +3319,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                                   handlePreviewPhoto(r);
                                 }}
                                 disabled={loadingPhotoId === r.id}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-300 border border-violet-200 dark:border-violet-700 hover:scale-105 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-200 dark:border-blue-700 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
                                 title="Lihat foto bukti kerusakan dari apotek"
                               >
-                                <Camera className="w-3 h-3 text-violet-600 dark:text-violet-400" />
+                                <Camera className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                                 <span>{loadingPhotoId === r.id ? "Memuat..." : "Foto Bukti"}</span>
                               </button>
                             )}
@@ -3880,10 +3333,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                                   e.stopPropagation();
                                   setPreviewVideoUrl(r.video_url || null);
                                 }}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 border border-purple-200 dark:border-purple-700 hover:scale-105 transition-all shadow-xs cursor-pointer"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-200 dark:border-blue-700 transition-colors shadow-xs cursor-pointer"
                                 title="Tonton video unboxing dari apotek"
                               >
-                                <Video className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                                <Video className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                                 <span>Video</span>
                               </button>
                             )}
@@ -4007,9 +3460,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
                       {/* Expandable Accordion Row (Smart Mode) */}
                       {isExpanded && (
-                        <tr className="bg-zinc-100/90 dark:bg-[#070b16] border-y-2 border-indigo-500/50 animate-in fade-in duration-150">
+                        <tr className="bg-zinc-100/90 dark:bg-[#070b16] border-y-2 border-blue-500/50">
                           <td colSpan={6} className="p-2 sm:p-3">
-                            {renderAccordionContent(r)}
+                            {renderAccordionEditor(r)}
                           </td>
                         </tr>
                       )}
@@ -4373,10 +3826,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                                   handlePreviewPhoto(r);
                                 }}
                                 disabled={loadingPhotoId === r.id}
-                                className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-300 border border-violet-200 dark:border-violet-700 hover:scale-105 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                                className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-200 dark:border-blue-700 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
                                 title="Lihat foto bukti kerusakan dari apotek"
                               >
-                                <Camera className="w-3 h-3 text-violet-600 dark:text-violet-400" />
+                                <Camera className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                                 <span>{loadingPhotoId === r.id ? "Memuat..." : "Foto Bukti"}</span>
                               </button>
                             )}
@@ -4487,9 +3940,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                       {/* â”€â”€â”€ OPSI 4: EXPANDABLE ROW (AKORDEON) â”€â”€â”€ */}
                       {/* ─── EXPANDABLE ROW (AKORDEON) ─── */}
                       {isExpanded && (
-                        <tr className="bg-zinc-100/90 dark:bg-[#070b16] border-y-2 border-indigo-500/50 animate-in fade-in duration-150">
+                        <tr className="bg-zinc-100/90 dark:bg-[#070b16] border-y-2 border-blue-500/50">
                           <td colSpan={14} className="p-2 sm:p-3">
-                            {renderAccordionContent(r)}
+                            {renderAccordionEditor(r)}
                           </td>
                         </tr>
                       )}
@@ -4539,12 +3992,13 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           </div>
         </div>
       </div>
+      )}
       </div>
       )}
 
       {/* ─── TAB 2: LEADERBOARD PERSONIL (PELAKU KESALAHAN GUDANG) ─── */}
       {activeTab === "leaderboard" && (
-        <div className="space-y-4 animate-in fade-in duration-150">
+        <div className="space-y-4">
           {/* Top Summary Cards (100% Transparan & Sesuai Data Kasus Riil) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Card 1: Total Kasus Riil Database */}
@@ -4648,14 +4102,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
             <button
               type="button"
               onClick={() => setPersonnelDrillDown({ isOpen: true, personName: "ALL", title: "Semua Bukti Kasus Komplain Riil" })}
-              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               <span>Buka Bukti Kasus Riil</span>
             </button>
           </div>
 
-          {/* Top 3 Spotlight Cards (Matching Friend's Apps Script App) */}
+          {/* Top 3 Spotlight Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {/* Rank 1 (Gold) */}
             {filteredPersonnel[0] && (() => {
@@ -4663,7 +4117,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               const c0 = personnelFilterPbf === "MAI" ? Number(p0.mai_cases || 0) : personnelFilterPbf === "MBI" ? Number(p0.mbi_cases || 0) : Number(p0.total_cases || 0);
               const pct0 = totalPersonnelErrors > 0 ? ((c0 / totalPersonnelErrors) * 100).toFixed(1) : "0";
               return (
-              <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border-2 border-amber-400/70 dark:border-amber-400/50 shadow-sm flex flex-col justify-between">
+              <div className="relative overflow-hidden rounded-2xl p-4 bg-amber-500/5 border-2 border-amber-400/70 dark:border-amber-400/50 shadow-sm flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500 text-black flex items-center gap-1 font-mono">
@@ -4692,7 +4146,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[10px] font-bold">
                       MBI: {p0.mbi_cases || 0}
                     </span>
-                    <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 text-[10px] font-bold">
+                    <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 text-[10px] font-bold">
                       MAI: {p0.mai_cases || 0}
                     </span>
                   </div>
@@ -4718,7 +4172,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               const c1 = personnelFilterPbf === "MAI" ? Number(p1.mai_cases || 0) : personnelFilterPbf === "MBI" ? Number(p1.mbi_cases || 0) : Number(p1.total_cases || 0);
               const pct1 = totalPersonnelErrors > 0 ? ((c1 / totalPersonnelErrors) * 100).toFixed(1) : "0";
               return (
-              <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-slate-300/20 via-slate-400/5 to-transparent border border-slate-300 dark:border-slate-600 shadow-sm flex flex-col justify-between">
+              <div className="relative overflow-hidden rounded-2xl p-4 bg-zinc-50 dark:bg-zinc-900/60 border border-slate-300 dark:border-slate-600 shadow-sm flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-800 dark:text-slate-200 flex items-center gap-1 font-mono">
@@ -4773,7 +4227,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               const c2 = personnelFilterPbf === "MAI" ? Number(p2.mai_cases || 0) : personnelFilterPbf === "MBI" ? Number(p2.mbi_cases || 0) : Number(p2.total_cases || 0);
               const pct2 = totalPersonnelErrors > 0 ? ((c2 / totalPersonnelErrors) * 100).toFixed(1) : "0";
               return (
-              <div className="relative overflow-hidden rounded-2xl p-4 bg-gradient-to-br from-amber-700/10 via-amber-800/5 to-transparent border border-amber-600/40 dark:border-amber-700/50 shadow-sm flex flex-col justify-between">
+              <div className="relative overflow-hidden rounded-2xl p-4 bg-amber-500/5 border border-amber-600/40 dark:border-amber-700/50 shadow-sm flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-700/20 text-amber-800 dark:text-amber-300 flex items-center gap-1 font-mono">
@@ -4981,7 +4435,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   }}
                   className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer border ${
                     personnelReasonFilter === "PRIMARY_4"
-                      ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500 shadow-md shadow-emerald-500/25"
+                      ? "bg-emerald-600 text-white border-emerald-500 shadow-sm"
                       : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100"
                   }`}
                   title="Filter personil khusus 4 Kendala Fisik Utama: Kurang, Lebih, Salah, Tidak Ada"
@@ -5187,12 +4641,12 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* ─── MODAL DRILL-DOWN: BUKTI KASUS PERSONIL (100% TRANSPARAN SESUAI DATA KASUS) ─── */}
       {personnelDrillDown?.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-zinc-200 dark:border-slate-800 max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-zinc-200 dark:border-slate-800 max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden">
             {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-zinc-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-zinc-50/50 dark:bg-slate-950/50">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
                   <User className="w-5 h-5" />
                 </div>
                 <div>
@@ -5384,7 +4838,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* â”€â”€â”€ ADD NEW RETURN MODAL â”€â”€â”€ */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-4">
           <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-xl w-full p-5 sm:p-6 space-y-4 shadow-2xl relative overflow-hidden">
             <button
               type="button"
@@ -5594,7 +5048,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 <button
                   type="submit"
                   disabled={isUpdating}
-                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold rounded-xl text-xs shadow-md"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
                 >
                   {isUpdating ? "Menyimpan..." : "Simpan Komplain"}
                 </button>
@@ -5607,7 +5061,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       {/* ─── FULLSCREEN PHOTO PREVIEW MODAL ─── */}
       {previewPhotoUrl && (
         <div
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4"
           onClick={() => setPreviewPhotoUrl(null)}
         >
           <div
@@ -5616,7 +5070,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           >
             <div className="w-full flex items-center justify-between p-2 border-b border-zinc-800 mb-2">
               <span className="text-xs font-bold text-zinc-300 flex items-center gap-2">
-                <Camera className="w-4 h-4 text-violet-400" />
+                <Camera className="w-4 h-4 text-blue-400" />
                 <span>Foto Bukti Kerusakan / Retur dari Apotek</span>
               </span>
               <div className="flex items-center gap-2">
@@ -5652,7 +5106,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       {/* ─── FULLSCREEN VIDEO PREVIEW MODAL ─── */}
       {previewVideoUrl && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
           onClick={() => setPreviewVideoUrl(null)}
         >
           <div
@@ -5661,7 +5115,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           >
             <div className="w-full flex items-center justify-between p-2 border-b border-zinc-800 mb-2">
               <span className="text-xs font-bold text-zinc-300 flex items-center gap-2">
-                <Video className="w-4 h-4 text-purple-400" />
+                <Video className="w-4 h-4 text-blue-400" />
                 <span>Video Unboxing Asli dari Apotek (Max 10 Menit)</span>
               </span>
               <div className="flex items-center gap-2">
@@ -5699,8 +5153,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* ─── MODAL KONFIRMASI: ACC KOMPLAIN (VALID / KESALAHAN PBF ➔ IN PROGRESS) ─── */}
       {showConfirmApproveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-blue-400 dark:border-blue-700 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-white dark:bg-zinc-900 border border-blue-400 dark:border-blue-700 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-lg shrink-0">
                 <CheckCircle2 className="w-6 h-6" />
@@ -5828,8 +5282,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* ─── MODAL KONFIRMASI: REJECT KOMPLAIN (BUKAN KESALAHAN PBF ➔ REJECTED) ─── */}
       {showConfirmRejectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-rose-400 dark:border-rose-700 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-white dark:bg-zinc-900 border border-rose-400 dark:border-rose-700 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-950/80 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-lg shrink-0">
                 <XCircle className="w-6 h-6" />
@@ -5894,8 +5348,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* ─── MODAL KONFIRMASI: PENERIMAAN BARANG DI APOTEK (RESOLVED) ─── */}
       {confirmResolveItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-emerald-300 dark:border-emerald-800 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-white dark:bg-zinc-900 border border-emerald-300 dark:border-emerald-800 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-lg shrink-0">
                 <CheckCircle2 className="w-6 h-6" />
@@ -5937,8 +5391,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* ─── MODAL PERINGATAN VALIDASI DATA INVESTIGASI (MODERN IN-APP DIALOG) ─── */}
       {validationModal && validationModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-amber-400/80 dark:border-amber-600/80 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+          <div className="bg-white dark:bg-zinc-900 border border-amber-400/80 dark:border-amber-600/80 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-lg shrink-0 mt-0.5 shadow-xs">
                 <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
@@ -5996,7 +5450,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   setValidationModal(null);
                   if (cb) cb();
                 }}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-black text-black bg-amber-400 hover:bg-amber-500 shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-black text-black bg-amber-400 hover:bg-amber-500 shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Check className="w-3.5 h-3.5 stroke-[3]" />
                 <span>{validationModal.onConfirmText || "Mengerti & Lengkapi Data"}</span>
@@ -6008,16 +5462,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* ─── MODAL ANNOUNCEMENT ONETIME: SOP UPDATE SHIPMENT ERROR ─── */}
       {showSopAnnouncement && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-[#0c1222] border-2 border-indigo-500/80 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75">
+          <div className="bg-white dark:bg-[#0c1222] border border-blue-500/60 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col">
             {/* Header */}
-            <div className="p-4 bg-gradient-to-r from-indigo-900/40 via-blue-900/30 to-purple-900/30 border-b border-indigo-500/30 flex items-center justify-between">
+            <div className="p-4 bg-blue-950/25 border-b border-blue-500/25 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <span className="text-xl">🚨</span>
                 <div>
                   <h3 className="text-sm font-black text-zinc-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                     <span>Update Penting Tracker</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500 text-white animate-pulse">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-600 text-white">
                       Wajib Baca
                     </span>
                   </h3>
@@ -6095,7 +5549,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               <button
                 type="button"
                 onClick={handleDismissSopAnnouncement}
-                className="w-full py-2.5 px-4 rounded-xl font-black text-xs text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                className="w-full py-2.5 px-4 rounded-xl font-black text-xs text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
               >
                 <span>Siap, Mengerti &amp; Terapkan ➔</span>
               </button>

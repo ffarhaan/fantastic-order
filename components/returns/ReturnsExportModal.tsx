@@ -7,13 +7,9 @@ import {
   Download,
   FileSpreadsheet,
   RotateCcw,
-  SlidersHorizontal,
-  Search,
-  Calendar,
-  CheckSquare,
   ChevronDown,
   ChevronUp,
-  Layers,
+  Loader2,
 } from "lucide-react";
 
 interface ReturnsExportModalProps {
@@ -72,9 +68,7 @@ function toIsoDate(val?: string | null): string | null {
   const s = String(val).trim().split("T")[0].split(" ")[0];
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) {
-    return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
-  }
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
   return null;
 }
 
@@ -95,6 +89,7 @@ export default function ReturnsExportModal({
   calculateDaysUntilToday,
   calculateDaysUntilClose,
 }: ReturnsExportModalProps) {
+  const [activeTab, setActiveTab] = useState<"quick" | "custom">("quick");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [pbfFilter, setPbfFilter] = useState("ALL");
@@ -104,7 +99,7 @@ export default function ReturnsExportModal({
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [splitByPbf, setSplitByPbf] = useState(false);
-  const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedCols, setSelectedCols] = useState<Set<ReturnColId>>(() => new Set(DEFAULT_RETURN_COLS));
 
   const [isExporting, setIsExporting] = useState(false);
@@ -121,6 +116,8 @@ export default function ReturnsExportModal({
       setStartDate("");
       setEndDate("");
       setProgressText("");
+      setShowAdvanced(false);
+      setActiveTab("quick");
     }
   }, [isOpen, initialSearch, initialStatus, initialPbf, initialCategory, initialMonth, initialWeek]);
 
@@ -133,6 +130,7 @@ export default function ReturnsExportModal({
     setWeekFilter("ALL");
     setStartDate("");
     setEndDate("");
+    setSplitByPbf(false);
   };
 
   const toggleColumn = (id: ReturnColId) => {
@@ -189,7 +187,9 @@ export default function ReturnsExportModal({
     });
   };
 
-  const fetchAndExport = async (mode: "FULL_SYSTEM" | "CUSTOM") => {
+  const fetchAndExport = async (
+    mode: "FULL_SYSTEM" | "CURRENT_SCREEN" | "OPEN_CASES" | "REJECTED_CASES" | "CUSTOM"
+  ) => {
     if (isExporting) return;
     setIsExporting(true);
     setProgressText("Menghubungkan ke database...");
@@ -211,7 +211,18 @@ export default function ReturnsExportModal({
           _t: cacheBuster,
         });
 
-        if (mode === "CUSTOM") {
+        if (mode === "CURRENT_SCREEN") {
+          if (initialSearch.trim()) params.set("search", initialSearch.trim());
+          if (initialStatus !== "ALL") params.set("status", initialStatus);
+          if (initialPbf !== "ALL") params.set("pbf", initialPbf);
+          if (initialCategory !== "ALL") params.set("category", initialCategory);
+          if (initialMonth !== "ALL") params.set("month", initialMonth);
+          if (initialWeek !== "ALL") params.set("week", initialWeek);
+        } else if (mode === "OPEN_CASES") {
+          params.set("status", "Open case");
+        } else if (mode === "REJECTED_CASES") {
+          params.set("status", "Rejected");
+        } else if (mode === "CUSTOM") {
           if (searchQuery.trim()) params.set("search", searchQuery.trim());
           if (statusFilter !== "ALL") params.set("status", statusFilter);
           if (pbfFilter !== "ALL") params.set("pbf", pbfFilter);
@@ -255,7 +266,6 @@ export default function ReturnsExportModal({
         if (expectedTotal > 0 && allRows.length >= expectedTotal) break;
       }
 
-      // Optional client-side custom date range filter on report_date
       let finalRows = allRows;
       if (mode === "CUSTOM" && (startDate || endDate)) {
         finalRows = allRows.filter((r) => {
@@ -268,12 +278,12 @@ export default function ReturnsExportModal({
       }
 
       if (finalRows.length === 0) {
-        alert("Tidak ada data Shipment Error yang sesuai kriteria filter untuk diekspor.");
+        alert("Tidak ada data Shipment Error yang sesuai untuk diekspor.");
         return;
       }
 
       const wb = XLSX.utils.book_new();
-      const forceAllCols = mode === "FULL_SYSTEM";
+      const forceAllCols = mode !== "CUSTOM";
 
       if (splitByPbf || mode === "FULL_SYSTEM") {
         const mbiRows = finalRows.filter((r) => (r.pbf || "MBI").toUpperCase() === "MBI");
@@ -306,8 +316,14 @@ export default function ReturnsExportModal({
       }
 
       const todayStr = new Date().toISOString().split("T")[0];
-      const suffix = mode === "FULL_SYSTEM" ? "Keseluruhan_Sistem" : "Custom_Filter";
-      XLSX.writeFile(wb, `Shipment_Error_${suffix}_${todayStr}.xlsx`);
+      const suffixMap: Record<typeof mode, string> = {
+        FULL_SYSTEM: "Keseluruhan_Sistem",
+        CURRENT_SCREEN: "Sesuai_Filter_Layar",
+        OPEN_CASES: "Belum_Selesai_Open",
+        REJECTED_CASES: "Ditolak_Rejected",
+        CUSTOM: "Custom_Filter",
+      };
+      XLSX.writeFile(wb, `Shipment_Error_${suffixMap[mode]}_${todayStr}.xlsx`);
       onClose();
     } catch (err: any) {
       console.error("ReturnsExportModal export error:", err);
@@ -320,361 +336,381 @@ export default function ReturnsExportModal({
 
   if (!isOpen) return null;
 
-  const hasCustomFilters =
-    Boolean(searchQuery.trim()) ||
-    statusFilter !== "ALL" ||
-    pbfFilter !== "ALL" ||
-    categoryFilter !== "ALL" ||
-    monthFilter !== "ALL" ||
-    weekFilter !== "ALL" ||
-    Boolean(startDate) ||
-    Boolean(endDate);
-
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/75 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/65"
       onClick={() => !isExporting && onClose()}
     >
       <div
-        className="relative w-full max-w-3xl rounded-2xl shadow-2xl border overflow-hidden flex flex-col bg-white dark:bg-[#0c1426] border-zinc-200 dark:border-slate-700/80 text-zinc-900 dark:text-slate-100"
+        className="relative w-full max-w-2xl rounded-xl shadow-2xl border overflow-hidden flex flex-col bg-white dark:bg-[#09090b] border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="px-5 py-3.5 border-b border-zinc-200 dark:border-slate-800 bg-gradient-to-r from-indigo-700 via-blue-700 to-emerald-700 text-white flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-              <FileSpreadsheet className="w-4 h-4 text-white" />
+        {/* Clean Neutral Header */}
+        <div className="px-5 py-3.5 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#09090b] flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg border border-blue-500/30 bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+              <FileSpreadsheet className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="font-extrabold text-sm sm:text-base tracking-tight flex items-center gap-2 flex-wrap">
-                <span>Ekspor Data Shipment Error (Custom & Keseluruhan)</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/20 font-mono font-bold">
-                  {totalSystemAll.toLocaleString("id-ID")} Total Data Sistem
-                </span>
+              <h2 className="font-bold text-sm sm:text-base tracking-tight">
+                Ekspor Excel Shipment Error
               </h2>
-              <p className="text-[11px] text-blue-100 font-medium">
-                Tarik 100% seluruh data di sistem tanpa batas 50 baris, atau atur custom filter &amp; kolom
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Total di sistem: <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{totalSystemAll.toLocaleString("id-ID")}</span> data (tanpa batas 50 baris)
               </p>
             </div>
           </div>
+
           <button
             type="button"
             onClick={() => !isExporting && onClose()}
             disabled={isExporting}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-white/80 hover:text-white hover:bg-white/20 transition text-xs font-bold cursor-pointer"
+            className="w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-bold cursor-pointer disabled:opacity-50"
+            title="Tutup"
           >
             ✕
           </button>
         </div>
 
+        {/* 2 Simple Mode Tabs */}
+        <div className="px-5 pt-3 pb-2.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#0c0c0f] flex items-center gap-2">
+          <button
+            type="button"
+            disabled={isExporting}
+            onClick={() => setActiveTab("quick")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer border ${
+              activeTab === "quick"
+                ? "bg-blue-700 text-white border-blue-600"
+                : "bg-white dark:bg-transparent border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+            }`}
+          >
+            1. Ekspor Cepat (Langsung Unduh)
+          </button>
+          <button
+            type="button"
+            disabled={isExporting}
+            onClick={() => setActiveTab("custom")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer border ${
+              activeTab === "custom"
+                ? "bg-blue-700 text-white border-blue-600"
+                : "bg-white dark:bg-transparent border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+            }`}
+          >
+            2. Ekspor Custom (Atur Filter &amp; Kolom)
+          </button>
+        </div>
+
         {/* Body */}
-        <div className="p-4 sm:p-5 space-y-3.5 overflow-y-auto max-h-[78vh] text-xs">
-          {/* Quick Full System Banner */}
-          <div className="p-3.5 rounded-xl border bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/60 flex flex-wrap items-center justify-between gap-3">
-            <div className="space-y-0.5">
-              <div className="font-extrabold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
-                <Layers className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span>Ekspor Keseluruhan Sistem (Tanpa Filter, 0 Terlewat)</span>
-              </div>
-              <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80">
-                Menarik 100% seluruh <strong>{totalSystemAll.toLocaleString("id-ID")} data</strong> komplain &amp; retur di database (termasuk sheet gabungan + sheet terpisah MBI &amp; MAI).
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => fetchAndExport("FULL_SYSTEM")}
-              disabled={isExporting || totalSystemAll === 0}
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer transition active:scale-95 disabled:opacity-50 shrink-0"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>
-                {isExporting ? "Memproses..." : `Ekspor Semua (${totalSystemAll.toLocaleString("id-ID")} Baris)`}
-              </span>
-            </button>
-          </div>
-
-          {/* Custom Filter Section */}
-          <div className="p-3.5 rounded-xl border bg-zinc-50 dark:bg-[#111c33] border-zinc-200 dark:border-slate-700/60 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-bold uppercase tracking-wider text-zinc-700 dark:text-slate-300 flex items-center gap-1.5">
-                <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Atau Custom Filter Tarikan Data:</span>
-              </span>
-              {hasCustomFilters && (
-                <button
-                  type="button"
-                  onClick={handleResetFilters}
-                  className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Reset Filter</span>
-                </button>
-              )}
-            </div>
-
-            {/* Search */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Kata kunci opsional (No Faktur, No SO, Apotek, Produk, Alasan, Personil)..."
-                className="w-full pl-8 pr-8 py-1.5 rounded-lg border bg-white dark:bg-[#0c1426] border-zinc-300 dark:border-slate-700 text-xs outline-hidden"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 cursor-pointer"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              <div>
-                <label className="block text-[10px] font-semibold text-zinc-500 dark:text-slate-400 mb-1">PBF</label>
-                <select
-                  value={pbfFilter}
-                  onChange={(e) => setPbfFilter(e.target.value)}
-                  className="w-full px-2 py-1.5 rounded-lg border bg-white dark:bg-[#0c1426] border-zinc-300 dark:border-slate-700 text-xs font-semibold"
-                >
-                  <option value="ALL">Semua PBF</option>
-                  <option value="MBI">MBI</option>
-                  <option value="MAI">MAI</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-semibold text-zinc-500 dark:text-slate-400 mb-1">Status</label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-2 py-1.5 rounded-lg border bg-white dark:bg-[#0c1426] border-zinc-300 dark:border-slate-700 text-xs font-semibold"
-                >
-                  <option value="ALL">Semua Status</option>
-                  <option value="Pending">Pending</option>
-                  <option value="In Progress">In Progress (Semua)</option>
-                  <option value="In Progress (Operasional)">In Progress (Operasional)</option>
-                  <option value="In Progress (Klaim & Retur)">In Progress (Klaim &amp; Retur)</option>
-                  <option value="Resolved">Resolved</option>
-                  <option value="Rejected">Rejected</option>
-                  <option value="Open case">Belum Selesai (Open)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-semibold text-zinc-500 dark:text-slate-400 mb-1">Kategori</label>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="w-full px-2 py-1.5 rounded-lg border bg-white dark:bg-[#0c1426] border-zinc-300 dark:border-slate-700 text-xs font-semibold"
-                >
-                  <option value="ALL">Semua</option>
-                  <option value="1P">1P</option>
-                  <option value="2P">2P</option>
-                  <option value="3P">3P</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-semibold text-zinc-500 dark:text-slate-400 mb-1">Bulan</label>
-                <select
-                  value={monthFilter}
-                  onChange={(e) => setMonthFilter(e.target.value)}
-                  className="w-full px-2 py-1.5 rounded-lg border bg-white dark:bg-[#0c1426] border-zinc-300 dark:border-slate-700 text-xs font-semibold"
-                >
-                  <option value="ALL">Semua Bulan</option>
-                  {[
-                    "Januari",
-                    "Februari",
-                    "Maret",
-                    "April",
-                    "Mei",
-                    "Juni",
-                    "Juli",
-                    "Agustus",
-                    "September",
-                    "Oktober",
-                    "November",
-                    "Desember",
-                  ].map((mName, idx) => (
-                    <option key={idx + 1} value={String(idx + 1)}>
-                      {mName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-semibold text-zinc-500 dark:text-slate-400 mb-1">Week</label>
-                <select
-                  value={weekFilter}
-                  onChange={(e) => setWeekFilter(e.target.value)}
-                  className="w-full px-2 py-1.5 rounded-lg border bg-white dark:bg-[#0c1426] border-zinc-300 dark:border-slate-700 text-xs font-semibold"
-                >
-                  <option value="ALL">Semua Week</option>
-                  {availableWeeks.map((w) => (
-                    <option key={w} value={String(w)}>
-                      W{w}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Rentang Tanggal Lapor Custom */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-              <div>
-                <label className="text-[10px] font-semibold text-zinc-500 dark:text-slate-400 mb-1 flex items-center gap-1">
-                  <Calendar className="w-3 h-3 text-indigo-500" />
-                  <span>Dari Tanggal Lapor (Opsional):</span>
-                </label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-lg border bg-white dark:bg-[#0c1426] border-zinc-300 dark:border-slate-700 text-xs"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-zinc-500 dark:text-slate-400 mb-1 flex items-center gap-1">
-                  <Calendar className="w-3 h-3 text-indigo-500" />
-                  <span>Hingga Tanggal Lapor (Opsional):</span>
-                </label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-lg border bg-white dark:bg-[#0c1426] border-zinc-300 dark:border-slate-700 text-xs"
-                />
-              </div>
-            </div>
-
-            <label className="flex items-center gap-2 pt-1 cursor-pointer select-none text-[11px] font-semibold text-zinc-700 dark:text-slate-300">
-              <input
-                type="checkbox"
-                checked={splitByPbf}
-                onChange={(e) => setSplitByPbf(e.target.checked)}
-                className="accent-indigo-600 rounded w-3.5 h-3.5 cursor-pointer"
-              />
-              <span>Pisahkan juga ke Sheet &quot;Khusus_MBI&quot; &amp; &quot;Khusus_MAI&quot; di dalam file Excel</span>
-            </label>
-
-            {/* Custom Columns Picker */}
-            <div className="rounded-lg border bg-white dark:bg-[#0c1426] border-zinc-200 dark:border-slate-700/80">
+        <div className="p-4 sm:p-5 overflow-y-auto max-h-[72vh] space-y-3.5">
+          {activeTab === "quick" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* Semua Data (Biru) */}
               <button
                 type="button"
-                onClick={() => setShowColumnPicker((v) => !v)}
-                className="w-full px-3 py-2 flex items-center justify-between text-[11px] font-bold cursor-pointer"
+                onClick={() => fetchAndExport("FULL_SYSTEM")}
+                disabled={isExporting || totalSystemAll === 0}
+                className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 border-l-4 border-l-blue-600 dark:border-l-blue-500 bg-white dark:bg-[#121215] hover:bg-blue-50/40 dark:hover:bg-zinc-900 text-left flex items-center justify-between gap-3 cursor-pointer disabled:opacity-45"
               >
-                <span className="flex items-center gap-1.5">
-                  <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
-                  <span>
-                    Custom Kolom Excel ({selectedCols.size}/{RETURN_EXPORT_COLUMNS.length} kolom aktif)
-                  </span>
-                </span>
-                {showColumnPicker ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-
-              {showColumnPicker && (
-                <div className="px-3 pb-3 pt-1 border-t border-zinc-200 dark:border-slate-800 space-y-2">
-                  <div className="flex items-center gap-2 text-[10px]">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCols(new Set(DEFAULT_RETURN_COLS))}
-                      className="text-blue-600 dark:text-blue-400 hover:underline font-bold cursor-pointer"
-                    >
-                      Pilih Semua Kolom
-                    </button>
-                    <span>•</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelectedCols(
-                          new Set([
-                            "no",
-                            "pbf",
-                            "customer_name",
-                            "invoice_no",
-                            "report_date",
-                            "so_no",
-                            "product_name",
-                            "qty",
-                            "reason",
-                            "status",
-                            "person",
-                          ])
-                        )
-                      }
-                      className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
-                    >
-                      Kolom Ringkas
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                    {RETURN_EXPORT_COLUMNS.map((col) => {
-                      const active = selectedCols.has(col.id);
-                      return (
-                        <label
-                          key={col.id}
-                          className={`flex items-center gap-1.5 px-2 py-1 rounded border text-[11px] cursor-pointer select-none ${
-                            active
-                              ? "bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-700/60 text-blue-900 dark:text-blue-200 font-semibold"
-                              : "bg-zinc-50 dark:bg-slate-900 border-zinc-200 dark:border-slate-800 text-zinc-400 dark:text-slate-500"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={active}
-                            onChange={() => toggleColumn(col.id)}
-                            className="accent-blue-600 rounded w-3 h-3 cursor-pointer"
-                          />
-                          <span className="truncate">{col.label}</span>
-                        </label>
-                      );
-                    })}
+                <div>
+                  <div className="text-xs font-bold">Semua Data Sistem (100%)</div>
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    <span className="font-mono font-bold text-blue-700 dark:text-blue-400">
+                      {totalSystemAll.toLocaleString("id-ID")}
+                    </span>{" "}
+                    baris (Semua + MBI + MAI)
                   </div>
                 </div>
-              )}
+                <span className="px-3 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-bold shrink-0">
+                  Unduh
+                </span>
+              </button>
+
+              {/* Sesuai Filter Layar (Hijau) */}
+              <button
+                type="button"
+                onClick={() => fetchAndExport("CURRENT_SCREEN")}
+                disabled={isExporting || currentFilteredTotal === 0}
+                className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 border-l-4 border-l-emerald-600 dark:border-l-emerald-500 bg-white dark:bg-[#121215] hover:bg-emerald-50/40 dark:hover:bg-zinc-900 text-left flex items-center justify-between gap-3 cursor-pointer disabled:opacity-45"
+              >
+                <div>
+                  <div className="text-xs font-bold">Sesuai Filter Layar</div>
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                      {currentFilteredTotal.toLocaleString("id-ID")}
+                    </span>{" "}
+                    baris (utuh semua halaman)
+                  </div>
+                </div>
+                <span className="px-3 py-1.5 rounded-lg border border-emerald-500/35 bg-emerald-500/12 text-emerald-800 dark:text-emerald-300 text-xs font-bold shrink-0">
+                  Unduh
+                </span>
+              </button>
+
+              {/* Belum Selesai (Kuning) */}
+              <button
+                type="button"
+                onClick={() => fetchAndExport("OPEN_CASES")}
+                disabled={isExporting || totalSystemAll === 0}
+                className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 border-l-4 border-l-amber-500 bg-white dark:bg-[#121215] hover:bg-amber-50/40 dark:hover:bg-zinc-900 text-left flex items-center justify-between gap-3 cursor-pointer disabled:opacity-45"
+              >
+                <div>
+                  <div className="text-xs font-bold">Kasus Belum Selesai</div>
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    Status Pending &amp; In Progress
+                  </div>
+                </div>
+                <span className="px-3 py-1.5 rounded-lg border border-amber-500/35 bg-amber-500/12 text-amber-800 dark:text-amber-300 text-xs font-bold shrink-0">
+                  Unduh
+                </span>
+              </button>
+
+              {/* Ditolak / Reject (Merah) */}
+              <button
+                type="button"
+                onClick={() => fetchAndExport("REJECTED_CASES")}
+                disabled={isExporting || totalSystemAll === 0}
+                className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 border-l-4 border-l-rose-600 dark:border-l-rose-500 bg-white dark:bg-[#121215] hover:bg-rose-50/40 dark:hover:bg-zinc-900 text-left flex items-center justify-between gap-3 cursor-pointer disabled:opacity-45"
+              >
+                <div>
+                  <div className="text-xs font-bold">Khusus Ditolak (Rejected)</div>
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    Semua kasus reject beserta alasannya
+                  </div>
+                </div>
+                <span className="px-3 py-1.5 rounded-lg border border-rose-500/35 bg-rose-500/12 text-rose-800 dark:text-rose-300 text-xs font-bold shrink-0">
+                  Unduh
+                </span>
+              </button>
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Filter Utama Custom */}
+              <div className="p-3.5 rounded-xl border bg-zinc-50 dark:bg-[#121215] border-zinc-200 dark:border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold">1. Pilih PBF, Status &amp; Waktu</span>
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">PBF</label>
+                    <select
+                      value={pbfFilter}
+                      onChange={(e) => setPbfFilter(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border bg-white dark:bg-[#09090b] border-zinc-300 dark:border-zinc-800 text-xs font-semibold"
+                    >
+                      <option value="ALL">Semua PBF</option>
+                      <option value="MBI">MBI</option>
+                      <option value="MAI">MAI</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">Status</label>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border bg-white dark:bg-[#09090b] border-zinc-300 dark:border-zinc-800 text-xs font-semibold"
+                    >
+                      <option value="ALL">Semua Status</option>
+                      <option value="Pending">Pending</option>
+                      <option value="In Progress">In Progress (Semua)</option>
+                      <option value="In Progress (Operasional)">In Progress (Operasional)</option>
+                      <option value="In Progress (Klaim & Retur)">In Progress (Klaim &amp; Retur)</option>
+                      <option value="Resolved">Resolved</option>
+                      <option value="Rejected">Rejected</option>
+                      <option value="Open case">Belum Selesai (Open)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">Kategori</label>
+                    <select
+                      value={categoryFilter}
+                      onChange={(e) => setCategoryFilter(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border bg-white dark:bg-[#09090b] border-zinc-300 dark:border-zinc-800 text-xs font-semibold"
+                    >
+                      <option value="ALL">Semua</option>
+                      <option value="1P">1P</option>
+                      <option value="2P">2P</option>
+                      <option value="3P">3P</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">Bulan</label>
+                    <select
+                      value={monthFilter}
+                      onChange={(e) => setMonthFilter(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border bg-white dark:bg-[#09090b] border-zinc-300 dark:border-zinc-800 text-xs font-semibold"
+                    >
+                      <option value="ALL">Semua Bulan</option>
+                      {["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"].map((m, i) => (
+                        <option key={i + 1} value={String(i + 1)}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">Week</label>
+                    <select
+                      value={weekFilter}
+                      onChange={(e) => setWeekFilter(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border bg-white dark:bg-[#09090b] border-zinc-300 dark:border-zinc-800 text-xs font-semibold"
+                    >
+                      <option value="ALL">Semua Week</option>
+                      {availableWeeks.map((w) => (
+                        <option key={w} value={String(w)}>W{w}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
+                      Dari Tanggal Lapor
+                    </label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border bg-white dark:bg-[#09090b] border-zinc-300 dark:border-zinc-800 text-xs font-mono font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
+                      Hingga Tanggal Lapor
+                    </label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border bg-white dark:bg-[#09090b] border-zinc-300 dark:border-zinc-800 text-xs font-mono font-semibold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Opsi Lanjutan & Kolom */}
+              <div className="rounded-xl border bg-zinc-50 dark:bg-[#121215] border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced((v) => !v)}
+                  className="w-full px-3.5 py-2.5 flex items-center justify-between text-xs font-bold cursor-pointer hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  <span>2. Pencarian Kata Kunci &amp; Pilih Kolom ({selectedCols.size}/{RETURN_EXPORT_COLUMNS.length} kolom)</span>
+                  {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+
+                {showAdvanced && (
+                  <div className="px-3.5 pb-3.5 pt-2 border-t border-zinc-200 dark:border-zinc-800 space-y-3">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Kata kunci opsional (No Faktur, No SO, Apotek, Produk, Personil)..."
+                      className="w-full px-3 py-1.5 rounded-lg border bg-white dark:bg-[#09090b] border-zinc-300 dark:border-zinc-800 text-xs font-medium"
+                    />
+
+                    <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={splitByPbf}
+                        onChange={(e) => setSplitByPbf(e.target.checked)}
+                        className="accent-blue-600 rounded w-3.5 h-3.5"
+                      />
+                      <span>Pisahkan sheet &quot;Khusus_MBI&quot; &amp; &quot;Khusus_MAI&quot; di dalam file</span>
+                    </label>
+
+                    <div className="space-y-2 pt-1 border-t border-zinc-200 dark:border-zinc-800">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold">Kolom Excel:</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCols(new Set(DEFAULT_RETURN_COLS))}
+                          className="text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                        >
+                          Centang Semua
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        {RETURN_EXPORT_COLUMNS.map((col) => {
+                          const active = selectedCols.has(col.id);
+                          return (
+                            <label
+                              key={col.id}
+                              className={`flex items-center gap-1.5 px-2 py-1 rounded border text-xs cursor-pointer ${
+                                active
+                                  ? "border-blue-500/35 bg-blue-500/10 font-semibold"
+                                  : "border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={active}
+                                onChange={() => toggleColumn(col.id)}
+                                className="accent-blue-600 rounded w-3.5 h-3.5"
+                              />
+                              <span className="truncate">{col.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           {progressText && (
-            <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-bold text-xs text-center animate-pulse">
-              {progressText}
+            <div className="p-2.5 rounded-lg bg-blue-500/12 border border-blue-500/30 text-blue-700 dark:text-blue-300 font-bold text-xs flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>{progressText}</span>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-zinc-200 dark:border-slate-800 bg-zinc-50 dark:bg-[#0e1935] flex flex-wrap items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isExporting}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold text-zinc-600 dark:text-slate-400 hover:bg-zinc-200 dark:hover:bg-slate-800 cursor-pointer disabled:opacity-50"
-          >
-            Batal
-          </button>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] text-zinc-500 dark:text-slate-400 font-medium">
-              Filter tabel saat ini: <strong>{currentFilteredTotal.toLocaleString("id-ID")}</strong> baris
-            </span>
-            <button
-              type="button"
-              onClick={() => fetchAndExport("CUSTOM")}
-              disabled={isExporting}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs shadow-md flex items-center gap-1.5 cursor-pointer transition active:scale-95 disabled:opacity-50"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>{isExporting ? "Mengunduh..." : "Unduh Sesuai Filter Custom"}</span>
-            </button>
-          </div>
+        <div className="px-5 py-3 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#0c0c0f] flex flex-wrap items-center justify-between gap-2">
+          {activeTab === "custom" ? (
+            <>
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                Data tabel saat ini: <strong className="font-mono text-zinc-900 dark:text-zinc-100">{currentFilteredTotal.toLocaleString("id-ID")}</strong> baris
+              </span>
+              <button
+                type="button"
+                onClick={() => fetchAndExport("CUSTOM")}
+                disabled={isExporting}
+                className="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-bold text-xs flex items-center gap-2 cursor-pointer disabled:opacity-45"
+              >
+                {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span>{isExporting ? "Mengunduh..." : "Unduh Excel"}</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                Klik salah satu kotak di atas untuk langsung mengunduh file Excel.
+              </span>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isExporting}
+                className="px-3.5 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 text-xs font-bold cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
+              >
+                Tutup
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

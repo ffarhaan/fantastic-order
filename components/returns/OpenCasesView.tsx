@@ -178,6 +178,7 @@ export default function OpenCasesView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: target.id,
+          invoice_no: target.invoice_no,
           status: "Resolved",
           resolved_date: today,
         }),
@@ -197,7 +198,7 @@ export default function OpenCasesView({
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-150">
+    <div className="space-y-4">
       {/* Tier Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
         <div
@@ -353,7 +354,7 @@ export default function OpenCasesView({
 
                 {row.status === "In Progress" ? (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800 shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                     <span>In Progress</span>
                   </span>
                 ) : (
@@ -374,7 +375,7 @@ export default function OpenCasesView({
                 </div>
               </div>
 
-              {/* Baris 3: Jenis Kendala (warna oranye) + PIC Personil */}
+              {/* Baris 3: Jenis Kendala + PIC Personil */}
               <div className="p-2.5 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 text-xs space-y-1">
                 <div className="text-amber-700 dark:text-amber-400 font-bold truncate">
                   <span>Kendala: </span>
@@ -386,14 +387,14 @@ export default function OpenCasesView({
                 </div>
               </div>
 
-              {/* Footer: Tombol Aksi Nyaman di Jempol */}
+              {/* Footer */}
               <div className="pt-1">
                 {row.status === "In Progress" ? (
                   <button
                     type="button"
                     disabled={updatingId === row.id}
                     onClick={() => handleRequestResolve(row)}
-                    className="w-full h-9 py-2 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white flex items-center justify-center gap-1.5 shadow-xs transition-all touch-manipulation cursor-pointer disabled:opacity-50"
+                    className="w-full h-9 py-2 px-3 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5 shadow-xs transition-colors touch-manipulation cursor-pointer disabled:opacity-50"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>{updatingId === row.id ? "Memproses..." : "Selesaikan Kasus"}</span>
@@ -402,7 +403,7 @@ export default function OpenCasesView({
                   <button
                     type="button"
                     onClick={() => onSelectReturn && onSelectReturn(row)}
-                    className="w-full h-9 py-2 px-3 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-[0.99] text-white flex items-center justify-center gap-1.5 shadow-xs transition-all touch-manipulation cursor-pointer"
+                    className="w-full h-9 py-2 px-3 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center gap-1.5 shadow-xs transition-colors touch-manipulation cursor-pointer"
                   >
                     <ArrowRight className="w-3.5 h-3.5" />
                     <span>Tindak Lanjut / Verifikasi</span>
@@ -419,7 +420,7 @@ export default function OpenCasesView({
         <div className="overflow-x-auto max-h-[620px] overflow-y-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-zinc-100/80 dark:bg-zinc-800/80 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10 backdrop-blur-sm text-zinc-700 dark:text-zinc-300 font-bold">
+              <tr className="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10 text-zinc-700 dark:text-zinc-300 font-bold">
                 <th className="py-3 px-3">Durasi Menggantung</th>
                 <th className="py-3 px-3">PBF</th>
                 <th className="py-3 px-3">Status / Tahap</th>
@@ -461,7 +462,7 @@ export default function OpenCasesView({
                     <td className="py-3 px-3 whitespace-nowrap">
                       {row.status === "In Progress" ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                           In Progress
                         </span>
                       ) : (
@@ -532,8 +533,8 @@ export default function OpenCasesView({
 
       {/* Pop-up Konfirmasi Akhir Penerimaan Barang */}
       {confirmResolveCase && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-emerald-300 dark:border-emerald-800 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-white dark:bg-zinc-900 border border-emerald-300 dark:border-emerald-800 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-lg shrink-0">
                 <CheckCircle2 className="w-6 h-6" />
@@ -575,8 +576,8 @@ export default function OpenCasesView({
 
       {/* Pop-up Peringatan Kelengkapan Investigasi Gudang */}
       {warningModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-amber-400/80 dark:border-amber-600/80 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+          <div className="bg-white dark:bg-zinc-900 border border-amber-400/80 dark:border-amber-600/80 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-lg shrink-0 mt-0.5 shadow-xs">
                 <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
@@ -628,7 +629,7 @@ export default function OpenCasesView({
                   setWarningModal(null);
                   if (onSelectReturn) onSelectReturn(r);
                 }}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-black text-black bg-amber-400 hover:bg-amber-500 shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+                className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-black text-black bg-amber-400 hover:bg-amber-500 shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Check className="w-3.5 h-3.5 stroke-[3]" />
                 <span>Buka Detail &amp; Lengkapi Data</span>

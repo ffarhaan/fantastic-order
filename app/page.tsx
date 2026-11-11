@@ -4699,7 +4699,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     }`}>
       {/* Toast Notification */}
       {toastMsg && (
-        <div className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border animate-in fade-in slide-in-from-top-2 duration-200 ${
+        <div className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border ${
           isDarkMode ? "bg-zinc-900 text-white border-zinc-700 shadow-black/50" : "bg-white text-zinc-900 border-zinc-200"
         }`}>
           <span className="text-emerald-400 font-bold">✓</span>
@@ -4710,7 +4710,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       {/* Mobile Sidebar Backdrop */}
       {mobileSidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-xs md:hidden"
+          className="fixed inset-0 z-40 bg-black/70 md:hidden"
           onClick={() => setMobileSidebarOpen(false)}
         />
       )}
@@ -4749,7 +4749,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <button
                 type="button"
                 onClick={() => setShowUserProfileModal(true)}
-                className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shadow-sm hover:scale-105 transition cursor-pointer"
+                className="w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 flex items-center justify-center text-xs font-bold text-white shadow-sm transition cursor-pointer"
                 title={`${currentUser?.name || "User"}${currentUser?.role === "readonly" ? " (Viewer)" : ""} - Klik untuk lihat Akun & Password`}
               >
                 {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "S"}
@@ -4768,7 +4768,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   title="Klik untuk melihat Akun & Password Anda"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-sm">
+                    <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-sm">
                       {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "S"}
                     </div>
                     <div className="min-w-0">
@@ -4815,7 +4815,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   className="mt-2 w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 text-[11px] font-bold transition cursor-pointer"
                 >
                   <span className="truncate">Menunggu ACC Akun Baru</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-black animate-pulse">
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-black">
                     {pendingApprovalCount}
                   </span>
                 </button>
@@ -4871,7 +4871,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               >
                 <RotateCcw className="w-4 h-4" />
                 {shipmentNewCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[9px] font-black flex items-center justify-center shadow-lg animate-pulse ring-2 ring-white dark:ring-zinc-900">
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[9px] font-black flex items-center justify-center shadow-lg ring-2 ring-white dark:ring-zinc-900">
                     {shipmentNewCount > 9 ? "9+" : shipmentNewCount}
                   </span>
                 )}
@@ -4914,7 +4914,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 >
                   <Shield className="w-4 h-4" />
                   {pendingApprovalCount > 0 && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 absolute top-1.5 right-1.5 ring-2 ring-black animate-pulse" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 absolute top-1.5 right-1.5 ring-2 ring-black" />
                   )}
                 </button>
               )}
@@ -4923,7 +4923,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 type="button"
                 onClick={() => { setShowActivityLogModal(true); setMobileSidebarOpen(false); }}
                 className={`w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer relative ${
-                  isDarkMode ? "text-indigo-400 hover:bg-zinc-800/60" : "text-indigo-600 hover:bg-zinc-100"
+                  isDarkMode ? "text-blue-400 hover:bg-zinc-800/60" : "text-blue-600 hover:bg-zinc-100"
                 }`}
                 title="Log Aktivitas Sistem"
               >
@@ -4994,7 +4994,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   <span>Shipment Error</span>
                 </div>
                 {shipmentNewCount > 0 && (
-                  <span className="min-w-[18px] h-[18px] px-1.5 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center animate-pulse shadow-xs">
+                  <span className="min-w-[18px] h-[18px] px-1.5 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center shadow-xs">
                     {shipmentNewCount > 9 ? "9+" : shipmentNewCount}
                   </span>
                 )}
@@ -5069,13 +5069,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 onClick={() => { setShowUserProfileModal(true); setMobileSidebarOpen(false); }}
                 className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg transition text-left cursor-pointer ${
                   isDarkMode
-                    ? "text-zinc-400 hover:text-indigo-300 hover:bg-zinc-900/60"
-                    : "text-zinc-600 hover:text-indigo-600 hover:bg-zinc-100"
+                    ? "text-zinc-400 hover:text-blue-300 hover:bg-zinc-900/60"
+                    : "text-zinc-600 hover:text-blue-600 hover:bg-zinc-100"
                 }`}
                 title="Lihat username dan password akun Anda"
               >
                 <div className="flex items-center gap-2.5">
-                  <KeyRound className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <KeyRound className="w-4 h-4 text-blue-500 shrink-0" />
                   <span>Akun &amp; Password Saya</span>
                 </div>
                 <span className="text-[10px] font-mono text-zinc-500">
@@ -5101,7 +5101,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     <span className="font-bold">Semua Akun &amp; Password</span>
                   </div>
                   {pendingApprovalCount > 0 ? (
-                    <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-black animate-pulse">
+                    <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-black">
                       {pendingApprovalCount}
                     </span>
                   ) : (
@@ -5184,7 +5184,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 className="relative p-2 rounded-lg hover:bg-zinc-800/60 transition cursor-pointer"
                 title={`Online (${onlineUsers.filter(u => u && u.name).length}): ${currentUser?.name || "User"}`}
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 block animate-pulse" />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 block" />
               </button>
             </div>
           ) : (
@@ -5200,7 +5200,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               >
                 <div className="flex items-center gap-2">
                   <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                   </span>
                   <span className="text-[11px] font-bold">Online ({onlineUsers.filter(u => u && u.name).length}):</span>
@@ -5226,7 +5225,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       isDarkMode ? "border-zinc-800" : "border-zinc-200"
                     }`}>
                       <span className="text-xs font-bold flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         Pengguna Sedang ON ({onlineUsers.filter(u => u && u.name).length})
                       </span>
                       <button
@@ -5303,7 +5302,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
             {/* Breadcrumb Navigation */}
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-indigo-600 via-blue-600 to-cyan-400 flex items-center justify-center text-xs text-white font-black shadow-sm shrink-0">
+              <div className="w-6 h-6 rounded-lg bg-blue-600 flex items-center justify-center text-xs text-white font-black shadow-sm shrink-0">
                 ⚡
               </div>
               <div className="flex items-center gap-1.5 min-w-0">
@@ -5311,7 +5310,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   isDarkMode ? "text-white" : "text-black"
                 }`}>
                   <span>FANTASTIC</span>
-                  <span className="text-indigo-600 dark:text-indigo-400 font-mono font-bold">ORDER</span>
+                  <span className="text-blue-600 dark:text-blue-400 font-mono font-bold">ORDER</span>
                 </span>
                 <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-extrabold border ${
                   isDarkMode
@@ -5396,7 +5395,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               title="Lihat daftar pengguna yang sedang online secara real-time"
             >
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
               <span className="hidden sm:inline">Online:</span>
@@ -5465,8 +5463,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       : dragOver
                       ? "bg-blue-600 text-white border-2 border-dashed border-blue-400"
                       : isDarkMode
-                      ? "bg-white hover:bg-zinc-200 text-black font-semibold active:scale-95"
-                      : "bg-blue-600 hover:bg-blue-700 text-white font-semibold active:scale-95"
+                      ? "bg-white hover:bg-zinc-200 text-black font-semibold"
+                      : "bg-blue-600 hover:bg-blue-700 text-white font-semibold"
                   }`}
                   title="Upload file export Oracle (.xls / .xlsx)"
                 >
@@ -5499,11 +5497,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           <>
             {/* Backdrop */}
             <div
-              className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[2px] transition-opacity"
+              className="fixed inset-0 z-40 bg-slate-900/40 transition-opacity"
               onClick={() => setShowSettingsPanel(false)}
             />
             {/* Drawer Sliding from Left */}
-            <div className={`fixed top-0 left-0 h-full w-80 sm:w-96 z-50 shadow-2xl flex flex-col border-r animate-in slide-in-from-left duration-200 ${
+            <div className={`fixed top-0 left-0 h-full w-80 sm:w-96 z-50 shadow-2xl flex flex-col border-r ${
               isDarkMode
                 ? "bg-[#0c1220] border-slate-800 text-slate-100 shadow-black/80"
                 : "bg-white border-slate-200 text-slate-900 shadow-2xl"
@@ -5645,7 +5643,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         {/* Upload Notification Banner */}
         {uploadNotification && (
           <div className={`border rounded-xl px-3 py-1.5 text-xs flex items-center justify-between gap-2 shadow-xs ${
-            isDarkMode ? "bg-gradient-to-r from-blue-950/70 to-indigo-950/70 border-blue-700/60 text-blue-200 shadow-blue-950/20" : "bg-blue-50/90 border-blue-200 text-blue-900"
+            isDarkMode ? "bg-blue-950/60 border-blue-700/60 text-blue-200 shadow-blue-950/20" : "bg-blue-50/90 border-blue-200 text-blue-900"
           }`}>
             <div className="flex items-center gap-2">
               <span className="text-sm">📋</span>
@@ -5725,7 +5723,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
         {mainView !== "returns" && mainView !== "customers" && (
           mainView === "dashboard" ? (
-          <div className="space-y-3 animate-in fade-in duration-200">
+          <div className="space-y-3">
             {/* PRATINJAU DATA TERPILIH HERO BANNER (From user's image) */}
             <div className={`p-4 sm:p-5 rounded-2xl border shadow-sm ${
               isDarkMode
@@ -5932,7 +5930,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
                       <span className="font-black text-xs sm:text-sm tracking-wide text-blue-600 dark:text-blue-400 uppercase">
                         🏢 PT MEDIKA BINA INVESTAMA (MBI)
                       </span>
@@ -5955,7 +5953,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     </div>
                     <div>
                       <div className="text-[10px] text-slate-500 font-semibold uppercase">Lembar Faktur</div>
-                      <div className="text-sm sm:text-base font-black font-mono mt-0.5 text-indigo-600 dark:text-indigo-400">
+                      <div className="text-sm sm:text-base font-black font-mono mt-0.5 text-blue-600 dark:text-blue-400">
                         {dashboardStats.mbi.totalCount}
                       </div>
                     </div>
@@ -5982,7 +5980,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                       <span className="font-black text-xs sm:text-sm tracking-wide text-emerald-600 dark:text-emerald-400 uppercase">
                         🏢 PT MEDIKA AKSES INVESTAMA (MAI)
                       </span>
@@ -6348,7 +6346,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           {showInvoiceProgression && (
             <>
               {/* Cell 4: 1P ORA */}
-              <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center animate-in fade-in duration-200">
+              <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
                 <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
                   1P (ORA)
                 </span>
@@ -6361,7 +6359,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               </div>
 
               {/* Cell 5: 1P DOO */}
-              <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center animate-in fade-in duration-200">
+              <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
                 <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
                   1P (DOO)
                 </span>
@@ -6374,7 +6372,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               </div>
 
               {/* Cell 6: 2P */}
-              <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center animate-in fade-in duration-200">
+              <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
                 <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
                   2P
                 </span>
@@ -6387,7 +6385,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               </div>
 
               {/* Cell 7: 3P */}
-              <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center animate-in fade-in duration-200">
+              <div className="py-1.5 px-1.5 flex flex-col justify-between items-center text-center">
                 <span className={`text-[10px] font-black uppercase tracking-wider ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
                   3P
                 </span>
@@ -6528,7 +6526,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           {unprintedCountInFiltered > 0 && currentUser?.role !== "readonly" && (
             <button
               onClick={handleMarkAllPrinted}
-              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0 active:scale-95"
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0"
             >
               <span>✓</span>
               <span>Tandai Selesai ({unprintedCountInFiltered})</span>
@@ -7092,7 +7090,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                   e.stopPropagation();
                                   toggleLocalQcDone(g.so);
                                 }}
-                                className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-tight flex items-center justify-center gap-1 shadow-2xs transition-all cursor-pointer hover:scale-105 active:scale-95 mx-auto ${
+                                className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-tight flex items-center justify-center gap-1 shadow-2xs transition-colors cursor-pointer mx-auto ${
                                   g.isQcDone
                                     ? isDarkMode
                                       ? "bg-emerald-950 text-emerald-300 border border-emerald-600 hover:bg-emerald-900"
@@ -7112,7 +7110,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                 className={`w-6 h-6 mx-auto rounded-md flex items-center justify-center text-xs font-black transition-all ${
                                   currentUser?.role === "readonly"
                                     ? "cursor-not-allowed opacity-50"
-                                    : "cursor-pointer active:scale-95"
+                                    : "cursor-pointer"
                                 } ${
                                   g.allPrinted
                                     ? "bg-emerald-500 text-white shadow-xs hover:bg-emerald-600 border border-emerald-600"
@@ -7951,7 +7949,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       {/* Changelog & System Update Notes Modal (v2.1) - High Contrast & Polished Design */}
       {showChangelogModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/75 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/75"
           onClick={() => setShowChangelogModal(false)}
         >
           <div
@@ -7962,11 +7960,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             }`}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header: High Contrast & Vibrant */}
+            {/* Modal Header: High Contrast & Refined */}
             <div className={`px-5 py-4 border-b flex items-center justify-between ${
               isDarkMode
                 ? "bg-[#0e172e] border-slate-700/80 text-white"
-                : "bg-gradient-to-r from-blue-700 via-blue-800 to-indigo-800 border-blue-900 text-white shadow-sm"
+                : "bg-zinc-900 border-zinc-800 text-white shadow-sm"
             }`}>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-white/15 border border-white/20 text-white flex items-center justify-center text-lg shadow-inner">
@@ -7977,7 +7975,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     <h2 className="text-base font-extrabold tracking-tight text-white">
                       Catatan Pembaruan Fantastic Order
                     </h2>
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-cyan-400 text-slate-950 shadow-xs">
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-600 text-white shadow-xs">
                       v3.0 Ultra
                     </span>
                   </div>
@@ -8198,7 +8196,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 : "bg-white border-slate-200"
             }`}>
               <div className="flex items-center gap-2 text-xs">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
                 <span className={`font-semibold ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
                   Semua sistem beroperasi normal & stabil
                 </span>
@@ -8206,7 +8204,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <button
                 type="button"
                 onClick={() => setShowChangelogModal(false)}
-                className="px-5 py-2 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-md shadow-blue-500/25 active:scale-95 cursor-pointer"
+                className="px-5 py-2 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-sm cursor-pointer"
               >
                 Tutup & Mengerti
               </button>
@@ -8225,14 +8223,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 setShipmentNewCount(0);
                 setShipmentToasts((prev) => prev.filter((_, i) => i !== idx));
               }}
-              className="pointer-events-auto cursor-pointer group relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white p-3.5 shadow-2xl shadow-orange-500/30 border border-amber-300/60 transition-all hover:scale-[1.02] active:scale-[0.98] animate-in slide-in-from-top-3 fade-in duration-300"
+              className="pointer-events-auto cursor-pointer group relative overflow-hidden rounded-2xl bg-amber-600 hover:bg-amber-700 text-white p-3.5 shadow-xl border border-amber-400/50 transition-colors"
             >
-              {/* Glowing decorative blur backdrop */}
-              <div className="absolute -top-6 -right-6 w-20 h-20 bg-white/20 rounded-full blur-xl pointer-events-none" />
-
               <div className="flex items-start gap-3 relative z-10">
                 <div className="p-2 rounded-xl bg-black/20 border border-white/20 shrink-0 text-white shadow-inner">
-                  <Truck className="w-5 h-5 animate-bounce" />
+                  <Truck className="w-5 h-5" />
                 </div>
 
                 <div className="flex-1 min-w-0 pr-1">

@@ -692,7 +692,7 @@ ${photoStatus}
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 flex flex-col font-sans transition-colors">
       {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#0a0a0c]/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 shadow-xs">
+      <header className="sticky top-0 z-40 bg-white dark:bg-[#0a0a0c] border-b border-zinc-200 dark:border-zinc-800 shadow-xs">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-black text-white dark:bg-white dark:text-black flex items-center justify-center font-black shadow-xs shrink-0">
@@ -772,7 +772,7 @@ ${photoStatus}
 
         {isSuccess && activeTab !== "track" ? (
           /* SUCCESS STATE WITH WHATSAPP COPY & SHARE */
-          <div className="bg-white dark:bg-[#0c0c0e] border border-emerald-500/40 rounded-2xl p-6 sm:p-8 shadow-sm text-center animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-[#0c0c0e] border border-emerald-500/40 rounded-2xl p-6 sm:p-8 shadow-sm text-center">
             <div className="w-14 h-14 bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 rounded-full flex items-center justify-center mx-auto text-emerald-600 dark:text-emerald-400 mb-3 shadow-sm">
               <CheckCircle2 className="w-8 h-8" />
             </div>
@@ -793,7 +793,7 @@ ${photoStatus}
                   </span>
                   <div className="text-sm font-black text-zinc-900 dark:text-white flex items-center gap-2">
                     <span>Sedang Ditinjau (Pending)</span>
-                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
                   </div>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
                     Faktur: <strong className="font-mono text-zinc-900 dark:text-zinc-200">#{submittedData?.invoice_no}</strong> • Data tiket komplain sudah tersimpan di sistem logistik.
@@ -874,7 +874,7 @@ ${photoStatus}
                     type="button"
                     onClick={handleShareToWhatsApp}
                     disabled={isSharing}
-                    className="px-3.5 py-1.5 rounded-lg font-sans font-bold text-xs flex items-center gap-1.5 cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-all active:scale-95 disabled:opacity-50"
+                    className="px-3.5 py-1.5 rounded-lg font-sans font-bold text-xs flex items-center gap-1.5 cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors disabled:opacity-50"
                     title={photoBase64 ? "Kirim teks dan foto langsung ke WhatsApp" : "Buka WhatsApp"}
                   >
                     <MessageCircle className="w-3.5 h-3.5" />
@@ -905,7 +905,7 @@ ${photoStatus}
               </div>
 
               {waNotification && (
-                <div className="mb-3 p-2 bg-emerald-950/80 border border-emerald-700 rounded-lg text-emerald-300 text-xs font-sans animate-in fade-in flex items-center gap-2">
+                <div className="mb-3 p-2 bg-emerald-950/80 border border-emerald-700 rounded-lg text-emerald-300 text-xs font-sans flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
                   <span>{waNotification}</span>
                 </div>
@@ -967,7 +967,7 @@ ${photoStatus}
           </div>
         ) : activeTab === "track" ? (
           /* PUBLIC RETURN TRACKER VIEW */
-          <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="space-y-4">
             {/* Search Box Card */}
             <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 sm:p-6 shadow-sm">
               <h2 className="text-sm sm:text-base font-extrabold text-zinc-900 dark:text-white flex items-center gap-2 mb-1.5">
@@ -1166,7 +1166,7 @@ ${photoStatus}
 
                       {/* Notes / Alasan Resmi dari Tim Logistik */}
                       {isReject ? (
-                        <div className="p-3.5 rounded-xl border border-red-300 dark:border-red-900/80 bg-red-50 dark:bg-red-950/40 shadow-xs space-y-2.5 animate-in fade-in">
+                        <div className="p-3.5 rounded-xl border border-red-300 dark:border-red-900/80 bg-red-50 dark:bg-red-950/40 shadow-xs space-y-2.5">
                           <div className="flex items-center gap-2 text-xs font-black text-red-700 dark:text-red-300">
                             <XCircle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400" />
                             <span>Alasan Penolakan Komplain dari Tim PBF:</span>
@@ -1229,7 +1229,7 @@ ${photoStatus}
           /* FORM APOTEK (MULTI-PRODUCT + PHOTO UPLOAD) */
           <form onSubmit={handleSubmit} className="space-y-5">
             {errorMessage && (
-              <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 text-red-700 dark:text-red-400 text-xs flex items-center gap-2 font-medium animate-in fade-in">
+              <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 text-red-700 dark:text-red-400 text-xs flex items-center gap-2 font-medium">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{errorMessage}</span>
               </div>
@@ -1332,7 +1332,7 @@ ${photoStatus}
                 <button
                   type="button"
                   onClick={() => setShowInvoiceGuideModal(true)}
-                  className="shrink-0 ml-2 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-semibold text-[11px] flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                  className="shrink-0 ml-2 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[11px] flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
                 >
                   <FileText className="w-3 h-3" />
                   <span>Lihat Contoh</span>
@@ -1778,7 +1778,7 @@ ${photoStatus}
               <button
                 type="submit"
                 disabled={isSubmitting || isCompressingPhoto}
-                className="w-full py-3.5 rounded-xl bg-black hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black text-sm font-black flex items-center justify-center gap-2 shadow-sm transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
+                className="w-full py-3.5 rounded-xl bg-black hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black text-sm font-black flex items-center justify-center gap-2 shadow-sm transition-colors disabled:opacity-50 cursor-pointer"
               >
                 {isSubmitting ? (
                   <>
@@ -1807,7 +1807,7 @@ ${photoStatus}
       {/* MODAL PANDUAN NOMOR FAKTUR & NO SO (MOBILE-FRIENDLY) */}
       {showInvoiceGuideModal && (
         <div
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => setShowInvoiceGuideModal(false)}
         >
           <div

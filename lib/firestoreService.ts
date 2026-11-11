@@ -2371,19 +2371,22 @@ export function subscribeToSystemUpdate(
   );
 }
 
-export async function broadcastRealtimeSignal(channel: RealtimeSignalChannel): Promise<void> {
+export async function broadcastRealtimeSignal(channel: RealtimeSignalChannel): Promise<number> {
   try {
+    const ts = Date.now();
     const ref = doc(db, APP_DATA_COLLECTION, REALTIME_SIGNALS_DOC);
     await setDoc(
       ref,
       {
-        [channel]: Date.now(),
+        [channel]: ts,
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
+    return ts;
   } catch (err) {
     console.warn(`broadcastRealtimeSignal(${channel}) warning:`, err);
+    return 0;
   }
 }
 
@@ -2446,7 +2449,8 @@ export function subscribeToNewComplaint(
 
 export function subscribeToRealtimeSignal(
   channel: RealtimeSignalChannel,
-  onSignal: (timestamp: number) => void
+  onSignal: (timestamp: number) => void,
+  onInitial?: (timestamp: number) => void
 ): Unsubscribe {
   let lastSeen = 0;
   let initialized = false;
@@ -2461,6 +2465,7 @@ export function subscribeToRealtimeSignal(
       if (!initialized) {
         lastSeen = val;
         initialized = true;
+        if (val > 0 && onInitial) onInitial(val);
         return;
       }
       if (val > lastSeen) {
