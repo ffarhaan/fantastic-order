@@ -441,9 +441,9 @@ export async function GET(req: Request) {
       const now = Date.now();
       if (memoryCheckersCache[warehouse] && (now - memoryCheckersCache[warehouse].ts < 60000)) {
         return compressedJsonResponse(req, memoryCheckersCache[warehouse].payload, {
-          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
-          "CDN-Cache-Control": "public, s-maxage=3600",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=3600",
+          "Cache-Control": "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
+          "CDN-Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
         });
       }
 
@@ -525,9 +525,9 @@ export async function GET(req: Request) {
         req, 
         payload,
         {
-          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
-          "CDN-Cache-Control": "public, s-maxage=3600",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=3600",
+          "Cache-Control": "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
+          "CDN-Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
         }
       );
     }
@@ -538,15 +538,18 @@ export async function GET(req: Request) {
     if (action === "qc_reports") {
       const warehouse = (searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
       const isFresh = searchParams.get("fresh") === "true";
+      const includeNotes = searchParams.get("include_notes") === "1";
+      const cacheKey = `${warehouse}_${includeNotes ? "full" : "light"}`;
       const now = Date.now();
       const noCacheHeaders = {
         "Cache-Control": "no-store, no-cache, must-revalidate",
         "CDN-Cache-Control": "no-store",
         "Vercel-CDN-Cache-Control": "no-store",
       };
+      const responseHeaders = isFresh ? noCacheHeaders : getVersionedCacheHeaders(searchParams);
 
-      if (!isFresh && memoryQcReportsCache[warehouse] && (now - memoryQcReportsCache[warehouse].ts < 20000)) {
-        return compressedJsonResponse(req, memoryQcReportsCache[warehouse].payload, noCacheHeaders);
+      if (!isFresh && memoryQcReportsCache[cacheKey] && (now - memoryQcReportsCache[cacheKey].ts < 20000)) {
+        return compressedJsonResponse(req, memoryQcReportsCache[cacheKey].payload, responseHeaders);
       }
 
       // Direct Live Sync straight from the DO Checker app (Firebase RTDB, 0 dependency on GSheet)
@@ -702,7 +705,7 @@ export async function GET(req: Request) {
            COALESCE(MAX(t.is_done), '') as is_done,
            MAX(t.done_by) as done_by,
            MAX(t.done_at) as done_at,
-           MAX(t.noted_items) as noted_items,
+           ${includeNotes ? "MAX(t.noted_items)" : "NULL"} as noted_items,
            COALESCE(MAX(t.status), 'QC_DONE') as status,
            MAX(t.sheet_row) as sheet_row,
            MAX(t.updated_at) as updated_at
@@ -710,7 +713,7 @@ export async function GET(req: Request) {
            SELECT 
              warehouse, so_number, no_do, customer_name, so_date, waktu_kirim,
              checker_name, packer_name, picker_name, kategori, kategori_produk,
-             total_item, total_qty, barang_catatan, is_done, done_by, done_at, noted_items, status, sheet_row, updated_at
+             total_item, total_qty, barang_catatan, is_done, done_by, done_at, ${includeNotes ? "noted_items" : "NULL as noted_items"}, status, sheet_row, updated_at
            FROM qc_reports
            WHERE warehouse = ? AND (updated_at >= NOW() - INTERVAL 90 DAY OR is_done != 'DONE' OR is_done IS NULL)
            UNION ALL
@@ -730,9 +733,29 @@ export async function GET(req: Request) {
         [warehouse, warehouse, warehouse]
       )) as any[];
       const payload = { success: true, count: rows.length, data: rows };
-      memoryQcReportsCache[warehouse] = { payload, ts: Date.now() };
+      memoryQcReportsCache[cacheKey] = { payload, ts: Date.now() };
 
-      return compressedJsonResponse(req, payload, noCacheHeaders);
+      return compressedJsonResponse(req, payload, responseHeaders);
+    }
+
+    if (action === "qc_noted_items") {
+      const warehouse = (searchParams.get("warehouse") || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
+      const isFresh = searchParams.get("fresh") === "true";
+      const rows = (await conn.execute(
+        `SELECT so_number, noted_items
+         FROM qc_reports
+         WHERE warehouse = ? AND barang_catatan > 0 AND noted_items IS NOT NULL
+         ORDER BY updated_at DESC`,
+        [warehouse]
+      )) as Array<{ so_number: string; noted_items: string | null }>;
+      const responseHeaders = isFresh
+        ? {
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "CDN-Cache-Control": "no-store",
+            "Vercel-CDN-Cache-Control": "no-store",
+          }
+        : getVersionedCacheHeaders(searchParams);
+      return compressedJsonResponse(req, { success: true, count: rows.length, data: rows }, responseHeaders);
     }
 
     // ==========================================
@@ -807,15 +830,13 @@ export async function GET(req: Request) {
           offset,
         },
         {
-          "Cache-Control": isKomplainSuggestion
-            ? "public, max-age=3600, stale-while-revalidate=86400"
-            : "no-store, no-cache, must-revalidate",
-          "CDN-Cache-Control": isKomplainSuggestion
-            ? "public, s-maxage=86400, stale-while-revalidate=604800"
-            : "no-store",
-          "Vercel-CDN-Cache-Control": isKomplainSuggestion
-            ? "public, s-maxage=86400, stale-while-revalidate=604800"
-            : "no-store",
+          ...(isKomplainSuggestion
+            ? {
+                "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+                "CDN-Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
+                "Vercel-CDN-Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
+              }
+            : getVersionedCacheHeaders(searchParams)),
         }
       );
     }
@@ -1015,26 +1036,31 @@ export async function GET(req: Request) {
         }
       }
 
-      const countSql = `SELECT COUNT(*) as total FROM shipment_returns ${whereClause}`;
-      const [countResult] = (await conn.execute(countSql, params)) as Array<{ total: number }>;
+      const statsOnly = searchParams.get("stats_only") === "1";
+      let countResult: { total: number } | undefined = { total: 0 };
+      let rows: any = [];
+      if (!statsOnly) {
+        const countSql = `SELECT COUNT(*) as total FROM shipment_returns ${whereClause}`;
+        [countResult] = (await conn.execute(countSql, params)) as Array<{ total: number }>;
 
-      const dataSql = `
-        SELECT 
-          id, pbf, report_date, month, week, so_no, customer_name,
-          invoice_no, invoice_date, product_name, batch_no, expiry_date,
-          qty, reason, person, root_cause, note, status,
-          confirm, action, nota_retur_no, resolved_date, category, created_at,
-          video_url, reject_reason, reject_media_url, inprogress_type,
-          CASE WHEN photo_url IS NOT NULL AND CHAR_LENGTH(photo_url) > 0 THEN 1 ELSE 0 END AS has_photo,
-          CASE WHEN video_url IS NOT NULL AND CHAR_LENGTH(video_url) > 0 THEN 1 ELSE 0 END AS has_video,
-          ${includePhoto ? "photo_url" : "CASE WHEN CHAR_LENGTH(photo_url) < 256 THEN photo_url ELSE NULL END AS photo_url"},
-          NULLIF(invoice_date, '') AS matched_invoice_date
-        FROM shipment_returns
-        ${whereClause}
-        ORDER BY CASE WHEN report_date IS NOT NULL AND report_date != '' THEN report_date ELSE '1970-01-01' END DESC, id DESC 
-        LIMIT ? OFFSET ?
-      `;
-      const rows = await conn.execute(dataSql, [...params, limit, offset]);
+        const dataSql = `
+          SELECT 
+            id, pbf, report_date, month, week, so_no, customer_name,
+            invoice_no, invoice_date, product_name, batch_no, expiry_date,
+            qty, reason, person, root_cause, note, status,
+            confirm, action, nota_retur_no, resolved_date, category, created_at,
+            video_url, reject_reason, reject_media_url, inprogress_type,
+            CASE WHEN photo_url IS NOT NULL AND CHAR_LENGTH(photo_url) > 0 THEN 1 ELSE 0 END AS has_photo,
+            CASE WHEN video_url IS NOT NULL AND CHAR_LENGTH(video_url) > 0 THEN 1 ELSE 0 END AS has_video,
+            ${includePhoto ? "photo_url" : "CASE WHEN CHAR_LENGTH(photo_url) < 256 THEN photo_url ELSE NULL END AS photo_url"},
+            NULLIF(invoice_date, '') AS matched_invoice_date
+          FROM shipment_returns
+          ${whereClause}
+          ORDER BY CASE WHEN report_date IS NOT NULL AND report_date != '' THEN report_date ELSE '1970-01-01' END DESC, id DESC 
+          LIMIT ? OFFSET ?
+        `;
+        rows = await conn.execute(dataSql, [...params, limit, offset]);
+      }
 
       // Quick statistics
       let statsCondition = " WHERE customer_name != '#N/A' AND customer_name != '' AND customer_name IS NOT NULL";

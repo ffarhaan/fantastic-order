@@ -17,30 +17,37 @@ export function subscribeToDoCheckerLive(onNewOrderSelesai: (orderData: any) => 
     const doneRef = query(ref(rtdb, "done"), limitToLast(25));
 
     let isInitialAttach = true;
+    const attachStartedAt = Date.now();
+    const initialSnapshotKeys = new Set<string>();
 
     // Mendengarkan pesanan yang baru selesai secara realtime (detik itu juga via WebSocket)
-    const unsubAdded = onChildAdded(doneRef, (snapshot) => {
-      if (isInitialAttach) return; // Lewati pembacaan buffer awal
+    onChildAdded(doneRef, (snapshot) => {
       const soNum = snapshot.key;
       const data = snapshot.val();
-      if (soNum && data) {
-        onNewOrderSelesai({ so_number: soNum, ...data });
+      if (isInitialAttach) {
+        if (soNum) initialSnapshotKeys.add(soNum);
+        return; // Lewati pembacaan buffer awal
       }
+      if (!soNum || !data) return;
+      // Extra guard for slow connections: ignore historical entries created before subscription attached
+      if (initialSnapshotKeys.has(soNum)) return;
+      const completedAt = Number(data?.completedAt || 0);
+      if (completedAt > 0 && completedAt < attachStartedAt - 10000) return;
+      onNewOrderSelesai({ so_number: soNum, ...data });
     });
 
     // Mendengarkan perubahan data pesanan
-    const unsubChanged = onChildChanged(doneRef, (snapshot) => {
+    onChildChanged(doneRef, (snapshot) => {
       const soNum = snapshot.key;
       const data = snapshot.val();
-      if (soNum && data) {
-        onNewOrderSelesai({ so_number: soNum, ...data });
-      }
+      if (isInitialAttach || !soNum || !data) return;
+      onNewOrderSelesai({ so_number: soNum, ...data });
     });
 
     // Tandai inisialisasi awal selesai
     const timer = setTimeout(() => {
       isInitialAttach = false;
-    }, 1200);
+    }, 2000);
 
     return () => {
       clearTimeout(timer);

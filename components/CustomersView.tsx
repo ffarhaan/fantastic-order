@@ -582,18 +582,25 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
         action: "customers",
         limit: String(limit),
         offset: String(page * limit),
-        _t: String(Date.now()),
       });
-      if (forceFresh) params.set("fresh", "true");
+      if (forceFresh) {
+        params.set("fresh", "true");
+        params.set("_t", String(Date.now()));
+      }
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (categoryFilter !== "ALL") params.set("category", categoryFilter);
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       if (hasDocsFilter) params.set("has_docs", "true");
 
-      const res = await fetch(`/api/tidb?${params.toString()}`, {
-        cache: "no-store",
-        headers: { "Cache-Control": "no-cache" },
-      });
+      const res = await fetch(
+        `/api/tidb?${params.toString()}`,
+        forceFresh
+          ? {
+              cache: "no-store",
+              headers: { "Cache-Control": "no-cache" },
+            }
+          : undefined
+      );
       const data = await res.json();
       if (data.success && Array.isArray(data.data)) {
         setCustomers((prev) => {

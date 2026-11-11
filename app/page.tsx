@@ -729,9 +729,13 @@ export default function Home() {
   const [shipmentNewCount, setShipmentNewCount] = useState(0);
   const [shipmentToasts, setShipmentToasts] = useState<NewComplaintPayload[]>([]);
   const [shipmentSoundOn, setShipmentSoundOn] = useState(true);
+  const lastDashboardReturnStatsTsRef = useRef<number>(0);
   useEffect(() => {
     if (!currentUser || mainView !== "dashboard") return;
-    fetch("/api/tidb?action=returns&limit=1")
+    const now = Date.now();
+    if (now - lastDashboardReturnStatsTsRef.current < 60000) return;
+    lastDashboardReturnStatsTsRef.current = now;
+    fetch("/api/tidb?action=returns&limit=1&stats_only=1")
       .then((r) => r.json())
       .then((d) => {
         if (d.success && d.stats) {
@@ -1150,13 +1154,21 @@ export default function Home() {
   const lastQcSigRef = useRef<Record<string, string>>({});
   const fetchingQcRef = useRef<Record<string, boolean>>({});
   const lastQcErrToastRef = useRef<number>(0);
-  const fetchQcOrders = useCallback(async (wh: "MBI" | "MAI", fresh = false) => {
+  const lastQcFetchTsRef = useRef<Record<string, number>>({});
+  const fetchQcOrders = useCallback(async (wh: "MBI" | "MAI", fresh = false, versionTag?: string | number) => {
+    const nowTs = Date.now();
     if (!fresh && fetchingQcRef.current[wh]) return;
+    if (!fresh && !versionTag && nowTs - (lastQcFetchTsRef.current[wh] || 0) < 15000) return;
     fetchingQcRef.current[wh] = true;
     try {
-      const res = await fetch(`/api/tidb?action=qc_reports&warehouse=${wh}${fresh ? "&fresh=true" : ""}`);
+      const vParam = !fresh && versionTag ? `&_v=${encodeURIComponent(String(versionTag))}` : "";
+      const res = await fetch(
+        `/api/tidb?action=qc_reports&warehouse=${wh}${fresh ? "&fresh=true" : ""}${vParam}`,
+        fresh ? { cache: "no-store" } : undefined
+      );
       const d = await res.json();
       if (d && d.success && Array.isArray(d.data)) {
+        lastQcFetchTsRef.current[wh] = Date.now();
         if (wh === selectedWarehouseRef.current) {
           const sig = d.data
             .map((r: any) => `${r.so_number}:${r.is_done}:${r.status}:${r.checker_name}:${r.packer_name}:${r.picker_name}:${r.barang_catatan}:${r.updated_at}`)
@@ -1194,7 +1206,7 @@ export default function Home() {
   }, [showToast]);
 
   const handleRefreshQc = useCallback(
-    (fresh = false) => fetchQcOrders(selectedWarehouseRef.current, fresh),
+    (fresh = false, versionTag?: string | number) => fetchQcOrders(selectedWarehouseRef.current, fresh, versionTag),
     [fetchQcOrders]
   );
 
@@ -1929,8 +1941,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   useEffect(() => {
     fetchQcOrders(selectedWarehouseRef.current);
 
+    const lastSyncNetTickRef = { ts: Date.now() };
     const syncNetTick = async () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      lastSyncNetTickRef.ts = Date.now();
       // 1. Pull Report QC updates (only triggers React state update if data signature changed)
       fetchQcOrders(selectedWarehouseRef.current);
 
@@ -1958,7 +1972,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     const interval = setInterval(syncNetTick, 300000);
 
     const onVisibility = () => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "visible" && Date.now() - lastSyncNetTickRef.ts >= 45000) {
         syncNetTick();
       }
     };
@@ -2102,6 +2116,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
 
         if (clientCount > 0) {
+          // If `/api/tidb?action=check` (CDN-cached 30s) already confirms local cache is 100% up-to-date, skip delta call!
+          if (check && check.upToDate && clientCount >= check.totalCount) {
+            if (isMounted) setLoading(false);
+            return;
+          }
           // Client already has local IndexedDB cache: fetch lightweight delta ONLY (< 15KB)
           const deltaDocs = await fetchTiDBDelta(clientUpdated || 0);
           if (!isMounted) return;

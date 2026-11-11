@@ -21,7 +21,7 @@ interface ReportQcViewProps {
   isDarkMode: boolean;
   existingSOSet: Set<string>;
   soDetailsMap: Map<string, SoDetail>;
-  onRefreshQc: (fresh?: boolean) => Promise<void>;
+  onRefreshQc: (fresh?: boolean, versionTag?: string | number) => Promise<void>;
   onCancelQcOrder?: (soNum: string) => Promise<void>;
   onOpenAnnouncement?: () => void;
 }
@@ -513,6 +513,48 @@ export default function ReportQcView({
   const [catatanPage, setCatatanPage] = useState<number>(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [localDoneMap, setLocalDoneMap] = useState<Record<string, { doneBy: string; doneAt: string }>>({});
+  const [qcNotedMap, setQcNotedMap] = useState<Record<string, QcCatatanBarangEntry[]>>({});
+  const lastNotedFetchRef = useRef<Record<string, number>>({});
+
+  const fetchQcNotedItems = useCallback(async (forceFresh = false) => {
+    const now = Date.now();
+    if (!forceFresh && now - (lastNotedFetchRef.current[warehouse] || 0) < 60000) return;
+    lastNotedFetchRef.current[warehouse] = now;
+    try {
+      const res = await fetch(
+        `/api/tidb?action=qc_noted_items&warehouse=${warehouse}${forceFresh ? "&fresh=true" : ""}`,
+        forceFresh ? { cache: "no-store" } : undefined
+      );
+      const d = await res.json();
+      if (d?.success && Array.isArray(d.data)) {
+        const nextMap: Record<string, QcCatatanBarangEntry[]> = {};
+        for (const item of d.data) {
+          const so = String(item?.so_number || "").trim();
+          if (!so || !item?.noted_items) continue;
+          let parsed = item.noted_items;
+          if (typeof parsed === "string") {
+            try {
+              parsed = JSON.parse(parsed);
+            } catch {
+              parsed = null;
+            }
+          }
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            nextMap[so] = parsed;
+          }
+        }
+        setQcNotedMap(nextMap);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch qc_noted_items:", e);
+    }
+  }, [warehouse]);
+
+  useEffect(() => {
+    if (subTab === "catatan") {
+      fetchQcNotedItems(false);
+    }
+  }, [subTab, fetchQcNotedItems]);
 
   // SPREADSHEET CELL-BASED NAVIGATION (Identik dengan Laptop 1 / Excel)
   const [selectedRowIndex, setSelectedRowIndex] = useState<number>(0);
@@ -547,7 +589,10 @@ export default function ReportQcView({
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await onRefreshQc(true);
+      await Promise.all([
+        onRefreshQc(true),
+        subTab === "catatan" ? fetchQcNotedItems(true) : Promise.resolve(),
+      ]);
     } finally {
       setTimeout(() => setIsRefreshing(false), 500);
     }
@@ -555,15 +600,16 @@ export default function ReportQcView({
 
   // Realtime Live WebSocket Listener: Langsung masuk DETIK ITU JUGA saat checker selesai di DO Checker
   useEffect(() => {
-    // 1. Initial quiet fetch saat antrean Report QC dibuka (tanpa toast spam & tanpa bypass cache paksa)
+    // 1. Initial quiet fetch saat antrean Report QC dibuka (tanpa toast spam & menggunakan cache CDN)
     onRefreshQc(false);
 
     let liveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     // 2. Direct Real-Time WebSocket Listener ke Firebase RTDB DO Checker (<1s via WebSocket, di-debounce agar hemat kuota)
-    const unsub = subscribeToDoCheckerLive(() => {
+    const unsub = subscribeToDoCheckerLive((orderData) => {
       if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
+      const versionTag = Math.floor(Number(orderData?.completedAt || Date.now()) / 5000);
       liveDebounceTimer = setTimeout(() => {
-        onRefreshQc(false);
+        onRefreshQc(false, versionTag);
       }, 800);
     });
 
@@ -978,8 +1024,12 @@ export default function ReportQcView({
     const q = searchQuery.toLowerCase().trim();
 
     for (const row of enrichedOrders) {
-      if (Array.isArray(row.noted_items) && row.noted_items.length > 0) {
-        for (const item of row.noted_items) {
+      const notesSource =
+        (Array.isArray(row.noted_items) && row.noted_items.length > 0 ? row.noted_items : null) ||
+        qcNotedMap[row.so_number] ||
+        null;
+      if (Array.isArray(notesSource) && notesSource.length > 0) {
+        for (const item of notesSource) {
           const soStr = item.so || row.so_number || "-";
           const custStr =
             item.customer && item.customer !== "-"
@@ -1022,7 +1072,7 @@ export default function ReportQcView({
         it.noteType.toLowerCase().includes(q) ||
         (it.keterangan && it.keterangan.toLowerCase().includes(q))
     );
-  }, [subTab, enrichedOrders, mainFilter, searchQuery, soDetailsMap]);
+  }, [subTab, enrichedOrders, qcNotedMap, mainFilter, searchQuery, soDetailsMap]);
 
   const totalCatatanPages = Math.ceil(catatanBarangList.length / PAGE_SIZE) || 1;
   const pagedCatatan = useMemo(() => {
