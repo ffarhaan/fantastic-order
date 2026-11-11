@@ -21,7 +21,7 @@ interface ReportQcViewProps {
   isDarkMode: boolean;
   existingSOSet: Set<string>;
   soDetailsMap: Map<string, SoDetail>;
-  onRefreshQc: () => Promise<void>;
+  onRefreshQc: (fresh?: boolean) => Promise<void>;
   onCancelQcOrder?: (soNum: string) => Promise<void>;
   onOpenAnnouncement?: () => void;
 }
@@ -94,7 +94,7 @@ const ReportQcRow = React.memo(
         {/* Col 0: Waktu Kirim */}
         <td
           onClick={() => onSelectCell(rowIdx, 0)}
-          className={`px-3 py-2 text-cyan-400 font-bold whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(0)}`}
+          className={`px-3 py-2 ${isDarkMode ? "text-cyan-400 font-bold" : "text-blue-950 font-black"} whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(0)}`}
         >
           {row.waktu_kirim || "-"}
         </td>
@@ -102,7 +102,7 @@ const ReportQcRow = React.memo(
         {/* Col 1: NO DO */}
         <td
           onClick={() => onSelectCell(rowIdx, 1)}
-          className={`px-3 py-2 font-medium text-slate-300 whitespace-nowrap cursor-pointer ${getCellCls(1)}`}
+          className={`px-3 py-2 ${isDarkMode ? "font-medium text-slate-300" : "font-bold text-slate-900"} whitespace-nowrap cursor-pointer ${getCellCls(1)}`}
         >
           {row.no_do || "-"}
         </td>
@@ -119,11 +119,11 @@ const ReportQcRow = React.memo(
                 onSelectCell(rowIdx, 2);
                 onCopyCell(row, 2);
               }}
-              className="font-bold text-amber-300 hover:text-amber-100 flex items-center gap-1 group"
+              className={`font-bold ${isDarkMode ? "text-amber-300 hover:text-amber-100" : "text-amber-950 font-black hover:text-amber-700"} flex items-center gap-1 group`}
               title="Klik untuk salin No SO (atau tekan C saat sel aktif)"
             >
               <span>{row.so_number}</span>
-              <span className="text-[10px] text-slate-400 group-hover:text-amber-300 opacity-60 group-hover:opacity-100 transition">
+              <span className={`text-[10px] ${isDarkMode ? "text-slate-400 group-hover:text-amber-300" : "text-slate-600 group-hover:text-amber-800 font-bold"} opacity-60 group-hover:opacity-100 transition`}>
                 📋
               </span>
             </span>
@@ -131,14 +131,14 @@ const ReportQcRow = React.memo(
             {/* Tanda Status Faktur: CUKUP Tanda Seru Merah '!' jika belum ada inv */}
             {!row.is_invoiced ? (
               <span
-                className="text-rose-500 font-black text-sm px-1.5 py-0.2 rounded bg-rose-500/15 border border-rose-500/40 font-mono inline-flex items-center justify-center leading-none shadow-xs cursor-help"
+                className={`text-sm px-1.5 py-0.2 rounded font-mono inline-flex items-center justify-center leading-none shadow-xs cursor-help ${isDarkMode ? "text-rose-500 font-black bg-rose-500/15 border border-rose-500/40" : "text-rose-700 font-black bg-rose-100 border border-rose-500"}`}
                 title="Faktur Oracle belum terbit / belum diupload"
               >
                 !
               </span>
             ) : (
               <span
-                className="rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.2 text-[9px] font-sans font-bold whitespace-nowrap"
+                className={`rounded px-1.5 py-0.2 text-[9px] font-sans font-bold whitespace-nowrap border ${isDarkMode ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/30" : "bg-cyan-100 text-cyan-950 border-cyan-500 font-black"}`}
                 title={`Sudah Terbit Faktur: ${row.invoice_number || "Terbit"}`}
               >
                 ✓ Inv {row.invoice_number ? `: ${row.invoice_number}` : ""}
@@ -150,7 +150,7 @@ const ReportQcRow = React.memo(
         {/* Col 3: Apotek / Pelanggan */}
         <td
           onClick={() => onSelectCell(rowIdx, 3)}
-          className={`px-3 py-2 max-w-xs truncate font-sans text-slate-200 cursor-pointer ${getCellCls(3)}`}
+          className={`px-3 py-2 max-w-xs truncate font-sans ${isDarkMode ? "text-slate-200 font-normal" : "text-slate-950 font-bold"} cursor-pointer ${getCellCls(3)}`}
           title={row.customer_name || "-"}
         >
           {row.customer_name || "-"}
@@ -159,7 +159,7 @@ const ReportQcRow = React.memo(
         {/* Col 4: Total Item */}
         <td
           onClick={() => onSelectCell(rowIdx, 4)}
-          className={`px-2.5 py-2 text-center text-slate-300 cursor-pointer ${getCellCls(4)}`}
+          className={`px-2.5 py-2 text-center ${isDarkMode ? "text-slate-300" : "text-slate-900 font-bold"} cursor-pointer ${getCellCls(4)}`}
         >
           {row.total_item}
         </td>
@@ -167,7 +167,7 @@ const ReportQcRow = React.memo(
         {/* Col 5: Total Qty */}
         <td
           onClick={() => onSelectCell(rowIdx, 5)}
-          className={`px-2.5 py-2 text-center text-slate-300 font-bold cursor-pointer ${getCellCls(5)}`}
+          className={`px-2.5 py-2 text-center ${isDarkMode ? "text-slate-300 font-bold" : "text-slate-950 font-black"} cursor-pointer ${getCellCls(5)}`}
         >
           {row.total_qty}
         </td>
@@ -178,7 +178,7 @@ const ReportQcRow = React.memo(
           className={`px-3 py-2 text-center whitespace-nowrap cursor-pointer ${getCellCls(6)}`}
         >
           {jmlCatatan === 0 ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold">
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border ${isDarkMode ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-emerald-100 text-emerald-950 border-emerald-500 font-black"}`}>
               ✓ 0 (Siap)
             </span>
           ) : (
@@ -187,7 +187,7 @@ const ReportQcRow = React.memo(
                 e.stopPropagation();
                 onViewCatatan(row.so_number);
               }}
-              className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 text-[10px] font-bold hover:bg-amber-500/30 transition cursor-pointer"
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold transition cursor-pointer border ${isDarkMode ? "bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30" : "bg-amber-200 text-amber-950 border-amber-600 font-black hover:bg-amber-300 shadow-xs"}`}
               title="Klik untuk lihat rincian catatan barang ini"
             >
               ⚠️ {jmlCatatan} Catatan
@@ -198,7 +198,7 @@ const ReportQcRow = React.memo(
         {/* Col 7: Picker */}
         <td
           onClick={() => onSelectCell(rowIdx, 7)}
-          className={`px-3 py-2 text-center font-sans text-[11px] text-slate-300 whitespace-nowrap cursor-pointer ${getCellCls(7)}`}
+          className={`px-3 py-2 text-center font-sans text-[11px] ${isDarkMode ? "text-slate-300" : "text-slate-900 font-bold"} whitespace-nowrap cursor-pointer ${getCellCls(7)}`}
         >
           {row.picker_name || "-"}
         </td>
@@ -206,7 +206,7 @@ const ReportQcRow = React.memo(
         {/* Col 8: Checker */}
         <td
           onClick={() => onSelectCell(rowIdx, 8)}
-          className={`px-3 py-2 text-center font-sans text-[11px] text-amber-300 font-bold whitespace-nowrap cursor-pointer ${getCellCls(8)}`}
+          className={`px-3 py-2 text-center font-sans text-[11px] ${isDarkMode ? "text-amber-300 font-bold" : "text-amber-950 font-black"} whitespace-nowrap cursor-pointer ${getCellCls(8)}`}
         >
           {row.checker_name || "-"}
         </td>
@@ -214,7 +214,7 @@ const ReportQcRow = React.memo(
         {/* Col 9: Packer */}
         <td
           onClick={() => onSelectCell(rowIdx, 9)}
-          className={`px-3 py-2 text-center font-sans text-[11px] text-slate-300 whitespace-nowrap cursor-pointer ${getCellCls(9)}`}
+          className={`px-3 py-2 text-center font-sans text-[11px] ${isDarkMode ? "text-slate-300" : "text-slate-900 font-bold"} whitespace-nowrap cursor-pointer ${getCellCls(9)}`}
         >
           {row.packer_name || "-"}
         </td>
@@ -227,10 +227,10 @@ const ReportQcRow = React.memo(
           <div className="flex items-center justify-center gap-1.5">
             {row.is_done_flag ? (
               <div className="flex flex-col items-center">
-                <span className="inline-flex items-center gap-1 rounded bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 text-xs font-black">
+                <span className={`inline-flex items-center gap-1 rounded px-2.5 py-0.5 text-xs font-black border ${isDarkMode ? "bg-emerald-600/30 text-emerald-300 border-emerald-500/40" : "bg-emerald-100 text-emerald-950 border-emerald-600 shadow-xs"}`}>
                   ✓ DONE
                 </span>
-                <span className="text-[9px] text-slate-400 font-sans mt-0.5">
+                <span className={`text-[9px] font-sans mt-0.5 ${isDarkMode ? "text-slate-400" : "text-slate-700 font-bold"}`}>
                   {row.done_by_name} {row.done_at_time ? `(${row.done_at_time})` : ""}
                 </span>
               </div>
@@ -337,7 +337,7 @@ const CatatanBarangRow = React.memo(
         {/* Col 0: Waktu Kirim */}
         <td
           onClick={() => onSelectCell(rowIdx, 0)}
-          className={`px-3 py-2 text-cyan-400 font-bold whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(0)}`}
+          className={`px-3 py-2 ${isDarkMode ? "text-cyan-400 font-bold" : "text-blue-950 font-black"} whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(0)}`}
         >
           {item.waktuKirim}
         </td>
@@ -345,7 +345,7 @@ const CatatanBarangRow = React.memo(
         {/* Col 1: NO DO */}
         <td
           onClick={() => onSelectCell(rowIdx, 1)}
-          className={`px-3 py-2 font-medium text-slate-300 whitespace-nowrap cursor-pointer ${getCellCls(1)}`}
+          className={`px-3 py-2 ${isDarkMode ? "font-medium text-slate-300" : "font-bold text-slate-900"} whitespace-nowrap cursor-pointer ${getCellCls(1)}`}
         >
           {item.noDo}
         </td>
@@ -361,7 +361,7 @@ const CatatanBarangRow = React.memo(
               onSelectCell(rowIdx, 2);
               onCopyCell(item, 2);
             }}
-            className="font-bold text-amber-300 hover:text-amber-100 flex items-center gap-1 group"
+            className={`font-bold ${isDarkMode ? "text-amber-300 hover:text-amber-100" : "text-amber-950 font-black hover:text-amber-700"} flex items-center gap-1 group`}
             title="Klik untuk salin No SO (atau tekan C saat sel aktif)"
           >
             <span>{item.so}</span>
@@ -374,7 +374,7 @@ const CatatanBarangRow = React.memo(
         {/* Col 3: Apotek / Pelanggan */}
         <td
           onClick={() => onSelectCell(rowIdx, 3)}
-          className={`px-3 py-2 max-w-xs truncate font-sans text-slate-200 cursor-pointer ${getCellCls(3)}`}
+          className={`px-3 py-2 max-w-xs truncate font-sans ${isDarkMode ? "text-slate-200" : "text-slate-950 font-bold"} cursor-pointer ${getCellCls(3)}`}
           title={item.customer || "-"}
         >
           {item.customer || "-"}
@@ -383,7 +383,7 @@ const CatatanBarangRow = React.memo(
         {/* Col 4: Nama Barang */}
         <td
           onClick={() => onSelectCell(rowIdx, 4)}
-          className={`px-3 py-2 max-w-xs font-sans text-slate-200 font-medium cursor-pointer ${getCellCls(4)}`}
+          className={`px-3 py-2 max-w-xs font-sans ${isDarkMode ? "text-slate-200 font-medium" : "text-slate-950 font-black"} cursor-pointer ${getCellCls(4)}`}
           title={item.name}
         >
           {item.name}
@@ -392,7 +392,7 @@ const CatatanBarangRow = React.memo(
         {/* Col 5: Kode */}
         <td
           onClick={() => onSelectCell(rowIdx, 5)}
-          className={`px-2.5 py-2 text-slate-400 whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(5)}`}
+          className={`px-2.5 py-2 ${isDarkMode ? "text-slate-400" : "text-slate-800 font-bold"} whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(5)}`}
         >
           {item.kode}
         </td>
@@ -400,7 +400,7 @@ const CatatanBarangRow = React.memo(
         {/* Col 6: Batch */}
         <td
           onClick={() => onSelectCell(rowIdx, 6)}
-          className={`px-3 py-2 text-slate-300 whitespace-nowrap cursor-pointer ${getCellCls(6)}`}
+          className={`px-3 py-2 ${isDarkMode ? "text-slate-300" : "text-slate-900 font-bold"} whitespace-nowrap cursor-pointer ${getCellCls(6)}`}
         >
           {item.batch}
         </td>
@@ -408,7 +408,7 @@ const CatatanBarangRow = React.memo(
         {/* Col 7: ED */}
         <td
           onClick={() => onSelectCell(rowIdx, 7)}
-          className={`px-2.5 py-2 text-slate-300 whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(7)}`}
+          className={`px-2.5 py-2 ${isDarkMode ? "text-slate-300" : "text-slate-900 font-bold"} whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(7)}`}
         >
           {item.ed || "-"}
         </td>
@@ -419,7 +419,7 @@ const CatatanBarangRow = React.memo(
           className={`px-3 py-2 whitespace-nowrap cursor-pointer ${getCellCls(8)}`}
         >
           {item.batchBaru && item.batchBaru !== "-" ? (
-            <span className="font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+            <span className={`font-bold px-1.5 py-0.5 rounded border ${isDarkMode ? "text-amber-400 bg-amber-500/10 border-amber-500/20" : "text-amber-950 bg-amber-100 border-amber-500 font-black"}`}>
               {item.batchBaru}
             </span>
           ) : (
@@ -433,7 +433,7 @@ const CatatanBarangRow = React.memo(
           className={`px-2.5 py-2 whitespace-nowrap text-[11px] cursor-pointer ${getCellCls(9)}`}
         >
           {item.edBaru && item.edBaru !== "-" ? (
-            <span className="font-bold text-cyan-300 bg-cyan-500/10 px-1.5 py-0.5 rounded border border-cyan-500/20">
+            <span className={`font-bold px-1.5 py-0.5 rounded border ${isDarkMode ? "text-cyan-300 bg-cyan-500/10 border-cyan-500/20" : "text-cyan-950 bg-cyan-100 border-cyan-500 font-black"}`}>
               {item.edBaru}
             </span>
           ) : (
@@ -444,7 +444,7 @@ const CatatanBarangRow = React.memo(
         {/* Col 10: Qty */}
         <td
           onClick={() => onSelectCell(rowIdx, 10)}
-          className={`px-2 py-2 text-center font-bold text-slate-200 cursor-pointer ${getCellCls(10)}`}
+          className={`px-2 py-2 text-center font-bold ${isDarkMode ? "text-slate-200" : "text-slate-950 font-black"} cursor-pointer ${getCellCls(10)}`}
         >
           {item.qty}
         </td>
@@ -457,12 +457,12 @@ const CatatanBarangRow = React.memo(
           <span
             className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-sans font-black tracking-wide ${
               isTakeout
-                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                ? (isDarkMode ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "bg-amber-100 text-amber-950 border border-amber-500 font-black")
                 : isBatch
-                ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                ? (isDarkMode ? "bg-purple-500/20 text-purple-300 border border-purple-500/40" : "bg-purple-100 text-purple-950 border border-purple-500 font-black")
                 : isMinus
-                ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
-                : "bg-slate-700/60 text-slate-300 border border-slate-600"
+                ? (isDarkMode ? "bg-rose-500/20 text-rose-300 border border-rose-500/40" : "bg-rose-100 text-rose-950 border border-rose-500 font-black")
+                : (isDarkMode ? "bg-slate-700/60 text-slate-300 border border-slate-600" : "bg-slate-200 text-slate-900 border border-slate-400 font-bold")
             }`}
           >
             {item.noteType}
@@ -472,7 +472,7 @@ const CatatanBarangRow = React.memo(
         {/* Col 12: Keterangan */}
         <td
           onClick={() => onSelectCell(rowIdx, 12)}
-          className={`px-4 py-2 font-sans text-xs text-slate-300 max-w-sm cursor-pointer ${getCellCls(12)}`}
+          className={`px-4 py-2 font-sans text-xs ${isDarkMode ? "text-slate-300" : "text-slate-950 font-bold"} max-w-sm cursor-pointer ${getCellCls(12)}`}
         >
           {item.keterangan || "-"}
         </td>
@@ -547,7 +547,7 @@ export default function ReportQcView({
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await onRefreshQc();
+      await onRefreshQc(true);
     } finally {
       setTimeout(() => setIsRefreshing(false), 500);
     }
@@ -555,23 +555,27 @@ export default function ReportQcView({
 
   // Realtime Live WebSocket Listener: Langsung masuk DETIK ITU JUGA saat checker selesai di DO Checker
   useEffect(() => {
-    // 1. Initial fetch saat antrean Report QC dibuka
-    onRefreshQc();
+    // 1. Initial quiet fetch saat antrean Report QC dibuka (tanpa toast spam & tanpa bypass cache paksa)
+    onRefreshQc(false);
 
-    // 2. Direct Real-Time WebSocket Listener ke Firebase RTDB DO Checker (<100ms / detik itu juga)
+    let liveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    // 2. Direct Real-Time WebSocket Listener ke Firebase RTDB DO Checker (<1s via WebSocket, di-debounce agar hemat kuota)
     const unsub = subscribeToDoCheckerLive(() => {
-      // Checker baru saja selesai di https://checker-do.vercel.app/ -> Panggil antrean detik itu juga!
-      onRefreshQc();
+      if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
+      liveDebounceTimer = setTimeout(() => {
+        onRefreshQc(false);
+      }, 800);
     });
 
-    // 3. Fallback heartbeat (60s) hanya sebagai jaring pengaman koneksi
+    // 3. Fallback heartbeat konservatif (5 menit) karena WebSocket RTDB + Firestore sudah aktif real-time
     const fallbackInterval = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-      onRefreshQc();
-    }, 60000);
+      onRefreshQc(false);
+    }, 300000);
 
     return () => {
       unsub();
+      if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
       clearInterval(fallbackInterval);
     };
   }, [onRefreshQc]);
@@ -771,7 +775,7 @@ export default function ReportQcView({
             is_done: "DONE",
           }),
         });
-        onRefreshQc();
+        onRefreshQc(false);
       } catch (e) {
         console.error("Failed to mark QC DONE:", e);
       }
@@ -809,7 +813,7 @@ export default function ReportQcView({
           user_email: currentUser?.email || "",
         }),
       });
-      onRefreshQc();
+      onRefreshQc(false);
     } catch (e) {
       console.error("Failed to mark ALL QC DONE:", e);
     }
@@ -1520,7 +1524,7 @@ export default function ReportQcView({
       {/* VIEW CONTENT */}
       {subTab === "rekap" ? (
         /* TAB 1: REKAP SO */
-        <div className="rounded-lg border border-slate-800/60 shadow-xs overflow-hidden">
+        <div className={`rounded-lg border shadow-sm overflow-hidden ${isDarkMode ? "border-slate-800/60 bg-slate-900/30" : "border-slate-300 bg-white"}`}>
           <div className="overflow-x-auto max-h-[64vh] overflow-y-auto">
             <table className="w-full text-left text-xs font-sans border-collapse">
               <thead
@@ -1624,7 +1628,7 @@ export default function ReportQcView({
         </div>
       ) : (
         /* TAB 2: CATATAN BARANG */
-        <div className="rounded-lg border border-slate-800/60 shadow-xs overflow-hidden">
+        <div className={`rounded-lg border shadow-sm overflow-hidden ${isDarkMode ? "border-slate-800/60 bg-slate-900/30" : "border-slate-300 bg-white"}`}>
           <div className="overflow-x-auto max-h-[64vh] overflow-y-auto">
             <table className="w-full text-left text-xs font-sans border-collapse">
               <thead

@@ -65,6 +65,7 @@ import WeeklyQc2View from "./returns/WeeklyQc2View";
 import OpenCasesView from "./returns/OpenCasesView";
 import RejectCasesView from "./returns/RejectCasesView";
 import ReturSubmissionView from "./returns/ReturSubmissionView";
+import ReturnsExportModal from "./returns/ReturnsExportModal";
 
 export const COMPLAINT_REASONS = [
   "Fisik yang dikirim kurang",
@@ -344,6 +345,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [linkCopied, setLinkCopied] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [confirmResolveItem, setConfirmResolveItem] = useState<ShipmentReturnRecord | null>(null);
   const [showDeliveryPrepModal, setShowDeliveryPrepModal] = useState(false);
   const [showConfirmApproveModal, setShowConfirmApproveModal] = useState(false);
@@ -1590,36 +1592,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   };
 
   const handleExportExcel = () => {
-    if (returns.length === 0) return;
-    const formattedData = returns.map((r, idx) => ({
-      No: idx + 1,
-      PBF: r.pbf || "MBI",
-      "Nama Apotek": r.customer_name || "-",
-      "No. Faktur": r.invoice_no || "-",
-      "Tanggal Faktur": formatDate(getInvoiceDate(r)),
-      "Tanggal Lapor": r.report_date ? formatDate(r.report_date) : (r.created_at ? formatDate(r.created_at.split(" ")[0]) : "-"),
-      "No. SO": r.so_no || "-",
-      "Nama Produk": r.product_name || "-",
-      Qty: r.qty || 1,
-      Batch: r.batch_no || "-",
-      ED: r.expiry_date || "-",
-      "Alasan (Reason)": r.reason || "-",
-      Status: r.status || "Pending",
-      "Tanggal Penyelesaian": formatDate(r.resolved_date),
-      "Days until Today": calculateDaysUntilToday(r.report_date),
-      "Days until close": calculateDaysUntilClose(r.report_date, r.resolved_date, r.status),
-      Tindakan: r.action || "-",
-      "Status Konfirmasi": r.confirm || "-",
-      "No. Nota Retur": r.nota_retur_no || "-",
-      "Person (Pelaku)": r.person || "-",
-      "Akar Masalah (Root Cause)": r.root_cause || "-",
-      Kategori: r.category || "-",
-      Catatan: r.note || "-",
-    }));
-    const ws = XLSX.utils.json_to_sheet(formattedData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Shipment_Returns");
-    XLSX.writeFile(wb, `Retur_Komplain_FantasticOrder_${new Date().toISOString().split("T")[0]}.xlsx`);
+    setShowExportModal(true);
   };
 
   const filteredPersonnel = useMemo(() => {
@@ -3109,10 +3082,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                 type="button"
                 onClick={handleExportExcel}
                 className="py-1.5 px-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-700 dark:text-slate-200 border border-zinc-200 dark:border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-                title="Unduh Excel"
+                title="Buka modal Ekspor Excel (Custom Filter / Ekspor Keseluruhan Sistem)"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Ekspor Excel</span>
+                <span>{`Ekspor Excel${Number(stats.totalAll || total || 0) > 0 ? ` (${Number(stats.totalAll || total || 0).toLocaleString("id-ID")})` : ""}`}</span>
               </button>
               <button
                 type="button"
@@ -6130,6 +6103,25 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
           </div>
         </div>
       )}
+
+      {/* Export Excel Modal (Custom & Full System) */}
+      <ReturnsExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        totalSystemAll={Number(stats.totalAll || total || 0)}
+        currentFilteredTotal={total}
+        availableWeeks={availableWeeks}
+        initialSearch={search}
+        initialStatus={statusFilter}
+        initialPbf={pbfFilter}
+        initialCategory={categoryFilter}
+        initialMonth={monthFilter}
+        initialWeek={weekFilter}
+        getInvoiceDate={getInvoiceDate}
+        formatDate={formatDate}
+        calculateDaysUntilToday={calculateDaysUntilToday}
+        calculateDaysUntilClose={calculateDaysUntilClose}
+      />
 
       {/* How To Use Modal */}
       <HowToUseModal

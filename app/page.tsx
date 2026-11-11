@@ -1148,7 +1148,11 @@ export default function Home() {
 
   // Fetch QC Reports (GSheet Rekap Lengkap / Rekap SO queue waiting for Oracle invoice)
   const lastQcSigRef = useRef<Record<string, string>>({});
+  const fetchingQcRef = useRef<Record<string, boolean>>({});
+  const lastQcErrToastRef = useRef<number>(0);
   const fetchQcOrders = useCallback(async (wh: "MBI" | "MAI", fresh = false) => {
+    if (!fresh && fetchingQcRef.current[wh]) return;
+    fetchingQcRef.current[wh] = true;
     try {
       const res = await fetch(`/api/tidb?action=qc_reports&warehouse=${wh}${fresh ? "&fresh=true" : ""}`);
       const d = await res.json();
@@ -1157,24 +1161,42 @@ export default function Home() {
           const sig = d.data
             .map((r: any) => `${r.so_number}:${r.is_done}:${r.status}:${r.checker_name}:${r.packer_name}:${r.picker_name}:${r.barang_catatan}:${r.updated_at}`)
             .join("|");
-          if (lastQcSigRef.current[wh] !== sig) {
+          const changed = lastQcSigRef.current[wh] !== sig;
+          if (changed) {
             lastQcSigRef.current[wh] = sig;
             setQcOrders(d.data);
           }
           if (fresh) {
-            showToast(`✓ Data Report QC & Catatan Barang diperbarui (${d.data.length} SO)!`);
+            showToast(
+              changed
+                ? `✓ Data Report QC & Catatan Barang diperbarui (${d.data.length} SO)!`
+                : `✓ Data Report QC sudah paling baru (${d.data.length} SO).`
+            );
           }
         }
-      } else if (fresh) {
-        showToast(`⚠️ Kendala sinkronisasi Report QC: ${d?.error || "Gagal memuat data terbaru."}`);
+      } else {
+        const now = Date.now();
+        if (fresh || now - lastQcErrToastRef.current > 60000) {
+          lastQcErrToastRef.current = now;
+          showToast(`⚠️ Kendala sinkronisasi Report QC: ${d?.error || "Gagal memuat data terbaru."}`);
+        }
       }
     } catch (e: any) {
       console.warn("Failed to fetch qc_reports:", e);
-      if (fresh) {
+      const now = Date.now();
+      if (fresh || now - lastQcErrToastRef.current > 60000) {
+        lastQcErrToastRef.current = now;
         showToast(`⚠️ Kendala koneksi Report QC: ${e?.message || "Koneksi terputus."}`);
       }
+    } finally {
+      fetchingQcRef.current[wh] = false;
     }
   }, [showToast]);
+
+  const handleRefreshQc = useCallback(
+    (fresh = false) => fetchQcOrders(selectedWarehouseRef.current, fresh),
+    [fetchQcOrders]
+  );
 
 const handleCancelQcOrder = useCallback(async (soNum: string) => {
     if (!soNum) return;
@@ -4510,8 +4532,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         setLoading(false);
         showToast(`✓ Berhasil memuat ${touchedInvoiceInThisUpload.size} faktur (${parsed.length} baris data) dari ${fileNames.join(", ")}`);
 
-        // Instant refresh QC & Checkers upon upload so all personnel names are immediately locked in 0-detik
-        fetchQcOrders(currentWh, true);
+        // Instant refresh QC & Checkers upon upload (quiet background sync without toast spam)
+        fetchQcOrders(currentWh, false);
         fetch(`/api/tidb?action=get_checkers&warehouse=${currentWh}`)
           .then((r) => r.json())
           .then((d) => {
@@ -6734,7 +6756,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             isDarkMode={isDarkMode}
             existingSOSet={existingSOSet}
             soDetailsMap={soDetailsMap}
-            onRefreshQc={() => fetchQcOrders(selectedWarehouseRef.current, true)}
+            onRefreshQc={handleRefreshQc}
             onCancelQcOrder={handleCancelQcOrder}
             onOpenAnnouncement={() => setShowQcAnnouncement(true)}
           />
@@ -7885,9 +7907,33 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         groups={grouped}
         isDarkMode={isDarkMode}
         initialWarehouse={mainView === "dashboard" ? dashboardWarehouseFilter : selectedWarehouse}
-        initialStartDate={mainView === "dashboard" ? dashboardStartDate : undefined}
-        initialEndDate={mainView === "dashboard" ? dashboardEndDate : undefined}
-        initialDateBasis={mainView === "dashboard" ? (dashboardDateBasis === "tx" ? "transaction" : "order") : undefined}
+        initialStartDate={mainView === "dashboard" ? dashboardStartDate : ""}
+        initialEndDate={mainView === "dashboard" ? dashboardEndDate : ""}
+        initialDateBasis={mainView === "dashboard" ? (dashboardDateBasis === "tx" ? "transaction" : "order") : "order"}
+        initialSpecialFilter={
+          mainView === "workspace"
+            ? filter === "retur"
+              ? "retur"
+              : filter === "double"
+              ? "double"
+              : "all"
+            : "all"
+        }
+        initialStatusFilter={
+          mainView === "workspace"
+            ? filter === "belum"
+              ? "unprinted"
+              : filter === "sudah"
+              ? "printed"
+              : "all"
+            : "all"
+        }
+        initialJenisFilter={mainView === "workspace" ? jenisFilter : "all"}
+        initialKatFilter={mainView === "workspace" ? katFilter : "all"}
+        initialDklkFilter={mainView === "workspace" ? dklkFilter : "all"}
+        initialKlasFilter={mainView === "workspace" ? klasFilter : "all"}
+        initialSearch={mainView === "workspace" ? search : ""}
+        resolveChecker={(g) => getCheckerInfo(g.so, g.invoiceNumber, g.invoiceKey, g.entity)}
       />
 
       <DatabaseStatsModal

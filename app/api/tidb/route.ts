@@ -12,6 +12,8 @@ let memoryQcReportsCache: Record<string, { payload: any; ts: number }> = {};
 let memoryCheckCache: { payload: any; ts: number } | null = null;
 let memoryCheckersCache: Record<string, { payload: any; ts: number }> = {};
 let lastArchiveSyncTs: Record<string, number> = {};
+let lastDoneSyncSig: Record<string, string> = {};
+let lastArchiveSyncSig: Record<string, string> = {};
 
 function compressedJsonResponse(
   req: Request,
@@ -519,7 +521,7 @@ export async function GET(req: Request) {
         "Vercel-CDN-Cache-Control": "no-store",
       };
 
-      if (!isFresh && memoryQcReportsCache[warehouse] && (now - memoryQcReportsCache[warehouse].ts < 5000)) {
+      if (!isFresh && memoryQcReportsCache[warehouse] && (now - memoryQcReportsCache[warehouse].ts < 20000)) {
         return compressedJsonResponse(req, memoryQcReportsCache[warehouse].payload, noCacheHeaders);
       }
 
@@ -564,6 +566,8 @@ export async function GET(req: Request) {
               }
 
               if (liveRows.length > 0) {
+                const doneSig = crypto.createHash("md5").update(JSON.stringify(liveRows)).digest("hex");
+                if (isFresh || lastDoneSyncSig[warehouse] !== doneSig) {
                 const placeholders = liveRows.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QC_DONE')").join(", ");
                 await conn.execute(
                   `INSERT INTO qc_reports (
@@ -594,9 +598,11 @@ export async function GET(req: Request) {
                      picker_name = IF(VALUES(picker_name) IS NOT NULL AND VALUES(picker_name) != '', VALUES(picker_name), so_checkers.picker_name)`,
                   checkerRows.flat()
                 );
-                // Live sync 100% of archive notes directly from DO Checker Firebase RTDB
+                  lastDoneSyncSig[warehouse] = doneSig;
+                }
+                // Live sync 100% of archive notes directly from DO Checker Firebase RTDB (manual fresh=true always immediate; auto background max 2 min)
                 const lastSync = lastArchiveSyncTs[warehouse] || 0;
-                if (isFresh || now - lastSync > 10000) {
+                if (isFresh || now - lastSync > 120000) {
                   lastArchiveSyncTs[warehouse] = now;
                   try {
                     const archRes = await fetch('https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app/archive.json');
@@ -624,15 +630,19 @@ export async function GET(req: Request) {
                           }
                         }
                         if (notedRows.length > 0) {
-                          const placeholders = notedRows.map(() => "(?, ?, ?, ?)").join(", ");
-                          await conn.execute(
-                            `INSERT INTO qc_reports (warehouse, so_number, barang_catatan, noted_items)
-                             VALUES ${placeholders}
-                             ON DUPLICATE KEY UPDATE
-                               barang_catatan = VALUES(barang_catatan),
-                               noted_items = VALUES(noted_items)`,
-                            notedRows.flat()
-                          );
+                          const archSig = crypto.createHash("md5").update(JSON.stringify(notedRows)).digest("hex");
+                          if (isFresh || lastArchiveSyncSig[warehouse] !== archSig) {
+                            const placeholders = notedRows.map(() => "(?, ?, ?, ?)").join(", ");
+                            await conn.execute(
+                              `INSERT INTO qc_reports (warehouse, so_number, barang_catatan, noted_items)
+                               VALUES ${placeholders}
+                               ON DUPLICATE KEY UPDATE
+                                 barang_catatan = VALUES(barang_catatan),
+                                 noted_items = VALUES(noted_items)`,
+                              notedRows.flat()
+                            );
+                            lastArchiveSyncSig[warehouse] = archSig;
+                          }
                         }
                       }
                     }
