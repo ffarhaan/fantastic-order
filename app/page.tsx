@@ -59,6 +59,11 @@ import DatabaseStatsModal from "@/components/DatabaseStatsModal";
 import ActivityLogModal from "@/components/ActivityLogModal";
 import HowToUseModal from "@/components/HowToUseModal";
 import QcAnnouncementModal from "@/components/QcAnnouncementModal";
+import ParetoAnalysisView, {
+  ParetoCategoryItem,
+  ParetoProductItem,
+  ParetoCustomerItem,
+} from "@/components/ParetoAnalysisView";
 import { recordActivityLog } from "@/lib/activityLogger";
 import {
   LayoutDashboard,
@@ -3065,7 +3070,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         katCounts: { "1P": 0, "2P": 0, "3P": 0, "DK": 0, "LK": 0 },
         jenisCounts: { DOO: 0, ORA: 0 } as Record<"DOO" | "ORA", number>,
         prodCounts: { PREKURSOR: 0, OOT: 0, CCP: 0, ALKES: 0, FARMA: 0 } as Record<string, number>,
-        topCustomers: [] as Array<{ name: string; count: number; totalRp: number }>,
+        topCustomers: [] as ParetoCustomerItem[],
+        paretoCategories: [] as ParetoCategoryItem[],
+        paretoProducts: [] as ParetoProductItem[],
       };
       return {
         ...emptySub,
@@ -3092,7 +3099,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       katCounts: { "1P": 0, "2P": 0, "3P": 0, "DK": 0, "LK": 0 } as Record<string, number>,
       jenisCounts: { DOO: 0, ORA: 0 } as Record<"DOO" | "ORA", number>,
       prodCounts: { PREKURSOR: 0, OOT: 0, CCP: 0, ALKES: 0, FARMA: 0 } as Record<string, number>,
-      custMap: new Map<string, { count: number; totalRp: number }>(),
+      custMap: new Map<string, { count: number; totalRp: number; totalQty: number }>(),
+      categoryMap: new Map<string, { totalQty: number; orderCount: number; custQtyMap: Map<string, number> }>(),
+      productMap: new Map<string, { code: string; name: string; category: string; totalQty: number; orderCount: number; custQtyMap: Map<string, number> }>(),
     });
 
     const mbiBucket = createBucket();
@@ -3119,9 +3128,55 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       else b.prodCounts.FARMA++;
 
       const cName = g.customerName || "Tanpa Nama";
-      const existing = b.custMap.get(cName) || { count: 0, totalRp: 0 };
+      const existing = b.custMap.get(cName) || { count: 0, totalRp: 0, totalQty: 0 };
       existing.count += 1;
       existing.totalRp += (g.totalHarga || 0);
+
+      // Detailed Category & Product aggregation for Pareto analysis (Quantity-driven)
+      if (g.items && g.items.length > 0) {
+        for (let j = 0; j < g.items.length; j++) {
+          const it = g.items[j];
+          const rawQty = typeof it.qty === "number" ? it.qty : parseFloat(String(it.qty).replace(/,/g, "")) || 1;
+          const cat = (it.kategoriProduk || g.kategoriProduk || "FARMA").toUpperCase().trim() || "FARMA";
+
+          // Category Map
+          let cData = b.categoryMap.get(cat);
+          if (!cData) {
+            cData = { totalQty: 0, orderCount: 0, custQtyMap: new Map() };
+            b.categoryMap.set(cat, cData);
+          }
+          cData.totalQty += rawQty;
+          cData.orderCount += 1;
+          cData.custQtyMap.set(cName, (cData.custQtyMap.get(cName) || 0) + rawQty);
+
+          // Product Map
+          const pCode = (it.itemCode || "-").trim();
+          const pName = (it.itemDescription || it.itemCode || "Tanpa Nama Produk").trim();
+          const pKey = pCode !== "-" ? pCode : pName;
+          let pData = b.productMap.get(pKey);
+          if (!pData) {
+            pData = { code: pCode, name: pName, category: cat, totalQty: 0, orderCount: 0, custQtyMap: new Map() };
+            b.productMap.set(pKey, pData);
+          }
+          pData.totalQty += rawQty;
+          pData.orderCount += 1;
+          pData.custQtyMap.set(cName, (pData.custQtyMap.get(cName) || 0) + rawQty);
+
+          existing.totalQty += rawQty;
+        }
+      } else {
+        const cat = (g.kategoriProduk || "FARMA").toUpperCase().trim() || "FARMA";
+        let cData = b.categoryMap.get(cat);
+        if (!cData) {
+          cData = { totalQty: 0, orderCount: 0, custQtyMap: new Map() };
+          b.categoryMap.set(cat, cData);
+        }
+        cData.totalQty += 1;
+        cData.orderCount += 1;
+        cData.custQtyMap.set(cName, (cData.custQtyMap.get(cName) || 0) + 1);
+        existing.totalQty += 1;
+      }
+
       b.custMap.set(cName, existing);
 
       if (dMs > 0 && d) {
@@ -3154,10 +3209,81 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     }
 
     const formatBucket = (b: ReturnType<typeof createBucket>) => {
-      const topCustomers = Array.from(b.custMap.entries())
-        .map(([name, data]) => ({ name, ...data }))
-        .sort((a, b) => b.totalRp - a.totalRp)
-        .slice(0, 5);
+      // 1. Calculate Pareto Categories
+      const allCategories = Array.from(b.categoryMap.entries()).map(([cat, data]) => {
+        const topCustomers = Array.from(data.custQtyMap.entries())
+          .map(([name, qty]) => ({ name, qty }))
+          .sort((x, y) => y.qty - x.qty)
+          .slice(0, 3);
+        return {
+          category: cat,
+          totalQty: data.totalQty,
+          orderCount: data.orderCount,
+          topCustomers,
+        };
+      }).sort((x, y) => y.totalQty - x.totalQty);
+
+      const totalCategoryQty = allCategories.reduce((acc, c) => acc + c.totalQty, 0);
+      let runningCatQty = 0;
+      const paretoCategories: ParetoCategoryItem[] = allCategories.map((c) => {
+        runningCatQty += c.totalQty;
+        const pct = totalCategoryQty > 0 ? (c.totalQty / totalCategoryQty) * 100 : 0;
+        const cumPct = totalCategoryQty > 0 ? (runningCatQty / totalCategoryQty) * 100 : 0;
+        let paretoClass: "A" | "B" | "C" = "C";
+        if (cumPct <= 80 || (cumPct - pct < 80)) {
+          paretoClass = "A";
+        } else if (cumPct <= 95 || (cumPct - pct < 95)) {
+          paretoClass = "B";
+        }
+        return {
+          ...c,
+          pct,
+          cumPct,
+          paretoClass,
+        };
+      });
+
+      // 2. Calculate Pareto Products
+      const allProducts = Array.from(b.productMap.values()).map((p) => {
+        const topCustomers = Array.from(p.custQtyMap.entries())
+          .map(([name, qty]) => ({ name, qty }))
+          .sort((x, y) => y.qty - x.qty)
+          .slice(0, 3);
+        return {
+          code: p.code,
+          name: p.name,
+          category: p.category,
+          totalQty: p.totalQty,
+          orderCount: p.orderCount,
+          topCustomers,
+        };
+      }).sort((x, y) => y.totalQty - x.totalQty);
+
+      const totalProductQty = allProducts.reduce((acc, p) => acc + p.totalQty, 0);
+      let runningProdQty = 0;
+      const paretoProducts: ParetoProductItem[] = allProducts.slice(0, 50).map((p) => {
+        runningProdQty += p.totalQty;
+        const pct = totalProductQty > 0 ? (p.totalQty / totalProductQty) * 100 : 0;
+        const cumPct = totalProductQty > 0 ? (runningProdQty / totalProductQty) * 100 : 0;
+        let paretoClass: "A" | "B" | "C" = "C";
+        if (cumPct <= 80 || (cumPct - pct < 80)) {
+          paretoClass = "A";
+        } else if (cumPct <= 95 || (cumPct - pct < 95)) {
+          paretoClass = "B";
+        }
+        return {
+          ...p,
+          pct,
+          cumPct,
+          paretoClass,
+        };
+      });
+
+      // 3. Top Outlets/Customers by Order Volume (Zero Monetary Rp)
+      const topCustomers: ParetoCustomerItem[] = Array.from(b.custMap.entries())
+        .map(([name, data]) => ({ name, count: data.count, totalQty: data.totalQty || data.count }))
+        .sort((a, b) => (b.totalQty || 0) - (a.totalQty || 0))
+        .slice(0, 10);
 
       const totalActiveCount = b.belumCount + b.sudahCount;
       return {
@@ -3173,6 +3299,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         jenisCounts: b.jenisCounts,
         prodCounts: b.prodCounts,
         topCustomers,
+        paretoCategories,
+        paretoProducts,
       };
     };
 
@@ -5925,8 +6053,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     <span>Ekspor Data</span>
                   </button>
 
-                  <div className="text-lg sm:text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 ml-2">
-                    RP {Math.round(dashboardStats.totalNilaiRp).toLocaleString("id-ID")}
+                  <div className="flex items-center gap-2 ml-2">
+                    <span className="px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-600 dark:text-blue-400 text-xs sm:text-sm font-bold font-mono">
+                      {dashboardStats.totalCount.toLocaleString("id-ID")} Faktur Terbit
+                    </span>
+                    <span className="hidden sm:inline-block px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm font-bold font-mono">
+                      {dashboardStats.totalSO.toLocaleString("id-ID")} SO
+                    </span>
                   </div>
                 </div>
               </div>
@@ -5987,8 +6120,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     </span>
                   </div>
 
-                  <div className="text-xl sm:text-2xl font-black font-mono text-slate-900 dark:text-white mt-2">
-                    RP {Math.round(dashboardStats.mbi.totalNilaiRp).toLocaleString("id-ID")}
+                  <div className="flex items-baseline gap-2 mt-2">
+                    <div className="text-xl sm:text-2xl font-black font-mono text-blue-600 dark:text-blue-400">
+                      {dashboardStats.mbi.totalCount.toLocaleString("id-ID")}
+                    </div>
+                    <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Faktur Terbit</span>
                   </div>
 
                   <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-slate-200 dark:border-slate-800 text-center">
@@ -6037,8 +6173,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     </span>
                   </div>
 
-                  <div className="text-xl sm:text-2xl font-black font-mono text-slate-900 dark:text-white mt-2">
-                    RP {Math.round(dashboardStats.mai.totalNilaiRp).toLocaleString("id-ID")}
+                  <div className="flex items-baseline gap-2 mt-2">
+                    <div className="text-xl sm:text-2xl font-black font-mono text-teal-600 dark:text-teal-400">
+                      {dashboardStats.mai.totalCount.toLocaleString("id-ID")}
+                    </div>
+                    <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Faktur Terbit</span>
                   </div>
 
                   <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-slate-200 dark:border-slate-800 text-center">
@@ -6163,7 +6302,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             </div>
 
             {/* GRID ANALYTICS CARDS */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* Card 1: Progress Print */}
               <div className={`p-4 rounded-2xl border ${
                 isDarkMode ? "bg-[#0f172a] border-slate-800" : "bg-white border-slate-200"
@@ -6217,59 +6356,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   </div>
                 </div>
               </div>
-
-              {/* Card 3: Distribusi Kategori Produk */}
-              <div className={`p-4 rounded-2xl border ${
-                isDarkMode ? "bg-[#0f172a] border-slate-800" : "bg-white border-slate-200"
-              }`}>
-                <span className="font-bold text-xs uppercase tracking-wider text-slate-500 block mb-3">
-                  Kategori Produk
-                </span>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2 rounded-lg bg-slate-50 dark:bg-[#090d18] border border-slate-200 dark:border-slate-800">
-                    <div className="text-[10px] text-slate-500 font-semibold">PREKURSOR</div>
-                    <div className="text-sm font-bold font-mono mt-0.5">{dashboardStats.prodCounts.PREKURSOR}</div>
-                  </div>
-                  <div className="p-2 rounded-lg bg-slate-50 dark:bg-[#090d18] border border-slate-200 dark:border-slate-800">
-                    <div className="text-[10px] text-slate-500 font-semibold">OOT</div>
-                    <div className="text-sm font-bold font-mono mt-0.5">{dashboardStats.prodCounts.OOT}</div>
-                  </div>
-                  <div className="p-2 rounded-lg bg-slate-50 dark:bg-[#090d18] border border-slate-200 dark:border-slate-800">
-                    <div className="text-[10px] text-slate-500 font-semibold">CCP</div>
-                    <div className="text-sm font-bold font-mono mt-0.5">{dashboardStats.prodCounts.CCP}</div>
-                  </div>
-                  <div className="p-2 rounded-lg bg-slate-50 dark:bg-[#090d18] border border-slate-200 dark:border-slate-800">
-                    <div className="text-[10px] text-slate-500 font-semibold">ALKES</div>
-                    <div className="text-sm font-bold font-mono mt-0.5">{dashboardStats.prodCounts.ALKES}</div>
-                  </div>
-                </div>
-              </div>
             </div>
 
-            {/* TOP 5 OUTLET / CUSTOMER TERBESAR */}
-            <div className={`p-4 rounded-2xl border ${
-              isDarkMode ? "bg-[#0f172a] border-slate-800" : "bg-white border-slate-200"
-            }`}>
-              <span className="font-bold text-xs uppercase tracking-wider text-slate-500 block mb-3">
-                Top 5 Outlet / Pelanggan Terbesar
-              </span>
-              <div className="divide-y divide-slate-200 dark:divide-slate-800">
-                {dashboardStats.topCustomers.map((c, idx) => (
-                  <div key={idx} className="py-2.5 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-bold text-[10px]">
-                        {idx + 1}
-                      </span>
-                      <span className="font-semibold text-slate-900 dark:text-white">{c.name}</span>
-                      <span className="text-[10px] text-slate-500 font-mono">({c.count} faktur)</span>
-                    </div>
-                    <span className="font-mono font-bold text-slate-900 dark:text-white">
-                      Rp {Math.round(c.totalRp).toLocaleString("id-ID")}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* ANALISIS PARETO 80/20 BARANG & PELANGGAN (ZERO MONETARY VALUE) */}
+            <ParetoAnalysisView
+              categories={dashboardStats.paretoCategories}
+              products={dashboardStats.paretoProducts}
+              topCustomers={dashboardStats.topCustomers}
+              warehouseFilter={dashboardWarehouseFilter}
+              isDarkMode={isDarkMode}
+            />
           </div>
         ) : (
           <>

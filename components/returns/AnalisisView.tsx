@@ -649,13 +649,7 @@ export default function AnalisisView({
       }
     }
     if (reasonScope !== "ALL") {
-      if (reasonScope === "PRIMARY_4") {
-        parts.push("⭐ 4 Kendala Fisik Utama");
-      } else if (reasonScope === "OTHER") {
-        parts.push("Kendala Lainnya");
-      } else {
-        parts.push(reasonScope);
-      }
+      parts.push(reasonScope);
     }
     if (statusScope !== "ALL") {
       const scopeLabels: Record<string, string> = {
