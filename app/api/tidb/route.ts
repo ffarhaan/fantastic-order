@@ -11,9 +11,18 @@ export const dynamic = "force-dynamic";
 let memoryQcReportsCache: Record<string, { payload: any; ts: number }> = {};
 let memoryCheckCache: { payload: any; ts: number } | null = null;
 let memoryCheckersCache: Record<string, { payload: any; ts: number }> = {};
+let memoryCustomersCache: Record<string, { payload: any; ts: number }> = {};
+let memoryReturnsStatsCache: Record<string, { payload: any; ts: number }> = {};
 let lastArchiveSyncTs: Record<string, number> = {};
 let lastDoneSyncSig: Record<string, string> = {};
 let lastArchiveSyncSig: Record<string, string> = {};
+
+function invalidateReturnsCache() {
+  memoryReturnsStatsCache = {};
+}
+function invalidateCustomersCache() {
+  memoryCustomersCache = {};
+}
 
 function getVersionedCacheHeaders(searchParams: URLSearchParams): Record<string, string> {
   const isFreshReq = searchParams.get("fresh") === "true" || searchParams.has("_t");
@@ -548,7 +557,7 @@ export async function GET(req: Request) {
       };
       const responseHeaders = isFresh ? noCacheHeaders : getVersionedCacheHeaders(searchParams);
 
-      if (!isFresh && memoryQcReportsCache[cacheKey] && (now - memoryQcReportsCache[cacheKey].ts < 20000)) {
+      if (!isFresh && memoryQcReportsCache[cacheKey] && (now - memoryQcReportsCache[cacheKey].ts < 60000)) {
         return compressedJsonResponse(req, memoryQcReportsCache[cacheKey].payload, responseHeaders);
       }
 
@@ -783,6 +792,26 @@ export async function GET(req: Request) {
       const hasDocs = searchParams.get("has_docs") === "true";
       const limit = Math.min(Number(searchParams.get("limit")) || 50, 200);
       const offset = Number(searchParams.get("offset")) || 0;
+      const isFresh = searchParams.get("fresh") === "true";
+      const isKomplainSuggestion = activeOnly && limit <= 200 && !search && !category && !status;
+
+      const cacheKey = `${warehouse}_${search}_${category}_${status}_${activeOnly}_${hasDocs}_${limit}_${offset}`;
+      const now = Date.now();
+      if (!isFresh && memoryCustomersCache[cacheKey] && (now - memoryCustomersCache[cacheKey].ts < 120000)) {
+        return compressedJsonResponse(
+          req,
+          memoryCustomersCache[cacheKey].payload,
+          {
+            ...(isKomplainSuggestion
+              ? {
+                  "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+                  "CDN-Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
+                  "Vercel-CDN-Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
+                }
+              : getVersionedCacheHeaders(searchParams)),
+          }
+        );
+      }
 
       let whereClause = "WHERE (name != '#N/A' AND name != '' AND name IS NOT NULL)";
       const params: (string | number)[] = [];
@@ -830,8 +859,6 @@ export async function GET(req: Request) {
       `;
       const rows = await conn.execute(dataSql, [...params, limit, offset]);
 
-      const isKomplainSuggestion = activeOnly && limit <= 200 && !search && !category && !status;
-
       // Warehouse counts for tabs
       const whCountsRes = (await conn.execute(
         "SELECT warehouse, COUNT(*) as cnt FROM customers WHERE (name != '#N/A' AND name != '' AND name IS NOT NULL) GROUP BY warehouse"
@@ -841,17 +868,20 @@ export async function GET(req: Request) {
         if (row.warehouse) warehouseCounts[row.warehouse.toUpperCase()] = Number(row.cnt || 0);
       }
 
+      const payload = {
+        success: true,
+        total: Number(countResult?.total || 0),
+        data: rows,
+        limit,
+        offset,
+        warehouse,
+        warehouseCounts,
+      };
+      memoryCustomersCache[cacheKey] = { payload, ts: Date.now() };
+
       return compressedJsonResponse(
         req,
-        {
-          success: true,
-          total: Number(countResult?.total || 0),
-          data: rows,
-          limit,
-          offset,
-          warehouse,
-          warehouseCounts,
-        },
+        payload,
         {
           ...(isKomplainSuggestion
             ? {
@@ -1060,6 +1090,13 @@ export async function GET(req: Request) {
       }
 
       const statsOnly = searchParams.get("stats_only") === "1";
+      const isFresh = searchParams.get("fresh") === "true";
+      const statsCacheKey = `${monthParam}_${weekParam}_${category}_${pbf}`;
+      const now = Date.now();
+      if (statsOnly && !isFresh && memoryReturnsStatsCache[statsCacheKey] && (now - memoryReturnsStatsCache[statsCacheKey].ts < 60000)) {
+        return compressedJsonResponse(req, memoryReturnsStatsCache[statsCacheKey].payload, getVersionedCacheHeaders(searchParams));
+      }
+
       let countResult: { total: number } | undefined = { total: 0 };
       let rows: any = [];
       if (!statsOnly) {
@@ -1144,31 +1181,37 @@ export async function GET(req: Request) {
         FROM shipment_returns ${statsCondition};
       `, statsQueryParams)) as any[];
 
+      const payload = {
+        success: true,
+        total: Number(countResult?.total || 0),
+        stats: {
+          totalAll: Number(stats?.totalAll || 0),
+          totalResolved: Number(stats?.totalResolved || 0),
+          totalPending: Number(stats?.totalPending || 0),
+          totalInProgress: Number(stats?.totalInProgress || 0),
+          totalInProgressOperasional: Number(stats?.totalInProgressOperasional || 0),
+          totalInProgressKlaim: Number(stats?.totalInProgressKlaim || 0),
+          totalMbi: Number(stats?.totalMbi || 0),
+          totalMai: Number(stats?.totalMai || 0),
+          mbiApproved: Number(stats?.mbiApproved || 0),
+          maiApproved: Number(stats?.maiApproved || 0),
+          openMbi: Number(stats?.openMbi || 0),
+          openMai: Number(stats?.openMai || 0),
+          totalOpen: Number(stats?.totalOpen || 0),
+          totalReject: Number(stats?.totalReject || 0),
+        },
+        data: rows,
+        limit,
+        offset,
+      };
+
+      if (statsOnly) {
+        memoryReturnsStatsCache[statsCacheKey] = { payload, ts: Date.now() };
+      }
+
       return compressedJsonResponse(
         req,
-        {
-          success: true,
-          total: Number(countResult?.total || 0),
-          stats: {
-            totalAll: Number(stats?.totalAll || 0),
-            totalResolved: Number(stats?.totalResolved || 0),
-            totalPending: Number(stats?.totalPending || 0),
-            totalInProgress: Number(stats?.totalInProgress || 0),
-            totalInProgressOperasional: Number(stats?.totalInProgressOperasional || 0),
-            totalInProgressKlaim: Number(stats?.totalInProgressKlaim || 0),
-            totalMbi: Number(stats?.totalMbi || 0),
-            totalMai: Number(stats?.totalMai || 0),
-            mbiApproved: Number(stats?.mbiApproved || 0),
-            maiApproved: Number(stats?.maiApproved || 0),
-            openMbi: Number(stats?.openMbi || 0),
-            openMai: Number(stats?.openMai || 0),
-            totalOpen: Number(stats?.totalOpen || 0),
-            totalReject: Number(stats?.totalReject || 0),
-          },
-          data: rows,
-          limit,
-          offset,
-        },
+        payload,
         getVersionedCacheHeaders(searchParams)
       );
     }
@@ -1271,7 +1314,7 @@ export async function GET(req: Request) {
       let totalCount = 0;
       let maxUpdated = 0;
 
-      if (memoryCheckCache && (now - memoryCheckCache.ts < 15000)) {
+      if (memoryCheckCache && (now - memoryCheckCache.ts < 30000)) {
         totalCount = memoryCheckCache.payload.totalCount;
         maxUpdated = memoryCheckCache.payload.maxUpdated;
       } else {
@@ -2557,6 +2600,7 @@ export async function POST(req: Request) {
       }
       await conn.execute("DELETE FROM customer_document_chunks WHERE file_id = ?", [fileId]);
       await conn.execute("DELETE FROM customer_documents WHERE file_id = ?", [fileId]);
+      invalidateReturnsCache();
       return Response.json({ success: true });
     }
 
@@ -2810,6 +2854,7 @@ export async function POST(req: Request) {
       }
 
       // Realtime trigger to all connected browser Web Apps!
+      invalidateCustomersCache();
       await broadcastSignalFromApi("customers");
 
       return Response.json({ success: true, id, message: "Customer synced successfully from Google Sheet" });
@@ -2992,6 +3037,7 @@ export async function POST(req: Request) {
         console.warn("Failed to write activity_log in create_return:", logErr);
       }
 
+      invalidateReturnsCache();
       return Response.json({ success: true, count: items.length, insertedIds });
     }
 
@@ -3113,6 +3159,7 @@ export async function POST(req: Request) {
         console.warn("Failed to write activity_log in update_return:", logErr);
       }
 
+      invalidateReturnsCache();
       return Response.json({ success: true });
     }
 
@@ -3403,8 +3450,10 @@ export async function POST(req: Request) {
       }
 
       // Realtime trigger to all connected browser Web Apps!
+      invalidateCustomersCache();
       await broadcastSignalFromApi("customers");
 
+      invalidateReturnsCache();
       return Response.json({ success: true });
     }
 
@@ -3522,6 +3571,7 @@ export async function POST(req: Request) {
         );
       }
 
+      memoryCheckCache = null;
       return Response.json({ success: true, count: fakturs.length, processed: fakturs.length });
     }
 
