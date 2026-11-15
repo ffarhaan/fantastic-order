@@ -44,6 +44,8 @@ import {
   type NewComplaintPayload,
 } from "@/lib/firestoreService";
 import { playShipmentChime, isShipmentSoundEnabled, setShipmentSoundEnabled } from "@/lib/soundEffects";
+import { subscribeToDoCheckerLive } from "@/lib/doCheckerService";
+import { extractNotedItems } from "@/lib/qcParser";
 import { syncFaktursToTiDB, syncFaktursToTiDBBackground, syncMissingFaktursToTiDB, syncPrintStatusToTiDBBackground, fetchFaktursFromTiDB, getLocalCachedFakturs, setLocalCachedFakturs, setLocalCachedPrintState, clearLocalCachedFakturs, clearAllFaktursInTiDB, checkTiDBUpdates, fetchTiDBDelta } from "@/lib/tidbService";
 import MasterApotekModal from "@/components/MasterApotekModal";
 import MasterProductModal from "@/components/MasterProductModal";
@@ -1416,11 +1418,86 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
       }
     }, "MAI");
 
+    // 4. Direct Real-Time WebSocket Listener ke DO Checker Firebase RTDB (Instant <100ms, 0 RU TiDB)
+    const unsubDoCheckerLive = subscribeToDoCheckerLive((orderData) => {
+      if (!orderData || !orderData.so_number) return;
+      const cleanSo = String(orderData.so_number).trim();
+      if (!cleanSo || cleanSo === "-" || cleanSo === "#N/A") return;
+
+      let waktuKirim = "-";
+      if (orderData.completedAt) {
+        const ts = Number(orderData.completedAt);
+        if (!isNaN(ts) && ts > 0) {
+          const wibDt = new Date(ts + 7 * 60 * 60 * 1000);
+          const day = String(wibDt.getUTCDate()).padStart(2, "0");
+          const mon = String(wibDt.getUTCMonth() + 1).padStart(2, "0");
+          const yr = wibDt.getUTCFullYear();
+          const H = String(wibDt.getUTCHours()).padStart(2, "0");
+          const M = String(wibDt.getUTCMinutes()).padStart(2, "0");
+          waktuKirim = `${day}/${mon}/${yr} ${H}:${M}`;
+        }
+      }
+
+      const rawItems = Array.isArray(orderData.items) ? orderData.items : [];
+      let notedItems: any[] = [];
+      try {
+        notedItems = extractNotedItems(rawItems, {
+          waktuKirim,
+          noDo: orderData.doNum || "-",
+          so: cleanSo,
+          customer: orderData.customer || "-",
+        });
+      } catch {}
+
+      const newItem = {
+        warehouse: "MBI",
+        so_number: cleanSo,
+        no_do: orderData.doNum || orderData.no_do || "-",
+        customer_name: orderData.customer || orderData.customer_name || "-",
+        so_date: waktuKirim,
+        waktu_kirim: waktuKirim,
+        checker_name: orderData.checkerName || orderData.checker_name || "-",
+        packer_name: orderData.packerName || orderData.packer_name || "-",
+        picker_name: orderData.pickerName || orderData.picker_name || "-",
+        kategori: orderData.kategori || "1P",
+        kategori_produk: orderData.kategoriProduk || "FARMA",
+        total_item: Number(orderData.itemCount) || Number(orderData.total_item) || 0,
+        total_qty: Number(orderData.totalQty) || Number(orderData.total_qty) || Number(orderData.itemCount) || 0,
+        barang_catatan: notedItems.length > 0 ? notedItems.length : (Number(orderData.barang_catatan) || 0),
+        noted_items: notedItems.length > 0 ? JSON.stringify(notedItems) : null,
+        is_done: "",
+        status: "QC_DONE",
+        sheet_row: 0,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (newItem.checker_name && newItem.checker_name !== "-") {
+        const entry = {
+          checker: newItem.checker_name,
+          packer: newItem.packer_name !== "-" ? newItem.packer_name : "",
+          picker: newItem.picker_name !== "-" ? newItem.picker_name : "",
+        };
+        checkerMapMbiRef.current[cleanSo.toUpperCase()] = entry;
+        setCheckerMapMbi((prev) => ({
+          ...prev,
+          [cleanSo.toUpperCase()]: entry,
+        }));
+      }
+
+      // Instant 0ms merge into React State: langsung tampil di Report QC & header counter
+      setQcOrders((prev) => mergeQcItems(prev, [newItem]));
+
+      // Background persist to TiDB
+      const versionTag = Math.floor(Number(orderData.completedAt || Date.now()) / 5000);
+      fetchQcOrders(selectedWarehouseRef.current, false, versionTag);
+    });
+
     return () => {
       unsubMbi();
       unsubMai();
       unsubQcRecentMbi();
       unsubQcRecentMai();
+      unsubDoCheckerLive();
     };
   }, [fetchQcOrders]);
 

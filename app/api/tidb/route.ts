@@ -557,7 +557,8 @@ export async function GET(req: Request) {
       };
       const responseHeaders = isFresh ? noCacheHeaders : getVersionedCacheHeaders(searchParams);
 
-      if (!isFresh && memoryQcReportsCache[cacheKey] && (now - memoryQcReportsCache[cacheKey].ts < 15000)) {
+      const hasVersion = Boolean(searchParams.get("_v"));
+      if (!isFresh && !hasVersion && memoryQcReportsCache[cacheKey] && (now - memoryQcReportsCache[cacheKey].ts < 15000)) {
         return compressedJsonResponse(req, memoryQcReportsCache[cacheKey].payload, responseHeaders);
       }
 
