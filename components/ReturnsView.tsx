@@ -602,14 +602,14 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     };
   }, [allReturns, returns]);
 
-  const openCasesCount = statusMetrics.inProgress;
-  const rejectCasesCount = statusMetrics.rejected;
   const pendingCasesCount = stats.totalPending !== undefined ? Number(stats.totalPending) : statusMetrics.pending;
   const inProgressCasesCount = (stats as any).totalInProgress !== undefined ? Number((stats as any).totalInProgress) : statusMetrics.inProgress;
   const inProgressOperasionalCount = (stats as any).totalInProgressOperasional !== undefined ? Number((stats as any).totalInProgressOperasional) : statusMetrics.inProgressOperasional;
   const inProgressKlaimCount = (stats as any).totalInProgressKlaim !== undefined ? Number((stats as any).totalInProgressKlaim) : statusMetrics.inProgressKlaim;
   const resolvedCasesCount = stats.totalResolved !== undefined ? Number(stats.totalResolved) : statusMetrics.resolved;
   const rejectedCasesCount = stats.totalReject !== undefined ? Number(stats.totalReject) : statusMetrics.rejected;
+  const openCasesCount = inProgressCasesCount;
+  const rejectCasesCount = rejectedCasesCount;
 
   // Fetch all returns for analytic tabs (prioritizes memory cache, backed by Versioned Edge CDN)
   const fetchAllReturns = useCallback(async (forceFresh = false) => {

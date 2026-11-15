@@ -1071,6 +1071,36 @@ export async function GET(req: Request) {
         statsCondition += " AND (month = ? OR report_date LIKE ? OR invoice_date LIKE ?)";
         statsQueryParams.push(mNum, `%-${mStr}-%`, `%-${mStr}-%`);
       }
+      if (weekParam && weekParam !== "ALL") {
+        if (weekParam === "LAST_3") {
+          statsCondition += " AND week >= (SELECT COALESCE(MAX(week), 45) - 2 FROM shipment_returns) AND week <= (SELECT COALESCE(MAX(week), 45) FROM shipment_returns)";
+        } else if (weekParam.startsWith("3W:") || weekParam.includes("-")) {
+          const clean = weekParam.replace(/^3W:/i, "");
+          const [s1, s2] = clean.split("-");
+          const n1 = Number(s1.replace(/[^0-9]/g, ""));
+          const n2 = Number(s2.replace(/[^0-9]/g, ""));
+          if (n1 > 0 && n2 > 0) {
+            const minW = Math.min(n1, n2);
+            const maxW = Math.max(n1, n2);
+            statsCondition += " AND week >= ? AND week <= ?";
+            statsQueryParams.push(minW, maxW);
+          }
+        } else {
+          const wNum = Number(weekParam.replace(/[^0-9]/g, ""));
+          if (!isNaN(wNum) && wNum > 0) {
+            statsCondition += " AND week = ?";
+            statsQueryParams.push(wNum);
+          }
+        }
+      }
+      if (category && category !== "ALL") {
+        statsCondition += " AND category = ?";
+        statsQueryParams.push(category);
+      }
+      if (pbf && pbf !== "ALL") {
+        statsCondition += " AND pbf = ?";
+        statsQueryParams.push(pbf);
+      }
 
       const [stats] = (await conn.execute(`
         SELECT 
