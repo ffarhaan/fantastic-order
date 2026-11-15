@@ -117,9 +117,9 @@ export function parseToDateInputValue(val: any): string {
 
 // 8 Kolom Resmi Sesuai Regulasi ISDP & UU PDP
 export const AUTHORIZED_COLUMNS = [
-  { id: "name", label: "Nama Apotek / Merchant", locked: true },
-  { id: "id", label: "ID" },
+  { id: "id", label: "ID", locked: true },
   { id: "oracle", label: "Customer ID Oracle" },
+  { id: "name", label: "Nama Apotek / Merchant" },
   { id: "status", label: "Status Merchant" },
   { id: "apj", label: "Nama Apoteker PJ (APJ)" },
   { id: "sipa", label: "Masa Berlaku SIPA (Expired)" },
@@ -393,9 +393,9 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
       const rawList = json.success && Array.isArray(json.data) ? json.data : customers;
 
       const exportData = rawList.map((c: any) => ({
-        "Nama Apotek / Merchant": c.name || "-",
         "ID": c.id || "-",
         "Customer ID Oracle": c.customer_id_oracle || "-",
+        "Nama Apotek / Merchant": c.name || "-",
         "Status Merchant": c.status_merchant || "-",
         "Nama Apoteker PJ (APJ)": c.apj_name || "-",
         "Masa Berlaku SIPA (Expired)": formatIndonesianDate(c.sipa_expired),
@@ -608,9 +608,9 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
               title="Kunci kolom di sisi kiri"
             >
               <option value="none">Bebas</option>
-              <option value="1">1. Nama Apotek</option>
-              <option value="2">2. Nama + ID</option>
-              <option value="3">3. Nama + ID + Oracle</option>
+              <option value="1">1. ID</option>
+              <option value="2">2. ID + Oracle</option>
+              <option value="3">3. ID + Oracle + Nama</option>
             </select>
           </div>
 
@@ -689,40 +689,40 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
           <table className="w-full text-left text-xs border-collapse min-w-[950px]">
             <thead>
               <tr className="bg-zinc-100 dark:bg-[#070b14] border-b-2 border-zinc-300 dark:border-zinc-800 text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider select-none">
-                {/* 1. Nama Apotek / Merchant (Primary / Locked) */}
+                {/* 1. ID (Primary / Locked) */}
                 <th
-                  className={`py-3 px-4 min-w-[260px] border-r border-zinc-200 dark:border-zinc-800 ${
+                  className={`py-3 px-3.5 w-28 min-w-[110px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
                     effectiveFreezeLevel === "1" || effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
-                      ? "sticky left-0 z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
+                      ? "sticky left-0 z-30 bg-zinc-100 dark:bg-[#070b14] border-r border-zinc-300 shadow-xs"
                       : ""
                   }`}
                 >
-                  Nama Apotek / Merchant *
+                  ID *
                 </th>
 
-                {/* 2. ID */}
-                {isColVisible("id") && (
-                  <th
-                    className={`py-3 px-3.5 w-24 min-w-[96px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
-                      effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
-                        ? "sticky left-[260px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r border-zinc-300"
-                        : ""
-                    }`}
-                  >
-                    ID
-                  </th>
-                )}
-
-                {/* 3. Customer ID Oracle */}
+                {/* 2. Customer ID Oracle */}
                 {isColVisible("oracle") && (
                   <th
                     className={`py-3 px-3 w-36 min-w-[130px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
-                      effectiveFreezeLevel === "3"
-                        ? "sticky left-[356px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
+                      effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
+                        ? "sticky left-[110px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r border-zinc-300 shadow-xs"
                         : ""
                     }`}
                   >
                     Customer ID Oracle
+                  </th>
+                )}
+
+                {/* 3. Nama Apotek / Merchant */}
+                {isColVisible("name") && (
+                  <th
+                    className={`py-3 px-4 min-w-[260px] border-r border-zinc-200 dark:border-zinc-800 ${
+                      effectiveFreezeLevel === "3"
+                        ? "sticky left-[240px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
+                        : ""
+                    }`}
+                  >
+                    Nama Apotek / Merchant
                   </th>
                 )}
 
@@ -801,46 +801,46 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
                           : "hover:bg-blue-50/60 dark:hover:bg-slate-800/40 border-l-4 border-transparent"
                       }`}
                     >
-                      {/* 1. Nama Apotek / Merchant */}
+                      {/* 1. ID */}
                       <td
-                        className={`py-2.5 px-4 font-bold border-r border-zinc-200 dark:border-zinc-800 ${
+                        className={`py-2.5 px-3.5 font-mono text-zinc-700 dark:text-slate-300 text-[11px] font-bold whitespace-nowrap group-hover:text-blue-600 dark:group-hover:text-indigo-400 transition-colors border-r border-zinc-200 dark:border-zinc-800 ${
                           effectiveFreezeLevel === "1" || effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
-                            ? "sticky left-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
+                            ? "sticky left-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r border-zinc-300 shadow-xs"
                             : ""
                         }`}
                       >
-                        <span
-                          className="text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors"
-                          title={c.name}
-                        >
-                          {c.name || "-"}
-                        </span>
+                        {c.id}
                       </td>
 
-                      {/* 2. ID */}
-                      {isColVisible("id") && (
-                        <td
-                          className={`py-2.5 px-3.5 font-mono text-zinc-700 dark:text-slate-300 text-[11px] font-bold whitespace-nowrap group-hover:text-blue-600 dark:group-hover:text-indigo-400 transition-colors border-r border-zinc-200 dark:border-zinc-800 ${
-                            effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
-                              ? "sticky left-[260px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r border-zinc-300"
-                              : ""
-                          }`}
-                        >
-                          {c.id}
-                        </td>
-                      )}
-
-                      {/* 3. Customer ID Oracle */}
+                      {/* 2. Customer ID Oracle */}
                       {isColVisible("oracle") && (
                         <td
                           className={`py-2.5 px-3 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
-                            effectiveFreezeLevel === "3"
-                              ? "sticky left-[356px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
+                            effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
+                              ? "sticky left-[110px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r border-zinc-300 shadow-xs"
                               : ""
                           }`}
                         >
                           <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-indigo-500/10 text-blue-700 dark:text-indigo-300 border border-blue-200 dark:border-indigo-500/20 whitespace-nowrap inline-block">
                             {c.customer_id_oracle || "-"}
+                          </span>
+                        </td>
+                      )}
+
+                      {/* 3. Nama Apotek / Merchant */}
+                      {isColVisible("name") && (
+                        <td
+                          className={`py-2.5 px-4 font-bold border-r border-zinc-200 dark:border-zinc-800 ${
+                            effectiveFreezeLevel === "3"
+                              ? "sticky left-[240px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
+                              : ""
+                          }`}
+                        >
+                          <span
+                            className="text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors"
+                            title={c.name}
+                          >
+                            {c.name || "-"}
                           </span>
                         </td>
                       )}
