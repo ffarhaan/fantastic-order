@@ -5664,6 +5664,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           </div>
         </header>
 
+        {/* ─── PEMBERITAHUAN PEMELIHARAAN SISTEM (MAINTENANCE BANNER) ─── */}
+        <div className="bg-amber-950/80 border-b border-amber-500/40 px-3 py-2 sm:px-4 text-xs sm:text-sm text-amber-200 flex items-center justify-between gap-2 shrink-0 z-20 backdrop-blur-sm">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+            </span>
+            <span className="font-bold text-amber-400 shrink-0">🔧 PEMELIHARAAN SISTEM:</span>
+            <span className="truncate sm:whitespace-normal text-amber-200/90 font-medium">
+              Sedang dilakukan pemeliharaan &amp; sinkronisasi database rutin. Aplikasi akan kembali normal sekitar pukul 04:30 WIB.
+            </span>
+          </div>
+          <span className="hidden sm:inline-flex text-[11px] font-mono px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold shrink-0 tracking-wider">
+            SYSTEM MAINTENANCE
+          </span>
+        </div>
+
         {/* Main Body View Content */}
         <main className="flex-1 p-2.5 sm:p-5 pb-20 md:pb-5 overflow-y-auto space-y-3 sm:space-y-4">
 
