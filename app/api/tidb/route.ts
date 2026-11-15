@@ -762,13 +762,20 @@ export async function GET(req: Request) {
     // 1. CUSTOMERS DIRECTORY
     // ==========================================
     if (action === "get_all_customers_for_sheet") {
-      const rows = await conn.execute(
-        "SELECT * FROM customers WHERE (name != '#N/A' AND name != '' AND name IS NOT NULL) ORDER BY id ASC"
-      );
+      const warehouse = (searchParams.get("warehouse") || "").trim().toUpperCase();
+      let sql = "SELECT * FROM customers WHERE (name != '#N/A' AND name != '' AND name IS NOT NULL)";
+      const params: string[] = [];
+      if (warehouse === "MBI" || warehouse === "MAI") {
+        sql += " AND warehouse = ?";
+        params.push(warehouse);
+      }
+      sql += " ORDER BY id ASC";
+      const rows = await conn.execute(sql, params);
       return Response.json({ success: true, count: (rows as any[]).length, data: rows });
     }
 
     if (action === "customers") {
+      const warehouse = (searchParams.get("warehouse") || "MBI").trim().toUpperCase();
       const search = (searchParams.get("search") || "").trim();
       const category = searchParams.get("category") || "";
       const status = searchParams.get("status") || "";
@@ -779,6 +786,11 @@ export async function GET(req: Request) {
 
       let whereClause = "WHERE (name != '#N/A' AND name != '' AND name IS NOT NULL)";
       const params: (string | number)[] = [];
+
+      if (warehouse === "MBI" || warehouse === "MAI") {
+        whereClause += " AND warehouse = ?";
+        params.push(warehouse);
+      }
 
       if (activeOnly) {
         whereClause += " AND (status_merchant = 'ACTIVE' OR status_merchant IS NULL) AND name NOT LIKE '%[INACTIVE]%'";
@@ -812,13 +824,22 @@ export async function GET(req: Request) {
           FROM customer_documents
           GROUP BY customer_id
         ) cd ON c.id = cd.customer_id
-        ${whereClause.replace(/\b(name|customer_id_oracle|id|address|apj_name|phone|category|status_merchant)\b/g, "c.$1")}
+        ${whereClause.replace(/\b(name|customer_id_oracle|id|address|apj_name|phone|category|status_merchant|warehouse)\b/g, "c.$1")}
         ORDER BY COALESCE(cd.doc_count, 0) DESC, CASE WHEN c.name LIKE '%[INACTIVE]%' THEN 1 ELSE 0 END ASC, c.name ASC
         LIMIT ? OFFSET ?
       `;
       const rows = await conn.execute(dataSql, [...params, limit, offset]);
 
       const isKomplainSuggestion = activeOnly && limit <= 200 && !search && !category && !status;
+
+      // Warehouse counts for tabs
+      const whCountsRes = (await conn.execute(
+        "SELECT warehouse, COUNT(*) as cnt FROM customers WHERE (name != '#N/A' AND name != '' AND name IS NOT NULL) GROUP BY warehouse"
+      )) as Array<{ warehouse: string; cnt: string | number }>;
+      const warehouseCounts: Record<string, number> = { MBI: 0, MAI: 0 };
+      for (const row of whCountsRes) {
+        if (row.warehouse) warehouseCounts[row.warehouse.toUpperCase()] = Number(row.cnt || 0);
+      }
 
       return compressedJsonResponse(
         req,
@@ -828,6 +849,8 @@ export async function GET(req: Request) {
           data: rows,
           limit,
           offset,
+          warehouse,
+          warehouseCounts,
         },
         {
           ...(isKomplainSuggestion

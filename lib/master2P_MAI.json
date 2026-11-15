@@ -14,7 +14,14 @@
     "dkLk": "DK"
   },
   {
-    "namaApotek": "APOTEK SETIA BUDHI",
+    "namaApotek": "APOTEK AYAH",
+    "alamat": "Bona Sarana Indah Blok A-8 RT. 006/002 Kel. Panunggangan Utara, Kec. Pinang, Tangerang",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "DK"
+  },
+  {
+    "namaApotek": "APOTEK SETIA BUDHI - SETIABUDI",
     "alamat": "Jl. Setia Budi Tengah No.2 RT.01 RW.01, Kel. Setia Budi, Kec. Setia Budi, Jakarta Selatan",
     "statusIzin": "DONE",
     "kategori": "2P",
@@ -77,6 +84,13 @@
     "dkLk": "DK"
   },
   {
+    "namaApotek": "APOTEK GETMED +",
+    "alamat": "Jl. Pakis Raya Pondok Pekayon Indah BB 38 No.6, Kel. Pekayon Raya, Kec. Bekasi Selatan, Bekasi",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "DK"
+  },
+  {
     "namaApotek": "APOTEK SEMESTA 99",
     "alamat": "Jl. Cinere Raya No.131, Rangkapan Jaya Baru, Pancoranmas Depok - 16434 - Indonesia",
     "statusIzin": "DONE",
@@ -133,6 +147,13 @@
     "dkLk": "LK"
   },
   {
+    "namaApotek": "APOTEK SUMBER SEHAT FARMA TROPODO",
+    "alamat": "Jl. Raya Wisma Tropodo AE 8, Tropodo Wetan, Tropodo, Kec. Waru, Kabupaten Sidoarjo",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
     "namaApotek": "APOTEK K24 BENOWO",
     "alamat": "Jalan Raya Ngasinan No.8, Kepatihan, Menganti, Benowo, Gresik, Kota SBY, Jawa Timur",
     "statusIzin": "DONE",
@@ -170,6 +191,13 @@
   {
     "namaApotek": "APOTEK KLIPANG SEHAT",
     "alamat": "Jl. Klipang Pesona Asri II No.19, Sendangmulyo, Kec. Tembalang, Kota Semarang, Jawa Tengah 50272, Indonesia",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
+    "namaApotek": "APOTEK NURI JAYA",
+    "alamat": "Jl. Sedayu Tugu RT. 02/05, Kel. Sembungharjo, Kec. Genuk, Semarang",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
@@ -217,6 +245,13 @@
     "dkLk": "LK"
   },
   {
+    "namaApotek": "APOTEK TJIE PUTRA",
+    "alamat": "Jl. Manukan Tama 1-G 49, Kel. Manukan Kulon, Kec. Tandes, Surabaya, Jawa Timur",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
     "namaApotek": "APOTEK JELITA",
     "alamat": "Jl.Taman Pinang Indah Blok D-6 No.6, Kel. Banjarbendo, Kec. Sidoarjo, Kabupaten Sidoarjo, Jawa Timur",
     "statusIzin": "DONE",
@@ -245,6 +280,20 @@
     "dkLk": "LK"
   },
   {
+    "namaApotek": "APOTEK MADINAH FARMA",
+    "alamat": "Jalan Rawa Belong No.3, RT.002/RW.003, Kel. Sukabumi Utara, Kec. Kebon Jeruk, Kota Jakarta Barat, Daerah Khusus Ibukota Jakarta",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "DK"
+  },
+  {
+    "namaApotek": "APOTEK YANI FARMA 2",
+    "alamat": "Jl. Raya Serdang Kulon Korelet RT.011 RW.003, Serdang Kulon, Kec. Panongan, Tangerang, Banten",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
     "namaApotek": "APOTEK TIRZA MEDIKA",
     "alamat": "Jl. Veteran Selatan No. 131/53E, KeL. Maricaya Selatan, Kec. Mamajang, Makassar",
     "statusIzin": "DONE",
@@ -253,7 +302,7 @@
   },
   {
     "namaApotek": "APOTEK MELISA FARMA",
-    "alamat": "Jl. Raya Manyar No.11C, Manyar Sabrangan, Kec. Mulyorejo, Kota SBY, Jawa Timur ",
+    "alamat": "Jl. Raya Manyar No.11C, Manyar Sabrangan, Kec. Mulyorejo, Kota SBY, Jawa Timur",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
@@ -266,7 +315,7 @@
     "dkLk": "LK"
   },
   {
-    "namaApotek": "APOTEK MIRACLE",
+    "namaApotek": "APOTEK MIRACLE SERPONG",
     "alamat": "Ruko Tematik Pasar Modern Paramount Serpong Blok R 19 Lt. 1 Jl. Raya Serpong, Curug Sangereng, Kec. Kelapa Dua, Tangerang, Banten",
     "statusIzin": "DONE",
     "kategori": "2P",
@@ -277,7 +326,7 @@
     "alamat": "Jl. Puncak Mandala No.30, Kelurahan Pisang Candi, Kecamatan Sukun, Kota Malang",
     "statusIzin": "DONE",
     "kategori": "2P",
-    "dkLk": "LK"
+    "dkLk": "DK"
   },
   {
     "namaApotek": "APOTEK BAYEMAN",
@@ -322,8 +371,15 @@
     "dkLk": "LK"
   },
   {
+    "namaApotek": "APOTEK MELIANA",
+    "alamat": "Jl. Kertajaya No.137, Kel. Airlangga, Kec. Gubeng, Surabaya",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
     "namaApotek": "APOTEK CITO DENPASAR",
-    "alamat": "Jl. Gunung Tangkuban Parahu, Padangsambian Kelod, Kec. Denpasar Barat",
+    "alamat": "Jl. Gunung Tangkuban Parahu No. 232, Desa/Kel. Padangsambian Kelod, Kec. Denpasar Barat",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
@@ -331,6 +387,13 @@
   {
     "namaApotek": "APOTEK PRATAMA MEDIKA DENPASAR",
     "alamat": "Jl. Nangka Utara No. 264, Kel. Tonja, Kec. Denpasar Utara, Denpasar",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
+    "namaApotek": "APOTEK SEHAT BATU",
+    "alamat": "Jl. Panglima Sudirman No.52 RT. 02 RW. 07, Kel. Ngaglik, Kec. Batu, Malang",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
@@ -350,6 +413,13 @@
     "dkLk": "LK"
   },
   {
+    "namaApotek": "APOTEK SADAR FIZAN",
+    "alamat": "Kp. Seglog RT. 001 RW. 002, Pasir Bolang, Tigaraksa, Tangerang",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
     "namaApotek": "APOTEK MTA",
     "alamat": "Jl. Cilosari, Semanggi RT. 002 RW. 013, Semanggi, Pasar Kliwon, Surakarta",
     "statusIzin": "DONE",
@@ -358,7 +428,7 @@
   },
   {
     "namaApotek": "APOTEK MARYAM FARMA",
-    "alamat": "Jl. Karang Satria, Kp. Cerewed No.123 RT.005 RW.007, Duren Jaya, Bekasi Timur, Bekasi",
+    "alamat": "Jl. Karang Satria, Kp. Cerewed No.123 RT.005 RW.007, Kel. Duren Jaya, Kec. Bekasi Timur, Bekasi",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "DK"
@@ -392,6 +462,20 @@
     "dkLk": "DK"
   },
   {
+    "namaApotek": "APOTEK SIAGA TEGAL",
+    "alamat": "Jl. Teuku Umar No. 258 RT. 004 RW. 003 Kel. Debong Kidul, Tegal Selatan, Tegal",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
+    "namaApotek": "APOTEK SAMUDRA FARMA",
+    "alamat": "Jl. Prof. Moh. Yamin Kel. Karang Klesem RT. 004 RW. 003 Kec. Purwokerto Selatan, Kabupaten Banyumas",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
     "namaApotek": "APOTEK MEDIKO FARMA",
     "alamat": "Jl. Pinang Raya No. 10, Kel. pondok Labu, Kec. Cilandak, Jakarta Selatan",
     "statusIzin": "DONE",
@@ -399,8 +483,8 @@
     "dkLk": "DK"
   },
   {
-    "namaApotek": "APOTEK NUSA SEHAT PASAR MINGGU",
-    "alamat": "Jl. H, Samali No. 95 B RT/RW: 19/01, Kel. Pejaten Barat, Kec. Pasar Minggu, Jakarta Selatan",
+    "namaApotek": "APOTEK NUSA SEHAT PEJATEN",
+    "alamat": "Jl. H. Samali No. 95 B RT/RW: 19/01, Kel. Pejaten Barat, Kec. Pasar Minggu, Jakarta Selatan",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "DK"
@@ -422,6 +506,20 @@
   {
     "namaApotek": "APOTEK SEJAGAT",
     "alamat": "Jl. Dr. Wahidin No.30 Purwosari, Laweyan, Surakarta",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
+    "namaApotek": "APOTEK KNIA PHARMA",
+    "alamat": "JLN KH. Azhari Kel. 9/10 Ulu, RT.1 RW. 1 9/10 ulu, Seberang Ulu, Satu, Palembang",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
+    "namaApotek": "APOTEK DOA SEHAT",
+    "alamat": "Jalan Kaliurang Km. 12 Candi Karang, Sardonoharjo, Ngaglik, Sleman",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
@@ -490,6 +588,13 @@
     "dkLk": "LK"
   },
   {
+    "namaApotek": "APOTEK DIINA FARMA TANGERANG",
+    "alamat": "Ruko Taman Kirana bLok E2 No.34 RT.007 RW.008 Kel. Pesanggrahan, Kec. Solear Kab. Tangerang",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
     "namaApotek": "APOTEK JAYANA",
     "alamat": "Jl. Teratai Raya No.144 RT.008 RW.012 Kel. Rancaekek Kecana, Kec. Rancaekek, Kab. Bandung",
     "statusIzin": "DONE",
@@ -518,11 +623,32 @@
     "dkLk": "LK"
   },
   {
+    "namaApotek": "APOTEK MARI SEHAT",
+    "alamat": "Jl. Gunung Krakatau No.109 E, Kel. Glugur Darat I, Kec. Medan Timur, Medan",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
+    "namaApotek": "APOTEK FARMASI PEDUNGAN DENPASAR",
+    "alamat": "Jl. Pulau Kawe No.74, Pedungan, Denpasar Selatan, Denpasar",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
     "namaApotek": "APOTEK POPULER KING",
     "alamat": "Jl. Pintu Air V No. 38 B RT.007/RW.008, Kel. Pasar Baru, Kec. Sawah Besar, Jakarta Pusat",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "DK"
+  },
+  {
+    "namaApotek": "APOTEK ANAKKU LAMPUNG",
+    "alamat": "Jl. Mataram No.1 Kel. Enggal, Kec. Enggal, Bandar Lampung",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
   },
   {
     "namaApotek": "APOTEK TEROGONG",
@@ -539,7 +665,7 @@
     "dkLk": "LK"
   },
   {
-    "namaApotek": "APOTEK ESTI FARMA",
+    "namaApotek": "APOTEK ESTI FARMA SURABAYA",
     "alamat": "Jl. Kertajaya Indah Tengah No.27 Kel. Manyar Sabrangan, Kec. Mulyorejo. Surabaya",
     "statusIzin": "DONE",
     "kategori": "2P",
@@ -673,7 +799,7 @@
   },
   {
     "namaApotek": "APOTEK BHAKTI SEHAT",
-    "alamat": "Jl. Kutabumi Blok B10 No.14 RT.006 RW. 009, Kel. Kutabumi, Kec. Pasar Kemis",
+    "alamat": "Ruko Taman Kutabumi Blok B10 No. 14, Desa/Kel. Kutabumi Kec. Pasar Kemis, Kabupaten Tangerang",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
@@ -721,8 +847,8 @@
     "dkLk": "LK"
   },
   {
-    "namaApotek": "APOTEK SUMBER WARA'S SUKOHARJO",
-    "alamat": "Mayang RT.01 RW.02, Desa/Kel. mayang, Kec. Gatak",
+    "namaApotek": "APOTEK SUMBER WARAS SUKOHARJO",
+    "alamat": "Mayang RT 001 RW 002 Mayang Kel. Gatak Kec Mayang Sukoharjo Jawa Tengah Indonesia 57557",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
@@ -826,13 +952,6 @@
     "dkLk": "LK"
   },
   {
-    "namaApotek": "APOTEK TOHA CIKARANG",
-    "alamat": "Ruko Artha Niaga Blok 02 No. 7 Jl. Tarum Barat 2 Desa Jayamukti, Kec. Cikarang Pusat",
-    "statusIzin": "DONE",
-    "kategori": "2P",
-    "dkLk": "DK"
-  },
-  {
     "namaApotek": "APOTEK SRIWIJAYA",
     "alamat": "Jl. Riyanto Kel. Sumampir RT.001/003, Kec. Purwokerto Utara",
     "statusIzin": "DONE",
@@ -840,7 +959,7 @@
     "dkLk": "LK"
   },
   {
-    "namaApotek": "APOTEK TAN'S FARMA",
+    "namaApotek": "APOTEK TANS FARMA",
     "alamat": "Jl. Dagen Malioboro No. 31, Kel. Sosromenduran, Kec. Gedong Tengen,",
     "statusIzin": "DONE",
     "kategori": "2P",
@@ -903,7 +1022,7 @@
     "dkLk": "LK"
   },
   {
-    "namaApotek": "APOTEK ENGGAL SARAS",
+    "namaApotek": "APOTEK ENGGAL SARAS LAMPUNG",
     "alamat": "Jl. Ikan Tenggiri No. 2 Kel. Pesawahan, Kec. Teluk Betung Selatan",
     "statusIzin": "DONE",
     "kategori": "2P",
@@ -966,6 +1085,13 @@
     "dkLk": "LK"
   },
   {
+    "namaApotek": "APOTEK TOHA CIKARANG",
+    "alamat": "Ruko Artha Niaga Blok 02 No. 7 Jl. Tarum Barat 2.Desa Jayamukti, Kec. Cikarang Pusat, Kabupaten Bekasi",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "DK"
+  },
+  {
     "namaApotek": "APOTEK KRODEN JATI",
     "alamat": "Jl. AKBP R. Agil kusumadya No. 68A, Desa/Kel. Jati Kulon, Kec. Jati",
     "statusIzin": "DONE",
@@ -973,8 +1099,8 @@
     "dkLk": "LK"
   },
   {
-    "namaApotek": "APOTEK JAYA MATA LE ACEH",
-    "alamat": "Jl. Jenderal Sudirman – Mata Ie No. 102 Gampong Gue Gajah Kec. Darul Imarah",
+    "namaApotek": "APOTEK JAYA ACEH MATA LE",
+    "alamat": "Jl. Jenderal Sudirman – Mata Ie No. 102, Gampong Gue Gajah Kecamatan Darul Imarah, Kab. Aceh Besar",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
@@ -1022,7 +1148,7 @@
     "dkLk": "LK"
   },
   {
-    "namaApotek": "APOTEK GRAND MEDICA PULAU BUNGIN",
+    "namaApotek": "APOTEK GRAND MEDICA",
     "alamat": "Jl. Pulau Bungin No. 58, Desa/Kel. Pedungan, Kec. Denpasar Selatan",
     "statusIzin": "DONE",
     "kategori": "2P",
@@ -1192,14 +1318,14 @@
   {
     "namaApotek": "APOTEK BERKAT WONOSOBO",
     "alamat": "Jl. Angkatan 45 (Soekarno-Hatta) No. 19, Desa/Kel. Wonosobo Timur, Kec. Wonosobo",
-    "statusIzin": "HARD COPY BELUM ADA",
+    "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
   },
   {
     "namaApotek": "APOTEK ASASI MANAHAN",
     "alamat": "Jl. Ahmad Yani No. 372, Desa/Kel. Kerten, Kec. Laweyan",
-    "statusIzin": "HARD COPY BELUM ADA",
+    "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
   },
@@ -1218,7 +1344,7 @@
     "dkLk": "LK"
   },
   {
-    "namaApotek": "APOTEK UTAMA FARMA PURWAKARTA",
+    "namaApotek": "APOTEK UTAMA FARMA",
     "alamat": "Jl. Ipik Gandamanah No. 17, Desa/Kel. Ciseureuh, Kec. Purwakarta",
     "statusIzin": "DONE",
     "kategori": "2P",
@@ -1227,13 +1353,20 @@
   {
     "namaApotek": "APOTEK INNA FARMA",
     "alamat": "Jl. R.A Kosasih No.292A Kel. Subangjaya Kec. Cikole",
-    "statusIzin": "HARD COPY BELUM ADA",
+    "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
   },
   {
     "namaApotek": "APOTEK ANDALANKU",
     "alamat": "Jl. Raya Kasri No. 51, Desa/Kel. Petungasri, Kec. Pandaan",
+    "statusIzin": "DONE",
+    "kategori": "2P",
+    "dkLk": "LK"
+  },
+  {
+    "namaApotek": "APOTEK KHARITAS",
+    "alamat": "Jl. Siam No.261, Benua Melayu Darat, Kec. Pontianak Sel",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
@@ -1262,14 +1395,14 @@
   {
     "namaApotek": "APOTEK HAFA",
     "alamat": "Jl. Opu Tossapaile No. 33 D, Kel. Boting, Kec. Wara",
-    "statusIzin": "HARD COPY BELUM ADA",
+    "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
   },
   {
     "namaApotek": "APOTEK ASASI FARMA",
     "alamat": "Panasan Baru RT. 001 RW. 002, Ds. Ngesrep, Kec. Ngemplak",
-    "statusIzin": "HARD COPY BELUM ADA",
+    "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
   },
@@ -1297,14 +1430,14 @@
   {
     "namaApotek": "APOTEK GM",
     "alamat": "Jl. S. Kadar No. 5 Maron, Kel. Sidorejo, Kec. Tamanggung",
-    "statusIzin": "HARD COPY BELUM ADA",
+    "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
   },
   {
     "namaApotek": "APOTEK AR RIAYAH",
     "alamat": "Jl. MT Haryono Kavling 8 Square Blok B6 Kelurahan Damai, Bahagia Kecamatan Balikpapan Selatan",
-    "statusIzin": "HARD COPY BELUM ADA",
+    "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
   },
@@ -1317,14 +1450,14 @@
   },
   {
     "namaApotek": "APOTEK DIAGONAL",
-    "alamat": "Jl. Sunandar Priyo Sudarmo No. 151, Ds./Kel. Sidokare, Kec. Sidoarjo",
+    "alamat": "Jl. Sunandar Priyo Sudarmo No. 151, Ds./Kel. Sidokare, Kec. Sidoarjo, Kab. Sidoarjo, Prov. Jawa Timur",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
   },
   {
     "namaApotek": "APOTEK CEHAT CIKARANG",
-    "alamat": "Jl. Industri No. 51 RT. 3 RW. 3 Desa Cikarang, Kec. Cikarang Utara",
+    "alamat": "Jl. Industri No. 51 RT. 3 RW. 3 Desa Cikarang Kota, Kec. Cikarang Utara, Kab. Bekasi",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "DK"
@@ -1337,15 +1470,15 @@
     "dkLk": "DK"
   },
   {
-    "namaApotek": "APOTEK SAHABAT BERSAMA (BANDUNG)",
+    "namaApotek": "APOTEK SAHABAT BERSAMA BANDUNG",
     "alamat": "Jl. Terusan Perintis No 9 Rt 007 rw 011 kec. Sukasari, kel. Sarijadi",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
   },
   {
-    "namaApotek": "APOTEK SAKURA",
-    "alamat": "Jl. Adisucipto Komp. Sakura Permai No. 2-4, Desa/Kel. Sungai Raya, Kec. Sungai Raya",
+    "namaApotek": "APOTEK SAKURA (KUBU RAYA)",
+    "alamat": "Jl. Adi Sucipto Komp. Sakura Permai No. 2-4 Kel. Sungai Raya Kec. Sungai Raya Kab. Kubu Raya Kalimantan Barat Indonesia 78391",
     "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
@@ -1365,7 +1498,7 @@
     "dkLk": "LK"
   },
   {
-    "namaApotek": "APOTEK SERASI",
+    "namaApotek": "APOTEK SERASI (KARAWANG)",
     "alamat": "Jl. Tuparev No. 357, Kel. Nagasari, Kec. Karawang Barat",
     "statusIzin": "DONE",
     "kategori": "2P",
@@ -1374,22 +1507,22 @@
   {
     "namaApotek": "APOTEK QITA (BEKASI)",
     "alamat": "Cluster Bekasi Pertama Residence Blok D1-D5 No. 3, Kel. Cimuning, Kec. Mustika Jaya",
-    "statusIzin": "HARD COPY BELUM ADA",
+    "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "DK"
   },
   {
     "namaApotek": "APOTEK MORISS LOA BAKUNG",
     "alamat": "Jl. Jakarta No. 2 Blok EW 2/C, Kel. Loa Bakung, Kec. Sungai Kunjang",
-    "statusIzin": "HARD COPY BELUM ADA",
+    "statusIzin": "DONE",
     "kategori": "2P",
     "dkLk": "LK"
   },
   {
-    "namaApotek": "APOTEK BINTANG PUTRA",
+    "namaApotek": "APOTEK BINTANG PUTRA (BALIKPAPAN)",
     "alamat": "Perum Bukit Damai Sentosa II Blok AB No 03 RT 036, Desa/Kel. Sungainangka, Kec. Balikpapan Selatan",
-    "statusIzin": "HARD COPY BELUM ADA",
+    "statusIzin": "DONE",
     "kategori": "2P",
-    "dkLk": "DK"
+    "dkLk": "LK"
   }
 ]

@@ -5892,6 +5892,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             <CustomersView 
               onSelectCustomerForFilter={(c) => { setSearch(c); setMainView("workspace"); }} 
               currentUser={currentUser}
+              initialWarehouse={selectedWarehouse}
             />
           )}
         </div>

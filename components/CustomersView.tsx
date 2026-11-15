@@ -130,11 +130,15 @@ export const AUTHORIZED_COLUMNS = [
 interface CustomersViewProps {
   onSelectCustomerForFilter?: (name: string) => void;
   currentUser?: AppUser | null;
+  initialWarehouse?: "MBI" | "MAI";
 }
 
-export default function CustomersView({ onSelectCustomerForFilter, currentUser }: CustomersViewProps) {
+export default function CustomersView({ onSelectCustomerForFilter, currentUser, initialWarehouse }: CustomersViewProps) {
   const isSuper = isSuperAdminUser(currentUser?.name) || isSuperAdminUser(currentUser?.email);
   const canEditCustomers = isSuper || Boolean(currentUser?.permissions?.can_edit_customers);
+
+  const [selectedWarehouse, setSelectedWarehouse] = useState<"MBI" | "MAI">(initialWarehouse || "MBI");
+  const [warehouseCounts, setWarehouseCounts] = useState<{ MBI: number; MAI: number }>({ MBI: 3613, MAI: 4531 });
 
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -317,6 +321,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     try {
       const params = new URLSearchParams({
         action: "customers",
+        warehouse: selectedWarehouse,
         limit: String(limit),
         offset: String(page * limit),
       });
@@ -344,13 +349,16 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
         }
         setCustomers(list);
         setTotal(data.total || 0);
+        if (data.warehouseCounts) {
+          setWarehouseCounts(data.warehouseCounts);
+        }
       }
     } catch (err) {
       console.error("Failed to fetch customers:", err);
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [debouncedSearch, statusFilter, orderStatusFilter, page]);
+  }, [selectedWarehouse, debouncedSearch, statusFilter, orderStatusFilter, page]);
 
   const fetchCustomersRef = useRef(fetchCustomers);
   useEffect(() => {
@@ -377,30 +385,92 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     };
   }, []);
 
-  // Export Excel: 100% Sesuai Regulasi ISDP & UU PDP (Hanya 8 Data Resmi)
-  const handleExportExcel = () => {
-    if (customers.length === 0) return;
-    const exportData = customers.map((c) => ({
-      "Nama Apotek / Merchant": c.name || "-",
-      "ID": c.id || "-",
-      "Customer ID Oracle": c.customer_id_oracle || "-",
-      "Status Merchant": c.status_merchant || "-",
-      "Nama Apoteker PJ (APJ)": c.apj_name || "-",
-      "Masa Berlaku SIPA (Expired)": formatIndonesianDate(c.sipa_expired),
-      "Masa Berlaku SIA (Expired)": formatIndonesianDate(c.sia_expired),
-      "Status Riwayat Order": c.order_status || "BELUM PERNAH ORDER",
-    }));
+  // Export Excel: 100% Sesuai Regulasi ISDP & UU PDP (Hanya 8 Data Resmi, Terpisah per PBF)
+  const handleExportExcel = async () => {
+    try {
+      const res = await fetch(`/api/tidb?action=get_all_customers_for_sheet&warehouse=${selectedWarehouse}`);
+      const json = await res.json();
+      const rawList = json.success && Array.isArray(json.data) ? json.data : customers;
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Master_Customer");
-    XLSX.writeFile(wb, `Master_Customer_ISDP_${new Date().toISOString().split("T")[0]}.xlsx`);
+      const exportData = rawList.map((c: any) => ({
+        "Nama Apotek / Merchant": c.name || "-",
+        "ID": c.id || "-",
+        "Customer ID Oracle": c.customer_id_oracle || "-",
+        "Status Merchant": c.status_merchant || "-",
+        "Nama Apoteker PJ (APJ)": c.apj_name || "-",
+        "Masa Berlaku SIPA (Expired)": formatIndonesianDate(c.sipa_expired),
+        "Masa Berlaku SIA (Expired)": formatIndonesianDate(c.sia_expired),
+        "Status Riwayat Order": c.order_status || "BELUM PERNAH ORDER",
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `Customer_${selectedWarehouse}`);
+      XLSX.writeFile(wb, `Data_Customer_PBF_${selectedWarehouse}_${new Date().toISOString().split("T")[0]}.xlsx`);
+    } catch (e) {
+      console.error("Export error:", e);
+    }
   };
 
   const totalPages = Math.ceil(total / limit);
 
   return (
     <div className="space-y-4">
+      {/* ─── PBF Switcher (MBI vs MAI - 100% Terpisah & Independen) ─── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-2 rounded-2xl bg-white dark:bg-[#0c0d14] border border-zinc-200 dark:border-zinc-800 shadow-xs">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedWarehouse !== "MBI") {
+                setSelectedWarehouse("MBI");
+                setPage(0);
+              }
+            }}
+            className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              selectedWarehouse === "MBI"
+                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                : "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+            }`}
+          >
+            <span className="text-sm">🏢</span>
+            <span>PBF MBI (Gudang MBI)</span>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
+              selectedWarehouse === "MBI" ? "bg-white/20 text-white" : "bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+            }`}>
+              {(warehouseCounts.MBI || 0).toLocaleString("id-ID")}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedWarehouse !== "MAI") {
+                setSelectedWarehouse("MAI");
+                setPage(0);
+              }
+            }}
+            className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              selectedWarehouse === "MAI"
+                ? "bg-purple-600 text-white shadow-md shadow-purple-500/20"
+                : "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+            }`}
+          >
+            <span className="text-sm">🏢</span>
+            <span>PBF MAI (Gudang MAI)</span>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
+              selectedWarehouse === "MAI" ? "bg-white/20 text-white" : "bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+            }`}>
+              {(warehouseCounts.MAI || 0).toLocaleString("id-ID")}
+            </span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-500 dark:text-zinc-400">
+          <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+          <span>Data Terisolasi PBF {selectedWarehouse} • 8 Atribut Resmi ISDP / UU PDP</span>
+        </div>
+      </div>
       {/* ─── Header Info & Upload Tools ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Card 1: Total Merchant */}
@@ -409,7 +479,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
             <div>
               <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
                 <Store className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
-                <span>Direktori Master Customer (ISDP Compliant)</span>
+                <span>Direktori Master Customer PBF {selectedWarehouse} (ISDP Compliant)</span>
               </div>
               <h3 className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-white mt-1 tracking-tight">
                 {total.toLocaleString("id-ID")}
