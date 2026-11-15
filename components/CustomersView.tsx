@@ -1,62 +1,27 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { CustomerRecord, ShipmentReturnRecord } from "@/lib/types";
+import { CustomerRecord } from "@/lib/types";
 import { broadcastRealtimeSignal, subscribeToRealtimeSignal, isSuperAdminUser } from "@/lib/firestoreService";
 import { AppUser } from "@/components/LoginModal";
-import { recordActivityLog } from "@/lib/activityLogger";
 import {
   Building2,
   Search,
-  Filter,
-  Phone,
-  Mail,
-  MapPin,
-  ShieldCheck,
-  Calendar,
-  AlertTriangle,
-  FileSpreadsheet,
   RefreshCw,
   ChevronLeft,
   ChevronRight,
   X,
-  Package,
-  Clock,
-  CheckCircle2,
-  ExternalLink,
-  Sparkles,
-  ArrowRight,
-  Layers,
-  Database,
   Store,
   Pencil,
   Save,
   Check,
   Upload,
-  FileText,
-  Trash2,
-  FolderOpen,
-  Image as ImageIcon,
+  FileSpreadsheet,
   Columns,
   Pin,
+  ShieldCheck,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-
-interface CustomerDocument {
-  file_id: string;
-  file_name: string;
-  mime_type?: string | null;
-  size_bytes?: number | null;
-  folder_id?: string | null;
-  folder_name?: string | null;
-  modified_at?: string | null;
-}
-
-const formatFileSize = (bytes?: number | null) => {
-  if (!bytes) return "";
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
 
 /**
  * Format date values (including Excel serial numbers like 48010) into Indonesian format:
@@ -118,14 +83,12 @@ export function formatIndonesianDate(val: any): string {
 
 /**
  * Format date values into HTML5 <input type="date"> format: YYYY-MM-DD.
- * Converts Excel serial numbers (e.g. 47447, 48010) and standard date strings.
  */
 export function parseToDateInputValue(val: any): string {
   if (!val || val === "-" || val === "null" || val === "undefined") return "";
   const strVal = String(val).trim();
   if (!strVal || strVal === "-") return "";
 
-  // Check if it's an Excel numeric date serial (e.g. 47447 or 48010)
   const num = Number(strVal);
   if (!isNaN(num) && num > 20000 && num < 80000) {
     const d = new Date(Math.round((num - 25569) * 86400 * 1000));
@@ -137,16 +100,13 @@ export function parseToDateInputValue(val: any): string {
     }
   }
 
-  // If already YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(strVal)) return strVal;
 
-  // If YYYY/MM/DD
   const slashMatch = strVal.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
   if (slashMatch) {
     return `${slashMatch[1]}-${String(slashMatch[2]).padStart(2, "0")}-${String(slashMatch[3]).padStart(2, "0")}`;
   }
 
-  // If DD-MM-YYYY or DD/MM/YYYY
   const dmyMatch = strVal.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
   if (dmyMatch) {
     return `${dmyMatch[3]}-${String(dmyMatch[2]).padStart(2, "0")}-${String(dmyMatch[1]).padStart(2, "0")}`;
@@ -154,6 +114,18 @@ export function parseToDateInputValue(val: any): string {
 
   return "";
 }
+
+// 8 Kolom Resmi Sesuai Regulasi ISDP & UU PDP
+export const AUTHORIZED_COLUMNS = [
+  { id: "name", label: "Nama Apotek / Merchant", locked: true },
+  { id: "id", label: "ID" },
+  { id: "oracle", label: "Customer ID Oracle" },
+  { id: "status", label: "Status Merchant" },
+  { id: "apj", label: "Nama Apoteker PJ (APJ)" },
+  { id: "sipa", label: "Masa Berlaku SIPA (Expired)" },
+  { id: "sia", label: "Masa Berlaku SIA (Expired)" },
+  { id: "order_status", label: "Status Riwayat Order" },
+];
 
 interface CustomersViewProps {
   onSelectCustomerForFilter?: (name: string) => void;
@@ -163,44 +135,31 @@ interface CustomersViewProps {
 export default function CustomersView({ onSelectCustomerForFilter, currentUser }: CustomersViewProps) {
   const isSuper = isSuperAdminUser(currentUser?.name) || isSuperAdminUser(currentUser?.email);
   const canEditCustomers = isSuper || Boolean(currentUser?.permissions?.can_edit_customers);
-  const canDeleteCustomers = isSuper || Boolean(currentUser?.permissions?.can_delete_data);
 
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [hasDocsFilter, setHasDocsFilter] = useState(false);
+  const [orderStatusFilter, setOrderStatusFilter] = useState("ALL");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
-
-  // Customer Detail / Docs Gallery state
-  const [selectedCust, setSelectedCust] = useState<CustomerRecord | null>(null);
-  const [docsGalleryCust, setDocsGalleryCust] = useState<CustomerRecord | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [customerReturns, setCustomerReturns] = useState<ShipmentReturnRecord[]>([]);
-  const [customerFakturs, setCustomerFakturs] = useState<any[]>([]);
-  const [customerDocs, setCustomerDocs] = useState<CustomerDocument[]>([]);
-  const [previewDoc, setPreviewDoc] = useState<CustomerDocument | null>(null);
 
   // Customer Edit Modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState<Partial<CustomerRecord> | null>(null);
   const [isSavingCust, setIsSavingCust] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [zipProgress, setZipProgress] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // ─── Spreadsheet Freeze & Column Visibility States ───
+  // Freeze & Column Visibility States
   const [freezeColLevel, setFreezeColLevel] = useState<string>(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("cust_freeze_level") || "3";
+      return localStorage.getItem("cust_freeze_level_v2") || "1";
     }
-    return "3";
+    return "1";
   });
 
-  // Mobile detection for responsive freeze level
   const [isMobileCust, setIsMobileCust] = useState(false);
   useEffect(() => {
     const checkMobile = () => {
@@ -211,12 +170,11 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // On mobile (<768px), freeze level is capped to "1" so columns don't block mobile scrolling
-  const effectiveFreezeLevel = isMobileCust && (freezeColLevel === "2" || freezeColLevel === "3") ? "1" : freezeColLevel;
+  const effectiveFreezeLevel = isMobileCust ? "1" : freezeColLevel;
   const [hiddenCols, setHiddenCols] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       try {
-        const saved = localStorage.getItem("cust_hidden_cols");
+        const saved = localStorage.getItem("cust_hidden_cols_v2");
         return saved ? JSON.parse(saved) : [];
       } catch (e) {
         return [];
@@ -229,7 +187,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
   const handleFreezeChange = (level: string) => {
     setFreezeColLevel(level);
     if (typeof window !== "undefined") {
-      localStorage.setItem("cust_freeze_level", level);
+      localStorage.setItem("cust_freeze_level_v2", level);
     }
   };
 
@@ -237,7 +195,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     setHiddenCols((prev) => {
       const next = prev.includes(colId) ? prev.filter((id) => id !== colId) : [...prev, colId];
       if (typeof window !== "undefined") {
-        localStorage.setItem("cust_hidden_cols", JSON.stringify(next));
+        localStorage.setItem("cust_hidden_cols_v2", JSON.stringify(next));
       }
       return next;
     });
@@ -245,210 +203,18 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
 
   const isColVisible = (colId: string) => !hiddenCols.includes(colId);
 
-  const loadCustomerDocs = async (custId: string, custName: string) => {
-    setDetailLoading(true);
-    try {
-      const res = await fetch(`/api/tidb?action=customer_detail&id=${encodeURIComponent(custId)}&name=${encodeURIComponent(custName)}`);
-      const data = await res.json();
-      if (data.success) {
-        setCustomerReturns(data.returns || []);
-        setCustomerFakturs(data.fakturs || []);
-        setCustomerDocs(data.documents || []);
-      }
-    } catch (err) {
-      console.error("Failed to load customer detail:", err);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
-
-  const uploadSingleDocToTiDB = async (customerId: string, fileName: string, mimeType: string, sizeBytes: number, base64Data: string, folderName?: string) => {
-    const cleanBase64 = base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
-    const safeSlug = fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 48);
-    const fileId = `local_${customerId}_${safeSlug}_${sizeBytes}`;
-    const CHUNK_LEN = 700 * 1024;
-    const totalChunks = Math.max(1, Math.ceil(cleanBase64.length / CHUNK_LEN));
-
-    for (let idx = 0; idx < totalChunks; idx++) {
-      const chunkData = cleanBase64.slice(idx * CHUNK_LEN, (idx + 1) * CHUNK_LEN);
-      const res = await fetch("/api/tidb?action=upload_customer_document", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          file_id: fileId,
-          customer_id: customerId,
-          file_name: fileName,
-          mime_type: mimeType || "application/pdf",
-          size_bytes: sizeBytes,
-          folder_name: folderName || customerId,
-          chunk_index: idx,
-          total_chunks: totalChunks,
-          chunk_data: chunkData,
-        }),
-      });
-      if (!res.ok) throw new Error(`Gagal upload bagian ${idx + 1}/${totalChunks}`);
-    }
-    return fileId;
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: "npwp_file_url" | "document_url") => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 20 * 1024 * 1024) {
-      alert("Ukuran berkas maksimal 20MB.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const dataUrl = ev.target?.result as string;
-      if (editForm?.id) {
-        try {
-          setZipProgress(`Mengunggah ${file.name}...`);
-          const fileId = await uploadSingleDocToTiDB(editForm.id, file.name, file.type || "application/pdf", file.size, dataUrl, editForm.name || editForm.id);
-          const viewUrl = `/api/tidb?action=view_document&file_id=${encodeURIComponent(fileId)}`;
-          setEditForm((prev) => ({
-            ...prev,
-            [field]: viewUrl,
-            ...(field === "document_url" ? { document_name: file.name } : {}),
-          }));
-          await loadCustomerDocs(editForm.id, editForm.name || "");
-          setToastMsg(`✓ Berkas "${file.name}" berhasil disimpan!`);
-          setTimeout(() => setToastMsg(null), 3500);
-        } catch (err: any) {
-          alert(`Gagal upload berkas: ${err.message || String(err)}`);
-        } finally {
-          setZipProgress(null);
-        }
-      } else {
-        setEditForm((prev) => ({
-          ...prev,
-          [field]: dataUrl,
-          ...(field === "document_url" ? { document_name: file.name } : {}),
-        }));
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleImportZipDocs = async (e: React.ChangeEvent<HTMLInputElement>, fallbackCustomerId?: string) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setZipProgress("Membaca file ZIP...");
-    try {
-      const JSZip = (await import("jszip")).default;
-      const entriesToUpload: Array<{ customerId: string; folderName: string; fileName: string; mimeType: string; sizeBytes: number; base64: string }> = [];
-
-      const guessMime = (name: string) => {
-        const lower = name.toLowerCase();
-        if (lower.endsWith(".pdf")) return "application/pdf";
-        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-        if (lower.endsWith(".png")) return "image/png";
-        if (lower.endsWith(".webp")) return "image/webp";
-        return "application/octet-stream";
-      };
-
-      const unpackZip = async (buf: ArrayBuffer | Uint8Array, inheritedId?: string, inheritedFolder?: string) => {
-        const zip = await JSZip.loadAsync(buf);
-        for (const entry of Object.values(zip.files)) {
-          if (entry.dir) continue;
-          const parts = entry.name.split("/").filter(Boolean);
-          const baseName = parts[parts.length - 1];
-          if (!baseName || baseName.startsWith("._") || baseName === ".DS_Store") continue;
-
-          const match = entry.name.match(/C\.\d+/i);
-          const custId = match ? match[0].toUpperCase() : inheritedId || fallbackCustomerId;
-          if (!custId) continue;
-          const folderName = parts.find((p) => /C\.\d+/i.test(p)) || inheritedFolder || custId;
-
-          if (baseName.toLowerCase().endsWith(".zip")) {
-            const nestedBuf = await entry.async("uint8array");
-            await unpackZip(nestedBuf, custId, folderName);
-            continue;
-          }
-
-          const uint8 = await entry.async("uint8array");
-          const base64 = await entry.async("base64");
-          entriesToUpload.push({
-            customerId: custId,
-            folderName,
-            fileName: baseName,
-            mimeType: guessMime(baseName),
-            sizeBytes: uint8.byteLength,
-            base64,
-          });
-        }
-      };
-
-      const arrayBuf = await file.arrayBuffer();
-      await unpackZip(arrayBuf, fallbackCustomerId);
-
-      if (entriesToUpload.length === 0) {
-        alert("Tidak ditemukan berkas dengan format folder (C.xxxx) di dalam ZIP ini.");
-        return;
-      }
-
-      for (let i = 0; i < entriesToUpload.length; i++) {
-        const it = entriesToUpload[i];
-        setZipProgress(`Mengupload ${i + 1} / ${entriesToUpload.length}: (${it.customerId}) ${it.fileName}`);
-        await uploadSingleDocToTiDB(it.customerId, it.fileName, it.mimeType, it.sizeBytes, it.base64, it.folderName);
-      }
-
-      setToastMsg(`✓ Berhasil mengupload ${entriesToUpload.length} dokumen dari file ZIP!`);
-      setTimeout(() => setToastMsg(null), 5000);
-      fetchCustomers();
-      broadcastRealtimeSignal("customers");
-      if (editForm?.id) {
-        await loadCustomerDocs(editForm.id, editForm.name || "");
-      } else if (selectedCust?.id) {
-        await loadCustomerDocs(selectedCust.id, selectedCust.name || "");
-      }
-    } catch (err: any) {
-      console.error("ZIP upload error:", err);
-      alert(`Gagal memproses ZIP: ${err.message || String(err)}`);
-    } finally {
-      setZipProgress(null);
-      if (e.target) e.target.value = "";
-    }
-  };
-
-  const handleDeleteCustomerDoc = async (doc: CustomerDocument) => {
-    if (!confirm(`Hapus dokumen "${doc.file_name}"?`)) return;
-    try {
-      const res = await fetch("/api/tidb?action=delete_customer_document", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_id: doc.file_id }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setCustomerDocs((prev) => prev.filter((d) => d.file_id !== doc.file_id));
-        fetchCustomers();
-        broadcastRealtimeSignal("customers");
-      }
-    } catch (err) {
-      console.error("Failed to delete document:", err);
-    }
-  };
-
   const handleOpenEdit = (cust: CustomerRecord) => {
-    setSelectedCust(null);
-    setDocsGalleryCust(null);
     setEditForm({
-      ...cust,
-      sia_expired: parseToDateInputValue(cust.sia_expired),
+      id: cust.id,
+      name: cust.name,
+      customer_id_oracle: cust.customer_id_oracle,
+      status_merchant: cust.status_merchant || "ACTIVE",
+      apj_name: cust.apj_name,
       sipa_expired: parseToDateInputValue(cust.sipa_expired),
+      sia_expired: parseToDateInputValue(cust.sia_expired),
+      order_status: cust.order_status || "BELUM PERNAH ORDER",
     });
-    setCustomerDocs([]);
     setShowEditModal(true);
-    loadCustomerDocs(cust.id, cust.name);
-  };
-
-  const handleOpenDocsGallery = (cust: CustomerRecord) => {
-    setSelectedCust(null);
-    setShowEditModal(false);
-    setDocsGalleryCust(cust);
-    setCustomerDocs([]);
-    loadCustomerDocs(cust.id, cust.name);
   };
 
   const handleSaveCustomer = async (e: React.FormEvent) => {
@@ -459,7 +225,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     }
     if (!editForm || !editForm.id) return;
     if (!editForm.name || !editForm.name.trim()) {
-      alert("Nama Customer / Apotek wajib diisi.");
+      alert("Nama Apotek / Merchant wajib diisi.");
       return;
     }
 
@@ -470,7 +236,14 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "update_customer",
-          ...editForm,
+          id: editForm.id,
+          name: editForm.name,
+          customer_id_oracle: editForm.customer_id_oracle,
+          status_merchant: editForm.status_merchant,
+          apj_name: editForm.apj_name,
+          sipa_expired: editForm.sipa_expired,
+          sia_expired: editForm.sia_expired,
+          order_status: editForm.order_status,
         }),
       });
       const data = await res.json();
@@ -478,66 +251,15 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
         setCustomers((prev) =>
           prev.map((c) => (c.id === editForm.id ? ({ ...c, ...editForm } as CustomerRecord) : c))
         );
-        if (selectedCust?.id === editForm.id) {
-          setSelectedCust((prev) => (prev ? ({ ...prev, ...editForm } as CustomerRecord) : null));
-        }
         setShowEditModal(false);
-        setToastMsg(`✓ Data customer "${editForm.name}" berhasil diperbarui.`);
+        setToastMsg(`✓ Data apotek "${editForm.name}" berhasil diperbarui.`);
         setTimeout(() => setToastMsg(null), 3500);
         broadcastRealtimeSignal("customers");
-
-        // Instant Browser-to-Google-Sheet push (< 1 second sync!)
-        try {
-          const webhookUrl = "https://script.google.com/a/macros/mhealth.tech/s/AKfycbwYoimkMgydFDUtgAUuSp1t3oLyaaVPSuG83fyohiqiI4_HggNCy_WT31mvgLA2dM18xw/exec";
-          const payloadStr = JSON.stringify({
-            action: "update_row",
-            customer: editForm,
-          });
-
-          let iframe = document.getElementById("gsheet_sync_iframe") as HTMLIFrameElement;
-          if (!iframe) {
-            iframe = document.createElement("iframe");
-            iframe.id = "gsheet_sync_iframe";
-            iframe.name = "gsheet_sync_iframe";
-            iframe.style.display = "none";
-            document.body.appendChild(iframe);
-          }
-
-          const form = document.createElement("form");
-          form.method = "POST";
-          form.action = webhookUrl;
-          form.target = "gsheet_sync_iframe";
-
-          const input = document.createElement("input");
-          input.type = "hidden";
-          input.name = "data";
-          input.value = payloadStr;
-          form.appendChild(input);
-
-          document.body.appendChild(form);
-          form.submit();
-          setTimeout(() => form.remove(), 1000);
-
-          // Image Beacon GET fallback
-          const img = new Image();
-          img.src = `${webhookUrl}?data=${encodeURIComponent(payloadStr)}&_t=${Date.now()}`;
-        } catch (e) {
-          console.warn("Direct browser sheet sync error:", e);
-        }
-
-        await recordActivityLog({
-          action_type: "UPDATE_CUSTOMER",
-          module: "CUSTOMERS",
-          target_id: String(editForm.id || editForm.name),
-          details: `Mengubah data pelanggan: ${editForm.name}`,
-          metadata: { id: editForm.id, name: editForm.name },
-        });
       } else {
-        alert(`Gagal menyimpan perubahan: ${data.error || "Terjadi kesalahan pada database"}`);
+        alert(`Gagal menyimpan data: ${data.error || "Terjadi kesalahan"}`);
       }
     } catch (err: any) {
-      console.error("Save customer error:", err);
-      alert(`Gagal menyimpan customer: ${err.message || String(err)}`);
+      alert(`Error menyimpan data: ${err.message || String(err)}`);
     } finally {
       setIsSavingCust(false);
     }
@@ -546,6 +268,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
   const handleImportCustomerFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     setIsImporting(true);
     try {
       const data = await file.arrayBuffer();
@@ -602,9 +325,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
         params.set("_t", String(Date.now()));
       }
       if (debouncedSearch) params.set("search", debouncedSearch);
-      if (categoryFilter !== "ALL") params.set("category", categoryFilter);
       if (statusFilter !== "ALL") params.set("status", statusFilter);
-      if (hasDocsFilter) params.set("has_docs", "true");
 
       const res = await fetch(
         `/api/tidb?${params.toString()}`,
@@ -617,14 +338,11 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
       );
       const data = await res.json();
       if (data.success && Array.isArray(data.data)) {
-        setCustomers((prev) => {
-          if (prev.length !== data.data.length) return data.data;
-          const hasDiff = data.data.some((item: any, idx: number) => {
-            const p = prev[idx];
-            return !p || p.id !== item.id || p.status_merchant !== item.status_merchant || p.name !== item.name;
-          });
-          return hasDiff ? data.data : prev;
-        });
+        let list = data.data;
+        if (orderStatusFilter !== "ALL") {
+          list = list.filter((c: CustomerRecord) => (c.order_status || "BELUM PERNAH ORDER") === orderStatusFilter);
+        }
+        setCustomers(list);
         setTotal(data.total || 0);
       }
     } catch (err) {
@@ -632,88 +350,58 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [debouncedSearch, categoryFilter, statusFilter, hasDocsFilter, page]);
-
-  // Fetch full details + returns + fakturs when customer clicked
-  const handleOpenDetail = useCallback(async (cust: CustomerRecord, silent = false) => {
-    setSelectedCust(cust);
-    if (!silent) {
-      setCustomerDocs([]);
-      setDetailLoading(true);
-    }
-    try {
-      const res = await fetch(`/api/tidb?action=customer_detail&id=${encodeURIComponent(cust.id)}&name=${encodeURIComponent(cust.name)}`);
-      const data = await res.json();
-      if (data.success) {
-        setCustomerReturns(data.returns || []);
-        setCustomerFakturs(data.fakturs || []);
-        setCustomerDocs(data.documents || []);
-      }
-    } catch (err) {
-      console.error("Failed to load customer detail:", err);
-    } finally {
-      if (!silent) setDetailLoading(false);
-    }
-  }, []);
-
-  const selectedCustRef = useRef<CustomerRecord | null>(null);
-  useEffect(() => {
-    selectedCustRef.current = selectedCust;
-  }, [selectedCust]);
+  }, [debouncedSearch, statusFilter, orderStatusFilter, page]);
 
   const fetchCustomersRef = useRef(fetchCustomers);
   useEffect(() => {
     fetchCustomersRef.current = fetchCustomers;
   }, [fetchCustomers]);
 
-  const handleOpenDetailRef = useRef(handleOpenDetail);
-  useEffect(() => {
-    handleOpenDetailRef.current = handleOpenDetail;
-  }, [handleOpenDetail]);
-
-  // Filter/search change fetch
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);
 
-  // Realtime subscription + window focus + 1-second polling (SUB-SECOND SYNC)
   useEffect(() => {
     const unsubRealtime = subscribeToRealtimeSignal("customers", () => {
       fetchCustomersRef.current(true, true);
-      if (selectedCustRef.current) {
-        handleOpenDetailRef.current(selectedCustRef.current, true);
-      }
     });
 
     const onFocus = () => {
       fetchCustomersRef.current(true, true);
-      if (selectedCustRef.current) {
-        handleOpenDetailRef.current(selectedCustRef.current, true);
-      }
     };
     window.addEventListener("focus", onFocus);
 
-    // ZERO-ORIGIN-DRAIN: Rely 100% on Firebase realtime signal (unsubRealtime) instead of polling every 1s!
-    // Polling every 1s was draining 10-20 MB Origin Transfer per active tab.
     return () => {
       unsubRealtime();
       window.removeEventListener("focus", onFocus);
     };
   }, []);
 
+  // Export Excel: 100% Sesuai Regulasi ISDP & UU PDP (Hanya 8 Data Resmi)
   const handleExportExcel = () => {
     if (customers.length === 0) return;
-    const ws = XLSX.utils.json_to_sheet(customers);
+    const exportData = customers.map((c) => ({
+      "Nama Apotek / Merchant": c.name || "-",
+      "ID": c.id || "-",
+      "Customer ID Oracle": c.customer_id_oracle || "-",
+      "Status Merchant": c.status_merchant || "-",
+      "Nama Apoteker PJ (APJ)": c.apj_name || "-",
+      "Masa Berlaku SIPA (Expired)": formatIndonesianDate(c.sipa_expired),
+      "Masa Berlaku SIA (Expired)": formatIndonesianDate(c.sia_expired),
+      "Status Riwayat Order": c.order_status || "BELUM PERNAH ORDER",
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Master_Customer");
-    XLSX.writeFile(wb, `Master_Customer_FantasticOrder_${new Date().toISOString().split("T")[0]}.xlsx`);
+    XLSX.writeFile(wb, `Master_Customer_ISDP_${new Date().toISOString().split("T")[0]}.xlsx`);
   };
 
   const totalPages = Math.ceil(total / limit);
 
   return (
     <div className="space-y-4">
-      {/* ─── Compact KPI Header ─── */}
+      {/* ─── Header Info & Upload Tools ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Card 1: Total Merchant */}
         <div className="relative overflow-hidden rounded-xl p-3 sm:p-3.5 bg-white dark:bg-[#0c0d14] border border-zinc-200 dark:border-zinc-800 shadow-xs transition-colors">
@@ -721,14 +409,14 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
             <div>
               <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
                 <Store className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
-                <span>Direktori Mitra Customer</span>
+                <span>Direktori Master Customer (ISDP Compliant)</span>
               </div>
               <h3 className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-white mt-1 tracking-tight">
                 {total.toLocaleString("id-ID")}
               </h3>
               <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                Apotek, Klinik, RS &amp; PBF Terdaftar
+                <ShieldCheck className="w-3 h-3 text-emerald-500 inline-block" />
+                <span>8 Atribut Resmi Terverifikasi</span>
               </p>
             </div>
             <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-600/20 border border-blue-200 dark:border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shadow-xs">
@@ -737,64 +425,47 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
           </div>
         </div>
 
-        {/* Card 2: Import & Ekspor Tools */}
-        <div className="relative overflow-hidden rounded-2xl p-4 bg-white dark:bg-[#0c0d14] border border-zinc-200 dark:border-zinc-800 shadow-sm transition-colors flex flex-col justify-between">
+        {/* Card 2: Kelola Data (Upload & Unduh Excel) */}
+        <div className="relative overflow-hidden rounded-xl p-3 sm:p-3.5 bg-white dark:bg-[#0c0d14] border border-zinc-200 dark:border-zinc-800 shadow-xs transition-colors flex flex-col justify-between">
           <div className="flex items-center justify-between relative z-10">
             <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
                 <FileSpreadsheet className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
                 <span>Kelola Data Mitra</span>
               </div>
-              <h4 className="text-sm font-semibold text-zinc-900 dark:text-white mt-1">Upload &amp; Ekspor</h4>
+              <h4 className="text-xs font-semibold text-zinc-900 dark:text-white mt-0.5">Upload &amp; Ekspor Data</h4>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-600/20 border border-blue-200 dark:border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shadow-xs">
-              <Upload className="w-4 h-4" />
+            <div className="flex items-center gap-1.5">
+              <label className="py-1 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 shadow-xs transition-colors cursor-pointer" title="Upload Excel Master Customer">
+                <Upload className="w-3.5 h-3.5" />
+                <span>{isImporting ? "Mengunggah..." : "Upload Excel"}</span>
+                <input
+                  type="file"
+                  accept=".xlsx, .xls, .csv"
+                  onChange={handleImportCustomerFile}
+                  disabled={isImporting}
+                  className="hidden"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                disabled={customers.length === 0}
+                className="py-1 px-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1 border border-zinc-200 dark:border-zinc-700 shadow-xs transition-colors cursor-pointer disabled:opacity-40"
+                title="Unduh Excel Format ISDP"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Ekspor</span>
+              </button>
             </div>
           </div>
-          
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <label className="flex-1 py-1.5 px-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-xs transition-colors cursor-pointer whitespace-nowrap" title="Upload File ZIP Dokumen Pelanggan (Otomatis Cocokkan Kode C.xxxx)">
-              <Package className="w-3.5 h-3.5" />
-              <span>{zipProgress ? "Proses ZIP..." : "Upload ZIP Dokumen"}</span>
-              <input
-                type="file"
-                accept=".zip"
-                onChange={(e) => handleImportZipDocs(e)}
-                disabled={!!zipProgress}
-                className="hidden"
-              />
-            </label>
-            <label className="py-1.5 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 shadow-xs transition-colors cursor-pointer whitespace-nowrap" title="Upload Excel Master Customer">
-              <Upload className="w-3.5 h-3.5" />
-              <span>{isImporting ? "..." : "Excel"}</span>
-              <input
-                type="file"
-                accept=".xlsx, .xls, .csv"
-                onChange={handleImportCustomerFile}
-                disabled={isImporting}
-                className="hidden"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              disabled={customers.length === 0}
-              className="py-1.5 px-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 border border-zinc-200 dark:border-zinc-700 shadow-xs transition-colors cursor-pointer disabled:opacity-40"
-              title="Unduh Excel"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Unduh</span>
-            </button>
-          </div>
-          {zipProgress && (
-            <p className="text-[10px] text-amber-600 dark:text-amber-400 font-bold mt-1.5 truncate">
-              {zipProgress}
-            </p>
-          )}
+          <p className="text-[10px] text-zinc-400 mt-2">
+            Data pribadi terlindungi penuh sesuai UU PDP &amp; standar ISDP.
+          </p>
         </div>
       </div>
 
-      {/* ─── Modern Search & Filter Command Bar ─── */}
+      {/* ─── Search & Filter Command Bar ─── */}
       <div className="rounded-2xl p-2.5 sm:p-3 bg-white dark:bg-[#0c121f]/90 border border-zinc-200 dark:border-zinc-800/80 shadow-xs flex flex-wrap gap-2.5 items-center justify-between">
         {/* Search Input */}
         <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-1 min-w-0">
@@ -804,7 +475,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari Nama Apotek, ID Oracle, Alamat, atau Nama APJ..."
+              placeholder="Cari Nama Apotek, ID Oracle, atau Nama APJ..."
               className="w-full bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-zinc-700/60 rounded-xl pl-10 pr-9 py-2 text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
             />
             {search && (
@@ -839,44 +510,24 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
             </select>
           </div>
 
-          {/* Kategori Dropdown */}
+          {/* Status Riwayat Order Dropdown */}
           <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-zinc-700/60 rounded-xl px-2.5 py-1">
-            <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium">Kategori:</span>
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium">Order:</span>
             <select
-              value={categoryFilter}
+              value={orderStatusFilter}
               onChange={(e) => {
-                setCategoryFilter(e.target.value);
+                setOrderStatusFilter(e.target.value);
                 setPage(0);
               }}
               className="bg-transparent border-none text-xs font-bold text-zinc-800 dark:text-zinc-200 focus:outline-none cursor-pointer pr-1"
             >
-              <option value="ALL">Semua Kategori</option>
-              <option value="1P">1P (Prioritas 1)</option>
-              <option value="2P">2P (Prioritas 2)</option>
-              <option value="3P">3P (Reguler)</option>
-              <option value="REG">REG</option>
+              <option value="ALL">Semua Riwayat</option>
+              <option value="SUDAH PERNAH ORDER">SUDAH PERNAH ORDER</option>
+              <option value="BELUM PERNAH ORDER">BELUM PERNAH ORDER</option>
             </select>
           </div>
 
-          {/* Filter Sudah Ada Dokumen */}
-          <button
-            type="button"
-            onClick={() => {
-              setHasDocsFilter((v) => !v);
-              setPage(0);
-            }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-              hasDocsFilter
-                ? "bg-amber-600 text-white border-amber-500 shadow-xs"
-                : "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/60 hover:bg-amber-100"
-            }`}
-            title="Tampilkan apotek yang sudah memiliki dokumen terupload"
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>{hasDocsFilter ? "✓ Sudah Ada Dokumen" : "Filter Ada Dokumen"}</span>
-          </button>
-
-          {/* ─── Spreadsheet Freeze Selector ─── */}
+          {/* Spreadsheet Freeze Selector */}
           <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#070b13] border border-zinc-200 dark:border-zinc-700/60 rounded-xl px-2.5 py-1">
             <Pin className="w-3.5 h-3.5 text-blue-500" />
             <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium">Freeze:</span>
@@ -884,16 +535,16 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
               value={freezeColLevel}
               onChange={(e) => handleFreezeChange(e.target.value)}
               className="bg-transparent border-none text-xs font-bold text-blue-600 dark:text-blue-400 focus:outline-none cursor-pointer pr-1"
-              title="Kunci kolom di sisi kiri seperti Excel/Google Sheets"
+              title="Kunci kolom di sisi kiri"
             >
-              <option value="none">Bebas (Tanpa Freeze)</option>
-              <option value="1">1. Kolom ID</option>
-              <option value="2">2. ID + Oracle</option>
-              <option value="3">3. Sampai Nama Apotek</option>
+              <option value="none">Bebas</option>
+              <option value="1">1. Nama Apotek</option>
+              <option value="2">2. Nama + ID</option>
+              <option value="3">3. Nama + ID + Oracle</option>
             </select>
           </div>
 
-          {/* ─── Column Visibility Dropdown Toggle ─── */}
+          {/* Column Visibility Selector */}
           <div className="relative">
             <button
               type="button"
@@ -903,41 +554,31 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                   ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800"
                   : "bg-zinc-50 dark:bg-[#070b13] text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700/60 hover:bg-zinc-100"
               }`}
-              title="Atur kolom yang ingin ditampilkan / disembunyikan"
+              title="Atur kolom yang ingin ditampilkan"
             >
               <Columns className="w-3.5 h-3.5 text-blue-500" />
-              <span>Kolom {hiddenCols.length > 0 ? `(${9 - hiddenCols.length}/9)` : ""}</span>
+              <span>Kolom {hiddenCols.length > 0 ? `(${AUTHORIZED_COLUMNS.length - hiddenCols.length}/${AUTHORIZED_COLUMNS.length})` : ""}</span>
             </button>
 
             {showColMenu && (
               <div className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl bg-white dark:bg-[#0c1222] border border-zinc-200 dark:border-zinc-700 shadow-xl p-3 text-xs space-y-2">
                 <div className="flex items-center justify-between pb-1.5 border-b border-zinc-200 dark:border-zinc-800 font-bold text-zinc-800 dark:text-zinc-200">
-                  <span>Pilih Kolom Tampil</span>
+                  <span>8 Kolom Resmi (ISDP)</span>
                   {hiddenCols.length > 0 && (
                     <button
                       type="button"
                       onClick={() => {
                         setHiddenCols([]);
-                        if (typeof window !== "undefined") localStorage.removeItem("cust_hidden_cols");
+                        if (typeof window !== "undefined") localStorage.removeItem("cust_hidden_cols_v2");
                       }}
                       className="text-[10px] text-blue-600 hover:underline cursor-pointer"
                     >
-                      Reset Semua
+                      Reset
                     </button>
                   )}
                 </div>
-                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                  {[
-                    { id: "id", label: "ID Customer" },
-                    { id: "oracle", label: "ID Oracle" },
-                    { id: "name", label: "Nama Apotek", locked: true },
-                    { id: "status", label: "Status Merchant" },
-                    { id: "address", label: "Alamat Default" },
-                    { id: "apj", label: "Nama APJ" },
-                    { id: "sia", label: "SIA Expired" },
-                    { id: "sipa", label: "SIPA Expired" },
-                    { id: "category", label: "Kategori (1P/2P/REG)" },
-                  ].map((col) => (
+                <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                  {AUTHORIZED_COLUMNS.map((col) => (
                     <label
                       key={col.id}
                       className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
@@ -972,20 +613,29 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
         </div>
       </div>
 
-      {/* ─── Enterprise Data Grid ─── */}
+      {/* ─── Enterprise Data Grid (8 Authorized Columns) ─── */}
       <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
         <div className="overflow-x-auto w-full">
-          <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
+          <table className="w-full text-left text-xs border-collapse min-w-[950px]">
             <thead>
               <tr className="bg-zinc-100 dark:bg-[#070b14] border-b-2 border-zinc-300 dark:border-zinc-800 text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider select-none">
-                {/* ID */}
+                {/* 1. Nama Apotek / Merchant (Primary / Locked) */}
+                <th
+                  className={`py-3 px-4 min-w-[260px] border-r border-zinc-200 dark:border-zinc-800 ${
+                    effectiveFreezeLevel === "1" || effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
+                      ? "sticky left-0 z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
+                      : ""
+                  }`}
+                >
+                  Nama Apotek / Merchant *
+                </th>
+
+                {/* 2. ID */}
                 {isColVisible("id") && (
                   <th
                     className={`py-3 px-3.5 w-24 min-w-[96px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
-                      effectiveFreezeLevel === "1"
-                        ? "sticky left-0 z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
-                        : effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
-                        ? "sticky left-0 z-30 bg-zinc-100 dark:bg-[#070b14]"
+                      effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
+                        ? "sticky left-[260px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r border-zinc-300"
                         : ""
                     }`}
                   >
@@ -993,84 +643,56 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                   </th>
                 )}
 
-                {/* ID Oracle */}
+                {/* 3. Customer ID Oracle */}
                 {isColVisible("oracle") && (
                   <th
-                    className={`py-3 px-3 w-32 min-w-[128px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
-                      effectiveFreezeLevel === "2"
-                        ? "sticky left-[96px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
-                        : effectiveFreezeLevel === "3"
-                        ? "sticky left-[96px] z-30 bg-zinc-100 dark:bg-[#070b14]"
+                    className={`py-3 px-3 w-36 min-w-[130px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
+                      effectiveFreezeLevel === "3"
+                        ? "sticky left-[356px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
                         : ""
                     }`}
                   >
-                    ID Oracle
+                    Customer ID Oracle
                   </th>
                 )}
 
-                {/* Nama Apotek (Locked Always Visible) */}
-                <th
-                  className={`py-3 px-4 min-w-[260px] border-r border-zinc-200 dark:border-zinc-800 ${
-                    effectiveFreezeLevel === "3"
-                      ? `sticky z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md ${
-                          isColVisible("id") && isColVisible("oracle")
-                            ? "left-[224px]"
-                            : isColVisible("id")
-                            ? "left-[96px]"
-                            : isColVisible("oracle")
-                            ? "left-[128px]"
-                            : "left-0"
-                        }`
-                      : ""
-                  }`}
-                >
-                  Nama Apotek / Merchant
-                </th>
-
-                {/* Status */}
+                {/* 4. Status Merchant */}
                 {isColVisible("status") && (
                   <th className="py-3 px-3 w-28 min-w-[100px] text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
-                    Status
+                    Status Merchant
                   </th>
                 )}
 
-                {/* Alamat Default */}
-                {isColVisible("address") && (
-                  <th className="py-3 px-4 min-w-[320px] border-r border-zinc-200 dark:border-zinc-800">
-                    Alamat Default
-                  </th>
-                )}
-
-                {/* Nama APJ */}
+                {/* 5. Nama APJ */}
                 {isColVisible("apj") && (
                   <th className="py-3 px-3.5 min-w-[180px] border-r border-zinc-200 dark:border-zinc-800">
-                    Nama APJ
+                    Nama Apoteker PJ (APJ)
                   </th>
                 )}
 
-                {/* SIA Expired */}
-                {isColVisible("sia") && (
-                  <th className="py-3 px-3 w-32 min-w-[120px] whitespace-nowrap text-center border-r border-zinc-200 dark:border-zinc-800" title="Masa Berlaku SIA (Surat Izin Apotek)">
-                    SIA Expired
-                  </th>
-                )}
-
-                {/* SIPA Expired */}
+                {/* 6. SIPA Expired */}
                 {isColVisible("sipa") && (
-                  <th className="py-3 px-3 w-32 min-w-[120px] whitespace-nowrap text-center border-r border-zinc-200 dark:border-zinc-800" title="Masa Berlaku SIPA (Surat Izin Praktik Apoteker)">
-                    SIPA Expired
+                  <th className="py-3 px-3 w-36 min-w-[130px] whitespace-nowrap text-center border-r border-zinc-200 dark:border-zinc-800" title="Masa Berlaku SIPA (Surat Izin Praktik Apoteker)">
+                    Masa Berlaku SIPA
                   </th>
                 )}
 
-                {/* Kategori */}
-                {isColVisible("category") && (
-                  <th className="py-3 px-3 w-24 min-w-[85px] text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
-                    Kategori
+                {/* 7. SIA Expired */}
+                {isColVisible("sia") && (
+                  <th className="py-3 px-3 w-36 min-w-[130px] whitespace-nowrap text-center border-r border-zinc-200 dark:border-zinc-800" title="Masa Berlaku SIA (Surat Izin Apotek)">
+                    Masa Berlaku SIA
                   </th>
                 )}
 
-                {/* Aksi (Sticky Right) */}
-                <th className="py-3 px-3 w-28 min-w-[105px] text-center whitespace-nowrap sticky right-0 z-20 bg-zinc-100 dark:bg-[#070b14] border-l border-zinc-200 dark:border-zinc-800 shadow-[-3px_0_6px_rgba(0,0,0,0.06)]">
+                {/* 8. Status Riwayat Order */}
+                {isColVisible("order_status") && (
+                  <th className="py-3 px-3 w-40 min-w-[140px] text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                    Status Riwayat Order
+                  </th>
+                )}
+
+                {/* Aksi */}
+                <th className="py-3 px-3 w-20 min-w-[80px] text-center whitespace-nowrap sticky right-0 z-20 bg-zinc-100 dark:bg-[#070b14] border-l border-zinc-200 dark:border-zinc-800 shadow-[-3px_0_6px_rgba(0,0,0,0.06)]">
                   Aksi
                 </th>
               </tr>
@@ -1078,41 +700,26 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
             <tbody className="divide-y divide-zinc-200/80 dark:divide-zinc-800/50 bg-white dark:bg-[#0a0f1c]">
               {loading && customers.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-16 text-center text-slate-400">
+                  <td colSpan={9} className="py-16 text-center text-slate-400">
                     <RefreshCw className="w-7 h-7 animate-spin mx-auto text-indigo-400 mb-2" />
                     <span className="font-semibold text-sm">Menghubungkan ke Direktori TiDB...</span>
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-16 text-center text-slate-500">
+                  <td colSpan={9} className="py-16 text-center text-slate-500">
                     <Building2 className="w-10 h-10 mx-auto text-blue-500 mb-3 opacity-60" />
                     <p className="font-bold text-base text-zinc-800 dark:text-zinc-200">
-                      {total === 0 && !search ? "Data Customer Belum Ada / Masih Kosong" : "Tidak ada merchant yang cocok"}
+                      Tidak ada merchant yang cocok
                     </p>
                     <p className="text-xs text-zinc-500 mt-1 max-w-md mx-auto">
-                      {total === 0 && !search
-                        ? "Tabel customer telah dikosongkan. Silakan upload file Excel Data Customer baru untuk mengisi direktori."
-                        : "Coba gunakan kata kunci lain atau reset filter pencarian."}
+                      Coba gunakan kata kunci lain atau reset filter pencarian.
                     </p>
-                    {total === 0 && !search && (
-                      <label className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer transition">
-                        <Upload className="w-4 h-4" />
-                        <span>{isImporting ? "Mengunggah Data..." : "Upload File Data Customer (.xlsx)"}</span>
-                        <input
-                          type="file"
-                          accept=".xlsx, .xls, .csv"
-                          onChange={handleImportCustomerFile}
-                          disabled={isImporting}
-                          className="hidden"
-                        />
-                      </label>
-                    )}
                   </td>
                 </tr>
               ) : (
                 customers.map((c) => {
-                  const isSelected = docsGalleryCust?.id === c.id || (showEditModal && editForm?.id === c.id);
+                  const isSelected = showEditModal && editForm?.id === c.id;
 
                   return (
                     <tr
@@ -1124,14 +731,28 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                           : "hover:bg-blue-50/60 dark:hover:bg-slate-800/40 border-l-4 border-transparent"
                       }`}
                     >
-                      {/* ID */}
+                      {/* 1. Nama Apotek / Merchant */}
+                      <td
+                        className={`py-2.5 px-4 font-bold border-r border-zinc-200 dark:border-zinc-800 ${
+                          effectiveFreezeLevel === "1" || effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
+                            ? "sticky left-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
+                            : ""
+                        }`}
+                      >
+                        <span
+                          className="text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors"
+                          title={c.name}
+                        >
+                          {c.name || "-"}
+                        </span>
+                      </td>
+
+                      {/* 2. ID */}
                       {isColVisible("id") && (
                         <td
                           className={`py-2.5 px-3.5 font-mono text-zinc-700 dark:text-slate-300 text-[11px] font-bold whitespace-nowrap group-hover:text-blue-600 dark:group-hover:text-indigo-400 transition-colors border-r border-zinc-200 dark:border-zinc-800 ${
-                            effectiveFreezeLevel === "1"
-                              ? "sticky left-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
-                              : effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
-                              ? "sticky left-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800"
+                            effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
+                              ? "sticky left-[260px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r border-zinc-300"
                               : ""
                           }`}
                         >
@@ -1139,14 +760,12 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                         </td>
                       )}
 
-                      {/* ID Oracle */}
+                      {/* 3. Customer ID Oracle */}
                       {isColVisible("oracle") && (
                         <td
                           className={`py-2.5 px-3 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
-                            effectiveFreezeLevel === "2"
-                              ? "sticky left-[96px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
-                              : effectiveFreezeLevel === "3"
-                              ? "sticky left-[96px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800"
+                            effectiveFreezeLevel === "3"
+                              ? "sticky left-[356px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
                               : ""
                           }`}
                         >
@@ -1156,42 +775,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                         </td>
                       )}
 
-                      {/* Nama Apotek (Locked Always Visible) */}
-                      <td
-                        className={`py-2.5 px-4 font-bold border-r border-zinc-200 dark:border-zinc-800 ${
-                          effectiveFreezeLevel === "3"
-                            ? `sticky z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md ${
-                                isColVisible("id") && isColVisible("oracle")
-                                  ? "left-[224px]"
-                                  : isColVisible("id")
-                                  ? "left-[96px]"
-                                  : isColVisible("oracle")
-                                  ? "left-[128px]"
-                                  : "left-0"
-                              }`
-                            : ""
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-1.5">
-                          <span
-                            className="text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors"
-                            title={c.name}
-                          >
-                            {c.name || "-"}
-                          </span>
-                          {Number(c.doc_count) > 0 && (
-                            <span
-                              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 text-[10px] font-bold"
-                              title={`${c.doc_count} dokumen tersimpan di aplikasi`}
-                            >
-                              <FileText className="w-2.5 h-2.5" />
-                              {c.doc_count}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Status */}
+                      {/* 4. Status Merchant */}
                       {isColVisible("status") && (
                         <td className="py-2.5 px-3 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
                           <span
@@ -1211,16 +795,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                         </td>
                       )}
 
-                      {/* Alamat (Full Wrap Text - No Cutoff) */}
-                      {isColVisible("address") && (
-                        <td className="py-2.5 px-4 min-w-[280px] max-w-[420px] border-r border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-slate-300">
-                          <div className="leading-relaxed text-xs break-words whitespace-normal text-zinc-700 dark:text-slate-300 group-hover:text-zinc-900 dark:group-hover:text-slate-100 transition-colors" title={c.address}>
-                            {c.address || "-"}
-                          </div>
-                        </td>
-                      )}
-
-                      {/* Nama APJ (Full Wrap Text - No Cutoff) */}
+                      {/* 5. Nama APJ */}
                       {isColVisible("apj") && (
                         <td className="py-2.5 px-3.5 min-w-[170px] max-w-[240px] border-r border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-slate-200 font-medium">
                           <div className="leading-snug break-words whitespace-normal" title={c.apj_name}>
@@ -1229,71 +804,49 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                         </td>
                       )}
 
-                      {/* SIA Expired */}
-                      {isColVisible("sia") && (
-                        <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-800 dark:text-blue-300 whitespace-nowrap text-center font-medium border-r border-zinc-200 dark:border-zinc-800">
-                          {formatIndonesianDate(c.sia_expired)}
-                        </td>
-                      )}
-
-                      {/* SIPA Expired */}
+                      {/* 6. SIPA Expired */}
                       {isColVisible("sipa") && (
                         <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-800 dark:text-zinc-300 whitespace-nowrap text-center font-medium border-r border-zinc-200 dark:border-zinc-800">
                           {formatIndonesianDate(c.sipa_expired)}
                         </td>
                       )}
 
-                      {/* Kategori */}
-                      {isColVisible("category") && (
+                      {/* 7. SIA Expired */}
+                      {isColVisible("sia") && (
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-800 dark:text-blue-300 whitespace-nowrap text-center font-medium border-r border-zinc-200 dark:border-zinc-800">
+                          {formatIndonesianDate(c.sia_expired)}
+                        </td>
+                      )}
+
+                      {/* 8. Status Riwayat Order */}
+                      {isColVisible("order_status") && (
                         <td className="py-2.5 px-3 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
                           <span
-                            className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
-                              c.category === "1P"
-                                ? "bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/40"
-                                : c.category === "2P"
-                                ? "bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40"
-                                : c.category === "3P"
-                                ? "bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40"
-                                : "bg-zinc-100 text-zinc-600 border border-zinc-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                              c.order_status === "SUDAH PERNAH ORDER"
+                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                                : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700"
                             }`}
                           >
-                            {c.category || "REG"}
+                            {c.order_status || "BELUM PERNAH ORDER"}
                           </span>
                         </td>
                       )}
 
-                      {/* Action Buttons: Edit + Dokumen (Sticky Right) */}
+                      {/* Aksi */}
                       <td className="py-2.5 px-3 text-center whitespace-nowrap sticky right-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-l border-zinc-200 dark:border-zinc-800 shadow-[-3px_0_6px_rgba(0,0,0,0.06)]">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenEdit(c);
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-slate-800 dark:hover:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-slate-700 text-[11px] font-bold transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
-                            title="Edit Data Customer (Buka Panel Kanan)"
-                          >
-                            <Pencil className="w-3 h-3" />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenDocsGallery(c);
-                            }}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors flex items-center gap-1 shadow-2xs cursor-pointer ${
-                              Number(c.doc_count) > 0
-                                ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500"
-                                : "bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-700 dark:text-slate-200 border-zinc-200 dark:border-slate-700"
-                            }`}
-                            title="Lihat Foto & Dokumen Customer"
-                          >
-                            <ImageIcon className="w-3 h-3" />
-                            <span>Dokumen{Number(c.doc_count) > 0 ? ` (${c.doc_count})` : ""}</span>
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEdit(c);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-slate-800 dark:hover:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-slate-700 text-[11px] font-bold transition-colors inline-flex items-center gap-1 shadow-2xs cursor-pointer"
+                          title="Edit 8 Atribut Resmi Mitra"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
                       </td>
                     </tr>
                   );
@@ -1303,7 +856,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
           </table>
         </div>
 
-        {/* ─── Pagination Footer (High Contrast Light Mode) ─── */}
+        {/* ─── Pagination Footer ─── */}
         <div className="bg-zinc-50 dark:bg-[#070b14] border-t border-zinc-200 dark:border-zinc-800 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-600 dark:text-slate-400">
           <div className="flex items-center gap-2">
             <span>
@@ -1341,195 +894,16 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
         </div>
       </div>
 
-      {/* ─── GALERI FOTO & DOKUMEN LANGSUNG (DIBUKA DARI TOMBOL SEBELAH KANAN EDIT) ─── */}
-      {docsGalleryCust && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-5"
-          onClick={() => setDocsGalleryCust(null)}
-        >
-          <div
-            className="bg-white dark:bg-[#09090b] border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden text-zinc-900 dark:text-zinc-100"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="p-4 sm:p-5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/90 flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <h3 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white truncate">
-                  🖼️ Foto &amp; Dokumen: {docsGalleryCust.name}
-                </h3>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 font-mono mt-0.5">
-                  ID: {docsGalleryCust.id} • Oracle: {docsGalleryCust.customer_id_oracle || "-"} • Total: {customerDocs.length} Berkas
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs cursor-pointer transition">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>{zipProgress ? "Mengupload..." : "Tambah Foto / PDF"}</span>
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf,.zip"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      if (f.name.toLowerCase().endsWith(".zip")) {
-                        handleImportZipDocs(e, docsGalleryCust.id);
-                      } else {
-                        const reader = new FileReader();
-                        reader.onload = async (ev) => {
-                          const dataUrl = ev.target?.result as string;
-                          try {
-                            setZipProgress(`Mengunggah ${f.name}...`);
-                            await uploadSingleDocToTiDB(docsGalleryCust.id, f.name, f.type || "application/pdf", f.size, dataUrl, docsGalleryCust.name);
-                            await loadCustomerDocs(docsGalleryCust.id, docsGalleryCust.name);
-                            fetchCustomers();
-                          } finally {
-                            setZipProgress(null);
-                          }
-                        };
-                        reader.readAsDataURL(f);
-                      }
-                    }}
-                    className="hidden"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => handleOpenEdit(docsGalleryCust)}
-                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                  <span>Edit Data</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDocsGalleryCust(null)}
-                  className="w-8 h-8 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-500 flex items-center justify-center cursor-pointer"
-                  title="Tutup"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {zipProgress && (
-              <div className="px-5 py-2 bg-amber-50 dark:bg-amber-950/60 border-b border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-bold">
-                {zipProgress}
-              </div>
-            )}
-
-            {/* Gallery Body */}
-            <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-zinc-100/60 dark:bg-zinc-950">
-              {detailLoading ? (
-                <div className="py-16 text-center text-zinc-500">
-                  <RefreshCw className="w-7 h-7 animate-spin mx-auto text-blue-500 mb-2" />
-                  <p className="text-sm font-semibold">Memuat foto &amp; dokumen...</p>
-                </div>
-              ) : customerDocs.length === 0 ? (
-                <div className="py-16 text-center text-zinc-500 max-w-md mx-auto">
-                  <ImageIcon className="w-12 h-12 mx-auto text-zinc-400 mb-3 opacity-60" />
-                  <p className="font-bold text-sm text-zinc-800 dark:text-zinc-200">
-                    Belum ada foto / dokumen untuk {docsGalleryCust.name} ({docsGalleryCust.id})
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    Klik tombol <strong>Tambah Foto / PDF</strong> di kanan atas untuk mengunggah foto, PDF, atau file .ZIP dokumen apotek.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {customerDocs.map((doc) => {
-                    const isLocalDoc = doc.file_id.startsWith("local_") || doc.folder_id === "local_zip";
-                    const docStreamUrl = isLocalDoc
-                      ? `/api/tidb?action=view_document&file_id=${encodeURIComponent(doc.file_id)}`
-                      : `https://drive.google.com/file/d/${doc.file_id}/preview`;
-                    const isImage = (doc.mime_type || "").startsWith("image/");
-
-                    return (
-                      <div
-                        key={doc.file_id}
-                        className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden shadow-sm flex flex-col"
-                      >
-                        <div className="px-3.5 py-2.5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-2 bg-zinc-50 dark:bg-zinc-950/60">
-                          <div className="flex items-center gap-2 min-w-0">
-                            {isImage ? (
-                              <ImageIcon className="w-4 h-4 text-sky-600 shrink-0" />
-                            ) : (
-                              <FileText className="w-4 h-4 text-rose-600 shrink-0" />
-                            )}
-                            <span className="text-xs font-bold text-zinc-900 dark:text-white truncate" title={doc.file_name}>
-                              {doc.file_name}
-                            </span>
-                            {doc.size_bytes ? (
-                              <span className="text-[10px] text-zinc-500 shrink-0">({formatFileSize(doc.size_bytes)})</span>
-                            ) : null}
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => setPreviewDoc(doc)}
-                              className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold cursor-pointer"
-                            >
-                              Layar Penuh
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteCustomerDoc(doc)}
-                              className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
-                              title="Hapus"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Visual Photo or PDF Preview directly rendered */}
-                        <div
-                          className="h-72 w-full bg-zinc-900/5 dark:bg-black/40 flex items-center justify-center overflow-hidden cursor-pointer"
-                          onClick={() => setPreviewDoc(doc)}
-                        >
-                          {isImage ? (
-                            <img
-                              src={docStreamUrl}
-                              alt={doc.file_name}
-                              className="w-full h-full object-contain hover:scale-[1.02] transition-transform"
-                            />
-                          ) : (
-                            <iframe
-                              src={docStreamUrl}
-                              title={doc.file_name}
-                              className="w-full h-full border-0"
-                            />
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Toast Notification */}
-      {toastMsg && (
-        <div className="fixed bottom-5 right-5 z-50 bg-emerald-600 text-white px-4 py-2.5 rounded-xl shadow-xl text-xs font-bold flex items-center gap-2">
-          <Check className="w-4 h-4" />
-          <span>{toastMsg}</span>
-        </div>
-      )}
-
-      {/* ─── SLIDE-OVER RIGHT DRAWER: EDIT CUSTOMER ─── */}
+      {/* ─── SLIDE-OVER RIGHT DRAWER: EDIT CUSTOMER (8 ATRIBUT RESMI) ─── */}
       {showEditModal && editForm && (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/50 flex justify-end">
-          {/* Backdrop click to close */}
           <div
             className="absolute inset-0 cursor-pointer"
             onClick={() => setShowEditModal(false)}
             title="Klik area luar untuk menutup"
           />
 
-          {/* Drawer Container */}
-          <div className="relative w-full max-w-lg md:max-w-xl bg-white dark:bg-[#0c121f] border-l border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col h-full z-10 text-zinc-900 dark:text-zinc-100">
+          <div className="relative w-full max-w-lg bg-white dark:bg-[#0c121f] border-l border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col h-full z-10 text-zinc-900 dark:text-zinc-100">
             {/* Drawer Header */}
             <div className="p-4 sm:p-5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/80 flex items-center justify-between gap-3 shrink-0">
               <div className="flex items-center gap-3 min-w-0">
@@ -1538,7 +912,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-sm sm:text-base font-bold text-zinc-900 dark:text-white truncate">
-                    Edit Data Mitra &amp; Legalitas
+                    Edit Data Mitra (8 Atribut Resmi)
                   </h3>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono truncate">
                     ID: {editForm.id} • Oracle: {editForm.customer_id_oracle || "-"}
@@ -1558,10 +932,10 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
             {/* Drawer Form Body */}
             <form onSubmit={handleSaveCustomer} className="flex-1 flex flex-col min-h-0">
               <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
-                {/* Section 1: Informasi Pokok */}
+                {/* 1. Identitas Pokok Mitra */}
                 <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
                   <span className="font-bold text-[11px] uppercase tracking-wider text-blue-600 dark:text-blue-400 block">
-                    1. Informasi Pokok Mitra
+                    1. Identitas Mitra
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="sm:col-span-2">
@@ -1573,7 +947,18 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                         required
                         value={editForm.name || ""}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        ID Customer
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={editForm.id || ""}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 font-mono cursor-not-allowed"
                       />
                     </div>
                     <div>
@@ -1587,7 +972,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                         className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none focus:border-blue-500"
                       />
                     </div>
-                    <div>
+                    <div className="sm:col-span-2">
                       <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                         Status Merchant
                       </label>
@@ -1600,43 +985,14 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                         <option value="INACTIVE">INACTIVE</option>
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Kategori Prioritas
-                      </label>
-                      <select
-                        value={editForm.category || "REG"}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, category: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold focus:outline-none"
-                      >
-                        <option value="1P">1P (Prioritas 1)</option>
-                        <option value="2P">2P (Prioritas 2)</option>
-                        <option value="3P">3P (Reguler)</option>
-                        <option value="REG">REG</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Cabang / Zone
-                      </label>
-                      <input
-                        type="text"
-                        value={editForm.branch || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, branch: e.target.value }))}
-                        placeholder="Contoh: JAKARTA"
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
-                      />
-                    </div>
                   </div>
                 </div>
 
-                {/* Section 2: Legalitas & Izin */}
+                {/* 2. Legalitas Izin Farmasi (SIPA & SIA) */}
                 <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-[11px] uppercase tracking-wider text-cyan-700 dark:text-cyan-400 block">
-                      2. Legalitas Izin (SIA &amp; SIPA)
-                    </span>
-                  </div>
+                  <span className="font-bold text-[11px] uppercase tracking-wider text-cyan-700 dark:text-cyan-400 block">
+                    2. Legalitas Izin Farmasi (SIPA &amp; SIA)
+                  </span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="sm:col-span-2">
                       <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
@@ -1652,17 +1008,6 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Nomor SIPA
-                      </label>
-                      <input
-                        type="text"
-                        value={editForm.sipa_number || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, sipa_number: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                         Masa Berlaku SIPA (Expired)
                       </label>
                       <input
@@ -1670,17 +1015,6 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                         value={editForm.sipa_expired || ""}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, sipa_expired: e.target.value }))}
                         className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Nomor SIA
-                      </label>
-                      <input
-                        type="text"
-                        value={editForm.sia_number || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, sia_number: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none"
                       />
                     </div>
                     <div>
@@ -1694,256 +1028,31 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                         className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
                       />
                     </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Kode SIPNAP
-                      </label>
-                      <input
-                        type="text"
-                        value={editForm.sipnap_code || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, sipnap_code: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none"
-                      />
-                    </div>
                   </div>
                 </div>
 
-                {/* Section 3: Kontak & Alamat Pengiriman */}
+                {/* 3. Status Riwayat Order */}
                 <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
                   <span className="font-bold text-[11px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block">
-                    3. Kontak, Pemilik &amp; Alamat Pengiriman
+                    3. Status Riwayat Order
                   </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        No. Telepon / WhatsApp
-                      </label>
-                      <input
-                        type="text"
-                        value={editForm.phone || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, phone: e.target.value }))}
-                        placeholder="08xxxxxxxxxx"
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Email Resmi
-                      </label>
-                      <input
-                        type="email"
-                        value={editForm.email || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
-                        placeholder="apotek@example.com"
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Nama Pemilik (PSA)
-                      </label>
-                      <input
-                        type="text"
-                        value={editForm.owner_name || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, owner_name: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        NPWP (VAT ID)
-                      </label>
-                      <input
-                        type="text"
-                        value={editForm.vat_id || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, vat_id: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Alamat Lengkap Pengiriman
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={editForm.address || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, address: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 4: Akuntansi & Keuangan COA */}
-                <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                  <span className="font-bold text-[11px] uppercase tracking-wider text-blue-700 dark:text-blue-400 block">
-                    4. Akuntansi &amp; Keuangan (COA Oracle)
-                  </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        COA - REC (Piutang)
-                      </label>
-                      <input
-                        type="text"
-                        value={editForm.coa_rec || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, coa_rec: e.target.value }))}
-                        placeholder="05.1121102.xxx..."
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono text-xs focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        COA - REV (Pendapatan)
-                      </label>
-                      <input
-                        type="text"
-                        value={editForm.coa_rev || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, coa_rev: e.target.value }))}
-                        placeholder="05.4111102.xxx..."
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono text-xs focus:outline-none focus:border-emerald-500"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Status Riwayat Order
-                      </label>
-                      <select
-                        value={editForm.order_status || "BELUM PERNAH ORDER"}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, order_status: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white text-xs font-semibold focus:outline-none"
-                      >
-                        <option value="SUDAH PERNAH ORDER">SUDAH PERNAH ORDER</option>
-                        <option value="BELUM PERNAH ORDER">BELUM PERNAH ORDER</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 5: Foto & Dokumen Legalitas (NPWP / SIA / SIPA) */}
-                <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-400 block">
-                      5. Foto &amp; Dokumen Legalitas ({customerDocs.length} Berkas)
-                    </span>
-                    <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold shadow-2xs cursor-pointer transition">
-                      <Package className="w-3.5 h-3.5" />
-                      <span>{zipProgress ? "Memproses ZIP..." : "Upload File .ZIP Dokumen"}</span>
-                      <input
-                        type="file"
-                        accept=".zip"
-                        onChange={(e) => handleImportZipDocs(e, editForm.id)}
-                        disabled={!!zipProgress}
-                        className="hidden"
-                      />
+                  <div>
+                    <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                      Status Riwayat Order
                     </label>
-                  </div>
-
-                  {zipProgress && (
-                    <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-bold">
-                      {zipProgress}
-                    </div>
-                  )}
-
-                  {/* GALERI FOTO & DOKUMEN TERSIMPAN APOTEK INI (VISUAL LANGSUNG, TANPA LINK GDRIVE) */}
-                  <div className="bg-white dark:bg-zinc-900 p-3 rounded-lg border border-amber-200 dark:border-amber-500/30">
-                    {detailLoading ? (
-                      <p className="text-xs text-zinc-500">Memuat foto &amp; berkas...</p>
-                    ) : customerDocs.length === 0 ? (
-                      <p className="text-[11px] text-zinc-500">
-                        Belum ada foto/dokumen terupload untuk apotek ini ({editForm.id}). Silakan upload foto/PDF di bawah atau klik <strong>Upload File .ZIP Dokumen</strong>.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-3">
-                        {customerDocs.map((doc) => {
-                          const isLocalDoc = doc.file_id.startsWith("local_") || doc.folder_id === "local_zip";
-                          const docStreamUrl = isLocalDoc
-                            ? `/api/tidb?action=view_document&file_id=${encodeURIComponent(doc.file_id)}`
-                            : `https://drive.google.com/file/d/${doc.file_id}/preview`;
-                          const isImage = (doc.mime_type || "").startsWith("image/");
-                          return (
-                            <div
-                              key={doc.file_id}
-                              className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/70 overflow-hidden"
-                            >
-                              <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800">
-                                <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">
-                                  {doc.file_name}
-                                </span>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => setPreviewDoc(doc)}
-                                    className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold cursor-pointer"
-                                  >
-                                    Perbesar
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteCustomerDoc(doc)}
-                                    className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
-                                    title="Hapus dokumen"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                              <div
-                                className="h-52 w-full bg-zinc-900/5 dark:bg-black/40 flex items-center justify-center overflow-hidden cursor-pointer"
-                                onClick={() => setPreviewDoc(doc)}
-                              >
-                                {isImage ? (
-                                  <img
-                                    src={docStreamUrl}
-                                    alt={doc.file_name}
-                                    className="w-full h-full object-contain"
-                                  />
-                                ) : (
-                                  <iframe
-                                    src={docStreamUrl}
-                                    title={doc.file_name}
-                                    className="w-full h-full border-0"
-                                  />
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    {/* Upload File NPWP Apotek */}
-                    <div className="bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Tambah Foto / PDF NPWP
-                      </label>
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        onChange={(e) => handleFileUpload(e, "npwp_file_url")}
-                        className="w-full text-xs text-zinc-600 dark:text-zinc-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-amber-100 file:text-amber-800 hover:file:bg-amber-200 cursor-pointer"
-                      />
-                    </div>
-
-                    {/* Upload Dokumen Legalitas */}
-                    <div className="bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Tambah Foto / PDF SIA, SIPA, KTP
-                      </label>
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        onChange={(e) => handleFileUpload(e, "document_url")}
-                        className="w-full text-xs text-zinc-600 dark:text-zinc-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-800 hover:file:bg-purple-200 cursor-pointer"
-                      />
-                    </div>
+                    <select
+                      value={editForm.order_status || "BELUM PERNAH ORDER"}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, order_status: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white text-xs font-semibold focus:outline-none"
+                    >
+                      <option value="SUDAH PERNAH ORDER">SUDAH PERNAH ORDER</option>
+                      <option value="BELUM PERNAH ORDER">BELUM PERNAH ORDER</option>
+                    </select>
                   </div>
                 </div>
               </div>
 
-              {/* Sticky Drawer Footer Actions */}
+              {/* Drawer Footer */}
               <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/90 flex items-center justify-between gap-3 shrink-0">
                 <button
                   type="button"
@@ -1967,74 +1076,13 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
         </div>
       )}
 
-      {/* PREVIEW DOKUMEN LANGSUNG DI DALAM APLIKASI */}
-      {previewDoc && (() => {
-        const isLocalDoc = previewDoc.file_id.startsWith("local_") || previewDoc.folder_id === "local_zip";
-        const docStreamUrl = isLocalDoc
-          ? `/api/tidb?action=view_document&file_id=${encodeURIComponent(previewDoc.file_id)}`
-          : `https://drive.google.com/file/d/${previewDoc.file_id}/preview`;
-        const docExternalUrl = isLocalDoc
-          ? `/api/tidb?action=view_document&file_id=${encodeURIComponent(previewDoc.file_id)}`
-          : `https://drive.google.com/file/d/${previewDoc.file_id}/view`;
-        const isImage = (previewDoc.mime_type || "").startsWith("image/");
-
-        return (
-          <div
-            className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-3 sm:p-6"
-            onClick={() => setPreviewDoc(null)}
-          >
-            <div
-              className="w-full max-w-5xl h-[90vh] bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">{previewDoc.file_name}</p>
-                  <p className="text-[11px] text-zinc-500 truncate">
-                    {[selectedCust?.name || editForm?.name, previewDoc.folder_name, formatFileSize(previewDoc.size_bytes)].filter(Boolean).join(" · ")}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <a
-                    href={docExternalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 text-xs font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>{isLocalDoc ? "Buka / Download Tab Baru" : "Buka di Drive"}</span>
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewDoc(null)}
-                    className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 cursor-pointer"
-                    title="Tutup"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-              {isLocalDoc && isImage ? (
-                <div className="flex-1 w-full bg-zinc-100 dark:bg-zinc-950 flex items-center justify-center overflow-auto p-4">
-                  <img
-                    src={docStreamUrl}
-                    alt={previewDoc.file_name}
-                    className="max-w-full max-h-full object-contain rounded-lg shadow-md"
-                  />
-                </div>
-              ) : (
-                <iframe
-                  key={previewDoc.file_id}
-                  src={docStreamUrl}
-                  className="flex-1 w-full bg-zinc-100 dark:bg-zinc-950"
-                  allow="autoplay"
-                  title={previewDoc.file_name}
-                />
-              )}
-            </div>
-          </div>
-        );
-      })()}
+      {/* Toast Notification */}
+      {toastMsg && (
+        <div className="fixed bottom-5 right-5 z-50 bg-emerald-600 text-white px-4 py-2.5 rounded-xl shadow-xl text-xs font-bold flex items-center gap-2">
+          <Check className="w-4 h-4" />
+          <span>{toastMsg}</span>
+        </div>
+      )}
     </div>
   );
 }
