@@ -1159,7 +1159,9 @@ export default function AnalisisView({
             {/* Pill: Semua Kategori */}
             <button
               type="button"
-              onClick={() => setCategoryScope("ALL")}
+              onClick={() => {
+                setCategoryScope("ALL");
+              }}
               className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
                 categoryScope === "ALL"
                   ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
@@ -1172,7 +1174,9 @@ export default function AnalisisView({
             {/* Pill: 📦 Murni Operasional (Gudang) */}
             <button
               type="button"
-              onClick={() => setCategoryScope("operational")}
+              onClick={() => {
+                setCategoryScope("operational");
+              }}
               className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
                 categoryScope === "operational"
                   ? "bg-blue-600 text-white border-blue-500 shadow-sm"
@@ -1186,7 +1190,10 @@ export default function AnalisisView({
             {/* Pill: ⏳ Kasus ED (Kadaluarsa) */}
             <button
               type="button"
-              onClick={() => setCategoryScope("ed")}
+              onClick={() => {
+                setCategoryScope("ed");
+                setReasonScope("ALL");
+              }}
               className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
                 categoryScope === "ed"
                   ? "bg-amber-600 text-white border-amber-500 shadow-sm"
@@ -1200,7 +1207,10 @@ export default function AnalisisView({
             {/* Pill: 💥 Kasus Damage (Rusak/Penyok) */}
             <button
               type="button"
-              onClick={() => setCategoryScope("damage")}
+              onClick={() => {
+                setCategoryScope("damage");
+                setReasonScope("ALL");
+              }}
               className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
                 categoryScope === "damage"
                   ? "bg-rose-600 text-white border-rose-500 shadow-sm"
@@ -1214,116 +1224,84 @@ export default function AnalisisView({
         </div>
 
         {/* =========================================
-            ROW 2: QUICK FILTER 4 KENDALA FISIK UTAMA (REASON FILTER PILLS)
+            ROW 2: SUB-FILTER RINCIAN KENDALA FISIK (Hanya untuk Murni Operasional & Semua)
         ========================================= */}
-        <div className="w-full flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-zinc-100 dark:border-slate-800/80">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-700 dark:text-slate-200 mr-0.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span className="text-[11px] uppercase tracking-wider font-extrabold">Fokus Kendala Fisik:</span>
-            </div>
+        {(categoryScope === "operational" || categoryScope === "ALL") && (
+          <div className="w-full flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-zinc-100 dark:border-slate-800/80">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-700 dark:text-slate-200 mr-0.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="text-[11px] uppercase tracking-wider font-extrabold">Rincian Fisik:</span>
+              </div>
 
-            {/* Pill: Semua Kendala */}
-            <button
-              type="button"
-              onClick={() => setReasonScope("ALL")}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
-                reasonScope === "ALL"
-                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
-                  : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-300 dark:hover:border-slate-700"
-              }`}
-            >
-              <span>Semua Kendala</span>
-              <span className="text-[10px] opacity-75 font-mono">
-                ({reasonCounts.all.toLocaleString("id-ID")})
-              </span>
-            </button>
-
-            {/* Pill: ⭐ 4 Kendala Fisik Utama (Gabungan) */}
-            <button
-              type="button"
-              onClick={() => setReasonScope("PRIMARY_4")}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
-                reasonScope === "PRIMARY_4"
-                  ? "bg-emerald-600 text-white border-emerald-500 shadow-sm"
-                  : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
-              }`}
-              title="Filter otomatis gabungan 4 Kendala Fisik Utama: Kurang, Lebih, Salah, Tidak Ada"
-            >
-              <span>⭐ 4 Kendala Fisik Utama</span>
-              <span className="text-[10px] font-mono font-black px-1.5 py-0.2 rounded-full bg-emerald-800 text-emerald-100 dark:bg-emerald-900 dark:text-emerald-200">
-                {reasonCounts.primary4.toLocaleString("id-ID")}
-              </span>
-            </button>
-
-            {/* 4 Individual Physical Reasons */}
-            {PRIMARY_4_PHYSICAL_REASONS.map((rz) => {
-              const isSelected = reasonScope === rz;
-              const color = REASON_COLOR_MAP[rz] || "#10b981";
-              const cnt = reasonCounts[rz] || 0;
-              return (
-                <button
-                  key={rz}
-                  type="button"
-                  onClick={() => setReasonScope(isSelected ? "ALL" : rz)}
-                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
-                    isSelected
-                      ? "text-white shadow-xs font-black ring-2 ring-offset-1 ring-white/50"
-                      : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-400 dark:hover:border-slate-600"
-                  }`}
-                  style={
-                    isSelected
-                      ? { backgroundColor: color, borderColor: color }
-                      : {}
-                  }
-                >
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: color }}
-                  />
-                  <span>{rz}</span>
-                  <span className="text-[10px] opacity-80 font-mono">
-                    ({cnt.toLocaleString("id-ID")})
-                  </span>
-                </button>
-              );
-            })}
-
-            {/* Pill: Kendala Lainnya */}
-            <button
-              type="button"
-              onClick={() => setReasonScope(reasonScope === "OTHER" ? "ALL" : "OTHER")}
-              className={`px-2.5 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
-                reasonScope === "OTHER"
-                  ? "bg-zinc-700 text-white border-zinc-600"
-                  : "bg-zinc-50 dark:bg-slate-950 text-zinc-500 dark:text-slate-400 border-zinc-200 dark:border-slate-800 hover:text-zinc-800 dark:hover:text-zinc-200"
-              }`}
-              title="Kasus selain 4 kendala fisik utama (Recall, Damage, ED, dll)"
-            >
-              <span>Lainnya</span>
-              <span className="text-[10px] opacity-75 font-mono">
-                ({reasonCounts.other.toLocaleString("id-ID")})
-              </span>
-            </button>
-          </div>
-
-          {/* Active Filter Indicator Badge */}
-          {reasonScope !== "ALL" && (
-            <div className="flex items-center gap-1.5 text-xs">
-              <span className="px-2 py-0.5 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 font-semibold font-mono text-[11px]">
-                Fokus aktif: {reasonScope === "PRIMARY_4" ? "4 Kendala Fisik Utama" : reasonScope}
-              </span>
+              {/* Pill: Semua Kendala Fisik */}
               <button
                 type="button"
                 onClick={() => setReasonScope("ALL")}
-                className="text-xs text-zinc-400 hover:text-rose-500 font-bold"
-                title="Hapus filter kendala"
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                  reasonScope === "ALL"
+                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
+                    : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-300 dark:hover:border-slate-700"
+                }`}
               >
-                ✕
+                <span>Semua Kendala</span>
+                <span className="text-[10px] opacity-75 font-mono">
+                  ({reasonCounts.all.toLocaleString("id-ID")})
+                </span>
               </button>
+
+              {/* 4 Individual Physical Reasons */}
+              {PRIMARY_4_PHYSICAL_REASONS.map((rz) => {
+                const isSelected = reasonScope === rz;
+                const color = REASON_COLOR_MAP[rz] || "#10b981";
+                const cnt = reasonCounts[rz] || 0;
+                return (
+                  <button
+                    key={rz}
+                    type="button"
+                    onClick={() => setReasonScope(isSelected ? "ALL" : rz)}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                      isSelected
+                        ? "text-white shadow-xs font-black ring-2 ring-offset-1 ring-white/50"
+                        : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-400 dark:hover:border-slate-600"
+                    }`}
+                    style={
+                      isSelected
+                        ? { backgroundColor: color, borderColor: color }
+                        : {}
+                    }
+                  >
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: color }}
+                    />
+                    <span>{rz}</span>
+                    <span className="text-[10px] opacity-80 font-mono">
+                      ({cnt.toLocaleString("id-ID")})
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </div>
+
+            {/* Active Filter Indicator Badge */}
+            {reasonScope !== "ALL" && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="px-2 py-0.5 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 font-semibold font-mono text-[11px]">
+                  Fokus aktif: {reasonScope}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setReasonScope("ALL")}
+                  className="text-xs text-zinc-400 hover:text-rose-500 font-bold cursor-pointer"
+                  title="Hapus filter kendala"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* =========================================

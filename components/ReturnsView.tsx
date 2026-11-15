@@ -4451,7 +4451,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   type="button"
                   onClick={() => {
                     setPersonnelCategoryFilter("ed");
-                    fetchPersonnelStats(monthFilter, weekFilter, personnelReasonFilter, "ed");
+                    setPersonnelReasonFilter("ALL");
+                    fetchPersonnelStats(monthFilter, weekFilter, "ALL", "ed");
                   }}
                   className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
                     personnelCategoryFilter === "ed"
@@ -4466,7 +4467,8 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                   type="button"
                   onClick={() => {
                     setPersonnelCategoryFilter("damage");
-                    fetchPersonnelStats(monthFilter, weekFilter, personnelReasonFilter, "damage");
+                    setPersonnelReasonFilter("ALL");
+                    fetchPersonnelStats(monthFilter, weekFilter, "ALL", "damage");
                   }}
                   className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
                     personnelCategoryFilter === "damage"
@@ -4479,121 +4481,90 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
               </div>
             </div>
 
-            {/* Row 2: Filter 4 Kendala Fisik Utama (Personil) */}
-            <div className="w-full flex flex-wrap items-center justify-between gap-2.5 pt-2.5 border-t border-zinc-100 dark:border-slate-800/80">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1 text-xs font-bold text-zinc-700 dark:text-slate-200 mr-0.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                  <span className="text-[11px] uppercase tracking-wider font-extrabold">Fokus Kendala Fisik:</span>
+            {/* Row 2: Sub-filter Rincian Fisik (Hanya untuk Murni Operasional & Semua) */}
+            {(personnelCategoryFilter === "operational" || personnelCategoryFilter === "ALL") && (
+              <div className="w-full flex flex-wrap items-center justify-between gap-2.5 pt-2.5 border-t border-zinc-100 dark:border-slate-800/80">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1 text-xs font-bold text-zinc-700 dark:text-slate-200 mr-0.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span className="text-[11px] uppercase tracking-wider font-extrabold">Rincian Fisik:</span>
+                  </div>
+
+                  {/* Pill: Semua Kendala Fisik */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPersonnelReasonFilter("ALL");
+                      fetchPersonnelStats(monthFilter, weekFilter, "ALL", personnelCategoryFilter);
+                    }}
+                    className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer border ${
+                      personnelReasonFilter === "ALL"
+                        ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
+                        : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-300"
+                    }`}
+                  >
+                    Semua Kendala
+                  </button>
+
+                  {/* 4 Individual Physical Reasons */}
+                  {[
+                    { name: "Fisik yang dikirim kurang", color: "#10b981" },
+                    { name: "Fisik yang dikirim lebih", color: "#eab308" },
+                    { name: "Fisik yang dikirim salah", color: "#f97316" },
+                    { name: "Fisik yang dikirim tidak ada", color: "#a855f7" },
+                  ].map((rz) => {
+                    const isSelected = personnelReasonFilter === rz.name;
+                    return (
+                      <button
+                        key={rz.name}
+                        type="button"
+                        onClick={() => {
+                          const next = isSelected ? "ALL" : rz.name;
+                          setPersonnelReasonFilter(next);
+                          fetchPersonnelStats(monthFilter, weekFilter, next, personnelCategoryFilter);
+                        }}
+                        className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                          isSelected
+                            ? "text-white shadow-xs font-black ring-2 ring-offset-1 ring-white/50"
+                            : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-400"
+                        }`}
+                        style={
+                          isSelected
+                            ? { backgroundColor: rz.color, borderColor: rz.color }
+                            : {}
+                        }
+                      >
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: rz.color }}
+                        />
+                        <span>{rz.name}</span>
+                      </button>
+                    );
+                  })}
                 </div>
 
-                {/* Pill: Semua Kendala */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPersonnelReasonFilter("ALL");
-                    fetchPersonnelStats(monthFilter, weekFilter, "ALL");
-                  }}
-                  className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer border ${
-                    personnelReasonFilter === "ALL"
-                      ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
-                      : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-300"
-                  }`}
-                >
-                  Semua Kendala
-                </button>
-
-                {/* Pill: ⭐ 4 Kendala Fisik Utama (Gabungan) */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPersonnelReasonFilter("PRIMARY_4");
-                    fetchPersonnelStats(monthFilter, weekFilter, "PRIMARY_4");
-                  }}
-                  className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer border ${
-                    personnelReasonFilter === "PRIMARY_4"
-                      ? "bg-emerald-600 text-white border-emerald-500 shadow-sm"
-                      : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100"
-                  }`}
-                  title="Filter personil khusus 4 Kendala Fisik Utama: Kurang, Lebih, Salah, Tidak Ada"
-                >
-                  ⭐ 4 Kendala Fisik Utama
-                </button>
-
-                {/* 4 Individual Physical Reasons */}
-                {[
-                  { name: "Fisik yang dikirim kurang", color: "#10b981" },
-                  { name: "Fisik yang dikirim lebih", color: "#eab308" },
-                  { name: "Fisik yang dikirim salah", color: "#f97316" },
-                  { name: "Fisik yang dikirim tidak ada", color: "#a855f7" },
-                ].map((rz) => {
-                  const isSelected = personnelReasonFilter === rz.name;
-                  return (
-                    <button
-                      key={rz.name}
-                      type="button"
-                      onClick={() => {
-                        const next = isSelected ? "ALL" : rz.name;
-                        setPersonnelReasonFilter(next);
-                        fetchPersonnelStats(monthFilter, weekFilter, next);
-                      }}
-                      className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
-                        isSelected
-                          ? "text-white shadow-xs font-black ring-2 ring-offset-1 ring-white/50"
-                          : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-400"
-                      }`}
-                      style={
-                        isSelected
-                          ? { backgroundColor: rz.color, borderColor: rz.color }
-                          : {}
-                      }
-                    >
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: rz.color }}
-                      />
-                      <span>{rz.name}</span>
-                    </button>
-                  );
-                })}
-
-                {/* Pill: Kendala Lainnya */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = personnelReasonFilter === "OTHER" ? "ALL" : "OTHER";
-                    setPersonnelReasonFilter(next);
-                    fetchPersonnelStats(monthFilter, weekFilter, next);
-                  }}
-                  className={`px-2.5 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer border ${
-                    personnelReasonFilter === "OTHER"
-                      ? "bg-zinc-700 text-white border-zinc-600"
-                      : "bg-zinc-50 dark:bg-slate-950 text-zinc-500 dark:text-slate-400 border-zinc-200 dark:border-slate-800"
-                  }`}
-                >
-                  Lainnya
-                </button>
+                {/* Reset Filter Button */}
+                {(personnelReasonFilter !== "ALL" || weekFilter !== "ALL" || monthFilter !== "ALL" || personnelFilterPbf !== "ALL" || personnelCategoryFilter !== "operational" || personnelSearchQuery) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPersonnelReasonFilter("ALL");
+                      setPersonnelCategoryFilter("operational");
+                      setPersonnelFilterPbf("ALL");
+                      setPersonnelSearchQuery("");
+                      setMonthFilter("ALL");
+                      setWeekFilter("ALL");
+                      fetchPersonnelStats("ALL", "ALL", "ALL", "operational");
+                    }}
+                    className="text-xs text-rose-600 dark:text-rose-400 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset Semua Filter</span>
+                  </button>
+                )}
               </div>
-
-              {/* Reset Filter Button */}
-              {(personnelReasonFilter !== "ALL" || weekFilter !== "ALL" || monthFilter !== "ALL" || personnelFilterPbf !== "ALL" || personnelSearchQuery) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPersonnelReasonFilter("ALL");
-                    setPersonnelFilterPbf("ALL");
-                    setPersonnelSearchQuery("");
-                    setMonthFilter("ALL");
-                    setWeekFilter("ALL");
-                    fetchPersonnelStats("ALL", "ALL", "ALL");
-                  }}
-                  className="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Reset Filter Personil</span>
-                </button>
-              )}
-            </div>
+            )}
           </div>
 
           {/* Leaderboard Table with Horizontal Progress Bars */}
