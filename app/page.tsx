@@ -636,6 +636,32 @@ export default function Home() {
   }, [isDarkMode]);
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth < 768;
+    }
+    return false;
+  });
+  const [mobileViewMode, setMobileViewMode] = useState<"cards" | "table">(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("fo_mobile_view_mode");
+        if (saved === "cards" || saved === "table") return saved;
+      } catch {}
+    }
+    return "cards";
+  });
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   // Zoom / Scale state & persistence (100% | 85% | 80%)
   const [appZoom, setAppZoom] = useState<number>(() => {
@@ -5290,10 +5316,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         isDarkMode ? "bg-[#000000] text-zinc-100" : "bg-zinc-50/70 text-zinc-900"
       }`}>
         {/* Top Navbar Header (Vercel Style Breadcrumb & Action Bar) */}
-        <header className={`h-12 border-b px-4 flex items-center justify-between shrink-0 z-30 sticky top-0 ${
+        <header className={`h-12 border-b px-2.5 sm:px-4 flex items-center justify-between shrink-0 z-30 sticky top-0 ${
           isDarkMode ? "bg-[#09090b] border-zinc-800 text-zinc-100" : "bg-white border-zinc-200 text-zinc-900 shadow-xs"
         }`}>
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Mobile Hamburger Menu */}
             <button
               type="button"
@@ -5301,6 +5327,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               className={`md:hidden p-1.5 rounded-lg cursor-pointer ${
                 isDarkMode ? "text-zinc-400 hover:text-white hover:bg-zinc-900" : "text-zinc-600 hover:text-black hover:bg-zinc-100"
               }`}
+              title="Menu Navigasi"
             >
               <Menu className="w-4 h-4" />
             </button>
@@ -5320,11 +5347,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             </button>
 
             {/* Breadcrumb Navigation */}
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
               <div className="w-6 h-6 rounded-lg bg-blue-600 flex items-center justify-center text-xs text-white font-black shadow-sm shrink-0">
                 ⚡
               </div>
-              <div className="flex items-center gap-1.5 min-w-0">
+              <div className="hidden sm:flex items-center gap-1.5 min-w-0">
                 <span className={`text-xs font-black tracking-tight flex items-center gap-1 ${
                   isDarkMode ? "text-white" : "text-black"
                 }`}>
@@ -5339,15 +5366,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   v2.0
                 </span>
               </div>
-              <ChevronsUpDown className={`w-3.5 h-3.5 shrink-0 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} />
-              <span className={isDarkMode ? "text-zinc-700" : "text-zinc-300"}>/</span>
-              <span className={`text-xs font-bold capitalize truncate ${isDarkMode ? "text-zinc-300" : "text-black"}`}>
+              <ChevronsUpDown className={`hidden sm:inline-block w-3.5 h-3.5 shrink-0 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} />
+              <span className={`hidden sm:inline ${isDarkMode ? "text-zinc-700" : "text-zinc-300"}`}>/</span>
+              <span className={`text-xs font-bold capitalize truncate max-w-[85px] sm:max-w-none ${isDarkMode ? "text-zinc-300" : "text-black"}`}>
                 {mainView === "workspace" ? "Daftar Faktur" : mainView === "dashboard" ? "Overview" : mainView === "returns" ? "Shipment Error" : "Master Customer"}
               </span>
 
               {/* Warehouse Switcher in Header: ONLY MBI and MAI (LOCKED_RULES.md) */}
               {(mainView === "workspace" || mainView === "dashboard") && (
-                <div className={`ml-2 sm:ml-4 flex items-center p-0.5 rounded-lg border text-xs font-black shadow-xs ${
+                <div className={`ml-1 sm:ml-4 flex items-center p-0.5 rounded-lg border text-xs font-black shadow-xs shrink-0 ${
                   isDarkMode ? "bg-zinc-950 border-zinc-800" : "bg-zinc-100 border-zinc-300"
                 }`}>
                   <button
@@ -5356,7 +5383,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       handleSelectWarehouse("MBI");
                       if (mainView === "dashboard") setDashboardWarehouseFilter("MBI");
                     }}
-                    className={`px-3 py-1 rounded-md text-xs font-black tracking-wide transition-all cursor-pointer ${
+                    className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-md text-[11px] sm:text-xs font-black tracking-wide transition-all cursor-pointer ${
                       (mainView === "dashboard" ? dashboardWarehouseFilter === "MBI" : selectedWarehouse === "MBI")
                         ? (isDarkMode ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-400/50" : "bg-black text-white shadow-sm")
                         : (isDarkMode ? "text-zinc-400 hover:text-white" : "text-zinc-600 hover:text-black")
@@ -5371,7 +5398,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       handleSelectWarehouse("MAI");
                       if (mainView === "dashboard") setDashboardWarehouseFilter("MAI");
                     }}
-                    className={`px-3 py-1 rounded-md text-xs font-black tracking-wide transition-all cursor-pointer ${
+                    className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-md text-[11px] sm:text-xs font-black tracking-wide transition-all cursor-pointer ${
                       (mainView === "dashboard" ? dashboardWarehouseFilter === "MAI" : selectedWarehouse === "MAI")
                         ? (isDarkMode ? "bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400/50" : "bg-black text-white shadow-sm")
                         : (isDarkMode ? "text-zinc-400 hover:text-white" : "text-zinc-600 hover:text-black")
@@ -5386,12 +5413,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           </div>
 
           {/* Right Action Buttons */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Panduan & How to Use Quick Button */}
             <button
               type="button"
               onClick={() => setShowHowToUseModal(true)}
-              className={`px-2.5 py-1 rounded-lg border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              className={`hidden md:flex px-2.5 py-1 rounded-lg border text-xs font-bold transition items-center gap-1.5 cursor-pointer ${
                 isDarkMode
                   ? "bg-zinc-950 border-zinc-800 hover:border-blue-700/80 text-blue-400"
                   : "bg-blue-50/80 border-blue-200 hover:border-blue-300 text-blue-700"
@@ -5399,14 +5426,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               title="Buka Panduan Lengkap & How to Use"
             >
               <BookOpen className="w-3.5 h-3.5 text-blue-500" />
-              <span className="hidden sm:inline">How to Use</span>
+              <span>How to Use</span>
             </button>
 
             {/* Realtime Online Users Pill */}
             <button
               type="button"
               onClick={() => setShowOnlinePopover((prev) => !prev)}
-              className={`px-2.5 py-1 rounded-lg border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              className={`px-2 sm:px-2.5 py-1 rounded-lg border text-xs font-bold transition flex items-center gap-1 sm:gap-1.5 cursor-pointer ${
                 isDarkMode
                   ? "bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300"
                   : "bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700"
@@ -5442,7 +5469,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 <button
                   type="button"
                   onClick={handleExportExcel}
-                  className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer ${
+                  className={`hidden sm:flex px-2.5 py-1 rounded-lg border text-xs font-semibold transition items-center gap-1.5 cursor-pointer ${
                     isDarkMode
                       ? "border-zinc-800 hover:bg-zinc-900 text-zinc-300"
                       : "border-zinc-200 hover:bg-zinc-100 text-zinc-700"
@@ -5476,7 +5503,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       showToast("⚠️ Akses Stranger: Anda hanya dapat melihat data (Read Only).");
                     }
                   }}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                  className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 sm:gap-1.5 shadow-sm cursor-pointer ${
                     currentUser?.role === "readonly"
                       ? "opacity-50 cursor-not-allowed bg-zinc-800 text-zinc-500"
                       : dragOver
@@ -5488,7 +5515,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   title="Upload file export Oracle (.xls / .xlsx)"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Upload Oracle</span>
+                  <span className="hidden sm:inline">Upload Oracle</span>
+                  <span className="sm:hidden">Upload</span>
                   <input
                     type="file"
                     multiple
@@ -5509,7 +5537,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         </header>
 
         {/* Main Body View Content */}
-        <main className="flex-1 p-3 sm:p-5 overflow-y-auto space-y-4">
+        <main className="flex-1 p-2.5 sm:p-5 pb-20 md:pb-5 overflow-y-auto space-y-3 sm:space-y-4">
 
         {/* ─── Dashboard & Settings Left Floating Drawer ─── */}
         {showSettingsPanel && (
@@ -6248,10 +6276,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         {/* Metric KPI - Executive High-Performance Bar */}
         <div className={`rounded-xl overflow-hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 ${
           showInvoiceProgression ? "lg:grid-cols-11" : "lg:grid-cols-7"
-        } divide-y sm:divide-y-0 sm:divide-x border shadow-xs transition-colors ${
-          isDarkMode
-            ? "border-zinc-800 divide-zinc-800 bg-[#09090b]"
-            : "border-zinc-200 divide-zinc-200 bg-white"
+        } divide-y sm:divide-y-0 sm:divide-x border border-zinc-200 dark:border-zinc-800 divide-zinc-200 dark:divide-zinc-800 shadow-xs transition-colors [&:nth-child(odd)]:border-r sm:[&:nth-child(odd)]:border-r-0 ${
+          isDarkMode ? "bg-[#09090b]" : "bg-white"
         }`}>
           {/* Cell 0: Report QC (Menunggu Faktur ORA/DOO) */}
           <button
@@ -6511,14 +6537,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               ? "bg-[#09090b] border-zinc-800 focus-within:border-zinc-700"
               : "bg-white border-zinc-300 focus-within:border-black focus-within:ring-2 focus-within:ring-black/10"
           }`}>
-            <span className={`pl-3 text-sm ${isDarkMode ? "text-zinc-500" : "text-zinc-500"}`}>🔍</span>
+            <span className={`pl-2.5 sm:pl-3 text-sm ${isDarkMode ? "text-zinc-500" : "text-zinc-500"}`}>🔍</span>
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="Cari no faktur, no SO, nama pelanggan, produk obat... (Ctrl+K)"
+              placeholder="Cari faktur, SO, pelanggan, obat..."
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-              className={`w-full pl-2.5 pr-12 py-2 rounded-xl text-xs font-semibold focus:outline-none transition-colors bg-transparent ${
+              className={`w-full pl-2 pr-7 sm:pr-12 py-2 rounded-xl text-xs font-semibold focus:outline-none transition-colors bg-transparent ${
                 isDarkMode ? "text-zinc-100 placeholder:text-zinc-500" : "text-black placeholder:text-zinc-500"
               }`}
             />
@@ -6526,7 +6552,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               <button
                 type="button"
                 onClick={() => { setSearch(""); setPage(0); searchInputRef.current?.focus(); }}
-                className={`mr-7 px-1.5 py-0.2 rounded text-xs font-bold transition-colors cursor-pointer ${
+                className={`mr-2 sm:mr-7 px-1.5 py-0.2 rounded text-xs font-bold transition-colors cursor-pointer ${
                   isDarkMode ? "text-zinc-400 hover:text-white" : "text-zinc-500 hover:text-black"
                 }`}
                 title="Hapus pencarian"
@@ -6534,7 +6560,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 ✕
               </button>
             )}
-            <span className={`absolute right-2 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md border pointer-events-none ${
+            <span className={`hidden md:inline-flex absolute right-2 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md border pointer-events-none ${
               isDarkMode ? "bg-zinc-900 text-zinc-400 border-zinc-800" : "bg-zinc-100 text-black border-zinc-300 shadow-2xs"
             }`}>
               ⌘K
@@ -6545,18 +6571,102 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           {unprintedCountInFiltered > 0 && currentUser?.role !== "readonly" && (
             <button
               onClick={handleMarkAllPrinted}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0"
+              className="px-2.5 sm:px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 sm:gap-1.5 shadow-xs cursor-pointer shrink-0"
             >
               <span>✓</span>
-              <span>Tandai Selesai ({unprintedCountInFiltered})</span>
+              <span className="hidden sm:inline">Tandai Selesai</span>
+              <span className="sm:hidden">Selesai</span>
+              <span>({unprintedCountInFiltered})</span>
             </button>
           )}
         </div>
 
         {(filter as any) !== "report_qc" && (
         <>
-        {/* Filter Dropdowns - Modern Clean Row (Wilayah DK/LK untuk MBI & MAI) */}
-        <div className={`p-2 rounded-xl border grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 shadow-xs transition-colors ${
+        {/* Mobile Filter Toggle & View Switcher Bar */}
+        <div className="flex md:hidden items-center justify-between gap-2 w-full select-none">
+          {/* Mobile Filter Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setMobileFiltersOpen((prev) => !prev)}
+            className={`flex-1 flex items-center justify-between px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-xs cursor-pointer ${
+              (katFilter !== "all" || dklkFilter !== "all" || jenisFilter !== "all" || klasFilter !== "all" || txDateFilter !== "all" || orderDateFilter !== "all")
+                ? "bg-blue-600/10 border-blue-500/50 text-blue-600 dark:text-blue-400"
+                : isDarkMode
+                ? "bg-[#09090b] border-zinc-800 text-zinc-300"
+                : "bg-white border-zinc-300 text-zinc-800"
+            }`}
+          >
+            <div className="flex items-center gap-1.5 truncate">
+              <span>⚙️</span>
+              <span className="text-[11px] font-bold">
+                {katFilter !== "all" || dklkFilter !== "all" || jenisFilter !== "all" || klasFilter !== "all" || txDateFilter !== "all" || orderDateFilter !== "all"
+                  ? `Filter: ${[katFilter, dklkFilter, jenisFilter, klasFilter, txDateFilter, orderDateFilter].filter(f => f !== "all").length} Aktif`
+                  : "Filter Kategori & Tgl"}
+              </span>
+            </div>
+            <span className="text-[10px] ml-1">{mobileFiltersOpen ? "▲ Tutup" : "▼ Buka"}</span>
+          </button>
+
+          {/* Reset Filters Quick Button if active */}
+          {(katFilter !== "all" || dklkFilter !== "all" || jenisFilter !== "all" || klasFilter !== "all" || txDateFilter !== "all" || orderDateFilter !== "all") && (
+            <button
+              type="button"
+              onClick={() => {
+                setKatFilter("all");
+                setDklkFilter("all");
+                setJenisFilter("all");
+                setKlasFilter("all");
+                setTxDateFilter("all");
+                setOrderDateFilter("all");
+                setPage(0);
+              }}
+              className="px-2.5 py-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-500 text-[11px] font-bold cursor-pointer"
+              title="Reset semua filter"
+            >
+              Reset
+            </button>
+          )}
+
+          {/* Mobile View Switcher (Cards vs Table) */}
+          <div className={`flex items-center p-0.5 rounded-xl border text-[11px] font-bold shrink-0 ${
+            isDarkMode ? "bg-[#09090b] border-zinc-800" : "bg-white border-zinc-300"
+          }`}>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileViewMode("cards");
+                try { localStorage.setItem("fo_mobile_view_mode", "cards"); } catch {}
+              }}
+              className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                mobileViewMode === "cards"
+                  ? (isDarkMode ? "bg-zinc-800 text-white font-black" : "bg-zinc-900 text-white font-black")
+                  : "text-zinc-500"
+              }`}
+              title="Tampilan Kartu (Mobile Friendly)"
+            >
+              🗂️ Kartu
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileViewMode("table");
+                try { localStorage.setItem("fo_mobile_view_mode", "table"); } catch {}
+              }}
+              className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                mobileViewMode === "table"
+                  ? (isDarkMode ? "bg-zinc-800 text-white font-black" : "bg-zinc-900 text-white font-black")
+                  : "text-zinc-500"
+              }`}
+              title="Tampilan Tabel Spreadsheet"
+            >
+              📊 Tabel
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Dropdowns - Shown when mobileFiltersOpen is true OR on desktop (md:grid) */}
+        <div className={`${mobileFiltersOpen ? "grid" : "hidden md:grid"} p-2 rounded-xl border grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 shadow-xs transition-colors ${
           isDarkMode ? "bg-[#09090b] border-zinc-800" : "bg-white border-zinc-300"
         }`}>
           {/* Kategori Filter */}
@@ -6659,7 +6769,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         </div>
 
         {/* Spreadsheet Controls: Freeze & Column Visibility */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+        <div className={`${mobileViewMode === "cards" ? "hidden md:flex" : "flex"} flex-wrap items-center justify-between gap-2 px-1`}>
           <div className="flex items-center gap-2 flex-wrap text-xs">
             {/* Freeze Dropdown */}
             <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2.5 py-1.5 shadow-2xs">
@@ -6779,11 +6889,238 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           />
         ) : (
           <Fragment>
+          {/* ─── MOBILE CARD VIEW (Active on Mobile when 'Kartu' is selected) ─── */}
+          <div className={`${mobileViewMode === "cards" ? "block md:hidden" : "hidden"} space-y-2.5`}>
+            {loading && records.length === 0 ? (
+              <div className={`text-center py-12 px-4 rounded-2xl border ${isDarkMode ? "bg-[#09090b] border-zinc-800 text-zinc-400" : "bg-white border-zinc-200 text-zinc-500"}`}>
+                <div className="flex flex-col items-center gap-2">
+                  <span className="text-2xl animate-spin text-blue-500">🔄</span>
+                  <span className="text-xs font-semibold">Memuat data faktur...</span>
+                </div>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className={`text-center py-12 px-4 rounded-2xl border ${isDarkMode ? "bg-[#09090b] border-zinc-800 text-zinc-400" : "bg-white border-zinc-200 text-zinc-500"}`}>
+                <div className="flex flex-col items-center gap-2">
+                  <span className="text-3xl">{filter === "belum" ? "🎉" : filter === "double" ? "🔍" : filter === "retur" ? "📦" : "📄"}</span>
+                  <span className="text-xs font-semibold">
+                    {filter === "belum"
+                      ? "Semua faktur sudah dicetak (tidak ada antrean)."
+                      : filter === "sudah"
+                      ? "Belum ada faktur yang dicetak."
+                      : filter === "double"
+                      ? "Tidak ada faktur dengan nomor SO ganda."
+                      : filter === "retur"
+                      ? "Tidak ada transaksi retur."
+                      : "Tidak ada faktur yang sesuai filter."}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              pageData.map((g) => {
+                const isExpanded = expandedInvoices.has(g.key);
+                const isPrinted = g.allPrinted;
+                const cInfo = getCheckerInfo(g.so, g.invoiceNumber, g.invoiceKey, g.entity);
+                const checkerName = g.isQcQueue ? (g.checker || cInfo?.checker) : (cInfo?.checker || g.checker);
+                const packerName = g.isQcQueue ? (g.packer || cInfo?.packer) : (cInfo?.packer || g.packer);
+                const pickerName = g.isQcQueue ? (g.picker || cInfo?.picker) : (cInfo?.picker || g.picker);
+
+                return (
+                  <div
+                    key={g.key}
+                    onClick={() => toggleExpand(g.key)}
+                    className={`rounded-2xl border p-3 transition-all cursor-pointer shadow-xs ${
+                      isPrinted
+                        ? (isDarkMode ? "bg-[#09090b]/60 border-zinc-800/80 text-zinc-400" : "bg-zinc-50 border-zinc-200 text-zinc-600")
+                        : (isDarkMode ? "bg-[#09090b] border-zinc-700/80 text-zinc-100 ring-1 ring-blue-500/20 shadow-sm" : "bg-white border-zinc-300 text-zinc-900 shadow-sm")
+                    }`}
+                  >
+                    {/* Top Row: Badges, Invoice No, and Big Done Print Button */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black font-mono border ${
+                            g.jenisTransaksi === "ORA"
+                              ? (isDarkMode ? "bg-purple-950/70 text-purple-300 border-purple-800/60" : "bg-purple-100 text-purple-800 border-purple-200")
+                              : (isDarkMode ? "bg-zinc-800 text-zinc-300 border-zinc-700" : "bg-zinc-100 text-zinc-800 border-zinc-300")
+                          }`}>
+                            {g.jenisTransaksi} · {g.entity || "MBI"}
+                          </span>
+
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-black border ${
+                            g.kategori === "1P"
+                              ? (isDarkMode ? "bg-blue-950/70 text-blue-300 border-blue-800" : "bg-blue-100 text-blue-800 border-blue-200")
+                              : g.kategori === "2P"
+                              ? (isDarkMode ? "bg-amber-950/70 text-amber-300 border-amber-800" : "bg-amber-100 text-amber-800 border-amber-200")
+                              : (isDarkMode ? "bg-zinc-800 text-zinc-300 border-zinc-700" : "bg-zinc-100 text-zinc-700 border-zinc-300")
+                          }`}>
+                            {g.kategori}
+                          </span>
+
+                          {g.dklk && (
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-black border ${
+                              g.dklk === "DK"
+                                ? (isDarkMode ? "bg-emerald-950/60 text-emerald-300 border-emerald-800" : "bg-emerald-100 text-emerald-800 border-emerald-200")
+                                : (isDarkMode ? "bg-indigo-950/60 text-indigo-300 border-indigo-800" : "bg-indigo-100 text-indigo-800 border-indigo-200")
+                            }`}>
+                              {g.dklk}
+                            </span>
+                          )}
+
+                          {g.kategoriProduk && (
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${
+                              g.kategoriProduk === "FARMA"
+                                ? "bg-blue-950/40 text-blue-300 border-blue-800/40"
+                                : g.kategoriProduk === "ALKES"
+                                ? "bg-teal-950/40 text-teal-300 border-teal-800/40"
+                                : "bg-purple-950/40 text-purple-300 border-purple-800/40"
+                            }`}>
+                              {g.kategoriProduk}
+                            </span>
+                          )}
+
+                          {g.isRetur && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-rose-950 text-rose-300 border border-rose-800">
+                              RETUR
+                            </span>
+                          )}
+                          {g.isDoubleInv && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-rose-950 text-rose-300 border border-rose-800">
+                              DOUBLE
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-mono font-black text-sm text-blue-600 dark:text-blue-400">
+                            #{g.invoiceNumber}
+                          </span>
+                          <span className="text-xs font-mono font-bold text-zinc-500">
+                            SO: {g.so}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Big Tap to Print Action Button */}
+                      {!g.isQcQueue ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            togglePrint(g);
+                          }}
+                          disabled={currentUser?.role === "readonly"}
+                          className={`min-w-[44px] min-h-[44px] px-3 py-1.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs shrink-0 select-none ${
+                            isPrinted
+                              ? "bg-emerald-600/15 border border-emerald-500/40 text-emerald-500 hover:bg-emerald-600/25"
+                              : "bg-blue-600 hover:bg-blue-700 text-white shadow-md active:scale-95"
+                          }`}
+                          title={isPrinted ? "Selesai Cetak (Klik untuk batalkan)" : "Klik untuk Tandai Selesai Cetak"}
+                        >
+                          {isPrinted ? (
+                            <>
+                              <span className="font-black text-emerald-500 text-sm">✓</span>
+                              <span className="text-[11px] font-bold">Print</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-xs">🖨️</span>
+                              <span className="text-[11px] font-bold">Cetak</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <span className={`px-2 py-1 rounded-lg text-[10px] font-bold border shrink-0 ${
+                          g.isQcDone
+                            ? "bg-emerald-950 text-emerald-300 border-emerald-800"
+                            : "bg-amber-950 text-amber-300 border-amber-800"
+                        }`}>
+                          {g.isQcDone ? "✓ DONE" : "⏳ PROSES"}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Customer / Apotek Name */}
+                    <div className="mt-2">
+                      <p className={`font-bold text-xs leading-snug ${isDarkMode ? "text-zinc-100" : "text-zinc-900"}`}>
+                        {g.customerName}
+                      </p>
+                    </div>
+
+                    {/* Bottom Bar: Price, Items, Checker/Packer, and Expand Arrow */}
+                    <div className="mt-2.5 pt-2 border-t border-zinc-200 dark:border-zinc-800/80 flex items-center justify-between text-[11px]">
+                      <div>
+                        <span className="font-mono font-black text-xs text-zinc-900 dark:text-zinc-100">
+                          {formatRupiah(Math.round(g.totalHarga * 1.11 * 100) / 100)}
+                        </span>
+                        <span className="text-[10px] text-zinc-500 ml-1.5 font-medium">
+                          ({g.items ? g.items.length : 0} item)
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+                        {(checkerName || packerName || pickerName) && (
+                          <span className="truncate max-w-[130px] font-mono">
+                            {checkerName && `C: ${checkerName}`} {packerName && `P: ${packerName}`}
+                          </span>
+                        )}
+                        <span className="text-zinc-400 font-bold">
+                          {isExpanded ? "▲ Tutup" : "▼ Rincian"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Expanded Items */}
+                    {isExpanded && (
+                      <div className="mt-3 pt-2.5 border-t border-zinc-200 dark:border-zinc-800 space-y-2">
+                        <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                          <span>Rincian Obat ({g.items ? g.items.length : 0} jenis):</span>
+                          {isPrinted && g.printedAt && (
+                            <span className="text-emerald-500 font-mono text-[10px]">
+                              ⏱ {formatPrintTime(g.printedAt)}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="overflow-x-auto w-full max-h-60 overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                          <table className="w-full text-[11px] text-left">
+                            <thead className="bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-b border-zinc-200 dark:border-zinc-800 font-bold uppercase text-[9px] tracking-wider sticky top-0">
+                              <tr>
+                                <th className="py-1 px-2">Nama Barang</th>
+                                <th className="py-1 px-2 text-center">Qty</th>
+                                <th className="py-1 px-2">LOT</th>
+                                <th className="py-1 px-2 text-right">Harga</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800/60">
+                              {g.items && g.items.map((it, idx) => (
+                                <tr key={idx} className="hover:bg-zinc-100/50 dark:hover:bg-zinc-800/40">
+                                  <td className="py-1.5 px-2 font-medium">
+                                    <div className="text-zinc-900 dark:text-zinc-100">{it.itemDescription || it.itemCode}</div>
+                                    <div className="text-[9px] text-zinc-500 font-mono">{it.itemCode} · {it.kategoriProduk || "FARMA"}</div>
+                                  </td>
+                                  <td className="py-1.5 px-2 text-center font-mono font-bold">{it.qty} {it.uom}</td>
+                                  <td className="py-1.5 px-2 font-mono text-[10px] text-zinc-500">{it.lotNumber || "-"}</td>
+                                  <td className="py-1.5 px-2 text-right font-mono font-bold text-zinc-900 dark:text-zinc-100">
+                                    {formatRupiah(Math.round((it.totalHarga || 0) * 1.11))}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
           {/* ===================================================================== */}
         {/* 🔒 LOCKED COMPONENT: DAFTAR FAKTUR 14-COLUMN TABLE (LOCKED_RULES.md) */}
         {/* Struktur 14 kolom (termasuk Checker & Packer) dan navigasi di-LOCK. */}
         {/* ===================================================================== */}
-        <div className={`rounded-xl overflow-hidden border shadow-xs transition-colors ${
+        <div className={`${mobileViewMode === "cards" ? "hidden md:block" : "block"} rounded-xl overflow-hidden border shadow-xs transition-colors ${
           isDarkMode ? "bg-[#09090b] border-zinc-800" : "bg-white border-zinc-300"
         }`}>
           <div className="overflow-x-auto">
@@ -6805,6 +7142,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 (isColVisible("waktu_print") ? 1 : 0) +
                 (isColVisible("total") ? 1 : 0);
               const freezeOffsets = getFreezeOffsets();
+              const effectiveFreezeLevel = isMobile && (freezeColLevel === "2" || freezeColLevel === "3") ? "1" : freezeColLevel;
 
               return (
                 <table className="w-full text-left text-xs border-collapse">
@@ -6817,7 +7155,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       {/* Col 0: Expand (#) */}
                       <th
                         className={`px-2 py-2.5 w-8 min-w-[32px] text-center border-r border-zinc-200 dark:border-zinc-800 ${
-                          freezeColLevel !== "none"
+                          effectiveFreezeLevel !== "none"
                             ? "sticky left-0 z-30 bg-zinc-100 dark:bg-zinc-950"
                             : ""
                         }`}
@@ -6828,9 +7166,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       {/* Col 1: Print / Status QC */}
                       <th
                         className={`px-2 py-2.5 ${(filter as any) === "report_qc" ? "min-w-[95px] w-24" : "w-12 min-w-[48px]"} text-center ${
-                          freezeColLevel === "1"
+                          effectiveFreezeLevel === "1"
                             ? "sticky left-[32px] z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
-                            : freezeColLevel !== "none"
+                            : effectiveFreezeLevel !== "none"
                             ? "sticky left-[32px] z-30 bg-zinc-100 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800"
                             : "border-r border-zinc-200 dark:border-zinc-800"
                         }`}
@@ -6841,11 +7179,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       {/* Col 2: No SO */}
                       {isColVisible("no_so") && (
                         <th
-                          style={freezeColLevel === "2" || freezeColLevel === "3" ? { left: `${freezeOffsets.soOffset}px` } : undefined}
+                          style={effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3" ? { left: `${freezeOffsets.soOffset}px` } : undefined}
                           className={`px-2.5 py-2.5 min-w-[115px] whitespace-nowrap ${
-                            (freezeColLevel === "2" && !isColVisible("no_inv"))
+                            (effectiveFreezeLevel === "2" && !isColVisible("no_inv"))
                               ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
-                              : freezeColLevel === "2" || freezeColLevel === "3"
+                              : effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
                               ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800"
                               : "border-r border-zinc-200 dark:border-zinc-800"
                           }`}
@@ -6857,11 +7195,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       {/* Col 3: No Invoice */}
                       {isColVisible("no_inv") && (
                         <th
-                          style={freezeColLevel === "2" || freezeColLevel === "3" ? { left: `${freezeOffsets.invOffset}px` } : undefined}
+                          style={effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3" ? { left: `${freezeOffsets.invOffset}px` } : undefined}
                           className={`px-2.5 py-2.5 min-w-[125px] whitespace-nowrap ${
-                            freezeColLevel === "2"
+                            effectiveFreezeLevel === "2"
                               ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
-                              : freezeColLevel === "3"
+                              : effectiveFreezeLevel === "3"
                               ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800"
                               : "border-r border-zinc-200 dark:border-zinc-800"
                           }`}
@@ -6873,11 +7211,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       {/* Col 4: Kat Produk */}
                       {isColVisible("kat_produk") && (
                         <th
-                          style={freezeColLevel === "3" ? { left: `${freezeOffsets.katProdukOffset}px` } : undefined}
+                          style={effectiveFreezeLevel === "3" ? { left: `${freezeOffsets.katProdukOffset}px` } : undefined}
                           className={`px-2.5 py-2.5 min-w-[95px] whitespace-nowrap ${
-                            freezeColLevel === "3" && !isColVisible("jenis") && !isColVisible("pelanggan")
+                            effectiveFreezeLevel === "3" && !isColVisible("jenis") && !isColVisible("pelanggan")
                               ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
-                              : freezeColLevel === "3"
+                              : effectiveFreezeLevel === "3"
                               ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800"
                               : "border-r border-zinc-200 dark:border-zinc-800"
                           }`}
@@ -6889,11 +7227,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       {/* Col 5: Jenis */}
                       {isColVisible("jenis") && (
                         <th
-                          style={freezeColLevel === "3" ? { left: `${freezeOffsets.jenisOffset}px` } : undefined}
+                          style={effectiveFreezeLevel === "3" ? { left: `${freezeOffsets.jenisOffset}px` } : undefined}
                           className={`px-2.5 py-2.5 text-center min-w-[85px] whitespace-nowrap ${
-                            freezeColLevel === "3" && !isColVisible("pelanggan")
+                            effectiveFreezeLevel === "3" && !isColVisible("pelanggan")
                               ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
-                              : freezeColLevel === "3"
+                              : effectiveFreezeLevel === "3"
                               ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800"
                               : "border-r border-zinc-200 dark:border-zinc-800"
                           }`}
@@ -6905,9 +7243,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                       {/* Col 6: Pelanggan */}
                       {isColVisible("pelanggan") && (
                         <th
-                          style={freezeColLevel === "3" ? { left: `${freezeOffsets.custOffset}px` } : undefined}
+                          style={effectiveFreezeLevel === "3" ? { left: `${freezeOffsets.custOffset}px` } : undefined}
                           className={`px-2.5 py-2.5 min-w-[180px] max-w-[280px] ${
-                            freezeColLevel === "3"
+                            effectiveFreezeLevel === "3"
                               ? "sticky z-30 bg-zinc-100 dark:bg-zinc-950 border-r-2 border-r-blue-500 shadow-md"
                               : "border-r border-zinc-200 dark:border-zinc-800"
                           }`}
@@ -7056,7 +7394,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                             className={`px-2 py-1.5 text-center text-[10px] font-bold border-r border-zinc-200 dark:border-zinc-800 ${
                               isDarkMode ? "text-zinc-400 hover:text-white" : "text-zinc-400 hover:text-zinc-800"
                             } ${getCellCls(0)} ${
-                              freezeColLevel !== "none"
+                              effectiveFreezeLevel !== "none"
                                 ? `sticky left-0 z-20 ${
                                     isRowSelected
                                       ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
@@ -7078,7 +7416,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           {/* Col 1: Print Checkbox */}
                           <td
                             className={`px-2 py-1.5 text-center ${getCellCls(1)} ${
-                              freezeColLevel === "1"
+                              effectiveFreezeLevel === "1"
                                 ? `sticky left-[32px] z-20 border-r-2 border-r-blue-500 shadow-md ${
                                     isRowSelected
                                       ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
@@ -7086,7 +7424,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                       ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
                                       : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
                                   }`
-                                : freezeColLevel !== "none"
+                                : effectiveFreezeLevel !== "none"
                                 ? `sticky left-[32px] z-20 border-r border-zinc-200 dark:border-zinc-800 ${
                                     isRowSelected
                                       ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
@@ -7153,11 +7491,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           {/* Col 2: No SO */}
                           {isColVisible("no_so") && (
                             <td
-                              style={freezeColLevel === "2" || freezeColLevel === "3" ? { left: `${freezeOffsets.soOffset}px` } : undefined}
+                              style={effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3" ? { left: `${freezeOffsets.soOffset}px` } : undefined}
                               className={`px-2.5 py-1.5 font-mono font-bold text-xs whitespace-nowrap ${
                                 isDarkMode ? "text-zinc-100" : "text-black"
                               } ${getCellCls(2)} ${
-                                freezeColLevel === "2" && !isColVisible("no_inv")
+                                effectiveFreezeLevel === "2" && !isColVisible("no_inv")
                                   ? `sticky z-20 border-r-2 border-r-blue-500 shadow-md ${
                                       isRowSelected
                                         ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
@@ -7165,7 +7503,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                         ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
                                         : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
                                     }`
-                                  : freezeColLevel === "2" || freezeColLevel === "3"
+                                  : effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
                                   ? `sticky z-20 border-r border-zinc-200 dark:border-zinc-800 ${
                                       isRowSelected
                                         ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
@@ -7192,11 +7530,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           {/* Col 3: No Invoice */}
                           {isColVisible("no_inv") && (
                             <td
-                              style={freezeColLevel === "2" || freezeColLevel === "3" ? { left: `${freezeOffsets.invOffset}px` } : undefined}
+                              style={effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3" ? { left: `${freezeOffsets.invOffset}px` } : undefined}
                               className={`px-2.5 py-1.5 font-mono font-black text-xs whitespace-nowrap ${
                                 isDarkMode ? "text-blue-400" : "text-blue-600"
                               } ${getCellCls(3)} ${
-                                freezeColLevel === "2"
+                                effectiveFreezeLevel === "2"
                                   ? `sticky z-20 border-r-2 border-r-blue-500 shadow-md ${
                                       isRowSelected
                                         ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
@@ -7204,7 +7542,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                         ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
                                         : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
                                     }`
-                                  : freezeColLevel === "3"
+                                  : effectiveFreezeLevel === "3"
                                   ? `sticky z-20 border-r border-zinc-200 dark:border-zinc-800 ${
                                       isRowSelected
                                         ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
@@ -7252,9 +7590,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           {/* Col 4: Kat Produk */}
                           {isColVisible("kat_produk") && (
                             <td
-                              style={freezeColLevel === "3" ? { left: `${freezeOffsets.katProdukOffset}px` } : undefined}
+                              style={effectiveFreezeLevel === "3" ? { left: `${freezeOffsets.katProdukOffset}px` } : undefined}
                               className={`px-2 py-1.5 whitespace-nowrap ${getCellCls(4)} ${
-                                freezeColLevel === "3" && !isColVisible("jenis") && !isColVisible("pelanggan")
+                                effectiveFreezeLevel === "3" && !isColVisible("jenis") && !isColVisible("pelanggan")
                                   ? `sticky z-20 border-r-2 border-r-blue-500 shadow-md ${
                                       isRowSelected
                                         ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
@@ -7262,7 +7600,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                         ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
                                         : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
                                     }`
-                                  : freezeColLevel === "3"
+                                  : effectiveFreezeLevel === "3"
                                   ? `sticky z-20 border-r border-zinc-200 dark:border-zinc-800 ${
                                       isRowSelected
                                         ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
@@ -7292,9 +7630,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           {/* Col 5: Jenis & Gudang */}
                           {isColVisible("jenis") && (
                             <td
-                              style={freezeColLevel === "3" ? { left: `${freezeOffsets.jenisOffset}px` } : undefined}
+                              style={effectiveFreezeLevel === "3" ? { left: `${freezeOffsets.jenisOffset}px` } : undefined}
                               className={`px-2.5 py-1.5 text-center whitespace-nowrap ${getCellCls(5)} ${
-                                freezeColLevel === "3" && !isColVisible("pelanggan")
+                                effectiveFreezeLevel === "3" && !isColVisible("pelanggan")
                                   ? `sticky z-20 border-r-2 border-r-blue-500 shadow-md ${
                                       isRowSelected
                                         ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
@@ -7302,7 +7640,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                         ? (isDarkMode ? "bg-[#1e1014]" : "bg-[#fff1f2]")
                                         : (isDarkMode ? "bg-[#09090b] group-hover:bg-zinc-900" : "bg-white group-hover:bg-blue-50/70")
                                     }`
-                                  : freezeColLevel === "3"
+                                  : effectiveFreezeLevel === "3"
                                   ? `sticky z-20 border-r border-zinc-200 dark:border-zinc-800 ${
                                       isRowSelected
                                         ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
@@ -7330,11 +7668,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           {/* Col 6: Pelanggan (Wrap text, NO cut-off) */}
                           {isColVisible("pelanggan") && (
                             <td
-                              style={freezeColLevel === "3" ? { left: `${freezeOffsets.custOffset}px` } : undefined}
+                              style={effectiveFreezeLevel === "3" ? { left: `${freezeOffsets.custOffset}px` } : undefined}
                               className={`px-2.5 py-1.5 min-w-[180px] max-w-[280px] font-bold text-xs whitespace-normal break-words leading-tight ${
                                 isDarkMode ? "text-zinc-200" : "text-black"
                               } ${getCellCls(6)} ${
-                                freezeColLevel === "3"
+                                effectiveFreezeLevel === "3"
                                   ? `sticky z-20 border-r-2 border-r-blue-500 shadow-md ${
                                       isRowSelected
                                         ? (isDarkMode ? "bg-zinc-800" : "bg-blue-100")
@@ -7810,50 +8148,140 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           );
         })()}
       </div>
+    </div>
 
-          {/* Pagination Footer */}
-          {totalPages > 1 && (
-            <div className={`p-2.5 border-t flex items-center justify-between text-xs transition-colors ${
+    {/* Pagination Footer (Visible in both Table & Card views) */}
+    {totalPages > 1 && (
+      <div className={`p-2.5 sm:p-3 border rounded-xl flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs transition-colors shadow-2xs ${
+        isDarkMode
+          ? "bg-[#111c33] border-slate-700/80 text-slate-400"
+          : "bg-white border-zinc-300 text-black font-medium"
+      }`}>
+        <span className="text-[11px] sm:text-xs">
+          Halaman <strong>{page + 1}</strong> dari <strong>{totalPages}</strong> ({filtered.length} total faktur)
+        </span>
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className={`flex-1 sm:flex-initial px-4 py-1.5 border rounded-lg font-bold disabled:opacity-40 transition-colors text-xs active:scale-95 ${
               isDarkMode
-                ? "bg-[#111c33] border-slate-700/80 text-slate-400"
-                : "bg-white border-t border-zinc-300 text-black font-medium"
-            }`}>
-              <span>
-                Halaman <strong>{page + 1}</strong> dari <strong>{totalPages}</strong> ({filtered.length} total faktur)
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className={`px-3 py-1 border rounded-lg font-semibold disabled:opacity-40 transition-colors ${
-                    isDarkMode
-                      ? "bg-[#182542] border-slate-700 text-slate-200 hover:bg-[#223359]"
-                      : "bg-white border-zinc-300 text-black hover:bg-zinc-100 font-bold"
-                  }`}
-                >
-                  Sebelumnya
-                </button>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                  className={`px-3 py-1 border rounded-lg font-semibold disabled:opacity-40 transition-colors ${
-                    isDarkMode
-                      ? "bg-[#182542] border-slate-700 text-slate-200 hover:bg-[#223359]"
-                      : "bg-white border-zinc-300 text-black hover:bg-zinc-100 font-bold"
-                  }`}
-                >
-                  Berikutnya
-                </button>
-              </div>
-            </div>
-          )}
+                ? "bg-[#182542] border-slate-700 text-slate-200 hover:bg-[#223359]"
+                : "bg-white border-zinc-300 text-black hover:bg-zinc-100 font-bold"
+            }`}
+          >
+            ← Sebelumnya
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            className={`flex-1 sm:flex-initial px-4 py-1.5 border rounded-lg font-bold disabled:opacity-40 transition-colors text-xs active:scale-95 ${
+              isDarkMode
+                ? "bg-[#182542] border-slate-700 text-slate-200 hover:bg-[#223359]"
+                : "bg-white border-zinc-300 text-black hover:bg-zinc-100 font-bold"
+            }`}
+          >
+            Berikutnya →
+          </button>
         </div>
-          </Fragment>
+      </div>
+    )}
+  </Fragment>
         )}
         </>
         )
       )}
       </main>
+
+      {/* ─── MOBILE BOTTOM NAVIGATION BAR (Native App Feel) ─── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#09090b]/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-around py-1.5 px-1 shadow-lg safe-area-pb select-none">
+        <button
+          type="button"
+          onClick={() => {
+            setMainView("dashboard");
+            if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className={`flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition cursor-pointer ${
+            mainView === "dashboard"
+              ? "text-blue-600 dark:text-blue-400 font-bold"
+              : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+          }`}
+        >
+          <LayoutDashboard className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5 font-semibold">Overview</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMainView("workspace");
+            if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className={`flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition relative cursor-pointer ${
+            mainView === "workspace"
+              ? "text-blue-600 dark:text-blue-400 font-bold"
+              : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+          }`}
+        >
+          <div className="relative">
+            <ReceiptText className="w-5 h-5" />
+            {workspaceStats.belumCount > 0 && (
+              <span className="w-2 h-2 rounded-full bg-blue-500 absolute -top-0.5 -right-1 ring-2 ring-white dark:ring-black" />
+            )}
+          </div>
+          <span className="text-[10px] mt-0.5 font-semibold">Faktur</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMainView("returns");
+            if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className={`flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition relative cursor-pointer ${
+            mainView === "returns"
+              ? "text-blue-600 dark:text-blue-400 font-bold"
+              : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+          }`}
+        >
+          <div className="relative">
+            <RotateCcw className="w-5 h-5" />
+            {shipmentNewCount > 0 && (
+              <span className="absolute -top-1 -right-2 min-w-[15px] h-[15px] px-1 rounded-full bg-rose-600 text-white text-[8px] font-black flex items-center justify-center ring-2 ring-white dark:ring-black">
+                {shipmentNewCount > 9 ? "9+" : shipmentNewCount}
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] mt-0.5 font-semibold">Shipment</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMainView("customers");
+            if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className={`flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition cursor-pointer ${
+            mainView === "customers"
+              ? "text-blue-600 dark:text-blue-400 font-bold"
+              : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+          }`}
+        >
+          <Building2 className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5 font-semibold">Customer</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMobileSidebarOpen(true)}
+          className="flex-1 flex flex-col items-center justify-center py-1 rounded-xl text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition cursor-pointer"
+        >
+          <Menu className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5 font-semibold">Menu</span>
+        </button>
+      </nav>
       </div>
 
       {/* Master Modals */}

@@ -199,6 +199,20 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
     }
     return "3";
   });
+
+  // Mobile detection for responsive freeze level
+  const [isMobileCust, setIsMobileCust] = useState(false);
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobileCust(typeof window !== "undefined" && window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  // On mobile (<768px), freeze level is capped to "1" so columns don't block mobile scrolling
+  const effectiveFreezeLevel = isMobileCust && (freezeColLevel === "2" || freezeColLevel === "3") ? "1" : freezeColLevel;
   const [hiddenCols, setHiddenCols] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -783,7 +797,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
       {/* ─── Modern Search & Filter Command Bar ─── */}
       <div className="rounded-2xl p-2.5 sm:p-3 bg-white dark:bg-[#0c121f]/90 border border-zinc-200 dark:border-zinc-800/80 shadow-xs flex flex-wrap gap-2.5 items-center justify-between">
         {/* Search Input */}
-        <div className="flex items-center gap-2 flex-1 min-w-[280px]">
+        <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-1 min-w-0">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -968,9 +982,9 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                 {isColVisible("id") && (
                   <th
                     className={`py-3 px-3.5 w-24 min-w-[96px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
-                      freezeColLevel === "1"
+                      effectiveFreezeLevel === "1"
                         ? "sticky left-0 z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
-                        : freezeColLevel === "2" || freezeColLevel === "3"
+                        : effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
                         ? "sticky left-0 z-30 bg-zinc-100 dark:bg-[#070b14]"
                         : ""
                     }`}
@@ -983,9 +997,9 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                 {isColVisible("oracle") && (
                   <th
                     className={`py-3 px-3 w-32 min-w-[128px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
-                      freezeColLevel === "2"
+                      effectiveFreezeLevel === "2"
                         ? "sticky left-[96px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
-                        : freezeColLevel === "3"
+                        : effectiveFreezeLevel === "3"
                         ? "sticky left-[96px] z-30 bg-zinc-100 dark:bg-[#070b14]"
                         : ""
                     }`}
@@ -997,7 +1011,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                 {/* Nama Apotek (Locked Always Visible) */}
                 <th
                   className={`py-3 px-4 min-w-[260px] border-r border-zinc-200 dark:border-zinc-800 ${
-                    freezeColLevel === "3"
+                    effectiveFreezeLevel === "3"
                       ? `sticky z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md ${
                           isColVisible("id") && isColVisible("oracle")
                             ? "left-[224px]"
@@ -1114,9 +1128,9 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                       {isColVisible("id") && (
                         <td
                           className={`py-2.5 px-3.5 font-mono text-zinc-700 dark:text-slate-300 text-[11px] font-bold whitespace-nowrap group-hover:text-blue-600 dark:group-hover:text-indigo-400 transition-colors border-r border-zinc-200 dark:border-zinc-800 ${
-                            freezeColLevel === "1"
+                            effectiveFreezeLevel === "1"
                               ? "sticky left-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
-                              : freezeColLevel === "2" || freezeColLevel === "3"
+                              : effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
                               ? "sticky left-0 z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800"
                               : ""
                           }`}
@@ -1129,9 +1143,9 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                       {isColVisible("oracle") && (
                         <td
                           className={`py-2.5 px-3 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
-                            freezeColLevel === "2"
+                            effectiveFreezeLevel === "2"
                               ? "sticky left-[96px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
-                              : freezeColLevel === "3"
+                              : effectiveFreezeLevel === "3"
                               ? "sticky left-[96px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800"
                               : ""
                           }`}
@@ -1145,7 +1159,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser }
                       {/* Nama Apotek (Locked Always Visible) */}
                       <td
                         className={`py-2.5 px-4 font-bold border-r border-zinc-200 dark:border-zinc-800 ${
-                          freezeColLevel === "3"
+                          effectiveFreezeLevel === "3"
                             ? `sticky z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md ${
                                 isColVisible("id") && isColVisible("oracle")
                                   ? "left-[224px]"

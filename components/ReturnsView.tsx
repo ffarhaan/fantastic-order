@@ -2054,7 +2054,11 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
       {/* ─── TAB: MONTHLY ─── */}
       {activeTab === "monthly" && (
-        <MonthlyReportView returns={allReturns.length > 0 ? allReturns : returns} records={records} />
+        <MonthlyReportView
+          returns={allReturns.length > 0 ? allReturns : returns}
+          records={records}
+          onSelectReturn={(r) => setSelectedReturn(r)}
+        />
       )}
 
       {/* ─── TAB: WEEKLY ─── */}

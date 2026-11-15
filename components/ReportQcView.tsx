@@ -1442,7 +1442,7 @@ export default function ReportQcView({
           )}
 
           {/* Search Box */}
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-initial min-w-[140px]">
             <input
               type="text"
               value={searchQuery}
@@ -1454,7 +1454,7 @@ export default function ReportQcView({
                 setSelectedCatatanRowIndex(0);
               }}
               placeholder="Cari No SO / DO / Apotek..."
-              className={`w-44 sm:w-56 text-xs px-2.5 py-1.5 rounded-lg border outline-none transition font-sans ${
+              className={`w-full sm:w-56 text-xs px-2.5 py-1.5 rounded-lg border outline-none transition font-sans ${
                 isDarkMode
                   ? "bg-slate-900/80 border-slate-800 text-slate-200 focus:border-amber-400"
                   : "bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-500"
