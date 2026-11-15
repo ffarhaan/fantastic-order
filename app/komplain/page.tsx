@@ -689,6 +689,57 @@ ${photoStatus}
     setCopiedWaText(false);
   };
 
+  // ─── PEMELIHARAAN SISTEM: Tampilan Full Blackout Selama Migrasi Database ───
+  const IS_UNDER_MAINTENANCE = true;
+  if (IS_UNDER_MAINTENANCE) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center font-sans select-none">
+        <div className="max-w-md w-full bg-zinc-950 border border-zinc-800 rounded-3xl p-8 shadow-2xl flex flex-col items-center relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-b from-amber-500/5 to-transparent pointer-events-none" />
+          
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mb-6 relative">
+            <Clock className="w-8 h-8 animate-pulse text-amber-400" />
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+            </span>
+          </div>
+          
+          <span className="text-[11px] font-mono font-black tracking-widest uppercase px-3 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 mb-4">
+            PEMELIHARAAN SISTEM
+          </span>
+          
+          <h1 className="text-xl sm:text-2xl font-black text-white mb-3 tracking-tight">
+            Layanan Pengajuan Retur Ditutup Sementara
+          </h1>
+          
+          <p className="text-sm text-zinc-400 leading-relaxed mb-6">
+            Mohon maaf atas ketidaknyamanannya. Sistem layanan komplain &amp; retur barang saat ini sedang dalam proses pemeliharaan &amp; sinkronisasi database rutin.
+          </p>
+
+          <div className="w-full bg-zinc-900/90 border border-zinc-800/80 rounded-2xl p-4 text-left text-xs space-y-3 mb-6">
+            <div className="flex justify-between items-center text-zinc-400">
+              <span className="font-medium">Estimasi Selesai:</span>
+              <span className="font-bold text-amber-400 font-mono text-sm">04:30 WIB</span>
+            </div>
+            <div className="h-px bg-zinc-800" />
+            <div className="flex justify-between items-center text-zinc-400">
+              <span className="font-medium">Status Pekerjaan:</span>
+              <span className="inline-flex items-center gap-1.5 font-bold text-emerald-400">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Migrasi Database
+              </span>
+            </div>
+          </div>
+
+          <p className="text-xs text-zinc-500 leading-relaxed">
+            Formulir tidak menerima pengajuan baru selama proses ini berlangsung agar data Anda tidak hilang. Silakan akses kembali setelah waktu estimasi di atas. Terima kasih atas pengertiannya.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 flex flex-col font-sans transition-colors">
       {/* Top Navbar */}
