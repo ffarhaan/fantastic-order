@@ -1420,6 +1420,17 @@ export async function GET(req: Request) {
         }
       }
 
+      const categoryParam = (searchParams.get("category") || "").trim().toLowerCase();
+      if (categoryParam && categoryParam !== "all") {
+        if (categoryParam === "ed") {
+          filterCondition += " AND (LOWER(reason) LIKE '%ed%' OR LOWER(reason) LIKE '%kadaluarsa%' OR LOWER(reason) LIKE '%expire%')";
+        } else if (categoryParam === "damage") {
+          filterCondition += " AND (LOWER(reason) LIKE '%damage%' OR LOWER(reason) LIKE '%rusak%' OR LOWER(reason) LIKE '%bocor%' OR LOWER(reason) LIKE '%penyok%' OR LOWER(reason) LIKE '%pecah%' OR LOWER(reason) LIKE '%seal%')";
+        } else if (categoryParam === "operational") {
+          filterCondition += " AND (LOWER(reason) NOT LIKE '%ed%' AND LOWER(reason) NOT LIKE '%kadaluarsa%' AND LOWER(reason) NOT LIKE '%expire%') AND (LOWER(reason) NOT LIKE '%damage%' AND LOWER(reason) NOT LIKE '%rusak%' AND LOWER(reason) NOT LIKE '%bocor%' AND LOWER(reason) NOT LIKE '%penyok%' AND LOWER(reason) NOT LIKE '%pecah%' AND LOWER(reason) NOT LIKE '%seal%')";
+        }
+      }
+
       const reasonParam = (searchParams.get("reason") || "").trim();
       if (reasonParam && reasonParam !== "ALL") {
         if (reasonParam === "PRIMARY_4") {

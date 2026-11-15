@@ -259,6 +259,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [pbfFilter, setPbfFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [personnelCategoryFilter, setPersonnelCategoryFilter] = useState<"ALL" | "operational" | "ed" | "damage">("operational");
   const [monthFilter, setMonthFilter] = useState("ALL");
   const [weekFilter, setWeekFilter] = useState("ALL");
 
@@ -795,9 +796,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     selectedMonth = monthFilter,
     selectedWeek = weekFilter,
     selectedReason = personnelReasonFilter,
+    selectedCategory = personnelCategoryFilter,
     forceFresh = false
   ) => {
-    const sig = `${selectedMonth}|${selectedWeek}|${selectedReason}|${realtimeVersionRef.current}`;
+    const sig = `${selectedMonth}|${selectedWeek}|${selectedReason}|${selectedCategory}|${realtimeVersionRef.current}`;
     if (!forceFresh && lastPersonnelSigRef.current === sig) return;
     setLoadingStats(true);
     try {
@@ -807,6 +809,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       if (selectedMonth && selectedMonth !== "ALL") q.set("month", selectedMonth);
       if (selectedWeek && selectedWeek !== "ALL") q.set("week", selectedWeek);
       if (selectedReason && selectedReason !== "ALL") q.set("reason", selectedReason);
+      if (selectedCategory && selectedCategory !== "ALL") q.set("category", selectedCategory);
       if (forceFresh) {
         q.set("fresh", "true");
         q.set("_t", String(Date.now()));
@@ -830,7 +833,7 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     } finally {
       setLoadingStats(false);
     }
-  }, [monthFilter, weekFilter, personnelReasonFilter]);
+  }, [monthFilter, weekFilter, personnelReasonFilter, personnelCategoryFilter]);
 
   useEffect(() => {
     if (activeTab === "leaderboard") {
@@ -4403,6 +4406,76 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
                     {p.label}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Row 1.5: Filter Kategori Kasus (Personil) */}
+            <div className="w-full flex flex-wrap items-center justify-between gap-2.5 pt-2.5 border-t border-zinc-100 dark:border-slate-800/80">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 text-xs font-bold text-zinc-700 dark:text-slate-200 mr-0.5">
+                  <Package className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                  <span className="text-[11px] uppercase tracking-wider font-extrabold">Kategori Kasus:</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPersonnelCategoryFilter("ALL");
+                    fetchPersonnelStats(monthFilter, weekFilter, personnelReasonFilter, "ALL");
+                  }}
+                  className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer border ${
+                    personnelCategoryFilter === "ALL"
+                      ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
+                      : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-300"
+                  }`}
+                >
+                  Semua Kategori
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPersonnelCategoryFilter("operational");
+                    fetchPersonnelStats(monthFilter, weekFilter, personnelReasonFilter, "operational");
+                  }}
+                  className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                    personnelCategoryFilter === "operational"
+                      ? "bg-blue-600 text-white border-blue-500 shadow-sm"
+                      : "bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:bg-blue-100"
+                  }`}
+                >
+                  <span>📦 Murni Operasional (Gudang)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPersonnelCategoryFilter("ed");
+                    fetchPersonnelStats(monthFilter, weekFilter, personnelReasonFilter, "ed");
+                  }}
+                  className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                    personnelCategoryFilter === "ed"
+                      ? "bg-amber-600 text-white border-amber-500 shadow-sm"
+                      : "bg-amber-50/70 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100"
+                  }`}
+                >
+                  <span>⏳ Kasus ED (Kadaluarsa)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPersonnelCategoryFilter("damage");
+                    fetchPersonnelStats(monthFilter, weekFilter, personnelReasonFilter, "damage");
+                  }}
+                  className={`px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                    personnelCategoryFilter === "damage"
+                      ? "bg-rose-600 text-white border-rose-500 shadow-sm"
+                      : "bg-rose-50/70 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 hover:bg-rose-100"
+                  }`}
+                >
+                  <span>💥 Kasus Damage (Rusak/Penyok)</span>
+                </button>
               </div>
             </div>
 

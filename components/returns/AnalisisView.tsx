@@ -28,6 +28,7 @@ import {
 import * as XLSX from "xlsx";
 import { ShipmentReturnRecord } from "@/lib/types";
 import { parsePersonNames } from "@/lib/personnelUtils";
+import { classifyReasonCategory, ReturnReasonCategory } from "./MonthlyReportView";
 
 // 4 Kategori Kendala Fisik Utama Pengiriman (Zero-Assumption & Non-Destructive)
 export const PRIMARY_4_PHYSICAL_REASONS = [
@@ -239,6 +240,7 @@ export default function AnalisisView({
 }: AnalisisViewProps) {
   const [localMonth, setLocalMonth] = useState<string>("ALL");
   const [localWeek, setLocalWeek] = useState<string>("ALL");
+  const [categoryScope, setCategoryScope] = useState<"ALL" | ReturnReasonCategory>("operational");
   const [statusScope, setStatusScope] = useState<"ALL" | "PENDING" | "IN_PROGRESS" | "RESOLVED" | "REJECT">("ALL");
   const [reasonScope, setReasonScope] = useState<ReasonFilterScope>("ALL");
 
@@ -331,7 +333,7 @@ export default function AnalisisView({
     return blocks;
   }, [availableWeeksList, returns, activeMonth]);
 
-  // Real-time live counts for 4 Primary Physical Error pills under active Month, Week & Status
+  // Real-time live counts for 4 Primary Physical Error pills under active Month, Week, Status & Category
   const reasonCounts = useMemo(() => {
     const filterM = activeMonth !== "ALL" ? Number(activeMonth) : 0;
     const weekRange = parseWeekFilterRange(activeWeek, availableWeeksList[0] || 45);
@@ -345,6 +347,10 @@ export default function AnalisisView({
     let other = 0;
 
     for (const r of returns) {
+      if (categoryScope !== "ALL") {
+        const cat = classifyReasonCategory(r.reason);
+        if (cat !== categoryScope) continue;
+      }
       if (filterM > 0 && extractMonthFromRecord(r) !== filterM) continue;
       if (weekRange) {
         const w = extractWeekFromRecord(r);
@@ -391,14 +397,20 @@ export default function AnalisisView({
       "Fisik yang dikirim tidak ada": tidakAda,
       other,
     };
-  }, [returns, activeMonth, activeWeek, statusScope, availableWeeksList]);
+  }, [returns, activeMonth, activeWeek, statusScope, categoryScope, availableWeeksList]);
 
-  // Single source of truth: rows matching active Month, Week (including 3-week range), Status, and Reason filters
+  // Single source of truth: rows matching active Month, Week (including 3-week range), Status, Category, and Reason filters
   const filteredReturns = useMemo(() => {
     const filterM = activeMonth !== "ALL" ? Number(activeMonth) : 0;
     const weekRange = parseWeekFilterRange(activeWeek, availableWeeksList[0] || 45);
 
     return returns.filter((r) => {
+      // 0. Category filter (Murni Operasional vs ED vs Damage)
+      if (categoryScope !== "ALL") {
+        const cat = classifyReasonCategory(r.reason);
+        if (cat !== categoryScope) return false;
+      }
+
       // 1. Month filter
       if (filterM > 0 && extractMonthFromRecord(r) !== filterM) return false;
 
@@ -433,14 +445,15 @@ export default function AnalisisView({
 
       return true;
     });
-  }, [returns, activeMonth, activeWeek, statusScope, reasonScope, availableWeeksList]);
+  }, [returns, activeMonth, activeWeek, statusScope, categoryScope, reasonScope, availableWeeksList]);
 
-  // Aggregate real data by PBF according to active Month, Week, and Status filters
+  // Aggregate real data by PBF according to active Month, Week, Status & Category filters
   const stats = useMemo(() => {
     const mai = {
       reasons: {} as Record<string, number>,
       roots: {} as Record<string, number>,
       total: 0,
+      approvedCount: 0,
       resolvedCount: 0,
       inProgressCount: 0,
       pendingCount: 0,
@@ -450,6 +463,7 @@ export default function AnalisisView({
       reasons: {} as Record<string, number>,
       roots: {} as Record<string, number>,
       total: 0,
+      approvedCount: 0,
       resolvedCount: 0,
       inProgressCount: 0,
       pendingCount: 0,
@@ -470,19 +484,27 @@ export default function AnalisisView({
         target.rejectCount++;
       } else if (isRes) {
         target.resolvedCount++;
+        target.approvedCount++;
       } else if (isInProg) {
         target.inProgressCount++;
+        target.approvedCount++;
       } else {
         target.pendingCount++;
+        target.approvedCount++;
       }
 
-      // 1. Reason / Jenis Error (100% Real Data)
-      const rz = normalizeReasonName(r.reason);
-      target.reasons[rz] = (target.reasons[rz] || 0) + 1;
+      // If statusScope is "REJECT", include reject cases in reasons/roots.
+      // If statusScope !== "REJECT", only include approved cases in reasons/roots (matching Monthly Report).
+      const includeInCharts = statusScope === "REJECT" ? isRej : !isRej;
+      if (includeInCharts) {
+        // 1. Reason / Jenis Error (100% Real Data)
+        const rz = normalizeReasonName(r.reason);
+        target.reasons[rz] = (target.reasons[rz] || 0) + 1;
 
-      // 2. Root Cause (100% Real Data — empty root_cause is labeled Belum Diisi)
-      const rc = normalizeRootCauseName(r.root_cause);
-      target.roots[rc] = (target.roots[rc] || 0) + 1;
+        // 2. Root Cause (100% Real Data — empty root_cause is labeled Belum Diisi)
+        const rc = normalizeRootCauseName(r.root_cause);
+        target.roots[rc] = (target.roots[rc] || 0) + 1;
+      }
     }
 
     const formatReasons = (recordMap: Record<string, number>) => {
@@ -511,6 +533,7 @@ export default function AnalisisView({
     return {
       mai: {
         total: mai.total,
+        approvedCount: mai.approvedCount,
         resolvedCount: mai.resolvedCount,
         inProgressCount: mai.inProgressCount,
         pendingCount: mai.pendingCount,
@@ -520,6 +543,7 @@ export default function AnalisisView({
       },
       mbi: {
         total: mbi.total,
+        approvedCount: mbi.approvedCount,
         resolvedCount: mbi.resolvedCount,
         inProgressCount: mbi.inProgressCount,
         pendingCount: mbi.pendingCount,
@@ -528,7 +552,7 @@ export default function AnalisisView({
         roots: formatRoots(mbi.roots),
       },
     };
-  }, [filteredReturns]);
+  }, [filteredReturns, statusScope]);
 
   // Personnel breakdown (full names, same parser as Personil tab) on the filtered rows
   const personnel = useMemo(() => {
@@ -610,6 +634,11 @@ export default function AnalisisView({
 
   const activePeriodLabel = useMemo(() => {
     const parts: string[] = [];
+    if (categoryScope !== "ALL") {
+      if (categoryScope === "operational") parts.push("📦 Murni Operasional");
+      else if (categoryScope === "ed") parts.push("⏳ Kasus ED");
+      else if (categoryScope === "damage") parts.push("💥 Kasus Damage");
+    }
     if (activeMonth !== "ALL") {
       parts.push(MONTH_NAMES[Number(activeMonth)] || `Bulan ${activeMonth}`);
     }
@@ -638,7 +667,7 @@ export default function AnalisisView({
       parts.push(scopeLabels[statusScope] || statusScope);
     }
     return parts.length > 0 ? parts.join(" • ") : "Semua periode (Real-Time Database)";
-  }, [activeMonth, activeWeek, statusScope, reasonScope, availableWeeksList]);
+  }, [activeMonth, activeWeek, statusScope, categoryScope, reasonScope, availableWeeksList]);
 
   // Drill-down Rows: Filter 100% Real Database Cases for Clicked Reason
   const drillDownRows = useMemo(() => {
@@ -1118,6 +1147,73 @@ export default function AnalisisView({
         </div>
 
         {/* =========================================
+            ROW 1.5: KATEGORI KASUS (Murni Operasional vs ED vs Damage)
+        ========================================= */}
+        <div className="w-full flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-zinc-100 dark:border-slate-800/80">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-700 dark:text-slate-200 mr-0.5">
+              <Package className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              <span className="text-[11px] uppercase tracking-wider font-extrabold">Kategori Kasus:</span>
+            </div>
+
+            {/* Pill: Semua Kategori */}
+            <button
+              type="button"
+              onClick={() => setCategoryScope("ALL")}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                categoryScope === "ALL"
+                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
+                  : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-300"
+              }`}
+            >
+              <span>Semua Kategori</span>
+            </button>
+
+            {/* Pill: 📦 Murni Operasional (Gudang) */}
+            <button
+              type="button"
+              onClick={() => setCategoryScope("operational")}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                categoryScope === "operational"
+                  ? "bg-blue-600 text-white border-blue-500 shadow-sm"
+                  : "bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:bg-blue-100"
+              }`}
+              title="Kesalahan fisik/picking/packing/pengiriman gudang"
+            >
+              <span>📦 Murni Operasional (Gudang)</span>
+            </button>
+
+            {/* Pill: ⏳ Kasus ED (Kadaluarsa) */}
+            <button
+              type="button"
+              onClick={() => setCategoryScope("ed")}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                categoryScope === "ed"
+                  ? "bg-amber-600 text-white border-amber-500 shadow-sm"
+                  : "bg-amber-50/70 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100"
+              }`}
+              title="Masalah Expired Date / Kadaluarsa pabrik"
+            >
+              <span>⏳ Kasus ED (Kadaluarsa)</span>
+            </button>
+
+            {/* Pill: 💥 Kasus Damage (Rusak/Penyok) */}
+            <button
+              type="button"
+              onClick={() => setCategoryScope("damage")}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border ${
+                categoryScope === "damage"
+                  ? "bg-rose-600 text-white border-rose-500 shadow-sm"
+                  : "bg-rose-50/70 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 hover:bg-rose-100"
+              }`}
+              title="Kemasan rusak, bocor, pecah, penyok, seal terbuka"
+            >
+              <span>💥 Kasus Damage (Rusak/Penyok)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* =========================================
             ROW 2: QUICK FILTER 4 KENDALA FISIK UTAMA (REASON FILTER PILLS)
         ========================================= */}
         <div className="w-full flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-zinc-100 dark:border-slate-800/80">
@@ -1251,7 +1347,9 @@ export default function AnalisisView({
             <span>•</span>
             <span>Pending: <strong className="text-amber-500">{stats.mai.pendingCount.toLocaleString("id-ID")}</strong></span>
             <span>•</span>
-            <span>Reject: <strong className="text-rose-500">{stats.mai.rejectCount.toLocaleString("id-ID")}</strong></span>
+            <span className="px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60">
+              Reject: <strong>{stats.mai.rejectCount.toLocaleString("id-ID")}</strong>
+            </span>
           </div>
         </div>
 
@@ -1273,11 +1371,11 @@ export default function AnalisisView({
                 </p>
               </div>
               <span className="text-xs font-mono font-bold text-zinc-500">
-                Total: {stats.mai.total.toLocaleString("id-ID")}
+                Total: {(statusScope === "REJECT" ? stats.mai.rejectCount : stats.mai.approvedCount).toLocaleString("id-ID")}
               </span>
             </div>
 
-            {renderDonut(stats.mai.reasons, stats.mai.total, "MAI")}
+            {renderDonut(stats.mai.reasons, statusScope === "REJECT" ? stats.mai.rejectCount : stats.mai.approvedCount, "MAI")}
           </div>
 
           {/* Card: Root Cause MAI */}
@@ -1297,7 +1395,7 @@ export default function AnalisisView({
                 </p>
               </div>
               <span className="text-xs font-mono font-bold text-zinc-500">
-                Total: {stats.mai.total.toLocaleString("id-ID")}
+                Total: {(statusScope === "REJECT" ? stats.mai.rejectCount : stats.mai.approvedCount).toLocaleString("id-ID")}
               </span>
             </div>
 
@@ -1327,7 +1425,9 @@ export default function AnalisisView({
             <span>•</span>
             <span>Pending: <strong className="text-amber-500">{stats.mbi.pendingCount.toLocaleString("id-ID")}</strong></span>
             <span>•</span>
-            <span>Reject: <strong className="text-rose-500">{stats.mbi.rejectCount.toLocaleString("id-ID")}</strong></span>
+            <span className="px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60">
+              Reject: <strong>{stats.mbi.rejectCount.toLocaleString("id-ID")}</strong>
+            </span>
           </div>
         </div>
 
@@ -1349,11 +1449,11 @@ export default function AnalisisView({
                 </p>
               </div>
               <span className="text-xs font-mono font-bold text-zinc-500">
-                Total: {stats.mbi.total.toLocaleString("id-ID")}
+                Total: {(statusScope === "REJECT" ? stats.mbi.rejectCount : stats.mbi.approvedCount).toLocaleString("id-ID")}
               </span>
             </div>
 
-            {renderDonut(stats.mbi.reasons, stats.mbi.total, "MBI")}
+            {renderDonut(stats.mbi.reasons, statusScope === "REJECT" ? stats.mbi.rejectCount : stats.mbi.approvedCount, "MBI")}
           </div>
 
           {/* Card: Root Cause MBI */}
@@ -1373,7 +1473,7 @@ export default function AnalisisView({
                 </p>
               </div>
               <span className="text-xs font-mono font-bold text-zinc-500">
-                Total: {stats.mbi.total.toLocaleString("id-ID")}
+                Total: {(statusScope === "REJECT" ? stats.mbi.rejectCount : stats.mbi.approvedCount).toLocaleString("id-ID")}
               </span>
             </div>
 

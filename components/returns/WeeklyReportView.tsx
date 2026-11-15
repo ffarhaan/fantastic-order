@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { ShipmentReturnRecord, FakturRecord } from "@/lib/types";
 import { parseWeekFilterRange } from "./AnalisisView";
+import { classifyReasonCategory, ReturnReasonCategory } from "./MonthlyReportView";
 
 interface WeeklyReportViewProps {
   returns: ShipmentReturnRecord[];
@@ -105,7 +106,9 @@ export default function WeeklyReportView({
   initialWeekFilter = "all",
 }: WeeklyReportViewProps) {
   const [selectedWeekFilter, setSelectedWeekFilter] = useState<string>(initialWeekFilter);
+  const [selectedCategory, setSelectedCategory] = useState<"all" | ReturnReasonCategory>("operational");
   const [modalWeek, setModalWeek] = useState<number | null>(null);
+  const [modalCategoryFilter, setModalCategoryFilter] = useState<"all" | ReturnReasonCategory | "reject">("all");
 
   // Group returns and calculate stats per week
   const weeklyData = useMemo(() => {
@@ -161,6 +164,12 @@ export default function WeeklyReportView({
       }
     }
 
+    const seenMaiOp = Array.from({ length: 55 }, () => new Set<string>());
+    const seenMbiOp = Array.from({ length: 55 }, () => new Set<string>());
+    const seenMaiED = Array.from({ length: 55 }, () => new Set<string>());
+    const seenMbiED = Array.from({ length: 55 }, () => new Set<string>());
+    const seenMaiDamage = Array.from({ length: 55 }, () => new Set<string>());
+    const seenMbiDamage = Array.from({ length: 55 }, () => new Set<string>());
     const seenMaiApprove = Array.from({ length: 55 }, () => new Set<string>());
     const seenMbiApprove = Array.from({ length: 55 }, () => new Set<string>());
     const seenMaiReject = Array.from({ length: 55 }, () => new Set<string>());
@@ -198,18 +207,25 @@ export default function WeeklyReportView({
         const conf = (r.confirm || "").toLowerCase();
         const isReject = conf.includes("reject") || conf.includes("tolak") || (r.status || "").toLowerCase().includes("reject");
         const invKey = (r.invoice_no || "").trim().toLowerCase() || `row_${r.id}`;
+        const cat = classifyReasonCategory(r.reason);
 
         if (pbf.includes("MAI")) {
           if (isReject) {
             seenMaiReject[w].add(invKey);
           } else {
             seenMaiApprove[w].add(invKey);
+            if (cat === "operational") seenMaiOp[w].add(invKey);
+            else if (cat === "ed") seenMaiED[w].add(invKey);
+            else if (cat === "damage") seenMaiDamage[w].add(invKey);
           }
         } else {
           if (isReject) {
             seenMbiReject[w].add(invKey);
           } else {
             seenMbiApprove[w].add(invKey);
+            if (cat === "operational") seenMbiOp[w].add(invKey);
+            else if (cat === "ed") seenMbiED[w].add(invKey);
+            else if (cat === "damage") seenMbiDamage[w].add(invKey);
           }
         }
       }
@@ -220,15 +236,33 @@ export default function WeeklyReportView({
     for (let w = 1; w <= maxW; w++) {
       const item = map[w];
       const bench = WEEKLY_BENCHMARKS[w] || { maiInv: 0, mbiInv: 0, maiApprove: 0, mbiApprove: 0, totReject: 0 };
+      const liveMaiOp = seenMaiOp[w].size;
+      const liveMaiED = seenMaiED[w].size;
+      const liveMaiDamage = seenMaiDamage[w].size;
       const liveMaiApprove = seenMaiApprove[w].size;
+
+      const liveMbiOp = seenMbiOp[w].size;
+      const liveMbiED = seenMbiED[w].size;
+      const liveMbiDamage = seenMbiDamage[w].size;
       const liveMbiApprove = seenMbiApprove[w].size;
+
       const liveReject = seenMaiReject[w].size + seenMbiReject[w].size;
       const liveMaiInv = seenMaiInvoices[w].size;
       const liveMbiInv = seenMbiInvoices[w].size;
 
-      // 1 unique invoice = 1 case matching Apps Script
-      const maiApprove = liveMaiApprove > 0 ? liveMaiApprove : bench.maiApprove;
-      const mbiApprove = liveMbiApprove > 0 ? liveMbiApprove : bench.mbiApprove;
+      let maiApprove = liveMaiApprove > 0 ? liveMaiApprove : bench.maiApprove;
+      let mbiApprove = liveMbiApprove > 0 ? liveMbiApprove : bench.mbiApprove;
+
+      if (selectedCategory === "operational") {
+        maiApprove = liveMaiOp;
+        mbiApprove = liveMbiOp;
+      } else if (selectedCategory === "ed") {
+        maiApprove = liveMaiED;
+        mbiApprove = liveMbiED;
+      } else if (selectedCategory === "damage") {
+        maiApprove = liveMaiDamage;
+        mbiApprove = liveMbiDamage;
+      }
 
       // If database has live invoices for this week, use live count; otherwise fallback to historical benchmark
       const maiInv = liveMaiInv > 0 ? liveMaiInv : (bench.maiInv || 0);
@@ -243,6 +277,14 @@ export default function WeeklyReportView({
         ...item,
         maiApprove,
         mbiApprove,
+        maiOp: liveMaiOp,
+        maiED: liveMaiED,
+        maiDamage: liveMaiDamage,
+        mbiOp: liveMbiOp,
+        mbiED: liveMbiED,
+        mbiDamage: liveMbiDamage,
+        maiTotalAll: liveMaiApprove > 0 ? liveMaiApprove : bench.maiApprove,
+        mbiTotalAll: liveMbiApprove > 0 ? liveMbiApprove : bench.mbiApprove,
         maiInv,
         mbiInv,
         maiPct: Number(maiPct.toFixed(2)),
@@ -253,7 +295,7 @@ export default function WeeklyReportView({
     }
 
     return list;
-  }, [returns, records]);
+  }, [returns, records, selectedCategory]);
 
   const maxAvailableWeek = useMemo(() => {
     if (weeklyData.length === 0) return 45;
@@ -292,6 +334,10 @@ export default function WeeklyReportView({
     let totMaiInv = 0;
     let totMbiInv = 0;
     let totReject = 0;
+    let totOp = 0;
+    let totED = 0;
+    let totDamage = 0;
+    let totAllApprove = 0;
 
     for (const d of displayedWeeks) {
       totMaiApprove += d.maiApprove;
@@ -299,6 +345,10 @@ export default function WeeklyReportView({
       totMaiInv += d.maiInv;
       totMbiInv += d.mbiInv;
       totReject += d.totReject;
+      totOp += ((d as any).maiOp || 0) + ((d as any).mbiOp || 0);
+      totED += ((d as any).maiED || 0) + ((d as any).mbiED || 0);
+      totDamage += ((d as any).maiDamage || 0) + ((d as any).mbiDamage || 0);
+      totAllApprove += ((d as any).maiTotalAll || 0) + ((d as any).mbiTotalAll || 0);
     }
 
     const totCases = totMaiApprove + totMbiApprove;
@@ -315,6 +365,10 @@ export default function WeeklyReportView({
       totMbiInv,
       totInv,
       totReject,
+      totOp,
+      totED,
+      totDamage,
+      totAllApprove,
       maiRate: Number(maiRate.toFixed(2)),
       mbiRate: Number(mbiRate.toFixed(2)),
       totRate: Number(totRate.toFixed(2)),
@@ -411,6 +465,65 @@ export default function WeeklyReportView({
           <div className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
             <span className="font-bold text-zinc-900 dark:text-white">{displayedWeeks.length}</span> minggu ditampilkan
           </div>
+        </div>
+      </div>
+
+      {/* Category Filter Pills (Penyelarasan Murni Operasional vs ED vs Damage) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white dark:bg-slate-900 rounded-2xl border border-zinc-200 dark:border-slate-800 shadow-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider mr-1">
+            Kategori Kasus:
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedCategory("all")}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+              selectedCategory === "all"
+                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
+                : "bg-zinc-50 dark:bg-slate-950 text-zinc-700 dark:text-slate-300 border-zinc-200 dark:border-slate-800 hover:border-zinc-300"
+            }`}
+          >
+            Semua Kasus ({summaryStats.totAllApprove})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedCategory("operational")}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+              selectedCategory === "operational"
+                ? "bg-blue-600 text-white border-blue-500 shadow-xs"
+                : "bg-blue-50/60 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900 hover:bg-blue-100"
+            }`}
+          >
+            <span>📦 Murni Operasional (Gudang)</span>
+            <span className="font-mono text-[11px] font-black">({summaryStats.totOp})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedCategory("ed")}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+              selectedCategory === "ed"
+                ? "bg-amber-600 text-white border-amber-500 shadow-xs"
+                : "bg-amber-50/60 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900 hover:bg-amber-100"
+            }`}
+          >
+            <span>⏳ Kasus ED (Kadaluarsa)</span>
+            <span className="font-mono text-[11px] font-black">({summaryStats.totED})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedCategory("damage")}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+              selectedCategory === "damage"
+                ? "bg-rose-600 text-white border-rose-500 shadow-xs"
+                : "bg-rose-50/60 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900 hover:bg-rose-100"
+            }`}
+          >
+            <span>💥 Kasus Damage (Rusak/Penyok)</span>
+            <span className="font-mono text-[11px] font-black">({summaryStats.totDamage})</span>
+          </button>
+        </div>
+        <div className="text-[11px] text-zinc-500 font-mono">
+          Reject Apotek Terpisah: <strong className="text-rose-600 dark:text-rose-400 font-bold">{summaryStats.totReject}</strong>
         </div>
       </div>
 
@@ -773,6 +886,31 @@ export default function WeeklyReportView({
               </div>
             </div>
 
+            {/* Sub-category Filter Tabs in Modal */}
+            <div className="flex flex-wrap items-center gap-1.5 px-4 py-2.5 bg-zinc-100/70 dark:bg-slate-950/60 border-b border-zinc-200 dark:border-slate-800 text-xs">
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mr-1">Filter Modal:</span>
+              {[
+                { id: "all", label: "Semua" },
+                { id: "operational", label: "📦 Murni Operasional" },
+                { id: "ed", label: "⏳ Kasus ED" },
+                { id: "damage", label: "💥 Damage" },
+                { id: "reject", label: "🚫 Reject Apotek" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setModalCategoryFilter(tab.id as any)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    modalCategoryFilter === tab.id
+                      ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-2xs"
+                      : "text-zinc-600 dark:text-slate-400 hover:bg-zinc-200/60 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             {/* Modal Body Table */}
             <div className="overflow-y-auto flex-1 p-4">
               {modalWeekData.cases.length === 0 ? (
@@ -787,51 +925,78 @@ export default function WeeklyReportView({
                       <th className="py-2.5 px-3">No. Faktur</th>
                       <th className="py-2.5 px-3">Apotek / Outlet</th>
                       <th className="py-2.5 px-3">Nama Produk</th>
+                      <th className="py-2.5 px-3">Kategori</th>
                       <th className="py-2.5 px-3">Jenis Masalah</th>
                       <th className="py-2.5 px-3">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-slate-800 font-medium">
-                    {modalWeekData.cases.map((c) => (
-                      <tr key={c.id} className="hover:bg-zinc-50 dark:hover:bg-slate-800/50">
-                        <td className="py-2.5 px-3">
-                          <span
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                              c.pbf === "MAI"
-                                ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
-                                : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                            }`}
-                          >
-                            {c.pbf || "MBI"}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 font-mono font-semibold text-zinc-900 dark:text-white">
-                          {c.invoice_no || "-"}
-                        </td>
-                        <td className="py-2.5 px-3 text-zinc-800 dark:text-zinc-200">
-                          {c.customer_name || "-"}
-                        </td>
-                        <td className="py-2.5 px-3 text-zinc-700 dark:text-zinc-300 max-w-[200px] truncate">
-                          {c.product_name || "-"}
-                        </td>
-                        <td className="py-2.5 px-3 text-zinc-600 dark:text-zinc-400">
-                          {c.reason || "-"}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              (c.status || "").includes("Resolved")
-                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                                : (c.confirm || "").toLowerCase().includes("reject")
-                                ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
-                                : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
-                            }`}
-                          >
-                            {c.status || "In Progress"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {modalWeekData.cases
+                      .filter((c) => {
+                        const isRej = (c.confirm || "").toLowerCase().includes("reject") || (c.status || "").toLowerCase().includes("reject");
+                        if (modalCategoryFilter === "reject") return isRej;
+                        if (modalCategoryFilter !== "all" && isRej) return false;
+                        if (modalCategoryFilter === "all") return true;
+                        return classifyReasonCategory(c.reason) === modalCategoryFilter;
+                      })
+                      .map((c) => {
+                        const cat = classifyReasonCategory(c.reason);
+                        return (
+                          <tr key={c.id} className="hover:bg-zinc-50 dark:hover:bg-slate-800/50">
+                            <td className="py-2.5 px-3">
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                  c.pbf === "MAI"
+                                    ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+                                    : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                                }`}
+                              >
+                                {c.pbf || "MBI"}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-semibold text-zinc-900 dark:text-white">
+                              {c.invoice_no || "-"}
+                            </td>
+                            <td className="py-2.5 px-3 text-zinc-800 dark:text-zinc-200">
+                              {c.customer_name || "-"}
+                            </td>
+                            <td className="py-2.5 px-3 text-zinc-700 dark:text-zinc-300 max-w-[200px] truncate">
+                              {c.product_name || "-"}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              {cat === "ed" ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                                  ⏳ ED
+                                </span>
+                              ) : cat === "damage" ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                                  💥 Damage
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                                  📦 Operasional
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-zinc-600 dark:text-zinc-400">
+                              {c.reason || "-"}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  (c.status || "").includes("Resolved")
+                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                    : (c.confirm || "").toLowerCase().includes("reject")
+                                    ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                                    : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                                }`}
+                              >
+                                {c.status || "In Progress"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               )}
