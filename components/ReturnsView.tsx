@@ -2,7 +2,14 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 import { ShipmentReturnRecord, FakturRecord } from "@/lib/types";
-import { broadcastRealtimeSignal, subscribeToRealtimeSignal, isSuperAdminUser, broadcastNewComplaint } from "@/lib/firestoreService";
+import {
+  broadcastRealtimeSignal,
+  subscribeToRealtimeSignal,
+  isSuperAdminUser,
+  isOwnerUser,
+  isCoAdminUser,
+  broadcastNewComplaint,
+} from "@/lib/firestoreService";
 import { parsePersonNames } from "@/lib/personnelUtils";
 import { AppUser } from "@/components/LoginModal";
 import ReturnsAccordionEditor, { ReturnEditFormState, buildReturnEditFormState } from "./returns/ReturnsAccordionEditor";
@@ -221,9 +228,30 @@ function applyStatsStatusTransition(
 export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records, currentUser }: ReturnsViewProps) {
   const [returns, setReturns] = useState<ShipmentReturnRecord[]>(() => cachedReturnsData || []);
 
-  const isSuper = isSuperAdminUser(currentUser?.name) || isSuperAdminUser(currentUser?.email);
-  const canEditReturns = isSuper || Boolean(currentUser?.permissions?.can_edit_shipment_error);
-  const canDeleteReturns = isSuper || Boolean(currentUser?.permissions?.can_delete_data);
+  const isOwner = isOwnerUser(currentUser?.name) || isOwnerUser(currentUser?.email);
+  const isCoAdmin = isCoAdminUser(currentUser?.name) || isCoAdminUser(currentUser?.email);
+  const isSuper = isOwner || isCoAdmin || isSuperAdminUser(currentUser?.name) || isSuperAdminUser(currentUser?.email);
+  const isViewer = currentUser?.role === "readonly" && !isSuper;
+
+  const canEditReturns = !isViewer && (isSuper || Boolean(currentUser?.permissions?.can_edit_shipment_error));
+  const canDeleteReturns = !isViewer && !isCoAdmin && (isOwner || Boolean(currentUser?.permissions?.can_delete_data));
+
+  const userWarehouseAccess: "ALL" | "MBI" | "MAI" = isSuper
+    ? "ALL"
+    : (currentUser?.warehouse_access || currentUser?.permissions?.warehouse_access || "ALL");
+
+  const isWarehousePermitted = useCallback((itemPbf?: string | null): boolean => {
+    if (isSuper) return true;
+    if (!userWarehouseAccess || userWarehouseAccess === "ALL") return true;
+    const pbfClean = String(itemPbf || "").trim().toUpperCase();
+    if (userWarehouseAccess === "MBI") {
+      return !pbfClean.includes("MAI");
+    }
+    if (userWarehouseAccess === "MAI") {
+      return !pbfClean.includes("MBI");
+    }
+    return true;
+  }, [isSuper, userWarehouseAccess]);
 
   // Build map of invoice_no -> orderDate from daftar Faktur
   const invoiceDateMap = useMemo(() => {
@@ -257,7 +285,9 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [pbfFilter, setPbfFilter] = useState("ALL");
+  const [pbfFilter, setPbfFilter] = useState(() =>
+    userWarehouseAccess === "MBI" || userWarehouseAccess === "MAI" ? userWarehouseAccess : "ALL"
+  );
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [personnelCategoryFilter, setPersonnelCategoryFilter] = useState<"ALL" | "operational" | "ed" | "damage">("operational");
   const [monthFilter, setMonthFilter] = useState("ALL");
@@ -1158,6 +1188,10 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
       return;
     }
     const targetItem = returns.find((r) => r.id === id) || allReturns.find((r) => r.id === id);
+    if (targetItem && !isWarehousePermitted(targetItem.pbf)) {
+      alert(`Akses Gudang Ditolak: Akun Anda memiliki akses khusus Gudang ${userWarehouseAccess}. Anda tidak diizinkan mengubah status komplain milik Gudang ${targetItem.pbf || "lain"}.`);
+      return;
+    }
     const resolvedDate = newStatus === "Resolved" ? new Date().toISOString().split("T")[0] : null;
     setReturns((prev) => {
       const next = prev.map((r) => (r.id === id ? { ...r, status: newStatus, resolved_date: resolvedDate || r.resolved_date } : r));
@@ -1221,6 +1255,17 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
     }
 
     const activeForm = formOverride ?? editForm;
+    const targetPbf = activeForm.pbf || selectedReturn.pbf;
+
+    if (!isWarehousePermitted(targetPbf)) {
+      setValidationModal({
+        isOpen: true,
+        title: "Akses Gudang Ditolak",
+        message: `Akun Anda memiliki akses khusus Gudang ${userWarehouseAccess}. Anda tidak diizinkan mengubah komplain milik Gudang ${targetPbf || "lain"}.`,
+        type: "error",
+      });
+      return;
+    }
 
     // Form Guard Tahap 4: REJECTED wajib sertakan alasan penolakan + Konfirmasi
     const isRejecting = activeForm.status === "Rejected" || activeForm.confirm === "Reject";
@@ -1401,12 +1446,30 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
   };
 
   const handleDirectApprove = (r: ShipmentReturnRecord) => {
-    if (!canEditReturns) {
+    if (isViewer) {
       setValidationModal({
         isOpen: true,
         title: "Mode Hanya Lihat",
+        message: "Akun Anda disetel sebagai 'Hanya Viewer' (Read Only). Anda tidak dapat memproses atau meng-ACC Shipment Error.",
+        type: "warning",
+      });
+      return;
+    }
+    if (!canEditReturns) {
+      setValidationModal({
+        isOpen: true,
+        title: "Akses Ditolak",
         message: "Akun Anda tidak memiliki hak akses mengubah modul Shipment Error. Hubungi Administrator untuk meminta akses.",
         type: "warning",
+      });
+      return;
+    }
+    if (!isWarehousePermitted(r.pbf)) {
+      setValidationModal({
+        isOpen: true,
+        title: "Akses Gudang Ditolak",
+        message: `Akun Anda memiliki akses khusus Gudang ${userWarehouseAccess}. Anda tidak diizinkan meng-ACC shipment error milik Gudang ${r.pbf || "lain"}.`,
+        type: "error",
       });
       return;
     }
@@ -1455,12 +1518,30 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
   // Handler sebelum konfirmasi selesai: WAJIB periksa kelengkapan Tindakan, Penyebab, & Personil
   const handleRequestResolveReturn = (item: ShipmentReturnRecord) => {
+    if (isViewer) {
+      setValidationModal({
+        isOpen: true,
+        title: "Mode Hanya Lihat",
+        message: "Akun Anda disetel sebagai 'Hanya Viewer' (Read Only). Anda tidak dapat mengubah status Shipment Error.",
+        type: "warning",
+      });
+      return;
+    }
     if (!canEditReturns) {
       setValidationModal({
         isOpen: true,
         title: "Mode Hanya Lihat",
         message: "Akun Anda tidak memiliki hak akses mengubah modul Shipment Error.",
         type: "warning",
+      });
+      return;
+    }
+    if (!isWarehousePermitted(item.pbf)) {
+      setValidationModal({
+        isOpen: true,
+        title: "Akses Gudang Ditolak",
+        message: `Akun Anda memiliki akses khusus Gudang ${userWarehouseAccess}. Anda tidak diizinkan menyelesaikan komplain milik Gudang ${item.pbf || "lain"}.`,
+        type: "error",
       });
       return;
     }
@@ -1581,8 +1662,16 @@ export default function ReturnsView({ onSelectCustomer, onSelectInvoice, records
 
   const handleCreateReturn = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isViewer) {
+      alert("Akses Ditolak: Akun Anda adalah 'Hanya Viewer' (Read Only).");
+      return;
+    }
     if (!canEditReturns) {
       alert("Akses Ditolak: Akun Anda tidak memiliki hak akses untuk menambah komplain baru.");
+      return;
+    }
+    if (!isWarehousePermitted(newForm.pbf)) {
+      alert(`Akses Gudang Ditolak: Akun Anda memiliki akses khusus Gudang ${userWarehouseAccess}. Anda tidak diizinkan membuat komplain untuk Gudang ${newForm.pbf}.`);
       return;
     }
     if (!newForm.customer_name || !newForm.product_name) {

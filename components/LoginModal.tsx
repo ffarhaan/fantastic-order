@@ -9,9 +9,12 @@ import {
   markAccountOtpVerified,
   subscribeToUserProfiles,
   isSuperAdminUser,
+  isOwnerUser,
+  isCoAdminUser,
   StaffAccountProfile,
   StaffPermissions,
   SUPER_ADMIN_PERMISSIONS,
+  CO_ADMIN_PERMISSIONS,
   DEFAULT_STAFF_PERMISSIONS,
 } from "@/lib/firestoreService";
 import Link from "next/link";
@@ -41,6 +44,7 @@ export interface AppUser {
   name: string;
   email?: string;
   role: "admin" | "readonly";
+  warehouse_access?: "ALL" | "MBI" | "MAI";
   systemRole?: "super_admin" | "warehouse_manager" | "staff" | "viewer";
   warehouseIds?: string;
   permissions?: StaffPermissions;
@@ -278,13 +282,27 @@ export default function LoginModal({
         return;
       }
 
-      if (isSuperAdminUser(cleanUser) || isSuperAdminUser(cleanMail)) {
-        setSuccessMessage("Akun Administrator aktif!");
+      if (isOwnerUser(cleanUser) || isOwnerUser(cleanMail)) {
+        setSuccessMessage("Akun Owner (Farhan) aktif!");
         setTimeout(() => {
           onLogin({
             name: cleanFull || cleanUser,
             role: "admin",
+            warehouse_access: "ALL",
             permissions: SUPER_ADMIN_PERMISSIONS,
+          });
+        }, 800);
+        return;
+      }
+
+      if (isCoAdminUser(cleanUser) || isCoAdminUser(cleanMail)) {
+        setSuccessMessage("Akun Admin (Melin) aktif!");
+        setTimeout(() => {
+          onLogin({
+            name: cleanFull || cleanUser,
+            role: "admin",
+            warehouse_access: "ALL",
+            permissions: CO_ADMIN_PERMISSIONS,
           });
         }, 800);
         return;

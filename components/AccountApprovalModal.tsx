@@ -8,6 +8,9 @@ import {
   updateStaffPermissions,
   saveCloudOtp,
   isSuperAdminUser,
+  isOwnerUser,
+  isCoAdminUser,
+  canManageAccess,
   subscribeToUserCredentials,
   adminSetUserPassword,
 } from "@/lib/firestoreService";
@@ -48,6 +51,7 @@ interface AccountApprovalModalProps {
   onClose: () => void;
   allProfiles: StaffAccountProfile[];
   isDarkMode: boolean;
+  currentUserName?: string;
 }
 
 export default function AccountApprovalModal({
@@ -55,6 +59,7 @@ export default function AccountApprovalModal({
   onClose,
   allProfiles,
   isDarkMode,
+  currentUserName,
 }: AccountApprovalModalProps) {
   const [activeTab, setActiveTab] = useState<"passwords" | "permissions">("passwords");
   const [processingUser, setProcessingUser] = useState<string | null>(null);
@@ -157,21 +162,29 @@ export default function AccountApprovalModal({
 
   const handleUpdateUserPermissions = async (
     targetUser: StaffAccountProfile,
-    newPerms: StaffPermissions
+    newPerms: StaffPermissions,
+    newRole?: "admin" | "readonly",
+    newWarehouse?: "ALL" | "MBI" | "MAI"
   ) => {
     setSavingPermsUser(targetUser.username);
     setErrorMessage("");
     setSuccessMessage("");
     try {
-      const res = await updateStaffPermissions(targetUser.username, newPerms);
+      const roleToSave = newRole || targetUser.role || "admin";
+      const whToSave = newWarehouse || targetUser.warehouse_access || newPerms.warehouse_access || "ALL";
+      const permsToSave: StaffPermissions = {
+        ...newPerms,
+        warehouse_access: whToSave,
+      };
+      const res = await updateStaffPermissions(targetUser.username, permsToSave, roleToSave, whToSave);
       if (res.success) {
         setSuccessMessage(`Hak akses @${targetUser.username} (${targetUser.displayName}) berhasil diperbarui!`);
         await recordActivityLog({
           action_type: "UPDATE_PERMISSIONS",
           module: "SETTINGS",
           target_id: targetUser.username,
-          details: `Mengubah hak akses staf @${targetUser.username} (${targetUser.displayName})`,
-          metadata: { permissions: newPerms },
+          details: `${currentUserName || "Admin"} mengubah hak akses staf @${targetUser.username} (${targetUser.displayName}) [Role: ${roleToSave}, Gudang: ${whToSave}]`,
+          metadata: { permissions: permsToSave, role: roleToSave, warehouse_access: whToSave },
         });
       } else {
         setErrorMessage(res.message);
@@ -310,7 +323,7 @@ export default function AccountApprovalModal({
                   Kelola Akun, Password &amp; Akses Tim
                 </h3>
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-mono font-bold border border-amber-500/30">
-                  Super Admin (Farhan)
+                  {isOwnerUser(currentUserName) ? "Super Admin (Farhan)" : isCoAdminUser(currentUserName) ? "Admin (Melin)" : "Admin"}
                 </span>
               </div>
               <p className={`text-[11px] ${isDarkMode ? "text-zinc-400" : "text-zinc-500"}`}>
@@ -708,7 +721,9 @@ export default function AccountApprovalModal({
 
                 <div className="space-y-3">
                   {approvedProfiles.map((p) => {
-                    const isSelf = isSuperAdminUser(p.username) || isSuperAdminUser(p.email);
+                    const isOwner = isOwnerUser(p.username) || isOwnerUser(p.email);
+                    const isCoAdmin = isCoAdminUser(p.username) || isCoAdminUser(p.email);
+                    const isProtectedAdmin = isOwner || isCoAdmin;
                     const isExpanded = expandedUser === p.username;
                     const isSaving = savingPermsUser === p.username;
                     const pass = getPasswordForUser(p.username, p.displayName);
@@ -718,14 +733,19 @@ export default function AccountApprovalModal({
                       can_edit_customers: false,
                       can_edit_products: false,
                       can_delete_data: false,
+                      warehouse_access: "ALL",
                     };
+
+                    const roleLabel = p.role === "readonly" ? "Hanya Viewer" : "Admin";
+                    const currentWh = p.warehouse_access || perms.warehouse_access || "ALL";
+                    const warehouseLabel = currentWh === "MBI" ? "Khusus MBI" : currentWh === "MAI" ? "Khusus MAI" : "Semua Gudang";
 
                     const allowedModules: string[] = [];
                     if (perms.can_edit_faktur) allowedModules.push("Faktur");
                     if (perms.can_edit_shipment_error) allowedModules.push("Shipment");
                     if (perms.can_edit_customers) allowedModules.push("Customer");
                     if (perms.can_edit_products) allowedModules.push("Produk");
-                    if (perms.can_delete_data) allowedModules.push("Hapus");
+                    if (perms.can_delete_data && isOwnerUser(currentUserName)) allowedModules.push("Hapus");
 
                     return (
                       <div
@@ -743,7 +763,7 @@ export default function AccountApprovalModal({
                               <span className="text-[11px] font-mono text-zinc-500">
                                 (@{p.username})
                               </span>
-                              {!isSelf && (
+                              {!isProtectedAdmin && (
                                 <span
                                   className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${
                                     p.verified
@@ -754,6 +774,30 @@ export default function AccountApprovalModal({
                                   {p.verified ? "Aktif" : "Tunggu Input OTP"}
                                 </span>
                               )}
+                              {!isProtectedAdmin && (
+                                <>
+                                  <span
+                                    className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${
+                                      p.role === "readonly"
+                                        ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                        : "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                                    }`}
+                                  >
+                                    {roleLabel}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${
+                                      currentWh === "MBI"
+                                        ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30"
+                                        : currentWh === "MAI"
+                                        ? "bg-purple-500/15 text-purple-400 border border-purple-500/30"
+                                        : "bg-zinc-500/15 text-zinc-400 border border-zinc-500/30"
+                                    }`}
+                                  >
+                                    {warehouseLabel}
+                                  </span>
+                                </>
+                              )}
                             </div>
 
                             <div className="text-[11px] font-mono text-zinc-400 truncate mt-0.5 flex flex-wrap items-center gap-2">
@@ -761,7 +805,7 @@ export default function AccountApprovalModal({
                               <span className="text-indigo-400 font-bold bg-indigo-500/10 px-1.5 py-0.2 rounded border border-indigo-500/20">
                                 Pwd: {pass}
                               </span>
-                              {!isSelf && allowedModules.length > 0 && (
+                              {!isProtectedAdmin && p.role !== "readonly" && allowedModules.length > 0 && (
                                 <span className="text-[10px] px-1.5 py-0.2 bg-blue-500/10 text-blue-400 rounded border border-blue-500/20 font-sans">
                                   Hak: {allowedModules.join(", ")}
                                 </span>
@@ -769,10 +813,15 @@ export default function AccountApprovalModal({
                             </div>
                           </div>
 
-                          {isSelf ? (
+                          {isOwner ? (
                             <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30 shrink-0 flex items-center gap-1">
                               <ShieldCheck className="w-3.5 h-3.5" />
                               <span>Owner (Super Admin)</span>
+                            </span>
+                          ) : isCoAdmin ? (
+                            <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0 flex items-center gap-1">
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                              <span>Admin (Melin)</span>
                             </span>
                           ) : (
                             <div className="flex items-center gap-1.5 shrink-0">
@@ -827,171 +876,230 @@ export default function AccountApprovalModal({
                         </div>
 
                         {/* Expandable Permissions Editor */}
-                        {!isSelf && isExpanded && (
-                          <div className={`p-4 border-t space-y-3 ${
+                        {!isProtectedAdmin && isExpanded && (
+                          <div className={`p-4 border-t space-y-3.5 ${
                             isDarkMode ? "border-zinc-800/80 bg-zinc-950/40" : "border-zinc-200 bg-white"
                           }`}>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                              <label
-                                className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer select-none transition-colors ${
-                                  perms.can_edit_faktur
-                                    ? "bg-blue-500/15 border-blue-500/30 text-blue-300"
-                                    : isDarkMode
-                                    ? "bg-zinc-900 border-zinc-800 text-zinc-400"
-                                    : "bg-white border-zinc-200 text-zinc-600"
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={perms.can_edit_faktur}
+                            {/* Role and Warehouse Scope Selectors */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl border border-zinc-700/40 bg-zinc-800/20">
+                              <div>
+                                <label className="text-[11px] font-bold text-zinc-300 block mb-1">
+                                  Tipe Akun (Peran):
+                                </label>
+                                <select
+                                  value={p.role || "admin"}
                                   disabled={isSaving}
-                                  onChange={(e) =>
-                                    handleUpdateUserPermissions(p, {
-                                      ...perms,
-                                      can_edit_faktur: e.target.checked,
-                                    })
-                                  }
-                                  className="w-4 h-4 rounded text-blue-600 cursor-pointer"
-                                />
-                                <div className="min-w-0">
-                                  <div className="font-bold text-[11px] flex items-center gap-1.5">
-                                    <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                                    <span>Modul Faktur Tracker</span>
-                                  </div>
-                                  <div className="text-[10px] text-zinc-400">
-                                    Upload file &amp; tanda selesai cetak
-                                  </div>
-                                </div>
-                              </label>
+                                  onChange={(e) => {
+                                    const newRole = e.target.value as "admin" | "readonly";
+                                    handleUpdateUserPermissions(p, perms, newRole, currentWh);
+                                  }}
+                                  className={`w-full text-xs font-bold rounded-lg p-2 border outline-none cursor-pointer ${
+                                    isDarkMode
+                                      ? "bg-zinc-900 border-zinc-700 text-zinc-200"
+                                      : "bg-white border-zinc-300 text-zinc-800"
+                                  }`}
+                                >
+                                  <option value="admin">Admin (Dapat Menginput &amp; Mengedit)</option>
+                                  <option value="readonly">Hanya Viewer (Read Only)</option>
+                                </select>
+                              </div>
 
-                              <label
-                                className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer select-none transition-colors ${
-                                  perms.can_edit_shipment_error
-                                    ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
-                                    : isDarkMode
-                                    ? "bg-zinc-900 border-zinc-800 text-zinc-400"
-                                    : "bg-white border-zinc-200 text-zinc-600"
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={perms.can_edit_shipment_error}
+                              <div>
+                                <label className="text-[11px] font-bold text-zinc-300 block mb-1">
+                                  Akses Gudang Operasional:
+                                </label>
+                                <select
+                                  value={currentWh}
                                   disabled={isSaving}
-                                  onChange={(e) =>
-                                    handleUpdateUserPermissions(p, {
-                                      ...perms,
-                                      can_edit_shipment_error: e.target.checked,
-                                    })
-                                  }
-                                  className="w-4 h-4 rounded text-amber-600 cursor-pointer"
-                                />
-                                <div className="min-w-0">
-                                  <div className="font-bold text-[11px] flex items-center gap-1.5">
-                                    <Truck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                    <span>Shipment Error (Komplain)</span>
-                                  </div>
-                                  <div className="text-[10px] text-zinc-400">
-                                    Edit status tiket &amp; investigasi
-                                  </div>
-                                </div>
-                              </label>
-
-                              <label
-                                className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer select-none transition-colors ${
-                                  perms.can_edit_customers
-                                    ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
-                                    : isDarkMode
-                                    ? "bg-zinc-900 border-zinc-800 text-zinc-400"
-                                    : "bg-white border-zinc-200 text-zinc-600"
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={perms.can_edit_customers}
-                                  disabled={isSaving}
-                                  onChange={(e) =>
-                                    handleUpdateUserPermissions(p, {
-                                      ...perms,
-                                      can_edit_customers: e.target.checked,
-                                    })
-                                  }
-                                  className="w-4 h-4 rounded text-emerald-600 cursor-pointer"
-                                />
-                                <div className="min-w-0">
-                                  <div className="font-bold text-[11px] flex items-center gap-1.5">
-                                    <Users className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                    <span>Master Customer</span>
-                                  </div>
-                                  <div className="text-[10px] text-zinc-400">
-                                    Ubah data apotek / pelanggan
-                                  </div>
-                                </div>
-                              </label>
-
-                              <label
-                                className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer select-none transition-colors ${
-                                  perms.can_edit_products
-                                    ? "bg-purple-500/15 border-purple-500/30 text-purple-300"
-                                    : isDarkMode
-                                    ? "bg-zinc-900 border-zinc-800 text-zinc-400"
-                                    : "bg-white border-zinc-200 text-zinc-600"
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={perms.can_edit_products}
-                                  disabled={isSaving}
-                                  onChange={(e) =>
-                                    handleUpdateUserPermissions(p, {
-                                      ...perms,
-                                      can_edit_products: e.target.checked,
-                                    })
-                                  }
-                                  className="w-4 h-4 rounded text-purple-600 cursor-pointer"
-                                />
-                                <div className="min-w-0">
-                                  <div className="font-bold text-[11px] flex items-center gap-1.5">
-                                    <Package className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                                    <span>Master Produk</span>
-                                  </div>
-                                  <div className="text-[10px] text-zinc-400">
-                                    Ubah master data produk
-                                  </div>
-                                </div>
-                              </label>
-
-                              <label
-                                className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer select-none transition-colors sm:col-span-2 ${
-                                  perms.can_delete_data
-                                    ? "bg-rose-500/15 border-rose-500/30 text-rose-300"
-                                    : isDarkMode
-                                    ? "bg-zinc-900 border-zinc-800 text-zinc-400"
-                                    : "bg-white border-zinc-200 text-zinc-600"
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={perms.can_delete_data}
-                                  disabled={isSaving}
-                                  onChange={(e) =>
-                                    handleUpdateUserPermissions(p, {
-                                      ...perms,
-                                      can_delete_data: e.target.checked,
-                                    })
-                                  }
-                                  className="w-4 h-4 rounded text-rose-600 cursor-pointer"
-                                />
-                                <div className="min-w-0">
-                                  <div className="font-bold text-[11px] flex items-center gap-1.5 text-rose-400">
-                                    <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                                    <span>Izin Hapus Data (Delete Records)</span>
-                                  </div>
-                                  <div className="text-[10px] text-zinc-400">
-                                    Mengizinkan penghapusan tiket return atau data master
-                                  </div>
-                                </div>
-                              </label>
+                                  onChange={(e) => {
+                                    const newWh = e.target.value as "ALL" | "MBI" | "MAI";
+                                    handleUpdateUserPermissions(p, { ...perms, warehouse_access: newWh }, p.role || "admin", newWh);
+                                  }}
+                                  className={`w-full text-xs font-bold rounded-lg p-2 border outline-none cursor-pointer ${
+                                    isDarkMode
+                                      ? "bg-zinc-900 border-zinc-700 text-zinc-200"
+                                      : "bg-white border-zinc-300 text-zinc-800"
+                                  }`}
+                                >
+                                  <option value="ALL">Semua Gudang (MBI &amp; MAI)</option>
+                                  <option value="MBI">Khusus Gudang MBI (Tidak bisa ACC MAI)</option>
+                                  <option value="MAI">Khusus Gudang MAI (Tidak bisa ACC MBI)</option>
+                                </select>
+                              </div>
                             </div>
+
+                            {/* Viewer Mode Notice */}
+                            {p.role === "readonly" ? (
+                              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                                <span>Akun ini disetel sebagai <strong>Hanya Viewer</strong>. Pengguna hanya dapat membaca data dan tidak memiliki izin mengedit faktur, shipment error, maupun data master.</span>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <label
+                                  className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer select-none transition-colors ${
+                                    perms.can_edit_faktur
+                                      ? "bg-blue-500/15 border-blue-500/30 text-blue-300"
+                                      : isDarkMode
+                                      ? "bg-zinc-900 border-zinc-800 text-zinc-400"
+                                      : "bg-white border-zinc-200 text-zinc-600"
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={perms.can_edit_faktur}
+                                    disabled={isSaving}
+                                    onChange={(e) =>
+                                      handleUpdateUserPermissions(p, {
+                                        ...perms,
+                                        can_edit_faktur: e.target.checked,
+                                      }, p.role, currentWh)
+                                    }
+                                    className="w-4 h-4 rounded text-blue-600 cursor-pointer"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-[11px] flex items-center gap-1.5">
+                                      <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                                      <span>Modul Faktur Tracker</span>
+                                    </div>
+                                    <div className="text-[10px] text-zinc-400">
+                                      Upload file &amp; tanda selesai cetak
+                                    </div>
+                                  </div>
+                                </label>
+
+                                <label
+                                  className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer select-none transition-colors ${
+                                    perms.can_edit_shipment_error
+                                      ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                                      : isDarkMode
+                                      ? "bg-zinc-900 border-zinc-800 text-zinc-400"
+                                      : "bg-white border-zinc-200 text-zinc-600"
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={perms.can_edit_shipment_error}
+                                    disabled={isSaving}
+                                    onChange={(e) =>
+                                      handleUpdateUserPermissions(p, {
+                                        ...perms,
+                                        can_edit_shipment_error: e.target.checked,
+                                      }, p.role, currentWh)
+                                    }
+                                    className="w-4 h-4 rounded text-amber-600 cursor-pointer"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-[11px] flex items-center gap-1.5">
+                                      <Truck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                      <span>Shipment Error (Komplain)</span>
+                                    </div>
+                                    <div className="text-[10px] text-zinc-400">
+                                      Edit status tiket &amp; investigasi (sesuai gudang)
+                                    </div>
+                                  </div>
+                                </label>
+
+                                <label
+                                  className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer select-none transition-colors ${
+                                    perms.can_edit_customers
+                                      ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+                                      : isDarkMode
+                                      ? "bg-zinc-900 border-zinc-800 text-zinc-400"
+                                      : "bg-white border-zinc-200 text-zinc-600"
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={perms.can_edit_customers}
+                                    disabled={isSaving}
+                                    onChange={(e) =>
+                                      handleUpdateUserPermissions(p, {
+                                        ...perms,
+                                        can_edit_customers: e.target.checked,
+                                      }, p.role, currentWh)
+                                    }
+                                    className="w-4 h-4 rounded text-emerald-600 cursor-pointer"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-[11px] flex items-center gap-1.5">
+                                      <Users className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                      <span>Master Customer</span>
+                                    </div>
+                                    <div className="text-[10px] text-zinc-400">
+                                      Ubah data apotek / pelanggan
+                                    </div>
+                                  </div>
+                                </label>
+
+                                <label
+                                  className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer select-none transition-colors ${
+                                    perms.can_edit_products
+                                      ? "bg-purple-500/15 border-purple-500/30 text-purple-300"
+                                      : isDarkMode
+                                      ? "bg-zinc-900 border-zinc-800 text-zinc-400"
+                                      : "bg-white border-zinc-200 text-zinc-600"
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={perms.can_edit_products}
+                                    disabled={isSaving}
+                                    onChange={(e) =>
+                                      handleUpdateUserPermissions(p, {
+                                        ...perms,
+                                        can_edit_products: e.target.checked,
+                                      }, p.role, currentWh)
+                                    }
+                                    className="w-4 h-4 rounded text-purple-600 cursor-pointer"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-[11px] flex items-center gap-1.5">
+                                      <Package className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                                      <span>Master Produk</span>
+                                    </div>
+                                    <div className="text-[10px] text-zinc-400">
+                                      Ubah master data produk
+                                    </div>
+                                  </div>
+                                </label>
+
+                                {/* Only Farhan (Owner) sees the Delete Records permission! Melin never sees delete data */}
+                                {isOwnerUser(currentUserName) && (
+                                  <label
+                                    className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer select-none transition-colors sm:col-span-2 ${
+                                      perms.can_delete_data
+                                        ? "bg-rose-500/15 border-rose-500/30 text-rose-300"
+                                        : isDarkMode
+                                        ? "bg-zinc-900 border-zinc-800 text-zinc-400"
+                                        : "bg-white border-zinc-200 text-zinc-600"
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={perms.can_delete_data}
+                                      disabled={isSaving}
+                                      onChange={(e) =>
+                                        handleUpdateUserPermissions(p, {
+                                          ...perms,
+                                          can_delete_data: e.target.checked,
+                                        }, p.role, currentWh)
+                                      }
+                                      className="w-4 h-4 rounded text-rose-600 cursor-pointer"
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="font-bold text-[11px] flex items-center gap-1.5 text-rose-400">
+                                        <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                                        <span>Izin Hapus Data (Delete Records)</span>
+                                      </div>
+                                      <div className="text-[10px] text-zinc-400">
+                                        Mengizinkan penghapusan tiket return atau data master
+                                      </div>
+                                    </div>
+                                  </label>
+                                )}
+                              </div>
+                            )}
 
                             {isSaving && (
                               <div className="flex items-center gap-2 text-[11px] text-blue-400 font-bold">

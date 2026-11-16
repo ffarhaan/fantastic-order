@@ -563,48 +563,55 @@ export async function GET(req: Request) {
       }
 
       // Direct Live Sync straight from the DO Checker app (Firebase RTDB, 0 dependency on GSheet)
-      if (warehouse === "MBI") {
-        try {
-          const fbRes = await fetch('https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app/done.json?orderBy=%22completedAt%22&limitToLast=200');
-          if (fbRes.ok) {
-            const fbData = await fbRes.json();
-            if (fbData && typeof fbData === "object") {
-              const entries = Object.entries(fbData);
-              const liveRows: (string | number | null)[][] = [];
-              for (const [so, v] of entries) {
-                const cleanSo = String(so).trim();
-                if (!cleanSo || cleanSo === "-" || cleanSo === "#N/A") continue;
-                const d = v as any;
-                let waktuKirim = null;
-                if (d.completedAt) {
-                  const ts = Number(d.completedAt);
-                  if (!isNaN(ts) && ts > 0) {
-                    // Konversi ke WIB (Asia/Jakarta, UTC+7) agar presisi identik dengan waktu riil gudang
-                    const wibDt = new Date(ts + 7 * 60 * 60 * 1000);
-                    const day = String(wibDt.getUTCDate()).padStart(2, "0");
-                    const mon = String(wibDt.getUTCMonth() + 1).padStart(2, "0");
-                    const yr = wibDt.getUTCFullYear();
-                    const H = String(wibDt.getUTCHours()).padStart(2, "0");
-                    const M = String(wibDt.getUTCMinutes()).padStart(2, "0");
-                    waktuKirim = `${day}/${mon}/${yr} ${H}:${M}`;
-                  }
+      // MBI: https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app
+      // MAI: https://app-qc-f91b2-default-rtdb.asia-southeast1.firebasedatabase.app
+      const rtdbUrl = warehouse === "MAI"
+        ? "https://app-qc-f91b2-default-rtdb.asia-southeast1.firebasedatabase.app"
+        : "https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app";
+      const targetCheckerTable = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
+
+      try {
+        const fbRes = await fetch(`${rtdbUrl}/done.json?orderBy=%22completedAt%22&limitToLast=200`);
+        if (fbRes.ok) {
+          const fbData = await fbRes.json();
+          if (fbData && typeof fbData === "object") {
+            const entries = Object.entries(fbData);
+            const liveRows: (string | number | null)[][] = [];
+            for (const [so, v] of entries) {
+              const cleanSo = String(so).trim();
+              if (!cleanSo || cleanSo === "-" || cleanSo === "#N/A") continue;
+              const d = v as any;
+              let waktuKirim = null;
+              if (d.completedAt) {
+                const ts = Number(d.completedAt);
+                if (!isNaN(ts) && ts > 0) {
+                  // Konversi ke WIB (Asia/Jakarta, UTC+7) agar presisi identik dengan waktu riil gudang
+                  const wibDt = new Date(ts + 7 * 60 * 60 * 1000);
+                  const day = String(wibDt.getUTCDate()).padStart(2, "0");
+                  const mon = String(wibDt.getUTCMonth() + 1).padStart(2, "0");
+                  const yr = wibDt.getUTCFullYear();
+                  const H = String(wibDt.getUTCHours()).padStart(2, "0");
+                  const M = String(wibDt.getUTCMinutes()).padStart(2, "0");
+                  waktuKirim = `${day}/${mon}/${yr} ${H}:${M}`;
                 }
-                const noDo = d.doNum ? String(d.doNum).trim() : null;
-                const cust = d.customer ? String(d.customer).trim() : null;
-                const checker = d.checkerName ? String(d.checkerName).trim() : "-";
-                const packer = d.packerName ? String(d.packerName).trim() : null;
-                const picker = d.pickerName ? String(d.pickerName).trim() : null;
-                const totItem = Number(d.itemCount) || 0;
-                const totQty = Number(d.totalQty) || totItem;
-
-                liveRows.push([
-                  "MBI", cleanSo, noDo, cust, waktuKirim, checker, packer, picker, totItem, totQty
-                ]);
               }
+              const noDo = d.doNum ? String(d.doNum).trim() : null;
+              const cust = d.customer ? String(d.customer).trim() : null;
+              const checker = d.checkerName ? String(d.checkerName).trim() : "-";
+              let packer = d.packerName ? String(d.packerName).trim() : null;
+              if (packer === "TANPA PACKER") packer = null;
+              const picker = d.pickerName ? String(d.pickerName).trim() : null;
+              const totItem = Number(d.itemCount) || 0;
+              const totQty = Number(d.totalQty) || totItem;
 
-              if (liveRows.length > 0) {
-                const doneSig = crypto.createHash("md5").update(JSON.stringify(liveRows)).digest("hex");
-                if (isFresh || lastDoneSyncSig[warehouse] !== doneSig) {
+              liveRows.push([
+                warehouse, cleanSo, noDo, cust, waktuKirim, checker, packer, picker, totItem, totQty
+              ]);
+            }
+
+            if (liveRows.length > 0) {
+              const doneSig = crypto.createHash("md5").update(JSON.stringify(liveRows)).digest("hex");
+              if (isFresh || lastDoneSyncSig[warehouse] !== doneSig) {
                 const placeholders = liveRows.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QC_DONE')").join(", ");
                 await conn.execute(
                   `INSERT INTO qc_reports (
@@ -623,79 +630,87 @@ export async function GET(req: Request) {
                   liveRows.flat()
                 );
 
-                // Also keep so_checkers in sync so invoice table has live checker/picker/packer from DO Checker
-                const checkerRows = liveRows.map((r) => [r[1], r[5], r[6], r[7]]);
+                // Also keep so_checkers (MBI) or so_checkers_mai (MAI) in sync so invoice table has live checker/picker/packer from DO Checker
+                const checkerRows: any[] = [];
+                for (const r of liveRows) {
+                  checkerRows.push([r[1], r[5], r[6], r[7]]);
+                  // Also index noDo if valid and different from so_number
+                  if (r[2] && r[2] !== r[1] && r[2] !== "-" && r[2] !== "#N/A") {
+                    checkerRows.push([r[2], r[5], r[6], r[7]]);
+                  }
+                }
                 const checkerPlaceholders = checkerRows.map(() => "(?, ?, ?, ?)").join(", ");
                 await conn.execute(
-                  `INSERT INTO so_checkers (so_number, checker_name, packer_name, picker_name)
+                  `INSERT INTO ${targetCheckerTable} (so_number, checker_name, packer_name, picker_name)
                    VALUES ${checkerPlaceholders}
                    ON DUPLICATE KEY UPDATE
-                     checker_name = IF(VALUES(checker_name) IS NOT NULL AND VALUES(checker_name) != '-' AND VALUES(checker_name) != '', VALUES(checker_name), so_checkers.checker_name),
-                     packer_name = IF(VALUES(packer_name) IS NOT NULL AND VALUES(packer_name) != '', VALUES(packer_name), so_checkers.packer_name),
-                     picker_name = IF(VALUES(picker_name) IS NOT NULL AND VALUES(picker_name) != '', VALUES(picker_name), so_checkers.picker_name)`,
+                     checker_name = IF(VALUES(checker_name) IS NOT NULL AND VALUES(checker_name) != '-' AND VALUES(checker_name) != '', VALUES(checker_name), ${targetCheckerTable}.checker_name),
+                     packer_name = IF(VALUES(packer_name) IS NOT NULL AND VALUES(packer_name) != '', VALUES(packer_name), ${targetCheckerTable}.packer_name),
+                     picker_name = IF(VALUES(picker_name) IS NOT NULL AND VALUES(picker_name) != '', VALUES(picker_name), ${targetCheckerTable}.picker_name)`,
                   checkerRows.flat()
                 );
-                  lastDoneSyncSig[warehouse] = doneSig;
-                }
-                // Live sync 100% of archive notes directly from DO Checker Firebase RTDB (manual fresh=true always immediate; auto background max 2 min)
-                const lastSync = lastArchiveSyncTs[warehouse] || 0;
-                if (isFresh || now - lastSync > 120000) {
-                  lastArchiveSyncTs[warehouse] = now;
-                  try {
-                    const archRes = await fetch('https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app/archive.json');
-                    if (archRes.ok) {
-                      const archData = await archRes.json();
-                      if (archData && typeof archData === 'object') {
-                        const notedRows: [string, string, number, string][] = [];
-                        for (const [so, v] of Object.entries(archData)) {
-                          const d = v as any;
-                          if (!d || !Array.isArray(d.items)) continue;
-                          let waktuKirim = '-';
-                          if (d.completedAt) {
-                            const wibDt = new Date(Number(d.completedAt) + 7 * 60 * 60 * 1000);
-                            const day = String(wibDt.getUTCDate()).padStart(2, '0');
-                            const mon = String(wibDt.getUTCMonth() + 1).padStart(2, '0');
-                            const yr = wibDt.getUTCFullYear();
-                            const H = String(wibDt.getUTCHours()).padStart(2, '0');
-                            const M = String(wibDt.getUTCMinutes()).padStart(2, '0');
-                            waktuKirim = `${day}/${mon}/${yr} ${H}:${M}`;
-                          }
-                          const meta = { waktuKirim, noDo: d.doNum || '-', so, customer: d.customer || '-' };
-                          const notes = extractNotedItems(d.items, meta);
-                          if (notes.length > 0) {
-                            notedRows.push(["MBI", so, notes.length, JSON.stringify(notes)]);
-                          }
+                lastDoneSyncSig[warehouse] = doneSig;
+              }
+
+              // Live sync 100% of archive notes directly from DO Checker Firebase RTDB (manual fresh=true always immediate; auto background max 2 min)
+              const lastSync = lastArchiveSyncTs[warehouse] || 0;
+              if (isFresh || now - lastSync > 120000) {
+                lastArchiveSyncTs[warehouse] = now;
+                try {
+                  const archRes = await fetch(`${rtdbUrl}/archive.json`);
+                  if (archRes.ok) {
+                    const archData = await archRes.json();
+                    if (archData && typeof archData === 'object') {
+                      const notedRows: [string, string, number, string][] = [];
+                      for (const [so, v] of Object.entries(archData)) {
+                        const d = v as any;
+                        if (!d || !Array.isArray(d.items)) continue;
+                        let waktuKirim = '-';
+                        if (d.completedAt) {
+                          const wibDt = new Date(Number(d.completedAt) + 7 * 60 * 60 * 1000);
+                          const day = String(wibDt.getUTCDate()).padStart(2, '0');
+                          const mon = String(wibDt.getUTCMonth() + 1).padStart(2, '0');
+                          const yr = wibDt.getUTCFullYear();
+                          const H = String(wibDt.getUTCHours()).padStart(2, '0');
+                          const M = String(wibDt.getUTCMinutes()).padStart(2, '0');
+                          waktuKirim = `${day}/${mon}/${yr} ${H}:${M}`;
                         }
-                        if (notedRows.length > 0) {
-                          const archSig = crypto.createHash("md5").update(JSON.stringify(notedRows)).digest("hex");
-                          if (isFresh || lastArchiveSyncSig[warehouse] !== archSig) {
-                            const placeholders = notedRows.map(() => "(?, ?, ?, ?)").join(", ");
-                            await conn.execute(
-                              `INSERT INTO qc_reports (warehouse, so_number, barang_catatan, noted_items)
-                               VALUES ${placeholders}
-                               ON DUPLICATE KEY UPDATE
-                                 barang_catatan = VALUES(barang_catatan),
-                                 noted_items = VALUES(noted_items)`,
-                              notedRows.flat()
-                            );
-                            lastArchiveSyncSig[warehouse] = archSig;
-                          }
+                        const meta = { waktuKirim, noDo: d.doNum || '-', so, customer: d.customer || '-' };
+                        const notes = extractNotedItems(d.items, meta);
+                        if (notes.length > 0) {
+                          notedRows.push([warehouse, so, notes.length, JSON.stringify(notes)]);
+                        }
+                      }
+                      if (notedRows.length > 0) {
+                        const archSig = crypto.createHash("md5").update(JSON.stringify(notedRows)).digest("hex");
+                        if (isFresh || lastArchiveSyncSig[warehouse] !== archSig) {
+                          const placeholders = notedRows.map(() => "(?, ?, ?, ?)").join(", ");
+                          await conn.execute(
+                            `INSERT INTO qc_reports (warehouse, so_number, barang_catatan, noted_items)
+                             VALUES ${placeholders}
+                             ON DUPLICATE KEY UPDATE
+                               barang_catatan = VALUES(barang_catatan),
+                               noted_items = VALUES(noted_items)`,
+                            notedRows.flat()
+                          );
+                          lastArchiveSyncSig[warehouse] = archSig;
                         }
                       }
                     }
-                  } catch (e) {
-                    console.warn('Live archive notes sync error:', e);
                   }
+                } catch (e) {
+                  console.warn(`Live archive notes sync error (${warehouse}):`, e);
                 }
               }
             }
           }
-        } catch (e) {
-          console.warn("Direct Firebase sync error:", e);
         }
+      } catch (e) {
+        console.warn(`Direct Firebase sync error (${warehouse}):`, e);
       }
 
       const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
+      const invoiceFilter = warehouse === "MAI" ? "f.invoice_key LIKE 'MAI-%'" : "f.invoice_key NOT LIKE 'MAI-%'";
       const rows = (await conn.execute(
         `SELECT 
            ? as warehouse,
@@ -718,7 +733,9 @@ export async function GET(req: Request) {
            ${includeNotes ? "MAX(t.noted_items)" : "NULL"} as noted_items,
            COALESCE(MAX(t.status), 'QC_DONE') as status,
            MAX(t.sheet_row) as sheet_row,
-           MAX(t.updated_at) as updated_at
+           MAX(t.updated_at) as updated_at,
+           MAX(f.no_faktur) as invoice_number,
+           IF(MAX(f.no_faktur) IS NOT NULL, 1, 0) as is_invoiced
          FROM (
            SELECT 
              warehouse, so_number, no_do, customer_name, so_date, waktu_kirim,
@@ -734,13 +751,22 @@ export async function GET(req: Request) {
            FROM ${tableName}
            WHERE updated_at >= NOW() - INTERVAL 30 DAY
              AND so_number IS NOT NULL AND LENGTH(TRIM(so_number)) >= 3 AND so_number != '-'
+             AND so_number NOT IN (SELECT so_number FROM qc_reports WHERE warehouse = ?)
+             AND so_number NOT IN (SELECT no_do FROM qc_reports WHERE warehouse = ? AND no_do IS NOT NULL AND no_do != '')
          ) t
          LEFT JOIN cancelled_qc_sos cqs ON t.so_number = cqs.so_number
+         LEFT JOIN fakturs_archive f ON (
+           ${invoiceFilter}
+           AND (
+             f.no_sales_order = t.so_number OR
+             (t.no_do IS NOT NULL AND t.no_do != '' AND f.no_sales_order = t.no_do)
+           )
+         )
          WHERE cqs.so_number IS NULL
          GROUP BY t.so_number
          ORDER BY updated_at DESC, sheet_row DESC
          LIMIT 10000;`,
-        [warehouse, warehouse, warehouse]
+        [warehouse, warehouse, warehouse, warehouse, warehouse]
       )) as any[];
       const payload = { success: true, count: rows.length, data: rows };
       memoryQcReportsCache[cacheKey] = { payload, ts: Date.now() };
@@ -2220,14 +2246,129 @@ export async function POST(req: Request) {
       return Response.json({ success: true, logId: (res as any)?.insertId });
     }
 
-    // 0. Sync checkers from Google Sheets (PERMANENTLY DISCONNECTED per user mandate)
-    // All QC/Checker data is now synced directly App-to-App from DO Checker Firebase RTDB.
+    // 0. Sync checkers from Google Sheets / External apps
+    // For MBI: permanently disconnected per user mandate (all data synced directly from DO Checker Firebase RTDB)
+    // For MAI: enabled for warehouse === "MAI" to support MAI QC integration
     if (action === "sync_checkers") {
-      return Response.json({
-        success: true,
-        count: 0,
-        message: "Google Sheets sync for checkers/QC has been permanently disconnected. All QC data is synced directly App-to-App from DO Checker Firebase."
-      });
+      const warehouse = (searchParams.get("warehouse") || body?.warehouse || "MBI").toUpperCase() === "MAI" ? "MAI" : "MBI";
+
+      if (warehouse === "MBI") {
+        return Response.json({
+          success: true,
+          count: 0,
+          message: "Google Sheets sync for checkers/QC has been permanently disconnected for MBI. All QC data is synced directly App-to-App from DO Checker Firebase."
+        });
+      }
+
+      // Warehouse MAI: Process incoming sync items for MAI
+      const items = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
+      if (items.length === 0) {
+        return Response.json({ success: true, count: 0, warehouse: "MAI" });
+      }
+
+      const validRows: [string, string, string | null, string | null][] = [];
+      const qcRows: any[] = [];
+      for (const item of items) {
+        const so = String(item.so || item.so_number || "").trim();
+        let checker = String(item.checker || item.checker_name || "").trim();
+        let packer = String(item.packer || item.packer_name || "").trim();
+        let picker = String(item.picker || item.picker_name || "").trim();
+
+        // Guard against misread customer names or dates
+        if (
+          packer.toLowerCase().startsWith("apotek") ||
+          packer.toLowerCase().startsWith("pt ") ||
+          packer.toLowerCase().startsWith("klinik") ||
+          packer.includes("00:00:00") ||
+          packer.includes("GMT")
+        ) {
+          packer = "";
+        }
+        if (
+          picker.includes("00:00:00") ||
+          picker.includes("GMT") ||
+          /^(mon|tue|wed|thu|fri|sat|sun)\s/i.test(picker)
+        ) {
+          picker = "";
+        }
+
+        if (!so || so === "-" || so === "#N/A" || (!checker && !packer && !picker)) continue;
+
+        validRows.push([so, checker || "-", packer || null, picker || null]);
+
+        if (item.customer || item.no_do || item.total_item) {
+          qcRows.push([
+            "MAI",
+            so,
+            item.no_do || null,
+            item.customer || null,
+            item.so_date || null,
+            item.waktu_kirim || null,
+            checker || "-",
+            packer || null,
+            picker || null,
+            item.kategori || null,
+            item.kategori_produk || null,
+            Number(item.total_item) || 0,
+            Number(item.total_qty) || 0,
+            Number(item.barang_catatan) || 0,
+            item.is_done || "",
+            Number(item.sheet_row) || 0
+          ]);
+        }
+      }
+
+      const tableName = "so_checkers_mai";
+      const recentDocId = "so_checkers_recent_mai";
+
+      let updatedCount = 0;
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+        const chunk = validRows.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunk.map(() => "(?, ?, ?, ?)").join(", ");
+        const flatParams = chunk.flat();
+
+        await conn.execute(
+          `INSERT INTO ${tableName} (so_number, checker_name, packer_name, picker_name)
+           VALUES ${placeholders}
+           ON DUPLICATE KEY UPDATE 
+             checker_name = IF(VALUES(checker_name) IS NOT NULL AND VALUES(checker_name) != '' AND VALUES(checker_name) != '-', VALUES(checker_name), ${tableName}.checker_name),
+             packer_name = IF(VALUES(packer_name) IS NOT NULL AND VALUES(packer_name) != '', VALUES(packer_name), ${tableName}.packer_name),
+             picker_name = IF(VALUES(picker_name) IS NOT NULL AND VALUES(picker_name) != '', VALUES(picker_name), ${tableName}.picker_name)`,
+          flatParams
+        );
+        updatedCount += chunk.length;
+      }
+
+      // Propagate to Firestore for instant real-time WebSocket updates
+      const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+      const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "fantastic-order";
+      if (apiKey && projectId && validRows.length > 0) {
+        try {
+          const recentMap: Record<string, { c: string; p: string; k?: string }> = {};
+          const sliceRows = validRows.slice(-500);
+          for (const row of sliceRows) {
+            recentMap[row[0]] = { c: row[1], p: row[2] || "", k: row[3] || "" };
+          }
+          await fetch(
+            `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/app_data/${recentDocId}?key=${apiKey}&updateMask.fieldPaths=data&updateMask.fieldPaths=updatedAt`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                fields: {
+                  data: { stringValue: JSON.stringify(recentMap) },
+                  updatedAt: { stringValue: new Date().toISOString() },
+                },
+              }),
+            }
+          ).catch((e) => console.warn(`[Sync Checkers MAI] Firestore patch failed:`, e));
+        } catch (e) {
+          console.warn(`[Sync Checkers MAI] Firestore sync warning:`, e);
+        }
+      }
+
+      return Response.json({ success: true, count: updatedCount, warehouse: "MAI" });
     }
 
     // 0.1. Sync shipment errors from Google Sheets (Bulk sync / Sheet sync)

@@ -611,7 +611,7 @@ export default function ReportQcView({
       liveDebounceTimer = setTimeout(() => {
         onRefreshQc(false, versionTag);
       }, 800);
-    });
+    }, warehouse);
 
     // 3. Fallback heartbeat konservatif (5 menit) karena WebSocket RTDB + Firestore sudah aktif real-time
     const fallbackInterval = setInterval(() => {
@@ -659,8 +659,14 @@ export default function ReportQcView({
       const packerName = row.packer_name && row.packer_name !== "-" ? row.packer_name : "-";
       const pickerName = row.picker_name && row.picker_name !== "-" ? row.picker_name : "-";
 
-      const isInvoiced = existingSOSet.has(soNum.toUpperCase()) || existingSOSet.has(normSo);
-      const invoiceNum = detail?.invoiceNumber || null;
+      const isInvoiced = Boolean(
+        row.is_invoiced === 1 ||
+        row.is_invoiced === "1" ||
+        row.invoice_number ||
+        existingSOSet.has(soNum.toUpperCase()) ||
+        existingSOSet.has(normSo)
+      );
+      const invoiceNum = detail?.invoiceNumber || row.invoice_number || null;
 
       const isDone = Boolean(
         localDoneMap[soNum] || row.is_done === "DONE" || String(row.is_done || "").toUpperCase() === "DONE"

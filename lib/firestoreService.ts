@@ -547,7 +547,9 @@ export function subscribeToFakturs(
         if (Array.isArray(data.docs) && data.docs.length > 0) {
           const syncDocs = data.docs as FirestoreFakturDoc[];
           const uploadedAtMs = data.uploadedAt ? new Date(data.uploadedAt).getTime() : Date.now();
+          const inferredWh: "MBI" | "MAI" = (data.warehouse as "MBI" | "MAI") || (syncDocs[0]?.entity === "MAI" ? "MAI" : "MBI");
           const syncNotif: UploadNotification = {
+            warehouse: inferredWh,
             fileName: data.fileName || "File Upload",
             uploaderId: data.uploaderId || "",
             newUnprinted: data.newUnprintedCount || syncDocs.length,
@@ -631,11 +633,13 @@ export async function broadcastRecentUpload(
   fileName: string,
   uploaderId: string,
   newUnprintedCount: number,
-  brandNewKeys?: string[]
+  brandNewKeys?: string[],
+  warehouse?: "MBI" | "MAI"
 ): Promise<void> {
   try {
     const syncDocRef = doc(db, APP_DATA_COLLECTION, "recent_sync");
     const brandNewSet = new Set(brandNewKeys || []);
+    const wh: "MBI" | "MAI" = warehouse || (uploadedDocs[0]?.entity === "MAI" ? "MAI" : "MBI");
 
     // 1. Strictly prioritize ALL brand-new unprinted invoices at index 0..N
     const sortedDocs = [...uploadedDocs].sort((a, b) => {
@@ -656,6 +660,7 @@ export async function broadcastRecentUpload(
       syncId: `sync_${Date.now()}_${uploaderId}`,
       uploaderId,
       uploadedAt: new Date().toISOString(),
+      warehouse: wh,
       fileName,
       newUnprintedCount,
       progression,
@@ -1618,6 +1623,7 @@ export interface StaffPermissions {
   can_edit_customers: boolean;      // Mengubah Master Customer & berkas legalitas
   can_edit_products: boolean;       // Mengubah Master Produk & Apotek
   can_delete_data: boolean;         // Menghapus data tiket komplain / pelanggan
+  warehouse_access?: "ALL" | "MBI" | "MAI"; // Akses Gudang: ALL (Semua), MBI (Khusus MBI), MAI (Khusus MAI)
 }
 
 export const DEFAULT_STAFF_PERMISSIONS: StaffPermissions = {
@@ -1626,6 +1632,7 @@ export const DEFAULT_STAFF_PERMISSIONS: StaffPermissions = {
   can_edit_customers: false,
   can_edit_products: false,
   can_delete_data: false,
+  warehouse_access: "ALL",
 };
 
 export const SUPER_ADMIN_PERMISSIONS: StaffPermissions = {
@@ -1634,6 +1641,16 @@ export const SUPER_ADMIN_PERMISSIONS: StaffPermissions = {
   can_edit_customers: true,
   can_edit_products: true,
   can_delete_data: true,
+  warehouse_access: "ALL",
+};
+
+export const CO_ADMIN_PERMISSIONS: StaffPermissions = {
+  can_edit_faktur: true,
+  can_edit_shipment_error: true,
+  can_edit_customers: true,
+  can_edit_products: true,
+  can_delete_data: false, // Melin memiliki hak admin penuh namun TIDAK BISA hapus data
+  warehouse_access: "ALL",
 };
 
 export interface StaffAccountProfile {
@@ -1641,6 +1658,7 @@ export interface StaffAccountProfile {
   displayName: string;
   email: string;
   role: "admin" | "readonly";
+  warehouse_access?: "ALL" | "MBI" | "MAI";
   permissions?: StaffPermissions;
   verified: boolean;
   approvalStatus: "pending" | "approved" | "rejected";
@@ -1648,9 +1666,9 @@ export interface StaffAccountProfile {
 }
 
 /**
- * Helper to check if a user is the Super Admin (Farhan)
+ * Helper to check if a user is the Owner (Farhan)
  */
-export function isSuperAdminUser(nameOrEmail?: string | null): boolean {
+export function isOwnerUser(nameOrEmail?: string | null): boolean {
   if (!nameOrEmail) return false;
   const clean = nameOrEmail.trim().toLowerCase();
   return (
@@ -1659,6 +1677,34 @@ export function isSuperAdminUser(nameOrEmail?: string | null): boolean {
     clean === "ffuegoleon@gmail.com" ||
     clean === "farhaangs12@gmail.com"
   );
+}
+
+/**
+ * Helper to check if a user is Co-Admin (Melin / Melinda Gita Wismaya)
+ */
+export function isCoAdminUser(nameOrEmail?: string | null): boolean {
+  if (!nameOrEmail) return false;
+  const clean = nameOrEmail.trim().toLowerCase();
+  return (
+    clean === "melin" ||
+    clean === "melinda" ||
+    clean === "melinda gita wismaya" ||
+    clean === "melinda.gita.wismaya@mhealth.tech"
+  );
+}
+
+/**
+ * Helper to check if a user can manage accounts & assign access (Farhan & Melin)
+ */
+export function canManageAccess(nameOrEmail?: string | null): boolean {
+  return isOwnerUser(nameOrEmail) || isCoAdminUser(nameOrEmail);
+}
+
+/**
+ * Helper to check if a user is an Admin (Farhan & Melin)
+ */
+export function isSuperAdminUser(nameOrEmail?: string | null): boolean {
+  return isOwnerUser(nameOrEmail) || isCoAdminUser(nameOrEmail);
 }
 
 /**
@@ -1685,24 +1731,38 @@ export function subscribeToUserProfiles(
         const displayName = String(val.displayName || val.username || key).trim();
         const email = String(val.email || "").trim().toLowerCase();
         const role: "admin" | "readonly" = val.role === "readonly" ? "readonly" : "admin";
+        const warehouse_access: "ALL" | "MBI" | "MAI" =
+          val.warehouse_access === "MBI" || val.warehouse_access === "MAI"
+            ? val.warehouse_access
+            : val.permissions?.warehouse_access === "MBI" || val.permissions?.warehouse_access === "MAI"
+            ? val.permissions.warehouse_access
+            : "ALL";
         const approvalStatus: "pending" | "approved" | "rejected" =
           val.approvalStatus === "pending" || val.approvalStatus === "rejected"
             ? val.approvalStatus
             : "approved";
         const updatedAt = String(val.updatedAt || "");
 
-        const isSuper = isSuperAdminUser(username) || isSuperAdminUser(email);
-        const perms: StaffPermissions = isSuper
-          ? SUPER_ADMIN_PERMISSIONS
-          : val.permissions
-          ? {
-              can_edit_faktur: Boolean(val.permissions.can_edit_faktur ?? true),
-              can_edit_shipment_error: Boolean(val.permissions.can_edit_shipment_error ?? false),
-              can_edit_customers: Boolean(val.permissions.can_edit_customers ?? false),
-              can_edit_products: Boolean(val.permissions.can_edit_products ?? false),
-              can_delete_data: Boolean(val.permissions.can_delete_data ?? false),
-            }
-          : { ...DEFAULT_STAFF_PERMISSIONS };
+        const isOwner = isOwnerUser(username) || isOwnerUser(email);
+        const isCoAdmin = isCoAdminUser(username) || isCoAdminUser(email);
+
+        let perms: StaffPermissions;
+        if (isOwner) {
+          perms = SUPER_ADMIN_PERMISSIONS;
+        } else if (isCoAdmin) {
+          perms = CO_ADMIN_PERMISSIONS;
+        } else {
+          perms = val.permissions
+            ? {
+                can_edit_faktur: Boolean(val.permissions.can_edit_faktur ?? true),
+                can_edit_shipment_error: Boolean(val.permissions.can_edit_shipment_error ?? false),
+                can_edit_customers: Boolean(val.permissions.can_edit_customers ?? false),
+                can_edit_products: Boolean(val.permissions.can_edit_products ?? false),
+                can_delete_data: Boolean(val.permissions.can_delete_data ?? false),
+                warehouse_access,
+              }
+            : { ...DEFAULT_STAFF_PERMISSIONS, warehouse_access };
+        }
 
         const existing = byUsername.get(username);
         if (!existing || updatedAt >= existing.updatedAt) {
@@ -1710,10 +1770,11 @@ export function subscribeToUserProfiles(
             username,
             displayName,
             email,
-            role,
+            role: isOwner || isCoAdmin ? "admin" : role,
+            warehouse_access: isOwner || isCoAdmin ? "ALL" : warehouse_access,
             permissions: perms,
-            verified: Boolean(val.verified),
-            approvalStatus,
+            verified: isOwner || isCoAdmin ? true : Boolean(val.verified),
+            approvalStatus: isOwner || isCoAdmin ? "approved" : approvalStatus,
             updatedAt,
           });
         }
@@ -1812,11 +1873,13 @@ export async function updateStaffApprovalStatus(
 }
 
 /**
- * Update staff permissions (Only by Farhan / Super Admin)
+ * Update staff permissions, role, and warehouse access (Farhan & Melin)
  */
 export async function updateStaffPermissions(
   username: string,
-  permissions: StaffPermissions
+  permissions: StaffPermissions,
+  role?: "admin" | "readonly",
+  warehouse_access?: "ALL" | "MBI" | "MAI"
 ): Promise<{ success: boolean; message: string }> {
   const cleanU = String(username || "").trim().toLowerCase();
   const nowIso = new Date().toISOString();
@@ -1834,9 +1897,18 @@ export async function updateStaffPermissions(
     }
 
     const currentProfile = data[targetKey];
+    const newRole = role || currentProfile.role || "admin";
+    const newWarehouse = warehouse_access || currentProfile.warehouse_access || permissions.warehouse_access || "ALL";
+    const updatedPerms: StaffPermissions = {
+      ...permissions,
+      warehouse_access: newWarehouse,
+    };
+
     const updated = {
       ...currentProfile,
-      permissions,
+      role: newRole,
+      warehouse_access: newWarehouse,
+      permissions: updatedPerms,
       updatedAt: nowIso,
     };
 
@@ -1908,7 +1980,7 @@ export async function authenticateUser(
   inputPass: string
 ): Promise<{
   success: boolean;
-  user?: { name: string; email?: string; role: "admin" | "readonly"; permissions?: StaffPermissions };
+  user?: { name: string; email?: string; role: "admin" | "readonly"; warehouse_access?: "ALL" | "MBI" | "MAI"; permissions?: StaffPermissions };
   requiresOtp?: boolean;
   pendingProfile?: { username: string; displayName: string; email: string };
   message?: string;
@@ -1980,8 +2052,8 @@ export async function authenticateUser(
       return { success: false, message: "Password yang Anda masukkan salah." };
     }
 
-    // Check approval status & OTP verification (Super Admin Farhan is always approved & verified)
-    if (!isSuperAdminUser(matchedUsername) && !isSuperAdminUser(displayName)) {
+    // Check approval status & OTP verification (Super Admin Farhan & Melin are always approved & verified)
+    if (!canManageAccess(matchedUsername) && !canManageAccess(displayName)) {
       if (!matchedProfile) {
         return {
           success: false,
@@ -1992,7 +2064,7 @@ export async function authenticateUser(
         return {
           success: false,
           message:
-            "Akun Anda masih menunggu di-ACC oleh Farhan (Admin). Kode OTP akan dikirim ke Gmail Anda setelah akun di-ACC.",
+            "Akun Anda masih menunggu di-ACC oleh Farhan / Melin (Admin). Kode OTP akan dikirim ke Gmail Anda setelah akun di-ACC.",
         };
       }
       if (matchedProfile.approvalStatus === "rejected") {
@@ -2001,7 +2073,7 @@ export async function authenticateUser(
           message: "Maaf, akses akun Anda telah dicabut atau tidak disetujui oleh Administrator.",
         };
       }
-      // Approved by Farhan, now waiting for user to input the 6-digit OTP sent to their Gmail!
+      // Approved by Farhan / Melin, now waiting for user to input the 6-digit OTP sent to their Gmail!
       if (matchedProfile.verified === false) {
         return {
           success: false,
@@ -2012,22 +2084,44 @@ export async function authenticateUser(
             email: String(matchedProfile.email || ""),
           },
           message:
-            "Akun Anda telah di-ACC oleh Farhan! Silakan masukkan 6-digit Kode OTP yang telah dikirimkan ke Gmail Anda.",
+            "Akun Anda telah di-ACC oleh Administrator! Silakan masukkan 6-digit Kode OTP yang telah dikirimkan ke Gmail Anda.",
         };
       }
     }
 
-    const isSuper = isSuperAdminUser(matchedUsername) || isSuperAdminUser(displayName);
-    const permissions: StaffPermissions = isSuper
-      ? SUPER_ADMIN_PERMISSIONS
-      : matchedProfile?.permissions || { ...DEFAULT_STAFF_PERMISSIONS };
+    const isOwner = isOwnerUser(matchedUsername) || isOwnerUser(displayName);
+    const isCoAdmin = isCoAdminUser(matchedUsername) || isCoAdminUser(displayName);
+
+    let permissions: StaffPermissions;
+    let userRole: "admin" | "readonly" = "admin";
+    let warehouseAccess: "ALL" | "MBI" | "MAI" = "ALL";
+
+    if (isOwner) {
+      permissions = SUPER_ADMIN_PERMISSIONS;
+      userRole = "admin";
+      warehouseAccess = "ALL";
+    } else if (isCoAdmin) {
+      permissions = CO_ADMIN_PERMISSIONS;
+      userRole = "admin";
+      warehouseAccess = "ALL";
+    } else {
+      userRole = matchedProfile?.role === "readonly" ? "readonly" : (role as "admin" | "readonly");
+      warehouseAccess =
+        matchedProfile?.warehouse_access ||
+        matchedProfile?.permissions?.warehouse_access ||
+        "ALL";
+      permissions = matchedProfile?.permissions
+        ? { ...matchedProfile.permissions, warehouse_access: warehouseAccess }
+        : { ...DEFAULT_STAFF_PERMISSIONS, warehouse_access: warehouseAccess };
+    }
 
     return {
       success: true,
       user: {
         name: displayName,
         email: matchedProfile?.email || "",
-        role,
+        role: userRole,
+        warehouse_access: warehouseAccess,
         permissions,
       },
     };
@@ -2061,7 +2155,7 @@ export async function registerStaffAccount(
     return { success: false, message: "Password minimal 4 karakter." };
   }
 
-  const isSelfAdmin = isSuperAdminUser(cleanU) || isSuperAdminUser(cleanE);
+  const isSelfAdmin = canManageAccess(cleanU) || canManageAccess(cleanE);
 
   try {
     await setDoc(

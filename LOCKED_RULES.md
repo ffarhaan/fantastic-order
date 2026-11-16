@@ -440,7 +440,7 @@ Bagian ini adalah mandat permanen dan baku untuk pengoperasian **Laptop 2** (Mej
 
 1. **Mandat Pengganti Google Sheets & Direct Live Mirror DO Checker**:
    - Laptop 2 difungsikan untuk memantau **Rekap SO** dan rincian **Catatan Barang** secara otomatis tanpa ketergantungan pada Google Spreadsheet manual.
-   - Sumber kebenaran tunggal (*Single Source of Truth*) terhubung langsung ke Firebase RTDB DO Checker (`checkermbi-default-rtdb`) dan database TiDB Serverless.
+   - Sumber kebenaran tunggal (*Single Source of Truth*) terhubung langsung ke Firebase RTDB DO Checker (Gudang MBI: `checkermbi-default-rtdb`, Gudang MAI: `app-qc-f91b2-default-rtdb`) dan database TiDB Serverless.
    - Begitu staf gudang menyelesaikan QC di aplikasi DO Checker, data wajib masuk ke Laptop 2 detik itu juga (<100ms) melalui koneksi WebSocket live listener.
 
 2. **Larangan Mutlak Pemotongan Data (Zero-Slicing & Zero-Assumption Mandate)**:

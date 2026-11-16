@@ -5,6 +5,8 @@ import {
   getUserPassword,
   changeUserPassword,
   isSuperAdminUser,
+  isOwnerUser,
+  isCoAdminUser,
 } from "@/lib/firestoreService";
 import { AppUser } from "./LoginModal";
 import {
@@ -58,7 +60,9 @@ export default function UserProfileModal({
   const [successMessage, setSuccessMessage] = useState("");
 
   const userName = currentUser?.name || "";
-  const isSuper = isSuperAdminUser(userName);
+  const isOwner = isOwnerUser(userName) || isOwnerUser(currentUser?.email);
+  const isCoAdmin = isCoAdminUser(userName) || isCoAdminUser(currentUser?.email);
+  const isSuper = isOwner || isCoAdmin;
 
   // Load current user password
   useEffect(() => {
@@ -243,13 +247,21 @@ export default function UserProfileModal({
                 Hak Akses / Peran
               </span>
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                isSuper
+                isOwner
                   ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                  : isCoAdmin
+                  ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
                   : currentUser.role === "readonly"
                   ? "bg-zinc-800 text-zinc-400 border border-zinc-700"
-                  : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                  : "bg-blue-500/15 text-blue-400 border border-blue-500/30"
               }`}>
-                {isSuper ? "Super Admin (Owner)" : currentUser.role === "readonly" ? "Hanya Lihat (Viewer)" : "Admin Operasional"}
+                {isOwner
+                  ? "Owner (Super Admin)"
+                  : isCoAdmin
+                  ? "Admin (Melin)"
+                  : currentUser.role === "readonly"
+                  ? "Hanya Lihat (Viewer)"
+                  : `Admin (${currentUser.warehouse_access === "MBI" ? "Khusus MBI" : currentUser.warehouse_access === "MAI" ? "Khusus MAI" : "Semua Gudang"})`}
               </span>
             </div>
           </div>

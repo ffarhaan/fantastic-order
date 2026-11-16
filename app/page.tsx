@@ -39,6 +39,9 @@ import {
   subscribeToRealtimeSignal,
   broadcastRealtimeSignal,
   isSuperAdminUser,
+  isOwnerUser,
+  isCoAdminUser,
+  canManageAccess,
   StaffAccountProfile,
   subscribeToNewComplaint,
   type NewComplaintPayload,
@@ -836,14 +839,23 @@ export default function Home() {
           } catch {}
           setShowLoginModal(true);
         } else {
-          // Keep permissions in sync in real-time
+          // Keep permissions, role, and warehouse_access in sync in real-time
           const matchingProfile = list.find(
             (p) =>
               p.username.trim().toLowerCase() === cleanActive ||
               p.displayName.trim().toLowerCase() === cleanActive
           );
-          if (matchingProfile && matchingProfile.permissions) {
-            setCurrentUser((prev) => (prev ? { ...prev, permissions: matchingProfile.permissions } : prev));
+          if (matchingProfile) {
+            setCurrentUser((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    role: matchingProfile.role || prev.role,
+                    warehouse_access: matchingProfile.warehouse_access || matchingProfile.permissions?.warehouse_access || prev.warehouse_access || "ALL",
+                    permissions: matchingProfile.permissions || prev.permissions,
+                  }
+                : prev
+            );
           }
         }
       }
@@ -959,7 +971,7 @@ export default function Home() {
 
   // Clear / Reset All Data (Strictly Owner Only & Real-Time Total Wipe across TiDB + Firestore + All Browsers)
   const handleClearAll = async () => {
-    if (!isSuperAdminUser(currentUserRef.current?.name)) {
+    if (!isOwnerUser(currentUserRef.current?.name)) {
       alert("⚠️ Akses Ditolak: Hanya Owner (Farhan) yang dapat melakukan Reset Data.");
       return;
     }
@@ -1418,8 +1430,7 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
       }
     }, "MAI");
 
-    // 4. Direct Real-Time WebSocket Listener ke DO Checker Firebase RTDB (Instant <100ms, 0 RU TiDB)
-    const unsubDoCheckerLive = subscribeToDoCheckerLive((orderData) => {
+    const handleDoCheckerOrder = (orderData: any, warehouse: "MBI" | "MAI") => {
       if (!orderData || !orderData.so_number) return;
       const cleanSo = String(orderData.so_number).trim();
       if (!cleanSo || cleanSo === "-" || cleanSo === "#N/A") return;
@@ -1449,15 +1460,18 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
         });
       } catch {}
 
+      let packerName = orderData.packerName || orderData.packer_name || "-";
+      if (packerName === "TANPA PACKER") packerName = "-";
+
       const newItem = {
-        warehouse: "MBI",
+        warehouse,
         so_number: cleanSo,
         no_do: orderData.doNum || orderData.no_do || "-",
         customer_name: orderData.customer || orderData.customer_name || "-",
         so_date: waktuKirim,
         waktu_kirim: waktuKirim,
         checker_name: orderData.checkerName || orderData.checker_name || "-",
-        packer_name: orderData.packerName || orderData.packer_name || "-",
+        packer_name: packerName,
         picker_name: orderData.pickerName || orderData.picker_name || "-",
         kategori: orderData.kategori || "1P",
         kategori_produk: orderData.kategoriProduk || "FARMA",
@@ -1477,11 +1491,28 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
           packer: newItem.packer_name !== "-" ? newItem.packer_name : "",
           picker: newItem.picker_name !== "-" ? newItem.picker_name : "",
         };
-        checkerMapMbiRef.current[cleanSo.toUpperCase()] = entry;
-        setCheckerMapMbi((prev) => ({
-          ...prev,
-          [cleanSo.toUpperCase()]: entry,
-        }));
+        const noDo = String(orderData.doNum || "").trim();
+        if (warehouse === "MAI") {
+          checkerMapMaiRef.current[cleanSo.toUpperCase()] = entry;
+          if (noDo && noDo !== "-" && noDo !== cleanSo) {
+            checkerMapMaiRef.current[noDo.toUpperCase()] = entry;
+          }
+          setCheckerMapMai((prev) => ({
+            ...prev,
+            [cleanSo.toUpperCase()]: entry,
+            ...(noDo && noDo !== "-" && noDo !== cleanSo ? { [noDo.toUpperCase()]: entry } : {}),
+          }));
+        } else {
+          checkerMapMbiRef.current[cleanSo.toUpperCase()] = entry;
+          if (noDo && noDo !== "-" && noDo !== cleanSo) {
+            checkerMapMbiRef.current[noDo.toUpperCase()] = entry;
+          }
+          setCheckerMapMbi((prev) => ({
+            ...prev,
+            [cleanSo.toUpperCase()]: entry,
+            ...(noDo && noDo !== "-" && noDo !== cleanSo ? { [noDo.toUpperCase()]: entry } : {}),
+          }));
+        }
       }
 
       // Instant 0ms merge into React State: langsung tampil di Report QC & header counter
@@ -1490,14 +1521,19 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
       // Background persist to TiDB
       const versionTag = Math.floor(Number(orderData.completedAt || Date.now()) / 5000);
       fetchQcOrders(selectedWarehouseRef.current, false, versionTag);
-    });
+    };
+
+    // 4. Direct Real-Time WebSocket Listener ke DO Checker Firebase RTDB (MBI & MAI) (Instant <100ms, 0 RU TiDB)
+    const unsubDoCheckerLiveMbi = subscribeToDoCheckerLive((orderData) => handleDoCheckerOrder(orderData, "MBI"), "MBI");
+    const unsubDoCheckerLiveMai = subscribeToDoCheckerLive((orderData) => handleDoCheckerOrder(orderData, "MAI"), "MAI");
 
     return () => {
       unsubMbi();
       unsubMai();
       unsubQcRecentMbi();
       unsubQcRecentMai();
-      unsubDoCheckerLive();
+      unsubDoCheckerLiveMbi();
+      unsubDoCheckerLiveMai();
     };
   }, [fetchQcOrders]);
 
@@ -2423,8 +2459,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
         if (isNewNotif && uploadNotif) {
           lastProcessedUploadMsRef.current = uploadTs;
-          setUploadNotification(uploadNotif);
-          showToast(`📤 File baru diunggah rekan: ${uploadNotif.fileName} (${uploadNotif.newUnprinted} faktur baru)`);
+          const targetWh = uploadNotif.warehouse || "MBI";
+          if (targetWh === selectedWarehouseRef.current) {
+            setUploadNotification(uploadNotif);
+            showToast(`📤 File baru diunggah rekan: ${uploadNotif.fileName} (${uploadNotif.newUnprinted} faktur baru)`);
+          } else {
+            // Peer uploaded for other warehouse: inform with explicit warehouse prefix without disrupting current view
+            showToast(`[${targetWh}] 📤 File baru diunggah rekan: ${uploadNotif.fileName} (${uploadNotif.newUnprinted} faktur baru)`);
+          }
         }
 
         // Only pull TiDB delta when metadata (`saveFaktursBatch`) is committed AFTER `syncFaktursToTiDB` finishes!
@@ -3450,7 +3492,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       const normSo = normalizeSO(cleanSo);
       // Mandat Baku Terkunci: Kartu Report QC menampilkan JUMLAH SO YANG BELUM MEMPUNYAI NO INVOICE.
       // Dilarang memotong/mengurangi hitungan hanya karena admin menandai DONE di QC.
-      // SO HANYA keluar dari hitungan ini jika faktur resminya SUDAH TERBIT di Oracle (ada di existingSOSet).
+      // SO HANYA keluar dari hitungan ini jika faktur resminya SUDAH TERBIT di Oracle (ada di existingSOSet atau di fakturs_archive).
+      if (qc.is_invoiced === 1 || qc.is_invoiced === "1" || Boolean(qc.invoice_number)) return false;
       return !existingSOSet.has(cleanSo) && !existingSOSet.has(normSo);
     });
   }, [qcOrders, existingSOSet, selectedWarehouse]);
@@ -4749,6 +4792,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         setPrintedInvoices(finalPrintedSet);
         setPrintedAtMap(finalPrintedAtMap);
         const notifPayload: UploadNotification = {
+          warehouse: currentWh,
           fileName: fileNames.join(", "),
           prevOra,
           maxOra: maxOraStr,
@@ -4847,7 +4891,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           fileNames.join(", "),
           deviceIdRef.current,
           brandNewUnprintedKeysSet.size,
-          Array.from(brandNewUnprintedKeysSet)
+          Array.from(brandNewUnprintedKeysSet),
+          currentWh
         ).catch((e) => console.warn("Broadcast recent upload warning:", e));
 
         // 7B. Commit 100% of dirty/new invoices to TiDB FIRST so rows and full items exist in TiDB BEFORE peers pull fetchTiDBDelta!
@@ -5058,7 +5103,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 </button>
               </div>
 
-              {isSuperAdminUser(currentUser?.name) && pendingApprovalCount > 0 && (
+              {canManageAccess(currentUser?.name) && pendingApprovalCount > 0 && (
                 <button
                   type="button"
                   onClick={() => { setShowApprovalModal(true); setMobileSidebarOpen(false); }}
@@ -5153,7 +5198,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 <KeyRound className="w-4 h-4" />
               </button>
 
-              {isSuperAdminUser(currentUser?.name) && (
+              {canManageAccess(currentUser?.name) && (
                 <button
                   type="button"
                   onClick={() => { setShowApprovalModal(true); setMobileSidebarOpen(false); }}
@@ -5333,7 +5378,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 </span>
               </button>
 
-              {isSuperAdminUser(currentUser?.name) && (
+              {canManageAccess(currentUser?.name) && (
                 <button
                   type="button"
                   onClick={() => { setShowApprovalModal(true); setMobileSidebarOpen(false); }}
@@ -5410,7 +5455,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
 
 
-              {isSuperAdminUser(currentUser?.name) && (
+              {isOwnerUser(currentUser?.name) && (
                 <button
                   type="button"
                   onClick={() => { handleClearAll(); setMobileSidebarOpen(false); }}
@@ -5863,8 +5908,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
 
 
-                  {/* Clear / Reset Data */}
-                  {currentUser && currentUser.role !== "readonly" && (
+                  {/* Clear / Reset Data (Strictly Owner Farhan Only) */}
+                  {isOwnerUser(currentUser?.name) && (
                     <button
                       type="button"
                       onClick={() => { handleClearAll(); setShowSettingsPanel(false); }}
@@ -5892,8 +5937,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           </>
         )}
 
-        {/* Upload Notification Banner */}
-        {uploadNotification && (
+        {/* Upload Notification Banner (Strictly isolated by warehouse) */}
+        {uploadNotification && (!uploadNotification.warehouse || uploadNotification.warehouse === selectedWarehouse) && (
           <div className={`border rounded-xl px-3 py-1.5 text-xs flex items-center justify-between gap-2 shadow-xs ${
             isDarkMode ? "bg-blue-950/60 border-blue-700/60 text-blue-200 shadow-blue-950/20" : "bg-blue-50/90 border-blue-200 text-blue-900"
           }`}>
@@ -8491,12 +8536,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         currentUser={currentUser}
         isDarkMode={isDarkMode}
       />
-      {isSuperAdminUser(currentUser?.name) && (
+      {canManageAccess(currentUser?.name) && (
         <AccountApprovalModal
           isOpen={showApprovalModal}
           onClose={() => setShowApprovalModal(false)}
           allProfiles={allUserProfiles}
           isDarkMode={isDarkMode}
+          currentUserName={currentUser?.name}
         />
       )}
       {showUserProfileModal && currentUser && (

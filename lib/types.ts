@@ -142,6 +142,7 @@ export interface FakturGroup {
 }
 
 export interface UploadNotification {
+  warehouse?: "MBI" | "MAI";
   fileName: string;
   prevOra?: string | null;
   maxOra?: string;

@@ -1,19 +1,24 @@
 import { app } from "./firebase";
 import { getDatabase, ref, query, limitToLast, onChildAdded, onChildChanged, off } from "firebase/database";
 
-const DO_CHECKER_RTDB_URL = "https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app";
+export const DO_CHECKER_RTDB_MBI_URL = "https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app";
+export const DO_CHECKER_RTDB_MAI_URL = "https://app-qc-f91b2-default-rtdb.asia-southeast1.firebasedatabase.app";
 
 /**
  * Direct Real-Time WebSocket Listener to DO Checker App (Instant 0-100ms sync)
- * Terhubung langsung ke database Firebase RTDB DO Checker gudang:
- * Begitu checker gudang menekan tombol "Selesai" di https://checker-do.vercel.app/,
+ * Terhubung langsung ke database Firebase RTDB DO Checker gudang (MBI & MAI):
+ * Begitu checker gudang menekan tombol "Selesai" di aplikasi checker,
  * event listener ini dipicu secara instan (detik itu juga) via WebSocket tanpa jeda polling.
  */
-export function subscribeToDoCheckerLive(onNewOrderSelesai: (orderData: any) => void): () => void {
+export function subscribeToDoCheckerLive(
+  onNewOrderSelesai: (orderData: any) => void,
+  warehouse: "MBI" | "MAI" = "MBI"
+): () => void {
   if (typeof window === "undefined") return () => {};
 
   try {
-    const rtdb = getDatabase(app, DO_CHECKER_RTDB_URL);
+    const targetUrl = warehouse === "MAI" ? DO_CHECKER_RTDB_MAI_URL : DO_CHECKER_RTDB_MBI_URL;
+    const rtdb = getDatabase(app, targetUrl);
     const doneRef = query(ref(rtdb, "done"), limitToLast(25));
 
     let isInitialAttach = true;
@@ -33,7 +38,7 @@ export function subscribeToDoCheckerLive(onNewOrderSelesai: (orderData: any) => 
       if (initialSnapshotKeys.has(soNum)) return;
       const completedAt = Number(data?.completedAt || 0);
       if (completedAt > 0 && completedAt < attachStartedAt - 10000) return;
-      onNewOrderSelesai({ so_number: soNum, ...data });
+      onNewOrderSelesai({ warehouse, so_number: soNum, ...data });
     });
 
     // Mendengarkan perubahan data pesanan
@@ -41,7 +46,7 @@ export function subscribeToDoCheckerLive(onNewOrderSelesai: (orderData: any) => 
       const soNum = snapshot.key;
       const data = snapshot.val();
       if (isInitialAttach || !soNum || !data) return;
-      onNewOrderSelesai({ so_number: soNum, ...data });
+      onNewOrderSelesai({ warehouse, so_number: soNum, ...data });
     });
 
     // Tandai inisialisasi awal selesai
@@ -56,7 +61,7 @@ export function subscribeToDoCheckerLive(onNewOrderSelesai: (orderData: any) => 
       } catch {}
     };
   } catch (err) {
-    console.warn("[DO Checker RTDB] Subscription error:", err);
+    console.warn(`[DO Checker RTDB ${warehouse}] Subscription error:`, err);
     return () => {};
   }
 }
