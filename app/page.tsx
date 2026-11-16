@@ -3494,7 +3494,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       // Dilarang memotong/mengurangi hitungan hanya karena admin menandai DONE di QC.
       // SO HANYA keluar dari hitungan ini jika faktur resminya SUDAH TERBIT di Oracle (ada di existingSOSet atau di fakturs_archive).
       if (qc.is_invoiced === 1 || qc.is_invoiced === "1" || Boolean(qc.invoice_number)) return false;
-      return !existingSOSet.has(cleanSo) && !existingSOSet.has(normSo);
+      if (existingSOSet.has(cleanSo) || existingSOSet.has(normSo)) return false;
+      const cleanDo = qc.no_do ? String(qc.no_do).trim().toUpperCase() : "";
+      const normDo = cleanDo ? normalizeSO(cleanDo) : "";
+      if (cleanDo && cleanDo !== "-" && (existingSOSet.has(cleanDo) || existingSOSet.has(normDo))) return false;
+      return true;
     });
   }, [qcOrders, existingSOSet, selectedWarehouse]);
   // SO to Full Details Map: Instant O(1) lookup for Report QC

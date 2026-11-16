@@ -709,64 +709,35 @@ export async function GET(req: Request) {
         console.warn(`Direct Firebase sync error (${warehouse}):`, e);
       }
 
-      const tableName = warehouse === "MAI" ? "so_checkers_mai" : "so_checkers";
-      const invoiceFilter = warehouse === "MAI" ? "f.invoice_key LIKE 'MAI-%'" : "f.invoice_key NOT LIKE 'MAI-%'";
       const rows = (await conn.execute(
         `SELECT 
-           ? as warehouse,
-           t.so_number,
-           MAX(t.no_do) as no_do,
-           MAX(t.customer_name) as customer_name,
-           MAX(t.so_date) as so_date,
-           MAX(t.waktu_kirim) as waktu_kirim,
-           COALESCE(NULLIF(MAX(t.checker_name), '-'), '-') as checker_name,
-           COALESCE(NULLIF(MAX(t.packer_name), '-'), '-') as packer_name,
-           COALESCE(NULLIF(MAX(t.picker_name), '-'), '-') as picker_name,
-           COALESCE(MAX(t.kategori), '1P') as kategori,
-           COALESCE(MAX(t.kategori_produk), 'FARMA') as kategori_produk,
-           MAX(t.total_item) as total_item,
-           MAX(t.total_qty) as total_qty,
-           MAX(t.barang_catatan) as barang_catatan,
-           COALESCE(MAX(t.is_done), '') as is_done,
-           MAX(t.done_by) as done_by,
-           MAX(t.done_at) as done_at,
-           ${includeNotes ? "MAX(t.noted_items)" : "NULL"} as noted_items,
-           COALESCE(MAX(t.status), 'QC_DONE') as status,
-           MAX(t.sheet_row) as sheet_row,
-           MAX(t.updated_at) as updated_at,
-           MAX(f.no_faktur) as invoice_number,
-           IF(MAX(f.no_faktur) IS NOT NULL, 1, 0) as is_invoiced
-         FROM (
-           SELECT 
-             warehouse, so_number, no_do, customer_name, so_date, waktu_kirim,
-             checker_name, packer_name, picker_name, kategori, kategori_produk,
-             total_item, total_qty, barang_catatan, is_done, done_by, done_at, ${includeNotes ? "noted_items" : "NULL as noted_items"}, status, sheet_row, updated_at
-           FROM qc_reports
-           WHERE warehouse = ? AND (updated_at >= NOW() - INTERVAL 90 DAY OR is_done != 'DONE' OR is_done IS NULL)
-           UNION ALL
-           SELECT 
-             ? as warehouse, so_number, NULL as no_do, NULL as customer_name, NULL as so_date, NULL as waktu_kirim,
-             checker_name, packer_name, picker_name, '1P' as kategori, 'FARMA' as kategori_produk,
-             0 as total_item, 0 as total_qty, 0 as barang_catatan, '' as is_done, NULL as done_by, NULL as done_at, NULL as noted_items, 'QC_DONE' as status, 0 as sheet_row, updated_at
-           FROM ${tableName}
-           WHERE updated_at >= NOW() - INTERVAL 30 DAY
-             AND so_number IS NOT NULL AND LENGTH(TRIM(so_number)) >= 3 AND so_number != '-'
-             AND so_number NOT IN (SELECT so_number FROM qc_reports WHERE warehouse = ?)
-             AND so_number NOT IN (SELECT no_do FROM qc_reports WHERE warehouse = ? AND no_do IS NOT NULL AND no_do != '')
-         ) t
-         LEFT JOIN cancelled_qc_sos cqs ON t.so_number = cqs.so_number
-         LEFT JOIN fakturs_archive f ON (
-           ${invoiceFilter}
-           AND (
-             f.no_sales_order = t.so_number OR
-             (t.no_do IS NOT NULL AND t.no_do != '' AND f.no_sales_order = t.no_do)
-           )
-         )
-         WHERE cqs.so_number IS NULL
-         GROUP BY t.so_number
-         ORDER BY updated_at DESC, sheet_row DESC
-         LIMIT 10000;`,
-        [warehouse, warehouse, warehouse, warehouse, warehouse]
+           q.warehouse,
+           q.so_number,
+           q.no_do,
+           q.customer_name,
+           q.so_date,
+           q.waktu_kirim,
+           COALESCE(NULLIF(q.checker_name, '-'), '-') as checker_name,
+           COALESCE(NULLIF(q.packer_name, '-'), '-') as packer_name,
+           COALESCE(NULLIF(q.picker_name, '-'), '-') as picker_name,
+           COALESCE(q.kategori, '1P') as kategori,
+           COALESCE(q.kategori_produk, 'FARMA') as kategori_produk,
+           q.total_item,
+           q.total_qty,
+           q.barang_catatan,
+           COALESCE(q.is_done, '') as is_done,
+           q.done_by,
+           q.done_at,
+           ${includeNotes ? "q.noted_items" : "NULL as noted_items"},
+           COALESCE(q.status, 'QC_DONE') as status,
+           q.sheet_row,
+           q.updated_at
+         FROM qc_reports q
+         LEFT JOIN cancelled_qc_sos cqs ON q.so_number = cqs.so_number
+         WHERE q.warehouse = ? AND cqs.so_number IS NULL
+         ORDER BY q.updated_at DESC, q.sheet_row DESC
+         LIMIT 3000;`,
+        [warehouse]
       )) as any[];
       const payload = { success: true, count: rows.length, data: rows };
       memoryQcReportsCache[cacheKey] = { payload, ts: Date.now() };

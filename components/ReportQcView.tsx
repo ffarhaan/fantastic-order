@@ -659,12 +659,15 @@ export default function ReportQcView({
       const packerName = row.packer_name && row.packer_name !== "-" ? row.packer_name : "-";
       const pickerName = row.picker_name && row.picker_name !== "-" ? row.picker_name : "-";
 
+      const cleanDo = row.no_do ? String(row.no_do).trim().toUpperCase() : "";
+      const normDo = cleanDo ? normalizeSO(cleanDo) : "";
       const isInvoiced = Boolean(
         row.is_invoiced === 1 ||
         row.is_invoiced === "1" ||
         row.invoice_number ||
         existingSOSet.has(soNum.toUpperCase()) ||
-        existingSOSet.has(normSo)
+        existingSOSet.has(normSo) ||
+        (cleanDo && cleanDo !== "-" && (existingSOSet.has(cleanDo) || existingSOSet.has(normDo)))
       );
       const invoiceNum = detail?.invoiceNumber || row.invoice_number || null;
 
