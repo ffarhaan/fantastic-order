@@ -734,7 +734,9 @@ export async function GET(req: Request) {
            q.updated_at
          FROM qc_reports q
          LEFT JOIN cancelled_qc_sos cqs ON q.so_number = cqs.so_number
-         WHERE q.warehouse = ? AND cqs.so_number IS NULL
+         WHERE q.warehouse = ?
+           AND (q.customer_name IS NOT NULL OR q.waktu_kirim IS NOT NULL OR (q.no_do IS NOT NULL AND q.no_do != ''))
+           AND cqs.so_number IS NULL
          ORDER BY q.updated_at DESC, q.sheet_row DESC
          LIMIT 3000;`,
         [warehouse]
