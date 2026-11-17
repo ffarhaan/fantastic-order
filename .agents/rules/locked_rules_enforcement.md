@@ -11,6 +11,7 @@ Setiap kali pengguna meminta perbaikan, optimasi performa, atau fitur baru pada 
 3. **DILARANG KERAS** mengubah **cara pembacaan file upload** (wajib baca lengkap seluruh sheet/baris/kolom tanpa asumsi, pertahankan *Non-Destructive Overwrite*, *Zero SO Stripping*, dan *Mismatch Rejection* MBI vs MAI).
 4. **DILARANG KERAS** memotong atau mengabaikan **data Report QC & Catatan Barang (Mandat Laptop 2)**:
    - Wajib membaca 100% data arsip DO Checker Firebase RTDB (`/archive.json`) secara utuh tanpa pemotongan (`slice`).
+   - Wajib mempertahankan query WebSocket realtime DO Checker (`lib/doCheckerService.ts`) menggunakan `orderByChild("completedAt")` agar data tersinkronisasi instan (<100ms) dan dilarang keras mengurutkan berdasarkan abjad key No SO.
    - Dilarang keras menyembunyikan catatan kendala barang (Perubahan Batch, Qty Minus, Takeout, Tanpa Shipment). Setiap SO yang memiliki catatan di DO Checker wajib transparan menampilkan `⚠️ X Catatan` dan rincian itemnya dapat dilihat langsung di tab Catatan Barang.
    - Segala bentuk kendala jaringan atau kegagalan fetch wajib ditampilkan secara transparan kepada pengguna (*zero silent failures*).
 5. **DILARANG KERAS** mengurangi hitungan **kartu Report QC (Mandat Menunggu Faktur)**:

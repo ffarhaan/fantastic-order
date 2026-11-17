@@ -442,6 +442,10 @@ Bagian ini adalah mandat permanen dan baku untuk pengoperasian **Laptop 2** (Mej
    - Laptop 2 difungsikan untuk memantau **Rekap SO** dan rincian **Catatan Barang** secara otomatis tanpa ketergantungan pada Google Spreadsheet manual.
    - Sumber kebenaran tunggal (*Single Source of Truth*) terhubung langsung ke Firebase RTDB DO Checker (Gudang MBI: `checkermbi-default-rtdb`, Gudang MAI: `app-qc-f91b2-default-rtdb`) dan database TiDB Serverless.
    - Begitu staf gudang menyelesaikan QC di aplikasi DO Checker, data wajib masuk ke Laptop 2 detik itu juga (<100ms) melalui koneksi WebSocket live listener.
+   - **Mandat Query Realtime WebSocket Anti-Terlewat (LOCKED TOTAL)**:
+     - Listener Firebase RTDB (`lib/doCheckerService.ts`) **WAJIB SELALU** menggunakan pengurutan waktu selesai: `query(ref(rtdb, "done"), orderByChild("completedAt"), limitToLast(25))`.
+     - **DILARANG KERAS** membuat query tanpa `orderByChild("completedAt")`. Menghilangkan `orderByChild` menyebabkan Firebase mengurutkan data berdasarkan kunci alfanumerik (abjad No SO), yang membuat nomor SO baru terlempar keluar dari jendela 25 data terakhir dan melumpuhkan sinkronisasi instan <100ms.
+     - Handler `onChildAdded` wajib menyertakan proteksi buffer awal cerdas (`completedAt >= attachStartedAt`) agar order yang baru selesai saat halaman sedang dibuka tetap langsung ditangkap tanpa diabaikan.
 
 2. **Larangan Mutlak Pemotongan Data (Zero-Slicing & Zero-Assumption Mandate)**:
    - Dilarang keras melakukan pemotongan key atau pembacaan sebagian (larangan mutlak `slice(-40)` atau pembatasan sejenis).
