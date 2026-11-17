@@ -1,5 +1,5 @@
 import { app } from "./firebase";
-import { getDatabase, ref, query, limitToLast, onChildAdded, onChildChanged, off } from "firebase/database";
+import { getDatabase, ref, query, orderByChild, limitToLast, onChildAdded, onChildChanged, off } from "firebase/database";
 
 export const DO_CHECKER_RTDB_MBI_URL = "https://checkermbi-default-rtdb.asia-southeast1.firebasedatabase.app";
 export const DO_CHECKER_RTDB_MAI_URL = "https://app-qc-f91b2-default-rtdb.asia-southeast1.firebasedatabase.app";
@@ -19,7 +19,9 @@ export function subscribeToDoCheckerLive(
   try {
     const targetUrl = warehouse === "MAI" ? DO_CHECKER_RTDB_MAI_URL : DO_CHECKER_RTDB_MBI_URL;
     const rtdb = getDatabase(app, targetUrl);
-    const doneRef = query(ref(rtdb, "done"), limitToLast(25));
+    // WAJIB orderByChild("completedAt") agar data diurutkan berdasarkan waktu selesai terbaru,
+    // bukan berdasarkan urutan abjad nomor SO (lexicographical key) yang menyebabkan event terlewat.
+    const doneRef = query(ref(rtdb, "done"), orderByChild("completedAt"), limitToLast(25));
 
     let isInitialAttach = true;
     const attachStartedAt = Date.now();
@@ -29,14 +31,22 @@ export function subscribeToDoCheckerLive(
     onChildAdded(doneRef, (snapshot) => {
       const soNum = snapshot.key;
       const data = snapshot.val();
-      if (isInitialAttach) {
-        if (soNum) initialSnapshotKeys.add(soNum);
-        return; // Lewati pembacaan buffer awal
-      }
       if (!soNum || !data) return;
+      const completedAt = Number(data?.completedAt || 0);
+
+      if (isInitialAttach) {
+        // Jika data benar-benar baru selesai (timestamp >= saat koneksi WebSocket dipasang),
+        // tangkap langsung walau masih dalam buffer window inisialisasi
+        if (completedAt >= attachStartedAt) {
+          onNewOrderSelesai({ warehouse, so_number: soNum, ...data });
+          return;
+        }
+        initialSnapshotKeys.add(soNum);
+        return; // Lewati pembacaan buffer historis lama
+      }
+
       // Extra guard for slow connections: ignore historical entries created before subscription attached
       if (initialSnapshotKeys.has(soNum)) return;
-      const completedAt = Number(data?.completedAt || 0);
       if (completedAt > 0 && completedAt < attachStartedAt - 10000) return;
       onNewOrderSelesai({ warehouse, so_number: soNum, ...data });
     });
