@@ -357,13 +357,15 @@ export function subscribeToFakturs(
     for (const d of allDocs) {
       const key = d.id || d.no_faktur;
       const cleanKey = key.replace(/-1P$/i, "");
-      const orderDate = d.order_date || d.extra?.order_date || d.extra?.accounting_date;
       const candidatePAt = pMap[key] || d.printed_at || null;
-      const isStale = isStalePrintTimestamp(candidatePAt, orderDate);
-      const isPrinted = !isStale && Boolean(d.status_cetak || printedSet.has(key));
+      // LOCKED_RULES.md Sec 1.D: Once printed in status_cetak or printedSet, permanent retention guaranteed!
+      const isPrinted = Boolean(d.status_cetak || printedSet.has(key));
       d.status_cetak = isPrinted;
       d.printed_at = isPrinted ? candidatePAt : null;
       d.printed_by = isPrinted ? (pByMap[key] || d.printed_by || null) : null;
+      if (isPrinted && key) {
+        printedSet.add(key);
+      }
 
       // Apply customer/invoice category override if available
       const cust = String(d.customer_name || d.extra?.nama_pelanggan || "").trim();
@@ -444,26 +446,12 @@ export function subscribeToFakturs(
   const unsubPartitions = onSnapshot(
     collection(db, PRINT_PARTITIONS_COLLECTION),
     (snap) => {
-      const removedFromPartitions: string[] = [];
       snap.docChanges().forEach((change) => {
         if (change.type === "removed") {
-          const prev = globalPartitionMap.get(change.doc.id);
-          if (prev?.printedKeys) {
-            prev.printedKeys.forEach((k) => removedFromPartitions.push(k));
-          }
           globalPartitionMap.delete(change.doc.id);
         } else {
-          const prev = globalPartitionMap.get(change.doc.id);
           const data = change.doc.data();
           const newKeys = (data.printedKeys as string[]) || [];
-          if (prev?.printedKeys && prev.printedKeys.length > 0) {
-            const newKeySet = new Set(newKeys);
-            for (const oldK of prev.printedKeys) {
-              if (!newKeySet.has(oldK)) {
-                removedFromPartitions.push(oldK);
-              }
-            }
-          }
           const pEntry = {
             printedKeys: newKeys,
             printedAtMap: (data.printedAtMap as Record<string, string>) || {},
@@ -478,9 +466,6 @@ export function subscribeToFakturs(
         tryInitialEmit();
       } else {
         if (printEmitTimer) clearTimeout(printEmitTimer);
-        if (currentPrintState && removedFromPartitions.length > 0) {
-          (currentPrintState as PrintState & { explicitlyUnprintedKeys?: string[] }).explicitlyUnprintedKeys = removedFromPartitions;
-        }
         onData([], currentProgression, currentPrintState, currentCategoryOverrides, null, "print", currentProductCategoryOverrides);
       }
     },
@@ -928,22 +913,14 @@ export async function saveFaktursBatch(
   livePrintedKeys.forEach((k) => registerPrintKeyVariants(k, livePrintedAtMap[k], unifiedPrintedSet, unifiedPrintedAtMap));
   localPrintedKeys.forEach((k) => registerPrintKeyVariants(k, existingPrintState?.printedAtMap?.[k], unifiedPrintedSet, unifiedPrintedAtMap));
 
-  const staleKeysToPurge = new Set<string>();
-
   for (const item of fakturs) {
     const key = item.id || item.no_faktur;
     if (key) {
-      const orderDate = item.order_date || item.extra?.order_date || item.extra?.accounting_date;
       const candidatePAt = unifiedPrintedAtMap[key] || item.printed_at;
-      const isStale = isStalePrintTimestamp(candidatePAt, orderDate);
-      if (isStale) {
-        staleKeysToPurge.add(key);
-        unifiedPrintedSet.delete(key);
-      }
 
-      // LOCKED_RULES.md 1.D: Once printed in unifiedPrintedSet or item.status_cetak (and not stale),
+      // LOCKED_RULES.md 1.D: Once printed in unifiedPrintedSet or item.status_cetak,
       // uploading files MUST NEVER un-print or delete it from the printed set!
-      const isPrinted = !isStale && Boolean(
+      const isPrinted = Boolean(
         item.status_cetak ||
         unifiedPrintedSet.has(key)
       );
@@ -981,11 +958,10 @@ export async function saveFaktursBatch(
     };
   });
 
-  // Sync print state across partitions + dual write legacy doc in parallel (only purging stale cross-month keys)
+  // Sync print state across partitions + dual write legacy doc in parallel (Permanent Retention - LOCKED_RULES.md)
   const printStatePromise = updatePrintState(
     Array.from(unifiedPrintedSet),
-    unifiedPrintedAtMap,
-    Array.from(staleKeysToPurge)
+    unifiedPrintedAtMap
   );
 
   // Execute writes in parallel for atomic, instantaneous sync across devices (< 200ms total)
@@ -1090,22 +1066,16 @@ export async function updateFakturPrintStatus(
   const legacyRef = doc(db, APP_DATA_COLLECTION, PRINT_STATE_DOC);
 
   const cached = globalPartitionMap.get(partId);
+  const pSnap = await getDoc(partRef).catch(() => null);
   let partKeys = new Set<string>(cached?.printedKeys || []);
   let partMap: Record<string, string> = { ...(cached?.printedAtMap || {}) };
   let partByMap: Record<string, string> = { ...(cached?.printedByMap || {}) };
 
-  if (!cached) {
-    try {
-      const pSnap = await getDoc(partRef);
-      if (pSnap.exists()) {
-        const data = pSnap.data();
-        ((data.printedKeys as string[]) || []).forEach((k) => partKeys.add(k));
-        Object.assign(partMap, (data.printedAtMap as Record<string, string>) || {});
-        Object.assign(partByMap, (data.printedByMap as Record<string, string>) || {});
-      }
-    } catch (err) {
-      console.warn("Could not read partition before update:", err);
-    }
+  if (pSnap && pSnap.exists()) {
+    const data = pSnap.data();
+    ((data.printedKeys as string[]) || []).forEach((k) => partKeys.add(k));
+    Object.assign(partMap, (data.printedAtMap as Record<string, string>) || {});
+    Object.assign(partByMap, (data.printedByMap as Record<string, string>) || {});
   }
 
   if (status) {

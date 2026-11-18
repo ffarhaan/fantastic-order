@@ -2377,32 +2377,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const newKeys = printState.printedKeys || [];
           const newMap = printState.printedAtMap || {};
           const newByMap = printState.printedByMap || {};
-          const explicitlyUnprinted = new Set<string>(
-            ((printState as unknown as { explicitlyUnprintedKeys?: string[] }).explicitlyUnprintedKeys) || []
-          );
-
           // Permanent Print Retention (LOCKED_RULES.md Sec 1.D & 1.G):
-          // Merge printState keys with authoritative TiDB status_cetak so streaming partitions NEVER unprint printed TiDB rows,
-          // while honoring explicit manual unprints from peer laptops!
-          const mergedSet = new Set<string>(newKeys);
+          // Merge printState keys with authoritative in-memory state and TiDB status_cetak
+          // so streaming partitions NEVER unprint printed invoices!
+          const mergedSet = new Set<string>([...(printedInvoicesRef.current || []), ...newKeys]);
           if (currentFakturDocsRef.current) {
             for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
               const d = currentFakturDocsRef.current[i];
               const k = d.id || d.no_faktur;
               if (!k) continue;
-              if (explicitlyUnprinted.has(k) && !mergedSet.has(k)) {
-                d.status_cetak = false;
-                d.printed_at = null;
-                d.printed_by = null;
-                docRecordsCacheMap.delete(d);
-              } else if (d.status_cetak) {
+              if (d.status_cetak) {
                 mergedSet.add(k);
               }
             }
           }
 
           const curSet = printedInvoicesRef.current;
-          let hasPrintChange = mergedSet.size !== curSet.size || explicitlyUnprinted.size > 0;
+          let hasPrintChange = mergedSet.size !== curSet.size;
           if (!hasPrintChange) {
             for (const k of mergedSet) {
               if (!curSet.has(k)) {
@@ -2415,12 +2406,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           if (hasPrintChange) {
             const combinedAt = { ...printedAtMapRef.current, ...newMap };
             const combinedBy = { ...printedByMapRef.current, ...newByMap };
-            explicitlyUnprinted.forEach((uk) => {
-              if (!mergedSet.has(uk)) {
-                delete combinedAt[uk];
-                delete combinedBy[uk];
-              }
-            });
             setPrintedInvoices(mergedSet);
             printedInvoicesRef.current = mergedSet;
             setPrintedAtMap(combinedAt);
@@ -4382,14 +4367,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
         const newUnprintedKeysSet = new Set<string>();
         const brandNewUnprintedKeysSet = new Set<string>();
-        // Preserve all existing unprinted invoices from database ONLY if not printed!
+        // Preserve all existing unprinted invoices from database strictly for current warehouse ONLY if not printed!
         invMap.forEach((doc, k) => {
-          const isPrinted = Boolean(
-            doc.status_cetak ||
-            mergedPrintedSet.has(k)
-          );
-          if (!isPrinted) {
-            newUnprintedKeysSet.add(k);
+          const docWh = doc.entity || (k.startsWith("MAI-") ? "MAI" : "MBI");
+          if (docWh === currentWh) {
+            const isPrinted = Boolean(
+              doc.status_cetak ||
+              mergedPrintedSet.has(k)
+            );
+            if (!isPrinted) {
+              newUnprintedKeysSet.add(k);
+            }
           }
         });
 
@@ -4460,7 +4448,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             (existingEntry && existingEntry.status_cetak) ||
             (prevInfo && prevInfo.status_cetak) ||
             (isSameSO && ((existingEntryCandidate && existingEntryCandidate.status_cetak) || (prevInfoCandidate && prevInfoCandidate.status_cetak))) ||
-            (!isStale && (mergedPrintedSet.has(targetKey) || (isSameSO && mergedPrintedSet.has(baseTargetKey))))
+            mergedPrintedSet.has(targetKey) ||
+            (isSameSO && mergedPrintedSet.has(baseTargetKey))
           );
 
           if (wasPrinted) {
@@ -4773,10 +4762,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         const finalPrintedSet = new Set<string>(mergedPrintedSet);
         const finalPrintedAtMap = { ...mergedPrintedAtMap };
         brandNewUnprintedKeysSet.forEach((k) => {
-          finalPrintedSet.delete(k);
-          delete finalPrintedAtMap[k];
-        });
-        newUnprintedKeysSet.forEach((k) => {
           finalPrintedSet.delete(k);
           delete finalPrintedAtMap[k];
         });

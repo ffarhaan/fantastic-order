@@ -3728,10 +3728,11 @@ export async function POST(req: Request) {
         const slice = keys.slice(i, i + CHUNK_SIZE);
         const inPlaceholders = slice.map(() => "?").join(", ");
         await conn.execute(
-          `UPDATE fakturs_archive SET status_cetak = ?, printed_at = ?, printed_by = ? WHERE invoice_key IN (${inPlaceholders});`,
+          `UPDATE fakturs_archive SET status_cetak = ?, printed_at = ?, printed_by = ?, updated_at = NOW() WHERE invoice_key IN (${inPlaceholders});`,
           [isPrinted, printedAt, printedBy, ...slice]
         );
       }
+      memoryCheckCache = null;
 
       return Response.json({ success: true, updated: keys.length });
     }
