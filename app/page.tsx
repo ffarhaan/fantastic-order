@@ -2259,7 +2259,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
 
 
-        if (clientCount > 0) {
+        const isCacheIncomplete = Boolean(check && check.totalCount > 1000 && clientCount < (check.totalCount - 500));
+
+        if (clientCount > 0 && !isCacheIncomplete) {
           // If `/api/tidb?action=check` (CDN-cached 30s) already confirms local cache is 100% up-to-date, skip delta call!
           if (check && check.upToDate && clientCount >= check.totalCount) {
             if (isMounted) setLoading(false);
