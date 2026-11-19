@@ -842,7 +842,7 @@ ${photoStatus}
               <div className="mt-4 p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-xl flex items-center justify-between gap-3 text-left">
                 <div className="flex items-center gap-3 min-w-0">
                   <img
-                    src={photoBase64}
+                    src={photoBase64 || undefined}
                     alt="Bukti Retur"
                     className="w-14 h-14 object-cover rounded-lg border border-zinc-300 dark:border-zinc-700 shrink-0"
                   />
@@ -1471,7 +1471,7 @@ ${photoStatus}
               ) : (
                 <div className="relative rounded-xl border border-zinc-200 dark:border-zinc-700 p-3 bg-zinc-50 dark:bg-zinc-900 flex items-center gap-3">
                   <img
-                    src={photoBase64}
+                    src={photoBase64 || undefined}
                     alt="Preview Bukti Retur"
                     className="w-16 h-16 object-cover rounded-lg border border-zinc-300 dark:border-zinc-700 shrink-0"
                   />
@@ -1583,7 +1583,7 @@ ${photoStatus}
                         <span>Video Unboxing Tersimpan</span>
                       </div>
                       <a
-                        href={videoUrl}
+                        href={videoUrl || undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline truncate block"
