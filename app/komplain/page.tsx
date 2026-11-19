@@ -690,11 +690,6 @@ ${photoStatus}
     setCopiedWaText(false);
   };
 
-  // System Maintenance Lock until 03.15 WIB
-  return (
-    <MaintenanceScreen pageName="Layanan Pengajuan Komplain" targetTime="03.15 WIB" />
-  );
-
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 flex flex-col font-sans transition-colors">
       {/* Top Navbar */}

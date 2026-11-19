@@ -5027,11 +5027,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     setShowExportModal(true);
   };
 
-  // System Maintenance Lock until 03.15 WIB
-  return (
-    <MaintenanceScreen pageName="Fantastic Order" targetTime="03.15 WIB" />
-  );
-
   // Fast-Path Auth Gate: Do not mount 2,200+ DOM table nodes or process 50k records when user is not logged in!
   if (!isAuthReady) {
     return (
