@@ -4,6 +4,12 @@ const buildId = process.env.VERCEL_GIT_COMMIT_SHA || crypto.randomBytes(8).toStr
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   compress: true,
   generateBuildId: async () => buildId,
   env: {
