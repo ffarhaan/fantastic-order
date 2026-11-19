@@ -16,6 +16,7 @@ let memoryReturnsStatsCache: Record<string, { payload: any; ts: number }> = {};
 let lastArchiveSyncTs: Record<string, number> = {};
 let lastDoneSyncSig: Record<string, string> = {};
 let lastArchiveSyncSig: Record<string, string> = {};
+let lastArchiveKeysSig: Record<string, string> = {};
 
 function invalidateReturnsCache() {
   memoryReturnsStatsCache = {};
@@ -36,15 +37,15 @@ function getVersionedCacheHeaders(searchParams: URLSearchParams): Record<string,
   const versionParam = (searchParams.get("_v") || "").trim();
   if (versionParam && versionParam !== "0") {
     return {
-      "Cache-Control": "public, max-age=15, stale-while-revalidate=30",
+      "Cache-Control": "public, max-age=30, stale-while-revalidate=60",
       "CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
       "Vercel-CDN-Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
     };
   }
   return {
-    "Cache-Control": "public, max-age=10, s-maxage=20, stale-while-revalidate=60",
-    "CDN-Cache-Control": "public, s-maxage=20, stale-while-revalidate=60",
-    "Vercel-CDN-Cache-Control": "public, s-maxage=20, stale-while-revalidate=60",
+    "Cache-Control": "public, max-age=15, s-maxage=60, stale-while-revalidate=120",
+    "CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+    "Vercel-CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
   };
 }
 
@@ -657,43 +658,72 @@ export async function GET(req: Request) {
               if (isFresh || now - lastSync > 120000) {
                 lastArchiveSyncTs[warehouse] = now;
                 try {
-                  const archRes = await fetch(`${rtdbUrl}/archive.json`);
-                  if (archRes.ok) {
-                    const archData = await archRes.json();
-                    if (archData && typeof archData === 'object') {
-                      const notedRows: [string, string, number, string][] = [];
-                      for (const [so, v] of Object.entries(archData)) {
-                        const d = v as any;
-                        if (!d || !Array.isArray(d.items)) continue;
-                        let waktuKirim = '-';
-                        if (d.completedAt) {
-                          const wibDt = new Date(Number(d.completedAt) + 7 * 60 * 60 * 1000);
-                          const day = String(wibDt.getUTCDate()).padStart(2, '0');
-                          const mon = String(wibDt.getUTCMonth() + 1).padStart(2, '0');
-                          const yr = wibDt.getUTCFullYear();
-                          const H = String(wibDt.getUTCHours()).padStart(2, '0');
-                          const M = String(wibDt.getUTCMinutes()).padStart(2, '0');
-                          waktuKirim = `${day}/${mon}/${yr} ${H}:${M}`;
+                  // Bandwidth Shield: Fast shallow check first (<10-48KB) to see if any SO was added or removed before downloading full payload
+                  let shouldFetchFull = isFresh || !lastArchiveKeysSig[warehouse];
+                  if (!shouldFetchFull) {
+                    try {
+                      const shallowRes = await fetch(`${rtdbUrl}/archive.json?shallow=true`);
+                      if (shallowRes.ok) {
+                        const shallowData = await shallowRes.json();
+                        if (shallowData && typeof shallowData === "object") {
+                          const keysSig = crypto.createHash("md5").update(JSON.stringify(Object.keys(shallowData).sort())).digest("hex");
+                          if (keysSig !== lastArchiveKeysSig[warehouse]) {
+                            lastArchiveKeysSig[warehouse] = keysSig;
+                            shouldFetchFull = true;
+                          }
+                        } else {
+                          shouldFetchFull = true;
                         }
-                        const meta = { waktuKirim, noDo: d.doNum || '-', so, customer: d.customer || '-' };
-                        const notes = extractNotedItems(d.items, meta);
-                        if (notes.length > 0) {
-                          notedRows.push([warehouse, so, notes.length, JSON.stringify(notes)]);
-                        }
+                      } else {
+                        shouldFetchFull = true;
                       }
-                      if (notedRows.length > 0) {
-                        const archSig = crypto.createHash("md5").update(JSON.stringify(notedRows)).digest("hex");
-                        if (isFresh || lastArchiveSyncSig[warehouse] !== archSig) {
-                          const placeholders = notedRows.map(() => "(?, ?, ?, ?)").join(", ");
-                          await conn.execute(
-                            `INSERT INTO qc_reports (warehouse, so_number, barang_catatan, noted_items)
-                             VALUES ${placeholders}
-                             ON DUPLICATE KEY UPDATE
-                               barang_catatan = VALUES(barang_catatan),
-                               noted_items = VALUES(noted_items)`,
-                            notedRows.flat()
-                          );
-                          lastArchiveSyncSig[warehouse] = archSig;
+                    } catch {
+                      shouldFetchFull = true;
+                    }
+                  }
+
+                  if (shouldFetchFull) {
+                    const archRes = await fetch(`${rtdbUrl}/archive.json`);
+                    if (archRes.ok) {
+                      const archData = await archRes.json();
+                      if (archData && typeof archData === 'object') {
+                        if (!lastArchiveKeysSig[warehouse]) {
+                          lastArchiveKeysSig[warehouse] = crypto.createHash("md5").update(JSON.stringify(Object.keys(archData).sort())).digest("hex");
+                        }
+                        const notedRows: [string, string, number, string][] = [];
+                        for (const [so, v] of Object.entries(archData)) {
+                          const d = v as any;
+                          if (!d || !Array.isArray(d.items)) continue;
+                          let waktuKirim = '-';
+                          if (d.completedAt) {
+                            const wibDt = new Date(Number(d.completedAt) + 7 * 60 * 60 * 1000);
+                            const day = String(wibDt.getUTCDate()).padStart(2, '0');
+                            const mon = String(wibDt.getUTCMonth() + 1).padStart(2, '0');
+                            const yr = wibDt.getUTCFullYear();
+                            const H = String(wibDt.getUTCHours()).padStart(2, '0');
+                            const M = String(wibDt.getUTCMinutes()).padStart(2, '0');
+                            waktuKirim = `${day}/${mon}/${yr} ${H}:${M}`;
+                          }
+                          const meta = { waktuKirim, noDo: d.doNum || '-', so, customer: d.customer || '-' };
+                          const notes = extractNotedItems(d.items, meta);
+                          if (notes.length > 0) {
+                            notedRows.push([warehouse, so, notes.length, JSON.stringify(notes)]);
+                          }
+                        }
+                        if (notedRows.length > 0) {
+                          const archSig = crypto.createHash("md5").update(JSON.stringify(notedRows)).digest("hex");
+                          if (isFresh || lastArchiveSyncSig[warehouse] !== archSig) {
+                            const placeholders = notedRows.map(() => "(?, ?, ?, ?)").join(", ");
+                            await conn.execute(
+                              `INSERT INTO qc_reports (warehouse, so_number, barang_catatan, noted_items)
+                               VALUES ${placeholders}
+                               ON DUPLICATE KEY UPDATE
+                                 barang_catatan = VALUES(barang_catatan),
+                                 noted_items = VALUES(noted_items)`,
+                              notedRows.flat()
+                            );
+                            lastArchiveSyncSig[warehouse] = archSig;
+                          }
                         }
                       }
                     }
@@ -1348,9 +1378,9 @@ export async function GET(req: Request) {
           maxUpdated,
         },
         {
-          "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
-          "CDN-Cache-Control": "public, s-maxage=30",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=30",
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+          "CDN-Cache-Control": "public, s-maxage=60",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=60",
         }
       );
     }
@@ -1479,9 +1509,9 @@ export async function GET(req: Request) {
           hasMore,
         },
         {
-          "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
-          "CDN-Cache-Control": "public, s-maxage=10",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=10",
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+          "CDN-Cache-Control": "public, s-maxage=60",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=60",
         }
       );
     }

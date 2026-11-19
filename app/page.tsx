@@ -2139,7 +2139,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     const interval = setInterval(syncNetTick, 300000);
 
     const onVisibility = () => {
-      if (document.visibilityState === "visible" && Date.now() - lastSyncNetTickRef.ts >= 45000) {
+      if (document.visibilityState === "visible" && Date.now() - lastSyncNetTickRef.ts >= 90000) {
         syncNetTick();
       }
     };
