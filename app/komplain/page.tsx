@@ -34,6 +34,7 @@ import {
 import { storage } from "@/lib/firebase";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { broadcastRealtimeSignal, broadcastNewComplaint } from "@/lib/firestoreService";
+import MaintenanceScreen from "@/components/MaintenanceScreen";
 
 const COMMON_REASONS = [
   "Fisik yang dikirim kurang",
@@ -688,6 +689,11 @@ ${photoStatus}
     setErrorMessage("");
     setCopiedWaText(false);
   };
+
+  // System Maintenance Lock until 03.15 WIB
+  return (
+    <MaintenanceScreen pageName="Layanan Pengajuan Komplain" targetTime="03.15 WIB" />
+  );
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 flex flex-col font-sans transition-colors">
