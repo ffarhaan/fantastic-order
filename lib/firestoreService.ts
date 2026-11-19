@@ -2435,18 +2435,18 @@ export function subscribeToSystemUpdate(
   );
 }
 
-export async function broadcastRealtimeSignal(channel: RealtimeSignalChannel): Promise<number> {
+export async function broadcastRealtimeSignal(channel: RealtimeSignalChannel, senderId?: string): Promise<number> {
   try {
     const ts = Date.now();
     const ref = doc(db, APP_DATA_COLLECTION, REALTIME_SIGNALS_DOC);
-    await setDoc(
-      ref,
-      {
-        [channel]: ts,
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
+    const updatePayload: Record<string, unknown> = {
+      [channel]: ts,
+      updatedAt: new Date().toISOString(),
+    };
+    if (senderId) {
+      updatePayload[`${channel}_sender`] = senderId;
+    }
+    await setDoc(ref, updatePayload, { merge: true });
     return ts;
   } catch (err) {
     console.warn(`broadcastRealtimeSignal(${channel}) warning:`, err);
@@ -2513,8 +2513,8 @@ export function subscribeToNewComplaint(
 
 export function subscribeToRealtimeSignal(
   channel: RealtimeSignalChannel,
-  onSignal: (timestamp: number) => void,
-  onInitial?: (timestamp: number) => void
+  onSignal: (timestamp: number, senderId?: string) => void,
+  onInitial?: (timestamp: number, senderId?: string) => void
 ): Unsubscribe {
   let lastSeen = 0;
   let initialized = false;
@@ -2525,16 +2525,18 @@ export function subscribeToRealtimeSignal(
         initialized = true;
         return;
       }
-      const val = Number(snap.data()?.[channel] || 0);
+      const data = snap.data();
+      const val = Number(data?.[channel] || 0);
+      const sender = typeof data?.[`${channel}_sender`] === "string" ? data[`${channel}_sender`] : undefined;
       if (!initialized) {
         lastSeen = val;
         initialized = true;
-        if (val > 0 && onInitial) onInitial(val);
+        if (val > 0 && onInitial) onInitial(val, sender);
         return;
       }
       if (val > lastSeen) {
         lastSeen = val;
-        onSignal(val);
+        onSignal(val, sender);
       }
     },
     (err) => console.warn(`subscribeToRealtimeSignal(${channel}) warning:`, err)

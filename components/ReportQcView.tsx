@@ -631,7 +631,14 @@ export default function ReportQcView({
     return validWarehouseQcOrders.map((row) => {
       const soNum = String(row.so_number || "").trim();
       const normSo = normalizeSO(soNum);
-      const detail = soDetailsMap.get(soNum.toUpperCase()) || soDetailsMap.get(normSo) || null;
+      const cleanDo = row.no_do ? String(row.no_do).trim().toUpperCase() : "";
+      const normDo = cleanDo ? normalizeSO(cleanDo) : "";
+
+      const detail =
+        soDetailsMap.get(soNum.toUpperCase()) ||
+        soDetailsMap.get(normSo) ||
+        (cleanDo && cleanDo !== "-" ? (soDetailsMap.get(cleanDo) || soDetailsMap.get(normDo)) : null) ||
+        null;
 
       const waktuKirim =
         row.waktu_kirim && row.waktu_kirim !== "-"
@@ -659,17 +666,16 @@ export default function ReportQcView({
       const packerName = row.packer_name && row.packer_name !== "-" ? row.packer_name : "-";
       const pickerName = row.picker_name && row.picker_name !== "-" ? row.picker_name : "-";
 
-      const cleanDo = row.no_do ? String(row.no_do).trim().toUpperCase() : "";
-      const normDo = cleanDo ? normalizeSO(cleanDo) : "";
+      const invoiceNum = detail?.invoiceNumber || row.invoice_number || null;
+
       const isInvoiced = Boolean(
         row.is_invoiced === 1 ||
         row.is_invoiced === "1" ||
-        row.invoice_number ||
+        Boolean(invoiceNum) ||
         existingSOSet.has(soNum.toUpperCase()) ||
         existingSOSet.has(normSo) ||
         (cleanDo && cleanDo !== "-" && (existingSOSet.has(cleanDo) || existingSOSet.has(normDo)))
       );
-      const invoiceNum = detail?.invoiceNumber || row.invoice_number || null;
 
       const isDone = Boolean(
         localDoneMap[soNum] || row.is_done === "DONE" || String(row.is_done || "").toUpperCase() === "DONE"

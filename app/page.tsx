@@ -1958,12 +1958,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         ? d.extra.items
         : (isDiffMonth ? [] : (prev.extra?.items || []));
 
+      // LOCKED_RULES.md Sec 1.D & 1.G: Local Print State Protection
+      // If invoice is currently marked printed in printedInvoicesRef.current, never let server delta revert it!
+      const isPrintedLocally = Boolean(
+        printedInvoicesRef.current && (
+          printedInvoicesRef.current.has(d.id) ||
+          (d.no_faktur && printedInvoicesRef.current.has(d.no_faktur))
+        )
+      );
+      const finalStatusCetak = Boolean(isPrintedLocally || prev.status_cetak || d.status_cetak);
+
       map.set(d.id, {
         ...prev,
         ...d,
         no_sales_order: (d.no_sales_order && d.no_sales_order !== "-") ? d.no_sales_order : prev.no_sales_order,
         customer_name: keepPrevCust ? prev.customer_name : (newCust && newCust !== "-" ? d.customer_name : prev.customer_name),
-        status_cetak: Boolean(prev.status_cetak || d.status_cetak),
+        status_cetak: finalStatusCetak,
         printed_at: prev.status_cetak ? prev.printed_at : (d.printed_at || prev.printed_at),
         printed_by: prev.status_cetak ? prev.printed_by : (d.printed_by || prev.printed_by),
         extra: {
@@ -1981,11 +1991,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   const lastSyncedServerCountRef = useRef<number>(0);
   const lastSyncedServerUpdatedRef = useRef<number>(0);
   const lastProcessedUploadMsRef = useRef<number>(0);
+  const lastPrintActionTimeRef = useRef<number>(0);
 
   // Unified Peer Sync Controller: Prioritizes Delta Sync (< 15KB) over full archive download (20MB)
   // Single-flight with concurrency lock to avoid duplicate parallel downloads across tabs/broadcasts
   const performPeerSync = useCallback(async (forceSync: boolean = false) => {
     if (isUploadingRef.current) return;
+    // Anti-Flicker Print Guard: If user recently performed print within last 5 seconds, do not interrupt active UI
+    if (Date.now() - lastPrintActionTimeRef.current < 5000 && !forceSync) {
+      return;
+    }
     if (isPeerSyncingRef.current) {
       if (forceSync) pendingPeerSyncRef.current = true;
       return;
@@ -2039,9 +2054,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         for (const d of deltaDocs) {
           if (!d?.id) continue;
           const prev = existingMap.get(d.id);
+          const isLocallyPrinted = Boolean(
+            printedInvoicesRef.current?.has(d.id) ||
+            (d.no_faktur && printedInvoicesRef.current?.has(d.no_faktur))
+          );
+          const effectiveDeltaStatus = isLocallyPrinted ? true : Boolean(d.status_cetak);
+          const effectivePrevStatus = isLocallyPrinted ? true : Boolean(prev?.status_cetak);
+
           if (
             !prev ||
-            Boolean(prev.status_cetak) !== Boolean(d.status_cetak) ||
+            effectivePrevStatus !== effectiveDeltaStatus ||
             prev.kategori !== d.kategori ||
             prev.no_sales_order !== d.no_sales_order ||
             prev.customer_name !== d.customer_name ||
@@ -2503,7 +2525,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     );
 
     // Subscribe to TiDB completion signal so peer browsers pull 100% of newly committed TiDB rows immediately
-    const unsubTiDBSignal = subscribeToRealtimeSignal("fakturs", async () => {
+    const unsubTiDBSignal = subscribeToRealtimeSignal("fakturs", async (ts, senderId) => {
+      if (senderId && senderId === deviceIdRef.current) return;
       if (isUploadingRef.current) return;
       setTimeout(() => performPeerSync(true), 250);
     });
@@ -2781,6 +2804,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         return;
       }
       const willBePrinted = !group.allPrinted;
+      lastPrintActionTimeRef.current = Date.now();
       // Strict Key Isolation: use group.invoiceKey directly (DOO uses '20078', ORA uses '20078-1P')
       const targetKey = group.invoiceKey;
       const nowIso = new Date().toISOString();
@@ -3448,6 +3472,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
         }
 
+        // Also index Delivery Order (No DO) if available
+        if (g.noDo && g.noDo !== "-") {
+          const rawDo = String(g.noDo).trim().toUpperCase();
+          set.add(rawDo);
+          const normDo = normalizeSO(rawDo);
+          if (normDo) set.add(normDo);
+        }
+
         // Check item-level orderNumbers only when different from group SO
         if (Array.isArray(g.items)) {
           for (let j = 0; j < g.items.length; j++) {
@@ -3458,6 +3490,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               set.add(rawItSO);
               const normIt = normalizeSO(rawItSO);
               if (normIt) set.add(normIt);
+            }
+            const itAny = it as any;
+            const itDo = itAny.deliveryOrder || itAny.noDo;
+            if (itDo && itDo !== "-") {
+              const rawItDo = String(itDo).trim().toUpperCase();
+              set.add(rawItDo);
+              const normItDo = normalizeSO(rawItDo);
+              if (normItDo) set.add(normItDo);
             }
           }
         }
@@ -3503,23 +3543,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     for (let i = 0; i < baseGroups.length; i++) {
       const g = baseGroups[i];
       if ((g.entity || "MBI") === selectedWarehouse) {
-        if (g.so && g.so !== "-") {
-          const inv = g.invoiceNumber || g.cleanInv || "";
-          let totQty = 0;
-          if (Array.isArray(g.items)) {
-            for (let j = 0; j < g.items.length; j++) {
-              totQty += Number(g.items[j].qty) || 0;
-            }
+        const inv = g.invoiceNumber || g.cleanInv || "";
+        let totQty = 0;
+        if (Array.isArray(g.items)) {
+          for (let j = 0; j < g.items.length; j++) {
+            totQty += Number(g.items[j].qty) || 0;
           }
-          const detail = {
-            customerName: g.customerName || "-",
-            orderDate: g.orderDate || "-",
-            transactionDate: g.transactionDate || g.orderDate || "-",
-            totalItems: g.totalItems || (g.items ? g.items.length : 0),
-            totalQty: totQty,
-            invoiceNumber: inv,
-          };
+        }
+        const detail = {
+          customerName: g.customerName || "-",
+          orderDate: g.orderDate || "-",
+          transactionDate: g.transactionDate || g.orderDate || "-",
+          totalItems: g.totalItems || (g.items ? g.items.length : 0),
+          totalQty: totQty,
+          invoiceNumber: inv,
+        };
 
+        if (g.so && g.so !== "-") {
           const rawSo = g.so.trim().toUpperCase();
           map.set(rawSo, detail);
           const normSo = normalizeSO(rawSo);
@@ -3531,6 +3571,36 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               map.set(p, detail);
               const np = normalizeSO(p);
               if (np) map.set(np, detail);
+            }
+          }
+        }
+
+        // Also map Delivery Order (No DO) to details
+        if (g.noDo && g.noDo !== "-") {
+          const rawDo = String(g.noDo).trim().toUpperCase();
+          map.set(rawDo, detail);
+          const normDo = normalizeSO(rawDo);
+          if (normDo) map.set(normDo, detail);
+        }
+
+        // Also map item-level orderNumbers and DOs
+        if (Array.isArray(g.items)) {
+          for (let j = 0; j < g.items.length; j++) {
+            const it = g.items[j];
+            const itSO = it.orderNumber;
+            if (itSO && itSO !== "-" && itSO !== g.so) {
+              const rawItSO = String(itSO).trim().toUpperCase();
+              map.set(rawItSO, detail);
+              const normIt = normalizeSO(rawItSO);
+              if (normIt) map.set(normIt, detail);
+            }
+            const itAny = it as any;
+            const itDo = itAny.deliveryOrder || itAny.noDo;
+            if (itDo && itDo !== "-") {
+              const rawItDo = String(itDo).trim().toUpperCase();
+              map.set(rawItDo, detail);
+              const normItDo = normalizeSO(rawItDo);
+              if (normItDo) map.set(normItDo, detail);
             }
           }
         }
@@ -4921,7 +4991,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             Array.from(brandNewUnprintedKeysSet),
             notifPayload
           ),
-          broadcastRealtimeSignal("fakturs"),
+          broadcastRealtimeSignal("fakturs", deviceIdRef.current),
         ]);
 
         const uploadMaxUpdated = Math.floor(Date.now() / 1000);
