@@ -612,7 +612,22 @@ export async function GET(req: Request) {
 
             if (liveRows.length > 0) {
               const doneSig = crypto.createHash("md5").update(JSON.stringify(liveRows)).digest("hex");
-              if (isFresh || lastDoneSyncSig[warehouse] !== doneSig) {
+              let isDoneModified = isFresh || lastDoneSyncSig[warehouse] !== doneSig;
+              if (isDoneModified && !isFresh) {
+                // Persistent RU Shield: Verify against app_settings across cold starts to save thousands of write RU
+                try {
+                  const dbSigRows = (await conn.execute(
+                    "SELECT value_text FROM app_settings WHERE key_name = ?",
+                    [`qc_done_sig_${warehouse}`]
+                  )) as Array<{ value_text: string }>;
+                  if (dbSigRows && dbSigRows[0]?.value_text === doneSig) {
+                    lastDoneSyncSig[warehouse] = doneSig;
+                    isDoneModified = false;
+                  }
+                } catch {}
+              }
+
+              if (isDoneModified) {
                 const placeholders = liveRows.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QC_DONE')").join(", ");
                 await conn.execute(
                   `INSERT INTO qc_reports (
@@ -651,6 +666,12 @@ export async function GET(req: Request) {
                   checkerRows.flat()
                 );
                 lastDoneSyncSig[warehouse] = doneSig;
+                try {
+                  await conn.execute(
+                    "INSERT INTO app_settings (key_name, value_text) VALUES (?, ?) ON DUPLICATE KEY UPDATE value_text = VALUES(value_text)",
+                    [`qc_done_sig_${warehouse}`, doneSig]
+                  );
+                } catch {}
               }
 
               // Live sync 100% of archive notes directly from DO Checker Firebase RTDB (manual fresh=true always immediate; auto background max 2 min)
@@ -658,6 +679,19 @@ export async function GET(req: Request) {
               if (isFresh || now - lastSync > 120000) {
                 lastArchiveSyncTs[warehouse] = now;
                 try {
+                  // Persistent keys sig lookup if memory cache is empty
+                  if (!lastArchiveKeysSig[warehouse] && !isFresh) {
+                    try {
+                      const dbArchSig = (await conn.execute(
+                        "SELECT value_text FROM app_settings WHERE key_name = ?",
+                        [`qc_arch_keys_sig_${warehouse}`]
+                      )) as Array<{ value_text: string }>;
+                      if (dbArchSig && dbArchSig[0]?.value_text) {
+                        lastArchiveKeysSig[warehouse] = dbArchSig[0].value_text;
+                      }
+                    } catch {}
+                  }
+
                   // Bandwidth Shield: Fast shallow check first (<10-48KB) to see if any SO was added or removed before downloading full payload
                   let shouldFetchFull = isFresh || !lastArchiveKeysSig[warehouse];
                   if (!shouldFetchFull) {
@@ -687,9 +721,15 @@ export async function GET(req: Request) {
                     if (archRes.ok) {
                       const archData = await archRes.json();
                       if (archData && typeof archData === 'object') {
-                        if (!lastArchiveKeysSig[warehouse]) {
-                          lastArchiveKeysSig[warehouse] = crypto.createHash("md5").update(JSON.stringify(Object.keys(archData).sort())).digest("hex");
-                        }
+                        const newKeysSig = crypto.createHash("md5").update(JSON.stringify(Object.keys(archData).sort())).digest("hex");
+                        lastArchiveKeysSig[warehouse] = newKeysSig;
+                        try {
+                          await conn.execute(
+                            "INSERT INTO app_settings (key_name, value_text) VALUES (?, ?) ON DUPLICATE KEY UPDATE value_text = VALUES(value_text)",
+                            [`qc_arch_keys_sig_${warehouse}`, newKeysSig]
+                          );
+                        } catch {}
+
                         const notedRows: [string, string, number, string][] = [];
                         for (const [so, v] of Object.entries(archData)) {
                           const d = v as any;
@@ -1348,13 +1388,20 @@ export async function GET(req: Request) {
         totalCount = memoryCheckCache.payload.totalCount;
         maxUpdated = memoryCheckCache.payload.maxUpdated;
       } else {
-        // Fast 1-row index lookup (0.001 RU vs 25.5k row full scan)
+        // Fast 1-row index lookup (0.001 RU vs 28.2k row full scan)
         const maxRes = (await conn.execute(
           "SELECT UNIX_TIMESTAMP(updated_at) as max_updated FROM fakturs_archive ORDER BY updated_at DESC LIMIT 1;"
         )) as Array<{ max_updated: number | null }>;
         maxUpdated = Number(maxRes[0]?.max_updated || 0);
 
-        if (memoryCheckCache && memoryCheckCache.payload.maxUpdated === maxUpdated && memoryCheckCache.payload.totalCount > 0) {
+        const clientCount = Number(searchParams.get("count") || 0);
+        const clientUpdated = Number(searchParams.get("updated") || 0);
+
+        if (clientUpdated > 0 && maxUpdated > 0 && maxUpdated <= clientUpdated && clientCount > 0) {
+          // Zero-RU Short Circuit: If maxUpdated is not newer than client's updated timestamp,
+          // no row was inserted or updated, so total count is mathematically identical to clientCount!
+          totalCount = clientCount;
+        } else if (memoryCheckCache && memoryCheckCache.payload.maxUpdated === maxUpdated && memoryCheckCache.payload.totalCount > 0) {
           totalCount = memoryCheckCache.payload.totalCount;
         } else {
           const countRes = (await conn.execute(
