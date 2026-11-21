@@ -2038,12 +2038,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         return;
       }
 
-      // 2. Normal operational sync: Fetch ONLY rows updated since curUpdated (or curUpdated - 15s on explicit signal)
-      const sinceTs = forceSync ? Math.max(0, curUpdated - 15) : curUpdated;
+      // 2. Normal operational sync: Look back safely (180s on peer signal, 30s normal) to prevent clock drift issues
+      const sinceTs = forceSync ? Math.max(0, curUpdated - 180) : Math.max(0, curUpdated - 30);
       const deltaDocs = await fetchTiDBDelta(sinceTs);
       if (deltaDocs && deltaDocs.length > 0) {
         const deltaMax = (deltaDocs as any).maxUpdated || curUpdated;
-        clientUpdatedRef.current = Math.max(curUpdated, deltaMax, Math.floor(Date.now() / 1000));
+        clientUpdatedRef.current = Math.max(curUpdated, deltaMax);
         lastSyncedServerUpdatedRef.current = clientUpdatedRef.current;
 
         // Check if any doc in deltaDocs is actually new or modified compared to local state
@@ -2529,7 +2529,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     const unsubTiDBSignal = subscribeToRealtimeSignal("fakturs", async (ts, senderId) => {
       if (senderId && senderId === deviceIdRef.current) return;
       if (isUploadingRef.current) return;
-      setTimeout(() => performPeerSync(true), 250);
+      setTimeout(() => performPeerSync(true), 50);
     });
 
     // Subscribe to Real-Time Total Reset signal from Owner so ALL browsers/devices wipe to 0 immediately
@@ -4474,12 +4474,30 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const baseTargetKey = r.invoiceKey || (isMaiRecord ? `MAI-${isOra ? `${cleanInv}-1P` : cleanInv}` : (isOra ? `${cleanInv}-1P` : cleanInv));
           let targetKey = baseTargetKey;
 
-          // Zero Collision Guarantee & Multi-Month Order Date Isolation (LOCKED_RULES A.8):
-          // Check if an existing entry under baseTargetKey has a DIFFERENT Sales Order (SO) OR different Order Date.
-          // If SOs differ OR order dates belong to different months (e.g. October 10/2026 vs November 11/2026),
-          // they MUST NEVER overwrite each other. Isolate the new transaction with a composite key: `${baseTargetKey}__${cleanSO}`.
-          const existingEntryCandidate = invMap.get(baseTargetKey);
-          const prevInfoCandidate = existingStatusMap.get(baseTargetKey);
+          // Counterpart key (DOO vs ORA) for the same warehouse entity:
+          const counterpartBaseKey = isMaiRecord
+            ? (isOra ? `MAI-${cleanInv}` : `MAI-${cleanInv}-1P`)
+            : (isOra ? cleanInv : `${cleanInv}-1P`);
+
+          let existingEntryCandidate = invMap.get(baseTargetKey);
+          let prevInfoCandidate = existingStatusMap.get(baseTargetKey);
+
+          // If not found under baseTargetKey, check counterpartBaseKey with identical Sales Order:
+          if (!existingEntryCandidate && invMap.has(counterpartBaseKey)) {
+            const cpEntry = invMap.get(counterpartBaseKey);
+            const cpSO = String(cpEntry?.no_sales_order || "").trim();
+            if (cpSO && cpSO !== "-" && incomingSO && incomingSO !== "-" && cpSO === incomingSO) {
+              existingEntryCandidate = cpEntry;
+            }
+          }
+          if (!prevInfoCandidate && existingStatusMap.has(counterpartBaseKey)) {
+            const cpInfo = existingStatusMap.get(counterpartBaseKey);
+            const cpSO = String(cpInfo?.no_sales_order || "").trim();
+            if (cpSO && cpSO !== "-" && incomingSO && incomingSO !== "-" && cpSO === incomingSO) {
+              prevInfoCandidate = cpInfo;
+            }
+          }
+
           const existingSO = String((existingEntryCandidate && existingEntryCandidate.no_sales_order) || (prevInfoCandidate && prevInfoCandidate.no_sales_order) || "").trim();
           const existingDate = String((existingEntryCandidate && (existingEntryCandidate.order_date || (existingEntryCandidate.extra && (existingEntryCandidate.extra.order_date as string)))) || (prevInfoCandidate && (prevInfoCandidate.extra && (prevInfoCandidate.extra.order_date as string))) || "").trim();
 
@@ -4505,8 +4523,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             targetKey = `${baseTargetKey}__${incomingSO}`;
           }
 
-          const prevInfo = existingStatusMap.get(targetKey);
-          const existingEntry = invMap.get(targetKey);
+          const prevInfo = existingStatusMap.get(targetKey) || (isSameSO ? prevInfoCandidate : undefined);
+          const existingEntry = invMap.get(targetKey) || (isSameSO ? existingEntryCandidate : undefined);
 
           // Determine if this invoice already exists in the database
           const isExistingInDB = existingEntry !== undefined || prevInfo !== undefined || (isSameSO && (existingEntryCandidate !== undefined || prevInfoCandidate !== undefined));
@@ -4517,7 +4535,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const candidatePAt = (existingEntry && existingEntry.printed_at) ||
             mergedPrintedAtMap[targetKey] ||
             (prevInfo && prevInfo.printed_at) ||
-            (isSameSO ? ((existingEntryCandidate && existingEntryCandidate.printed_at) || mergedPrintedAtMap[baseTargetKey] || (prevInfoCandidate && prevInfoCandidate.printed_at)) : null);
+            (isSameSO ? (
+              (existingEntryCandidate && existingEntryCandidate.printed_at) ||
+              mergedPrintedAtMap[baseTargetKey] ||
+              mergedPrintedAtMap[counterpartBaseKey] ||
+              (prevInfoCandidate && prevInfoCandidate.printed_at)
+            ) : null);
           const isStale = isStalePrintTimestamp(candidatePAt, r.orderDate);
 
           const hasDifferentSO = Boolean(
@@ -4543,7 +4566,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             (prevInfo && prevInfo.status_cetak) ||
             (isSameSO && ((existingEntryCandidate && existingEntryCandidate.status_cetak) || (prevInfoCandidate && prevInfoCandidate.status_cetak))) ||
             mergedPrintedSet.has(targetKey) ||
-            (isSameSO && mergedPrintedSet.has(baseTargetKey))
+            (isSameSO && (mergedPrintedSet.has(baseTargetKey) || mergedPrintedSet.has(counterpartBaseKey)))
           );
 
           if (wasPrinted) {
@@ -4554,6 +4577,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             mergedPrintedAtMap[targetKey] = printedAt;
             newUnprintedKeysSet.delete(targetKey);
             brandNewUnprintedKeysSet.delete(targetKey);
+            // Consolidate counterpart entry in invMap if it existed with same SO
+            if (isSameSO && counterpartBaseKey && counterpartBaseKey !== targetKey && invMap.has(counterpartBaseKey)) {
+              invMap.delete(counterpartBaseKey);
+            }
           } else {
             // Truly unprinted invoice: keep in Belum Terprint
             isPrinted = false;
