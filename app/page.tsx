@@ -4152,9 +4152,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         // STRICT WAREHOUSE CONTEXT ENFORCEMENT (LOCKED_RULES.md)
         // Check if the uploaded records match the active warehouse
         const currentWh = selectedWarehouseRef.current; // 'MBI' or 'MAI'
-        const fileEntities = new Set(parsed.map((r) => r.entity || "MBI"));
+        const maiCount = parsed.filter((r) => r.entity === "MAI").length;
+        const mbiCount = parsed.filter((r) => r.entity === "MBI").length;
 
-        if (currentWh === "MBI" && fileEntities.has("MAI") && !fileEntities.has("MBI")) {
+        if (currentWh === "MBI" && maiCount > mbiCount) {
           const errMsg = "⚠️ File Ditolak: Anda sedang membuka Gudang MBI, tetapi file yang diunggah adalah Entity MAI LE! File ditolak untuk mencegah data tercampur.";
           alert(errMsg);
           setError(errMsg);
@@ -4163,7 +4164,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           return;
         }
 
-        if (currentWh === "MAI" && fileEntities.has("MBI") && !fileEntities.has("MAI")) {
+        if (currentWh === "MAI" && mbiCount > maiCount) {
           const errMsg = "⚠️ File Ditolak: Anda sedang membuka Gudang MAI, tetapi file yang diunggah adalah Entity MBI LE! File ditolak untuk mencegah data tercampur.";
           alert(errMsg);
           setError(errMsg);
