@@ -4317,19 +4317,29 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             }
           }
 
-          const pCandidate = (row.printed_at as string) || livePrintedAtMap[targetKey];
+          const counterpartTargetKey = rowEntity === "MAI"
+            ? (isOra ? `MAI-${cleanInv}` : `MAI-${cleanInv}-1P`)
+            : (isOra ? cleanInv : `${cleanInv}-1P`);
+
+          const pCandidate = (row.printed_at as string) || livePrintedAtMap[targetKey] || livePrintedAtMap[counterpartTargetKey];
           const isStale = isStalePrintTimestamp(pCandidate, (row.order_date as string) || (extra.order_date as string));
           const isDocPrinted = !isStale && Boolean(
             row.status_cetak ||
-            livePrintedKeys.has(targetKey)
+            livePrintedKeys.has(targetKey) ||
+            livePrintedKeys.has(counterpartTargetKey) ||
+            (cleanInv && rowEntity === "MBI" && livePrintedKeys.has(cleanInv))
           );
           if (isDocPrinted) {
             livePrintedKeys.add(targetKey);
+            livePrintedKeys.add(counterpartTargetKey);
             const pTime = pCandidate || new Date().toISOString();
             livePrintedAtMap[targetKey] = pTime;
+            livePrintedAtMap[counterpartTargetKey] = pTime;
           } else if (isStale) {
             livePrintedKeys.delete(targetKey);
+            livePrintedKeys.delete(counterpartTargetKey);
             delete livePrintedAtMap[targetKey];
+            delete livePrintedAtMap[counterpartTargetKey];
           }
           const docPrintedAt = isDocPrinted
             ? (livePrintedAtMap[targetKey] || (row.printed_at as string) || null)
@@ -4410,17 +4420,29 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         const prevDocSnapshotMap = new Map<string, DocDirtySnapshot>();
         existingDBDocsUnified.forEach((doc) => {
           const k = doc.id || doc.no_faktur;
-          const pCandidate = doc.printed_at || livePrintedAtMap[k];
+          const docEntity = doc.entity || (k.startsWith("MAI-") ? "MAI" : "MBI");
+          const cleanK = k.replace(/^MAI-/i, "").replace(/-1P$/i, "").split("__")[0];
+          const counterpartK = docEntity === "MAI"
+            ? (k.endsWith("-1P") ? `MAI-${cleanK}` : `MAI-${cleanK}-1P`)
+            : (k.endsWith("-1P") ? cleanK : `${cleanK}-1P`);
+
+          const pCandidate = doc.printed_at || livePrintedAtMap[k] || livePrintedAtMap[counterpartK];
           const isStale = isStalePrintTimestamp(pCandidate, doc.order_date || (doc.extra && (doc.extra.order_date as string)));
           const isDocPrinted = !isStale && Boolean(
             doc.status_cetak ||
-            livePrintedKeys.has(k)
+            livePrintedKeys.has(k) ||
+            livePrintedKeys.has(counterpartK) ||
+            (docEntity === "MBI" && cleanK && livePrintedKeys.has(cleanK)) ||
+            (docEntity === "MBI" && doc.no_faktur && livePrintedKeys.has(doc.no_faktur))
           );
           if (isDocPrinted) {
             livePrintedKeys.add(k);
+            livePrintedKeys.add(counterpartK);
           } else if (isStale) {
             livePrintedKeys.delete(k);
+            livePrintedKeys.delete(counterpartK);
             delete livePrintedAtMap[k];
+            delete livePrintedAtMap[counterpartK];
           }
           const docPAt = isDocPrinted
             ? (livePrintedAtMap[k] || doc.printed_at || null)
@@ -4449,9 +4471,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         invMap.forEach((doc, k) => {
           const docWh = doc.entity || (k.startsWith("MAI-") ? "MAI" : "MBI");
           if (docWh === currentWh) {
+            const cleanK = k.replace(/^MAI-/i, "").replace(/-1P$/i, "").split("__")[0];
+            const counterpartK = docWh === "MAI"
+              ? (k.endsWith("-1P") ? `MAI-${cleanK}` : `MAI-${cleanK}-1P`)
+              : (k.endsWith("-1P") ? cleanK : `${cleanK}-1P`);
             const isPrinted = Boolean(
               doc.status_cetak ||
-              mergedPrintedSet.has(k)
+              mergedPrintedSet.has(k) ||
+              mergedPrintedSet.has(counterpartK) ||
+              (docWh === "MBI" && cleanK && mergedPrintedSet.has(cleanK)) ||
+              (docWh === "MBI" && doc.no_faktur && mergedPrintedSet.has(doc.no_faktur))
             );
             if (!isPrinted) {
               newUnprintedKeysSet.add(k);
@@ -4566,6 +4595,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             (prevInfo && prevInfo.status_cetak) ||
             (isSameSO && ((existingEntryCandidate && existingEntryCandidate.status_cetak) || (prevInfoCandidate && prevInfoCandidate.status_cetak))) ||
             mergedPrintedSet.has(targetKey) ||
+            mergedPrintedSet.has(counterpartBaseKey) ||
+            (isMaiRecord ? mergedPrintedSet.has(`MAI-${cleanInv}`) : mergedPrintedSet.has(cleanInv)) ||
             (isSameSO && (mergedPrintedSet.has(baseTargetKey) || mergedPrintedSet.has(counterpartBaseKey)))
           );
 
@@ -4574,9 +4605,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             isPrinted = true;
             printedAt = candidatePAt || new Date().toISOString();
             mergedPrintedSet.add(targetKey);
+            mergedPrintedSet.add(counterpartBaseKey);
             mergedPrintedAtMap[targetKey] = printedAt;
+            mergedPrintedAtMap[counterpartBaseKey] = printedAt;
             newUnprintedKeysSet.delete(targetKey);
+            newUnprintedKeysSet.delete(counterpartBaseKey);
             brandNewUnprintedKeysSet.delete(targetKey);
+            brandNewUnprintedKeysSet.delete(counterpartBaseKey);
             // Consolidate counterpart entry in invMap if it existed with same SO
             if (isSameSO && counterpartBaseKey && counterpartBaseKey !== targetKey && invMap.has(counterpartBaseKey)) {
               invMap.delete(counterpartBaseKey);
