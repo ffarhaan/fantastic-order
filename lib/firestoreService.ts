@@ -147,20 +147,6 @@ function registerPrintKeyVariants(
   }
   keysSet.add(k);
   if (pAt && !atMap[k]) atMap[k] = pAt;
-
-  // Register counterpart/base variant strictly within the SAME warehouse entity (MBI vs MAI):
-  const isMai = k.startsWith("MAI-");
-  const cleanNum = k.replace(/^MAI-/i, "").replace(/-1P$/i, "");
-  if (cleanNum) {
-    const entityBaseKey = isMai ? `MAI-${cleanNum}` : cleanNum;
-    const entityOraKey = isMai ? `MAI-${cleanNum}-1P` : `${cleanNum}-1P`;
-    keysSet.add(entityBaseKey);
-    keysSet.add(entityOraKey);
-    if (pAt) {
-      if (!atMap[entityBaseKey]) atMap[entityBaseKey] = pAt;
-      if (!atMap[entityOraKey]) atMap[entityOraKey] = pAt;
-    }
-  }
 }
 
 /**
