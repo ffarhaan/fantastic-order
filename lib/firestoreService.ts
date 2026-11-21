@@ -240,8 +240,10 @@ export async function fetchAllLivePrintKeys(): Promise<{
       partitionsSnap.forEach((pDoc) => {
         const pData = pDoc.data();
         const pKeys = (pData.printedKeys as string[]) || [];
-        const pMap = (pData.printedAtMap as Record<string, string>) || {};
-        const pBy = (pData.printedByMap as Record<string, string>) || {};
+        const pMap = (pData.printedAtMap as Record<string, string>) ||
+          (pData.printedAtJson ? JSON.parse(pData.printedAtJson) : {});
+        const pBy = (pData.printedByMap as Record<string, string>) ||
+          (pData.printedByJson ? JSON.parse(pData.printedByJson) : {});
         pKeys.forEach((k) => registerPrintKeyVariants(k, pMap[k], gatheredKeys, gatheredMap));
         Object.assign(gatheredMap, pMap);
         Object.assign(gatheredByMap, pBy);
@@ -460,8 +462,10 @@ export function subscribeToFakturs(
           const newKeys = (data.printedKeys as string[]) || [];
           const pEntry = {
             printedKeys: newKeys,
-            printedAtMap: (data.printedAtMap as Record<string, string>) || {},
-            printedByMap: (data.printedByMap as Record<string, string>) || {},
+            printedAtMap: (data.printedAtMap as Record<string, string>) ||
+              (data.printedAtJson ? JSON.parse(data.printedAtJson) : {}),
+            printedByMap: (data.printedByMap as Record<string, string>) ||
+              (data.printedByJson ? JSON.parse(data.printedByJson) : {}),
           };
           globalPartitionMap.set(change.doc.id, pEntry);
         }
@@ -767,7 +771,8 @@ export async function getExistingFakturs(): Promise<{
     partitionsSnap.forEach((pDoc) => {
       const pData = pDoc.data();
       const pKeys = (pData.printedKeys as string[]) || [];
-      const pMap = (pData.printedAtMap as Record<string, string>) || {};
+      const pMap = (pData.printedAtMap as Record<string, string>) ||
+        (pData.printedAtJson ? JSON.parse(pData.printedAtJson) : {});
       pKeys.forEach((k) => combinedPrintKeys.add(k));
       Object.assign(combinedPrintMap, pMap);
     });
@@ -1047,7 +1052,7 @@ export async function updatePrintState(
     await setDoc(partRef, {
       partitionId: partId,
       printedKeys: mergedKeys,
-      printedAtMap: mergedMap,
+      printedAtJson: JSON.stringify(mergedMap),
       count: mergedKeys.length,
       updatedAt: nowIso,
     });
@@ -1080,8 +1085,8 @@ export async function updateFakturPrintStatus(
   if (pSnap && pSnap.exists()) {
     const data = pSnap.data();
     ((data.printedKeys as string[]) || []).forEach((k) => partKeys.add(k));
-    Object.assign(partMap, (data.printedAtMap as Record<string, string>) || {});
-    Object.assign(partByMap, (data.printedByMap as Record<string, string>) || {});
+    Object.assign(partMap, (data.printedAtMap as Record<string, string>) || (data.printedAtJson ? JSON.parse(data.printedAtJson) : {}));
+    Object.assign(partByMap, (data.printedByMap as Record<string, string>) || (data.printedByJson ? JSON.parse(data.printedByJson) : {}));
   }
 
   if (status) {
@@ -1125,8 +1130,8 @@ export async function updateFakturPrintStatus(
   await setDoc(partRef, {
     partitionId: partId,
     printedKeys: Array.from(partKeys),
-    printedAtMap: partMap,
-    printedByMap: partByMap,
+    printedAtJson: JSON.stringify(partMap),
+    printedByJson: JSON.stringify(partByMap),
     count: partKeys.size,
     updatedAt: nowIso,
   });
@@ -1182,8 +1187,8 @@ export async function updateFaktursPrintStatusBatch(
     if (pSnap && pSnap.exists()) {
       const data = pSnap.data();
       ((data.printedKeys as string[]) || []).forEach((k) => pKeys.add(k));
-      Object.assign(pMap, (data.printedAtMap as Record<string, string>) || {});
-      Object.assign(pByMap, (data.printedByMap as Record<string, string>) || {});
+      Object.assign(pMap, (data.printedAtMap as Record<string, string>) || (data.printedAtJson ? JSON.parse(data.printedAtJson) : {}));
+      Object.assign(pByMap, (data.printedByMap as Record<string, string>) || (data.printedByJson ? JSON.parse(data.printedByJson) : {}));
     }
 
     targetKeys.forEach((k) => {
@@ -1201,8 +1206,8 @@ export async function updateFaktursPrintStatusBatch(
     await setDoc(partRef, {
       partitionId: partId,
       printedKeys: Array.from(pKeys),
-      printedAtMap: pMap,
-      printedByMap: pByMap,
+      printedAtJson: JSON.stringify(pMap),
+      printedByJson: JSON.stringify(pByMap),
       count: pKeys.size,
       updatedAt: nowIso,
     });
