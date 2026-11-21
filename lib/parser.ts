@@ -722,6 +722,7 @@ function parseXXCUST(
     totalHarga: getCol("total harga", "total amount", "amount", "total", "nilai faktur", "harga total", "net amount", "line amount", "entered amount", "extended amount", "subtotal", "nilai", "grand total", "dpp", "total net"),
     segmentation: getCol("segmentation", "segmen", "segmentasi"),
     kategoriPPIC: getCol("nama kategori product", "kategori product", "kategori produk", "product category", "category"),
+    noInvoiceCetakan: getCol("no invoice cetakan", "invoice cetakan", "no. invoice cetakan", "nomor invoice cetakan", "cetakan invoice", "cetakan"),
   };
 
   const records: FakturRecord[] = [];
@@ -782,21 +783,57 @@ function parseXXCUST(
       customerCode = lastCustomerCode;
     }
 
+    const cetakanRaw = val(idx.noInvoiceCetakan);
+    let cetakanEntity: "MAI" | "MBI" | null = null;
+    let cetakanIsOra: boolean | null = null;
+    let cetakanInv: string | null = null;
+
+    if (cetakanRaw && cetakanRaw.includes("/")) {
+      const parts = cetakanRaw.split("/").map((p) => p.trim());
+      // Segmen 1: Gudang / Entity (MBI vs MAI)
+      if (parts[0].toUpperCase().includes("MAI")) {
+        cetakanEntity = "MAI";
+      } else if (parts[0].toUpperCase().includes("MBI")) {
+        cetakanEntity = "MBI";
+      }
+      // Segmen 3: Sumber / Jenis Transaksi (CFO = ORA, DOO = DOO)
+      if (parts.length >= 3) {
+        const seg3 = parts[2].toUpperCase();
+        if (seg3 === "CFO" || seg3 === "ORA") {
+          cetakanIsOra = true;
+        } else if (seg3 === "DOO") {
+          cetakanIsOra = false;
+        }
+      }
+      // Segmen 5: Nomor Faktur Cetakan
+      if (parts.length >= 5 && parts[4] && /^\d+$/.test(parts[4])) {
+        cetakanInv = parts[4];
+      }
+    }
+
+    if (!invoiceNumber && cetakanInv) {
+      invoiceNumber = cetakanInv;
+    }
+
     const rawEntity = (val(idx.entity) || val(idx.businessUnit) || fileEntity || "").toUpperCase();
-    let rowEntity: "MAI" | "MBI" = "MBI";
-    if (rawEntity.includes("MAI") || rawEntity.includes("ALKESINDO")) {
-      rowEntity = "MAI";
-    } else if (rawEntity.includes("MBI") || rawEntity.includes("INVESTAMA")) {
-      rowEntity = "MBI";
+    let rowEntity: "MAI" | "MBI" = cetakanEntity || "MBI";
+    if (!cetakanEntity) {
+      if (rawEntity.includes("MAI") || rawEntity.includes("ALKESINDO")) {
+        rowEntity = "MAI";
+      } else if (rawEntity.includes("MBI") || rawEntity.includes("INVESTAMA")) {
+        rowEntity = "MBI";
+      }
     }
 
     const rawJenisCol = val(idx.jenisTransaksi).toUpperCase().trim();
     const isOra =
-      rawJenisCol === "ORA" ||
-      rawJenisCol.includes("ORA_") ||
-      isOraCustomer(customerName) ||
-      isOraCustomer(customerCode) ||
-      customerCode === "CA-900001";
+      cetakanIsOra !== null
+        ? cetakanIsOra
+        : (rawJenisCol === "ORA" ||
+          rawJenisCol.includes("ORA_") ||
+          isOraCustomer(customerName) ||
+          isOraCustomer(customerCode) ||
+          customerCode === "CA-900001");
     const jenisTransaksi: "ORA" | "DOO" = isOra ? "ORA" : "DOO";
     const kategori = categorize(jenisTransaksi, customerName, jenisTransaksi, undefined, undefined, rowEntity);
 
@@ -873,6 +910,7 @@ function parseXXCUST(
       kategoriProduk,
       klasifikasiObat,
       entity: rowEntity,
+      noInvoiceCetakan: cetakanRaw || undefined,
       isDoubleInv: false,
       sourceFile: "XXCUST",
       rowIndex: i,
@@ -883,8 +921,8 @@ function parseXXCUST(
     throw new Error("⚠️ File Ditolak: File tidak memiliki baris data transaksi yang valid.");
   }
 
-  // Strict Validation: File MUST contain Entity (MBI LE or MAI LE)
-  const hasRecognizedEntity = fileEntity !== null || (idx.entity !== undefined) || (idx.businessUnit !== undefined);
+  // Strict Validation: File MUST contain Entity (MBI LE or MAI LE or No Invoice Cetakan)
+  const hasRecognizedEntity = fileEntity !== null || (idx.entity !== undefined) || (idx.businessUnit !== undefined) || (idx.noInvoiceCetakan !== undefined);
   if (!hasRecognizedEntity) {
     throw new Error("⚠️ File Ditolak: Hanya file XXCUST resmi yang memiliki kolom Entity (MBI LE / MAI LE) yang diizinkan untuk diupload.");
   }

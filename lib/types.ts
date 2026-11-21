@@ -22,6 +22,7 @@ export interface FakturRecord {
   printed_at?: string | null;
   printed_by?: string | null;
   entity?: "MAI" | "MBI";
+  noInvoiceCetakan?: string;
   sourceFile?: string;
   rowIndex?: number;
 }

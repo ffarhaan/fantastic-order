@@ -29,6 +29,11 @@ Setiap kali pengguna meminta perbaikan, optimasi performa, atau fitur baru pada 
    - Kartu `REPORT QC` di header dan antrean aktif wajib 100% menghitung dan menampilkan seluruh SO yang belum memiliki No Invoice di Oracle (`!is_invoiced`).
    - Dilarang keras mengurangi hitungan atau mengeluarkan SO dari antrean hanya karena admin telah menandai `✓ DONE` pada SO tersebut. SO hanya boleh keluar dari hitungan jika fakturnya sudah terbit di Oracle.
 
-6. **Kewajiban Saat Perbaikan, Optimasi Performa, atau Fitur Baru**:
+7. **DILARANG KERAS Menandai Faktur Baru Sebagai Tercetak (Mandat No SO Baru & Penegakan !isStale)**:
+   - Setiap baris faktur dengan Nomor SO (`no_sales_order` / `Order Number`) yang baru pertama kali muncul di database **WAJIB 100% berstatus Belum Terprint (`status_cetak: false`)**.
+   - Penentuan status cetak saat upload (`wasPrinted`) wajib mengevaluasi `!isStalePrintTimestamp`. Stempel cetak lampau (>24 jam sebelum `order_date`) wajib diabaikan (`isStale = true`) dan faktur baru wajib dipaksa berstatus `Belum Terprint`.
+   - Standar Kolom `No Invoice Cetakan`: Wajib membaca kolom `No Invoice Cetakan` pada file XXCUST. Segmen 1 (`MBI/` vs `MAI/`) mengunci gudang, segmen 3 (`CFO` vs `DOO`) mengunci ORA vs DOO. DILARANG KERAS men-strip prefix `MAI-` saat menyimpan atau membaca status cetak di partisi Firestore (`print_state_partitions`), TiDB, dan memori.
+
+## Kewajiban Saat Perbaikan, Optimasi Performa, atau Fitur Baru
    - Selalu baca [`LOCKED_RULES.md`](./LOCKED_RULES.md) sebelum merancang atau menulis perubahan kode pada `lib/parser.ts`, `app/page.tsx`, `lib/firestoreService.ts`, maupun `app/api/tidb/route.ts`.
    - Segala bentuk perubahan terhadap aturan di atas **DILARANG KERAS** dilakukan tanpa izin eksplisit dari pengguna.

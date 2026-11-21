@@ -77,10 +77,30 @@ Dokumen ini adalah acuan baku dan permanen untuk seluruh pengembangan, pemelihar
    - Mencari No Invoice dan No SO baru (khususnya ORA baru) dan mendaftarkannya ke sistem dengan status Belum Terprint.
    - Melengkapi No SO resmi dan rincian obat/item untuk faktur yang sudah ada.
    - Dilarang mereset atau mengutak-atik status cetak faktur apa pun yang sudah ada di database.
-5. **Jaminan Konsistensi Kronologis (Chronological Consistency Guard - LOCKED)**:
+5. **Jaminan Konsistensi Kronologis & Penegakan Anti-Stale (Chronological Consistency Guard - LOCKED)**:
    - Sebuah faktur baru tidak mungkin dicetak berhari-hari sebelum tanggal ordernya (`order_date`) dibuat.
-   - Jika suatu faktur baru dicocokkan dengan stempel `printed_at` di database yang tanggalnya lampau (> 24 jam sebelum `order_date`), sistem secara otomatis mengabaikan stempel lampau tersebut (`isStalePrintTimestamp = true`) dan mewajibkan faktur baru tersebut berstatus murni `Belum Terprint`.
+   - Jika suatu faktur baru dicocokkan dengan stempel `printed_at` di database yang tanggalnya lampau (> 24 jam sebelum `order_date`), sistem secara otomatis mengabaikan stempel lampau tersebut (`isStalePrintTimestamp = true`).
+   - Penentuan status cetak saat upload (`wasPrinted`) **WAJIB MENGEVALUASI `!isStale`**. Jika `isStale === true`, nilai `wasPrinted` mutlak bernilai `false` dan faktur baru wajib dipaksa berstatus murni `Belum Terprint`.
+   - Stempel cetak kedaluwarsa tersebut wajib otomatis dibersihkan dari memori dan partisi cetak kunci yang bersangkutan.
    - Menjamin 100% tidak ada lagi tabrakan nomor faktur antar siklus waktu yang menyebabkan faktur baru otomatis tercentang.
+6. **Mandat Nomor SO Baru (Brand-New SO Guard - LOCKED TOTAL)**:
+   - Setiap baris faktur dengan Nomor Sales Order (`no_sales_order` / `Order Number`) yang baru pertama kali muncul dan belum pernah tercatat dicetak di database **WAJIB 100% berstatus Belum Dicetak (`status_cetak: false`, `printed_at: null`)**.
+   - Nomor SO adalah bukti otentik fisik barang pesanan dari apotek. Pesanan dengan No SO baru tidak boleh dianggap tercetak hanya karena nomor invoice Oracle-nya bertabrakan dengan masa lalu atau gudang lain.
+7. **Standar Baku Kolom `No Invoice Cetakan` & Isolasi Mutlak Gudang (XXCUST Master Mandate - LOCKED TOTAL)**:
+   - Setiap file XXCUST (`XXCUST_OM_GROSS_PROFIT_RPT`) yang diunggah wajib membaca kolom **`No Invoice Cetakan`** sebagai identitas primer transaksi:
+     - **Segmen 1 (Gudang / Entity)**:
+       - `MBI/...` $\rightarrow$ Mutlak Gudang **MBI** (`entity: "MBI"`, base key: `${cleanInv}`).
+       - `MAI/...` $\rightarrow$ Mutlak Gudang **MAI** (`entity: "MAI"`, base key: `MAI-${cleanInv}`).
+     - **Segmen 3 (Sumber / Jenis Transaksi)**:
+       - `.../CFO/...` $\rightarrow$ Mutlak transaksi **ORA** (Konsorsium Helios / HAK / IHC) $\rightarrow$ Suffix key wajib `-1P`.
+       - `.../DOO/...` $\rightarrow$ Mutlak transaksi **DOO** (Reguler / Halomedika / Apotek Luar).
+     - **Segmen 5 (Nomor Faktur)**:
+       - Bagian nomor angka di akhir string cetakan (misal `36402`, `39204`).
+   - **Isolasi Mutlak Kunci Status Cetak MAI vs MBI**:
+     - Faktur MAI wajib menggunakan kunci ber-prefix `MAI-` (misal `MAI-39204`).
+     - Faktur MBI wajib menggunakan kunci MBI murni/terisolasi (misal `39204`).
+     - **DILARANG KERAS melakukan stripping prefix `MAI-`** saat menyimpan atau membaca status cetak di partisi Firestore (`print_state_partitions`), TiDB, maupun cache memori lokal.
+     - Status cetak pada faktur MAI HANYA berlaku untuk MAI dan DILARANG KERAS menulari faktur MBI, begitu pun sebaliknya.
 
 #### C. Logika Done Print & Realtime Multi-Device Sync
 - **Kecepatan & Keandalan**:

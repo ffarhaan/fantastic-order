@@ -4318,14 +4318,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
           const pCandidate = (row.printed_at as string) || livePrintedAtMap[targetKey];
           const isStale = isStalePrintTimestamp(pCandidate, (row.order_date as string) || (extra.order_date as string));
-          const isDocPrinted = Boolean(
+          const isDocPrinted = !isStale && Boolean(
             row.status_cetak ||
-            (!isStale && livePrintedKeys.has(targetKey))
+            livePrintedKeys.has(targetKey)
           );
           if (isDocPrinted) {
             livePrintedKeys.add(targetKey);
             const pTime = pCandidate || new Date().toISOString();
             livePrintedAtMap[targetKey] = pTime;
+          } else if (isStale) {
+            livePrintedKeys.delete(targetKey);
+            delete livePrintedAtMap[targetKey];
           }
           const docPrintedAt = isDocPrinted
             ? (livePrintedAtMap[targetKey] || (row.printed_at as string) || null)
@@ -4408,12 +4411,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const k = doc.id || doc.no_faktur;
           const pCandidate = doc.printed_at || livePrintedAtMap[k];
           const isStale = isStalePrintTimestamp(pCandidate, doc.order_date || (doc.extra && (doc.extra.order_date as string)));
-          const isDocPrinted = Boolean(
+          const isDocPrinted = !isStale && Boolean(
             doc.status_cetak ||
-            (!isStale && livePrintedKeys.has(k))
+            livePrintedKeys.has(k)
           );
           if (isDocPrinted) {
             livePrintedKeys.add(k);
+          } else if (isStale) {
+            livePrintedKeys.delete(k);
+            delete livePrintedAtMap[k];
           }
           const docPAt = isDocPrinted
             ? (livePrintedAtMap[k] || doc.printed_at || null)
@@ -4513,9 +4519,25 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             (isSameSO ? ((existingEntryCandidate && existingEntryCandidate.printed_at) || mergedPrintedAtMap[baseTargetKey] || (prevInfoCandidate && prevInfoCandidate.printed_at)) : null);
           const isStale = isStalePrintTimestamp(candidatePAt, r.orderDate);
 
+          const hasDifferentSO = Boolean(
+            existingSO && existingSO !== "-" &&
+            incomingSO && incomingSO !== "-" &&
+            existingSO !== incomingSO
+          );
+
+          if (isStale) {
+            mergedPrintedSet.delete(targetKey);
+            delete mergedPrintedAtMap[targetKey];
+            if (targetKey !== baseTargetKey) {
+              mergedPrintedSet.delete(baseTargetKey);
+              delete mergedPrintedAtMap[baseTargetKey];
+            }
+          }
+
           // PERMANENT PRINT RETENTION & UNPRINTED GUARANTEE (LOCKED_RULES.md Sec 1.B & 1.D):
           // Check if marked printed in ANY authoritative source (print_state_partitions, local memory, DB)
-          const wasPrinted = Boolean(
+          // STRICT RULE: If isStale is true OR if SO is different, it MUST NOT be considered printed!
+          const wasPrinted = !isStale && !hasDifferentSO && Boolean(
             (existingEntry && existingEntry.status_cetak) ||
             (prevInfo && prevInfo.status_cetak) ||
             (isSameSO && ((existingEntryCandidate && existingEntryCandidate.status_cetak) || (prevInfoCandidate && prevInfoCandidate.status_cetak))) ||
@@ -4611,8 +4633,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
           entry.extra.total_harga = (entry.extra.total_harga || 0) + (r.totalHarga || 0);
 
-          entry.status_cetak = entry.status_cetak || isPrinted;
-          entry.printed_at = entry.printed_at || printedAt;
+          if (isFirstTouchForTarget) {
+            entry.status_cetak = isPrinted;
+            entry.printed_at = printedAt;
+          } else {
+            entry.status_cetak = entry.status_cetak || isPrinted;
+            entry.printed_at = entry.printed_at || printedAt;
+          }
+          if (r.noInvoiceCetakan && entry.extra) {
+            (entry.extra as any).no_invoice_cetakan = r.noInvoiceCetakan;
+          }
 
           if (r.transactionDate && (r.sourceFile === "XXCUST" || !entry.transaction_date || entry.transaction_date === "-")) {
             entry.transaction_date = r.transactionDate;

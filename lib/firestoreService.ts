@@ -182,7 +182,9 @@ export function getLivePrintState(): {
 
   globalChunksMap.forEach((items) => {
     items.forEach((item) => {
-      const k = item.id || item.no_faktur;
+      const isMai = Boolean(item.entity === "MAI" || item.id?.startsWith("MAI-") || item.no_faktur?.startsWith("MAI-"));
+      const rawK = item.id || item.no_faktur;
+      const k = isMai && !rawK?.startsWith("MAI-") ? `MAI-${rawK}` : rawK;
       if (k && item.status_cetak) {
         if (!isStalePrintTimestamp(item.printed_at, item.order_date)) {
           registerPrintKeyVariants(k, item.printed_at || undefined, gatheredKeys, gatheredMap);
@@ -355,16 +357,22 @@ export function subscribeToFakturs(
     currentPrintState.printedByMap = pByMap;
 
     for (const d of allDocs) {
-      const key = d.id || d.no_faktur;
-      const cleanKey = key.replace(/-1P$/i, "");
+      const isMai = Boolean(d.entity === "MAI" || d.id?.startsWith("MAI-") || d.no_faktur?.startsWith("MAI-"));
+      const rawK = d.id || d.no_faktur;
+      const key = isMai && !rawK?.startsWith("MAI-") ? `MAI-${rawK}` : rawK;
+      const cleanKey = key.replace(/^MAI-/i, "").replace(/-1P$/i, "");
       const candidatePAt = pMap[key] || d.printed_at || null;
-      // LOCKED_RULES.md Sec 1.D: Once printed in status_cetak or printedSet, permanent retention guaranteed!
-      const isPrinted = Boolean(d.status_cetak || printedSet.has(key));
+      const isStale = isStalePrintTimestamp(candidatePAt, d.order_date || (d.extra && (d.extra.order_date as string)));
+      // LOCKED_RULES.md Sec 1.D & 1.B.5: Stale timestamps (>24h before order_date) are invalid!
+      const isPrinted = !isStale && Boolean(d.status_cetak || printedSet.has(key));
       d.status_cetak = isPrinted;
       d.printed_at = isPrinted ? candidatePAt : null;
       d.printed_by = isPrinted ? (pByMap[key] || d.printed_by || null) : null;
       if (isPrinted && key) {
         printedSet.add(key);
+      } else if (isStale && key) {
+        printedSet.delete(key);
+        delete pMap[key];
       }
 
       // Apply customer/invoice category override if available
@@ -914,13 +922,16 @@ export async function saveFaktursBatch(
   localPrintedKeys.forEach((k) => registerPrintKeyVariants(k, existingPrintState?.printedAtMap?.[k], unifiedPrintedSet, unifiedPrintedAtMap));
 
   for (const item of fakturs) {
-    const key = item.id || item.no_faktur;
+    const isMai = Boolean(item.entity === "MAI" || item.id?.startsWith("MAI-") || item.no_faktur?.startsWith("MAI-"));
+    const rawK = item.id || item.no_faktur;
+    const key = isMai && !rawK?.startsWith("MAI-") ? `MAI-${rawK}` : rawK;
     if (key) {
       const candidatePAt = unifiedPrintedAtMap[key] || item.printed_at;
+      const isStale = isStalePrintTimestamp(candidatePAt, item.order_date || (item.extra && (item.extra.order_date as string)));
 
-      // LOCKED_RULES.md 1.D: Once printed in unifiedPrintedSet or item.status_cetak,
-      // uploading files MUST NEVER un-print or delete it from the printed set!
-      const isPrinted = Boolean(
+      // LOCKED_RULES.md 1.D & 1.B.5: Once printed in unifiedPrintedSet or item.status_cetak,
+      // permanent retention guaranteed UNLESS the timestamp is stale (>24h prior to order_date)
+      const isPrinted = !isStale && Boolean(
         item.status_cetak ||
         unifiedPrintedSet.has(key)
       );
@@ -932,6 +943,10 @@ export async function saveFaktursBatch(
       } else {
         item.status_cetak = false;
         item.printed_at = null;
+        if (isStale) {
+          unifiedPrintedSet.delete(key);
+          delete unifiedPrintedAtMap[key];
+        }
       }
     }
   }
@@ -1095,7 +1110,9 @@ export async function updateFakturPrintStatus(
   globalChunksMap.forEach((items, chunkId) => {
     let chunkModified = false;
     items.forEach((item) => {
-      const k = item.id || item.no_faktur;
+      const isMai = Boolean(item.entity === "MAI" || item.id?.startsWith("MAI-") || item.no_faktur?.startsWith("MAI-"));
+      const rawK = item.id || item.no_faktur;
+      const k = isMai && !rawK?.startsWith("MAI-") ? `MAI-${rawK}` : rawK;
       if (k === invoiceKey) {
         item.status_cetak = status;
         item.printed_at = status ? printedAt : null;
@@ -1150,7 +1167,9 @@ export async function updateFaktursPrintStatusBatch(
   globalChunksMap.forEach((items, chunkId) => {
     let chunkModified = false;
     items.forEach((item) => {
-      const k = item.id || item.no_faktur;
+      const isMai = Boolean(item.entity === "MAI" || item.id?.startsWith("MAI-") || item.no_faktur?.startsWith("MAI-"));
+      const rawK = item.id || item.no_faktur;
+      const k = isMai && !rawK?.startsWith("MAI-") ? `MAI-${rawK}` : rawK;
       if (k && targetKeySet.has(k)) {
         item.status_cetak = status;
         item.printed_at = status ? printedAt : null;
