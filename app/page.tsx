@@ -235,11 +235,13 @@ function dbRowsToFakturRecords(
       cached.prodOverridesRef === productOverrides &&
       cached.catOverridesRef === catOverrides
     ) {
-      const isPrinted = Boolean(
+      const cachedDate = String(cached.recs[0]?.orderDate || "");
+      const pAt = (r.printed_at as string) || cached.pAt || null;
+      const isStale = isStalePrintTimestamp(pAt, cachedDate);
+      const isPrinted = !isStale && Boolean(
         r.status_cetak ||
         (existingPrintedSet && existingPrintedSet.has(cached.invKey))
       );
-      const pAt = (r.printed_at as string) || cached.pAt || null;
       const pBy = (r.printed_by as string) || cached.pBy || null;
       if (isPrinted) {
         printedSet.add(cached.invKey);
@@ -4319,12 +4321,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
           const pCandidate = (row.printed_at as string) || livePrintedAtMap[targetKey];
           const isExplicitlyPrinted = Boolean(row.status_cetak);
-          const isStale = !isExplicitlyPrinted && isStalePrintTimestamp(pCandidate, (row.order_date as string) || (extra.order_date as string));
-          const isDocPrinted = isExplicitlyPrinted || (!isStale && livePrintedKeys.has(targetKey));
+          const isStale = isStalePrintTimestamp(pCandidate, (row.order_date as string) || (extra.order_date as string));
+          const isDocPrinted = !isStale && (isExplicitlyPrinted || livePrintedKeys.has(targetKey));
           if (isDocPrinted) {
             livePrintedKeys.add(targetKey);
-            const pTime = (isStale ? null : pCandidate) || new Date().toISOString();
-            livePrintedAtMap[targetKey] = pTime;
+            livePrintedAtMap[targetKey] = pCandidate || new Date().toISOString();
+          } else if (isStale) {
+            livePrintedKeys.delete(targetKey);
+            delete livePrintedAtMap[targetKey];
           }
           const docPrintedAt = isDocPrinted
             ? (livePrintedAtMap[targetKey] || (row.printed_at as string) || null)
@@ -4407,12 +4411,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const k = doc.id || doc.no_faktur;
           const pCandidate = doc.printed_at || livePrintedAtMap[k];
           const isExplicitlyPrinted = Boolean(doc.status_cetak);
-          const isStale = !isExplicitlyPrinted && isStalePrintTimestamp(pCandidate, doc.order_date || (doc.extra && (doc.extra.order_date as string)));
-          const isDocPrinted = isExplicitlyPrinted || (!isStale && livePrintedKeys.has(k));
+          const isStale = isStalePrintTimestamp(pCandidate, doc.order_date || (doc.extra && (doc.extra.order_date as string)));
+          const isDocPrinted = !isStale && (isExplicitlyPrinted || livePrintedKeys.has(k));
           if (isDocPrinted) {
             livePrintedKeys.add(k);
-            const pTime = (isStale ? null : pCandidate) || new Date().toISOString();
-            livePrintedAtMap[k] = pTime;
+            livePrintedAtMap[k] = pCandidate || new Date().toISOString();
+          } else if (isStale) {
+            livePrintedKeys.delete(k);
+            delete livePrintedAtMap[k];
           }
           const docPAt = isDocPrinted
             ? (livePrintedAtMap[k] || doc.printed_at || null)
@@ -4535,8 +4541,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             (isSameSO && ((existingEntryCandidate && existingEntryCandidate.status_cetak) || (prevInfoCandidate && prevInfoCandidate.status_cetak)))
           );
 
-          // Stale print check only applies to candidates that are NOT explicitly printed in DB
-          const isStale = !isExplicitlyPrinted && isStalePrintTimestamp(candidatePAt, r.orderDate);
+          // Mandat LOCKED_RULES.md Aturan 7: Stempel cetak lampau (>24 jam sebelum order_date)
+          // wajib dievaluasi tanpa terkecuali (isStale = true) dan faktur baru wajib dipaksa berstatus Belum Terprint.
+          const isStale = isStalePrintTimestamp(candidatePAt, r.orderDate);
 
           const hasDifferentSO = Boolean(
             existingSO && existingSO !== "-" &&
@@ -4544,20 +4551,18 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             existingSO !== incomingSO
           );
 
-          // PERMANENT PRINT RETENTION & UNPRINTED GUARANTEE (LOCKED_RULES.md Sec 1.B & 1.D):
-          // Once printed in DB or live printed set, permanent retention guaranteed!
-          const wasPrinted = !hasDifferentSO && (
+          // PERMANENT PRINT RETENTION & UNPRINTED GUARANTEE (LOCKED_RULES.md Sec 1.B & 1.D & Aturan 7):
+          // Faktur dengan print timestamp lampau / beda siklus dilarang menandai faktur baru sebagai tercetak!
+          const wasPrinted = !hasDifferentSO && !isStale && (
             isExplicitlyPrinted ||
-            (!isStale && (
-              mergedPrintedSet.has(targetKey) ||
-              (isSameSO && mergedPrintedSet.has(baseTargetKey))
-            ))
+            mergedPrintedSet.has(targetKey) ||
+            (isSameSO && mergedPrintedSet.has(baseTargetKey))
           );
 
           if (wasPrinted) {
             // Permanently preserve printed status (Anti-Reappearance Guaranteed)
             isPrinted = true;
-            printedAt = (isStale ? null : candidatePAt) || new Date().toISOString();
+            printedAt = candidatePAt || new Date().toISOString();
             mergedPrintedSet.add(targetKey);
             mergedPrintedAtMap[targetKey] = printedAt;
             newUnprintedKeysSet.delete(targetKey);
@@ -4575,6 +4580,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             if (!isExistingInDB) {
               brandNewUnprintedKeysSet.add(targetKey);
             }
+            mergedPrintedSet.delete(targetKey);
+            delete mergedPrintedAtMap[targetKey];
           }
 
           const rawCust = String(r.customerName || "-").trim();
