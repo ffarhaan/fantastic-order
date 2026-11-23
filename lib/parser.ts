@@ -984,6 +984,36 @@ function parseHTMLTable(html: string): FakturRecord[] {
     if (cells.length > 0) rawRows.push(cells);
   }
 
+  // Support XML Spreadsheet 2003 (<Row> ... <Cell> ... <Data>)
+  if (rawRows.length === 0) {
+    const rowRegex = /<Row[^>]*>([\s\S]*?)<\/Row>/gi;
+    const dataCellRegex = /<(?:Cell|Data)[^>]*>([\s\S]*?)<\/(?:Cell|Data)>/gi;
+    let rMatch: RegExpExecArray | null;
+    while ((rMatch = rowRegex.exec(html)) !== null) {
+      const rowContent = rMatch[1];
+      const cells: string[] = [];
+      let cMatch: RegExpExecArray | null;
+      while ((cMatch = dataCellRegex.exec(rowContent)) !== null) {
+        cells.push(stripHtml(cMatch[1]));
+      }
+      if (cells.length > 0) rawRows.push(cells);
+    }
+  }
+
+  // Support unclosed <tr> tags (split by <tr)
+  if (rawRows.length === 0 && (html.includes("<tr") || html.includes("<TR"))) {
+    const parts = html.split(/<tr[^>]*>/i);
+    for (let p = 1; p < parts.length; p++) {
+      const chunk = parts[p].split(/<\/tr>/i)[0];
+      const cells: string[] = [];
+      let cellMatch: RegExpExecArray | null;
+      while ((cellMatch = cellRegex.exec(chunk)) !== null) {
+        cells.push(stripHtml(cellMatch[1]));
+      }
+      if (cells.length > 0) rawRows.push(cells);
+    }
+  }
+
   let dataStartIdx = 0;
   for (let i = 0; i < rawRows.length; i++) {
     const texts = rawRows[i];
@@ -1223,19 +1253,27 @@ export async function parseExcelFile(
 
   // 1. Try HTML format for Oracle .xls exports
   const headerSample = new TextDecoder().decode(buffer.slice(0, 4096)).toLowerCase();
-  if (
+  const isLikelyHtmlOrXml =
     headerSample.includes("<table") ||
     headerSample.includes("<tr") ||
     headerSample.includes("<html") ||
     headerSample.includes("<!doctype") ||
     headerSample.includes("xmlns:") ||
-    headerSample.includes("<?xml")
-  ) {
-    const fullText = new TextDecoder().decode(buffer);
-    return parseHTMLTable(fullText);
+    headerSample.includes("<?xml");
+
+  if (isLikelyHtmlOrXml) {
+    try {
+      const fullText = new TextDecoder().decode(buffer);
+      const parsedHtml = parseHTMLTable(fullText);
+      if (parsedHtml && parsedHtml.length > 0) {
+        return parsedHtml;
+      }
+    } catch (htmlErr) {
+      console.warn("[parseExcelFile] parseHTMLTable fallback to SheetJS XLSX engine:", htmlErr);
+    }
   }
 
-  // 2. Binary Excel format (.xlsx)
+  // 2. Binary Excel format (.xlsx / .xls / XML Spreadsheet via SheetJS)
   try {
     const wb = XLSX.read(buffer, {
       type: "array",
@@ -1344,8 +1382,22 @@ export async function parseExcelFile(
           if (parseErr && parseErr.message && parseErr.message.includes("File Ditolak: Anda sedang membuka Gudang")) {
             throw parseErr;
           }
-          // Try next sheet if available
+          // Try parseExportArray fallback if it is an Export Oracle table
+          try {
+            const expParsed = parseExportArray(data, headerIdx);
+            if (expParsed && expParsed.length > 0) {
+              allRecords.push(...expParsed);
+            }
+          } catch {}
         }
+      } else {
+        // Fallback: try parseExportArray with row 0 as header
+        try {
+          const expParsed = parseExportArray(data, 0);
+          if (expParsed && expParsed.length > 0) {
+            allRecords.push(...expParsed);
+          }
+        } catch {}
       }
     }
 
