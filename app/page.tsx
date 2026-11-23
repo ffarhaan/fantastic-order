@@ -1223,7 +1223,7 @@ export default function Home() {
   const fetchQcOrders = useCallback(async (wh: "MBI" | "MAI", fresh = false, versionTag?: string | number) => {
     const nowTs = Date.now();
     if (!fresh && fetchingQcRef.current[wh]) return;
-    if (!fresh && !versionTag && nowTs - (lastQcFetchTsRef.current[wh] || 0) < 15000) return;
+    if (!fresh && !versionTag && nowTs - (lastQcFetchTsRef.current[wh] || 0) < 2000) return;
     fetchingQcRef.current[wh] = true;
     try {
       const vParam = !fresh && versionTag ? `&_v=${encodeURIComponent(String(versionTag))}` : "";
@@ -5103,7 +5103,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           ? dirtyUploadedDocs
           : uploadedDocs.slice(0, 200);
 
-        // 7A. Send instant preview to peer screens via Firebase recent_sync (< 30ms) without triggering fetchTiDBDelta yet
+        // 7A. Send instant preview & metadata to peer screens via Firebase (< 30ms)
         broadcastRecentUpload(
           docsForRealtimeBroadcast,
           progObj,
@@ -5114,43 +5114,43 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           currentWh
         ).catch((e) => console.warn("Broadcast recent upload warning:", e));
 
-        // 7B. Commit 100% of dirty/new invoices to TiDB FIRST so rows and full items exist in TiDB BEFORE peers pull fetchTiDBDelta!
-        if (dirtyUploadedDocs.length > 0) {
-          try {
-            await syncFaktursToTiDB(dirtyUploadedDocs, (done, total) => {
-              if (total > 500) {
-                showToast(`💾 Menyimpan ke database: ${done} / ${total} faktur (${Math.round((done / total) * 100)}%)...`);
-              }
-            });
-            for (const d of dirtyUploadedDocs) {
-              const k = getAuthoritativeDocKey(d);
-              if (k) unsyncedTiDBKeysSet.delete(k);
-            }
-          } catch (dbErr) {
-            for (const d of dirtyUploadedDocs) {
-              const k = getAuthoritativeDocKey(d);
-              if (k) unsyncedTiDBKeysSet.add(k);
-            }
-            console.error("[Upload] TiDB save failed:", dbErr);
-            showToast(`⚠️ GAGAL simpan ke database — device lain belum bisa lihat faktur ini. Coba upload ulang. (${String((dbErr as Error)?.message || dbErr).slice(0, 160)})`);
-          }
-        }
+        saveFaktursBatch(
+          payload,
+          progObj,
+          {
+            printedKeys: Array.from(finalPrintedSet),
+            printedAtMap: finalPrintedAtMap,
+            updatedAt: new Date().toISOString(),
+          },
+          Array.from(brandNewUnprintedKeysSet),
+          notifPayload
+        ).catch((e) => console.warn("Save fakturs batch warning:", e));
 
-        // 7C. Now that TiDB commit is 100% complete, broadcast metadata & TiDB completion signal so peer browsers pull complete TiDB delta!
-        await Promise.all([
-          saveFaktursBatch(
-            payload,
-            progObj,
-            {
-              printedKeys: Array.from(finalPrintedSet),
-              printedAtMap: finalPrintedAtMap,
-              updatedAt: new Date().toISOString(),
-            },
-            Array.from(brandNewUnprintedKeysSet),
-            notifPayload
-          ),
-          broadcastRealtimeSignal("fakturs", deviceIdRef.current),
-        ]);
+        // 7B. Commit 100% of dirty/new invoices to TiDB in parallel without blocking UI or peers!
+        if (dirtyUploadedDocs.length > 0) {
+          syncFaktursToTiDB(dirtyUploadedDocs, (done, total) => {
+            if (total > 500) {
+              showToast(`💾 Menyimpan ke database: ${done} / ${total} faktur (${Math.round((done / total) * 100)}%)...`);
+            }
+          })
+            .then(() => {
+              for (const d of dirtyUploadedDocs) {
+                const k = getAuthoritativeDocKey(d);
+                if (k) unsyncedTiDBKeysSet.delete(k);
+              }
+              broadcastRealtimeSignal("fakturs", deviceIdRef.current);
+            })
+            .catch((dbErr) => {
+              for (const d of dirtyUploadedDocs) {
+                const k = getAuthoritativeDocKey(d);
+                if (k) unsyncedTiDBKeysSet.add(k);
+              }
+              console.error("[Upload] TiDB save failed:", dbErr);
+              showToast(`⚠️ GAGAL simpan ke database — coba upload ulang. (${String((dbErr as Error)?.message || dbErr).slice(0, 160)})`);
+            });
+        } else {
+          broadcastRealtimeSignal("fakturs", deviceIdRef.current);
+        }
 
         const uploadMaxUpdated = Math.floor(Date.now() / 1000);
         clientUpdatedRef.current = Math.max(clientUpdatedRef.current || 0, uploadMaxUpdated);

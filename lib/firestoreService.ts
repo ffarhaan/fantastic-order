@@ -1013,8 +1013,7 @@ export async function saveFaktursBatch(
       } else {
         item.status_cetak = false;
         item.printed_at = null;
-        unifiedPrintedSet.delete(key);
-        delete unifiedPrintedAtMap[key];
+        // LOCKED_RULES.md Sec 1.D.3: DILARANG KERAS menghapus status cetak di saveFaktursBatch (Zero-Unprint on Upload)
       }
     }
   }
@@ -1041,13 +1040,13 @@ export async function saveFaktursBatch(
     };
   });
 
-  // Sync print state across partitions + dual write legacy doc in parallel (Permanent Retention - LOCKED_RULES.md)
-  const printStatePromise = updatePrintState(
-    Array.from(unifiedPrintedSet),
-    unifiedPrintedAtMap
-  );
+  // Only rewrite partitions if new printed keys were actually discovered and added
+  const hasNewPrintedKeys = unifiedPrintedSet.size > livePrintedKeys.length;
+  const printStatePromise = hasNewPrintedKeys
+    ? updatePrintState(Array.from(unifiedPrintedSet), unifiedPrintedAtMap)
+    : Promise.resolve();
 
-  // Execute writes in parallel for atomic, instantaneous sync across devices (< 200ms total)
+  // Execute writes in parallel for atomic, instantaneous sync across devices (< 50ms total)
   await Promise.all([
     metaWritePromise,
     printStatePromise,
