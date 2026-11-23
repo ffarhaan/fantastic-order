@@ -294,9 +294,11 @@ function dbRowsToFakturRecords(
     const kategori = (overriddenKat as "1P" | "2P" | "3P") || baseKat || "3P";
     const pAt = (r.printed_at as string) || null;
     const pBy = (r.printed_by as string) || (extra.printed_by as string) || null;
+    const isStale = isStalePrintTimestamp(pAt, date);
 
     // Strict Anti-Reappearance Guarantee: Respect both DB flag and live print set (LOCKED)
-    const isPrinted = Boolean(
+    // Anti-Stale Guard: Stale timestamps from past cycles (>24h prior to orderDate) must NOT mark new orders as printed!
+    const isPrinted = !isStale && Boolean(
       r.status_cetak ||
       (existingPrintedSet && existingPrintedSet.has(invKey))
     );
