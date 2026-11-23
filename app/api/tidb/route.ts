@@ -3762,6 +3762,13 @@ export async function POST(req: Request) {
             status_cetak = IF(
               fakturs_archive.no_sales_order = VALUES(no_sales_order) 
               AND fakturs_archive.order_date = VALUES(order_date) 
+              AND (
+                fakturs_archive.customer_name = VALUES(customer_name)
+                OR VALUES(customer_name) LIKE '%ORANG TUA%'
+                OR VALUES(customer_name) LIKE '%EXPORT%'
+                OR VALUES(customer_name) LIKE '%PT. ORA%'
+                OR LOCATE('1P', fakturs_archive.invoice_key) > 0
+              )
               AND fakturs_archive.status_cetak = 1, 
               1, 
               VALUES(status_cetak)
@@ -3769,6 +3776,13 @@ export async function POST(req: Request) {
             printed_at = IF(
               fakturs_archive.no_sales_order = VALUES(no_sales_order) 
               AND fakturs_archive.order_date = VALUES(order_date) 
+              AND (
+                fakturs_archive.customer_name = VALUES(customer_name)
+                OR VALUES(customer_name) LIKE '%ORANG TUA%'
+                OR VALUES(customer_name) LIKE '%EXPORT%'
+                OR VALUES(customer_name) LIKE '%PT. ORA%'
+                OR LOCATE('1P', fakturs_archive.invoice_key) > 0
+              )
               AND fakturs_archive.status_cetak = 1, 
               fakturs_archive.printed_at, 
               VALUES(printed_at)
@@ -3776,6 +3790,13 @@ export async function POST(req: Request) {
             printed_by = IF(
               fakturs_archive.no_sales_order = VALUES(no_sales_order) 
               AND fakturs_archive.order_date = VALUES(order_date) 
+              AND (
+                fakturs_archive.customer_name = VALUES(customer_name)
+                OR VALUES(customer_name) LIKE '%ORANG TUA%'
+                OR VALUES(customer_name) LIKE '%EXPORT%'
+                OR VALUES(customer_name) LIKE '%PT. ORA%'
+                OR LOCATE('1P', fakturs_archive.invoice_key) > 0
+              )
               AND fakturs_archive.status_cetak = 1, 
               fakturs_archive.printed_by, 
               VALUES(printed_by)
@@ -4060,6 +4081,13 @@ export async function POST(req: Request) {
             status_cetak = IF(
               fakturs_archive.no_sales_order = VALUES(no_sales_order) 
               AND fakturs_archive.order_date = VALUES(order_date) 
+              AND (
+                fakturs_archive.customer_name = VALUES(customer_name)
+                OR VALUES(customer_name) LIKE '%ORANG TUA%'
+                OR VALUES(customer_name) LIKE '%EXPORT%'
+                OR VALUES(customer_name) LIKE '%PT. ORA%'
+                OR LOCATE('1P', fakturs_archive.invoice_key) > 0
+              )
               AND fakturs_archive.status_cetak = 1, 
               1, 
               VALUES(status_cetak)
@@ -4067,6 +4095,13 @@ export async function POST(req: Request) {
             printed_at = IF(
               fakturs_archive.no_sales_order = VALUES(no_sales_order) 
               AND fakturs_archive.order_date = VALUES(order_date) 
+              AND (
+                fakturs_archive.customer_name = VALUES(customer_name)
+                OR VALUES(customer_name) LIKE '%ORANG TUA%'
+                OR VALUES(customer_name) LIKE '%EXPORT%'
+                OR VALUES(customer_name) LIKE '%PT. ORA%'
+                OR LOCATE('1P', fakturs_archive.invoice_key) > 0
+              )
               AND fakturs_archive.status_cetak = 1, 
               fakturs_archive.printed_at, 
               VALUES(printed_at)
@@ -4074,6 +4109,13 @@ export async function POST(req: Request) {
             printed_by = IF(
               fakturs_archive.no_sales_order = VALUES(no_sales_order) 
               AND fakturs_archive.order_date = VALUES(order_date) 
+              AND (
+                fakturs_archive.customer_name = VALUES(customer_name)
+                OR VALUES(customer_name) LIKE '%ORANG TUA%'
+                OR VALUES(customer_name) LIKE '%EXPORT%'
+                OR VALUES(customer_name) LIKE '%PT. ORA%'
+                OR LOCATE('1P', fakturs_archive.invoice_key) > 0
+              )
               AND fakturs_archive.status_cetak = 1, 
               fakturs_archive.printed_by, 
               VALUES(printed_by)

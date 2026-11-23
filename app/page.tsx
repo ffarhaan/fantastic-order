@@ -2231,6 +2231,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               const k = d.id || d.no_faktur;
               if (k && !d.status_cetak) {
                 combinedKeys.delete(k);
+                if (d.id) combinedKeys.delete(d.id);
+                if (d.no_faktur) {
+                  combinedKeys.delete(d.no_faktur);
+                  combinedKeys.delete(`${d.no_faktur}-1P`);
+                  combinedKeys.delete(`MAI-${d.no_faktur}`);
+                  combinedKeys.delete(`MAI-${d.no_faktur}-1P`);
+                }
               }
             }
           }
@@ -2418,6 +2425,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 mergedSet.add(k);
               } else {
                 mergedSet.delete(k);
+                if (d.id) mergedSet.delete(d.id);
+                if (d.no_faktur) {
+                  mergedSet.delete(d.no_faktur);
+                  mergedSet.delete(`${d.no_faktur}-1P`);
+                  mergedSet.delete(`MAI-${d.no_faktur}`);
+                  mergedSet.delete(`MAI-${d.no_faktur}-1P`);
+                }
               }
             }
           }
@@ -2719,6 +2733,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               const k = d.id || d.no_faktur;
               if (k && !d.status_cetak) {
                 unifiedPrintedKeys.delete(k);
+                if (d.id) unifiedPrintedKeys.delete(d.id);
+                if (d.no_faktur) {
+                  unifiedPrintedKeys.delete(d.no_faktur);
+                  unifiedPrintedKeys.delete(`${d.no_faktur}-1P`);
+                  unifiedPrintedKeys.delete(`MAI-${d.no_faktur}`);
+                  unifiedPrintedKeys.delete(`MAI-${d.no_faktur}-1P`);
+                }
               }
             }
           }
@@ -2762,6 +2783,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             const k = d.id || d.no_faktur;
             if (k && !d.status_cetak) {
               unifiedPrintedKeys.delete(k);
+              if (d.id) unifiedPrintedKeys.delete(d.id);
+              if (d.no_faktur) {
+                unifiedPrintedKeys.delete(d.no_faktur);
+                unifiedPrintedKeys.delete(`${d.no_faktur}-1P`);
+                unifiedPrintedKeys.delete(`MAI-${d.no_faktur}`);
+                unifiedPrintedKeys.delete(`MAI-${d.no_faktur}-1P`);
+              }
             }
           }
         }
