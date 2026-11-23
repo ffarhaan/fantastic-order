@@ -259,19 +259,24 @@ function dbRowsToFakturRecords(
       const cachedDate = String(cached.recs[0]?.orderDate || "");
       const pAt = (r.printed_at as string) || cached.pAt || null;
       const isStale = isStalePrintTimestamp(pAt, cachedDate);
-      const isLocallyMarkedPrinted = Boolean(existingPrintedSet && existingPrintedSet.has(cached.invKey));
+      const isLocallyMarkedPrinted = !isStale && Boolean(existingPrintedSet && existingPrintedSet.has(cached.invKey));
       const hasPrintUser = Boolean(
         (r.printed_by && String(r.printed_by).trim() !== "" && String(r.printed_by).trim() !== "-") ||
         (cached?.pBy && String(cached.pBy).trim() !== "" && String(cached.pBy).trim() !== "-") ||
         isLocallyMarkedPrinted
       );
       // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
-      const isPrinted = isLocallyMarkedPrinted || (!isStale && Boolean(r.status_cetak) && hasPrintUser);
-      const pBy = (r.printed_by as string) || cached.pBy || null;
+      // Stempel cetak lampau (>24 jam sebelum order_date) WAJIB diabaikan (isStale = true)!
+      const isPrinted = !isStale && (isLocallyMarkedPrinted || (Boolean(r.status_cetak) && hasPrintUser));
+      const pBy = isPrinted ? ((r.printed_by as string) || cached.pBy || null) : null;
       if (isPrinted) {
         printedSet.add(cached.invKey);
         if (pAt) printedAtMap[cached.invKey] = pAt;
         if (pBy) printedByMap[cached.invKey] = pBy;
+      } else {
+        printedSet.delete(cached.invKey);
+        delete printedAtMap[cached.invKey];
+        delete printedByMap[cached.invKey];
       }
       if (cached.docSO && cached.docSO !== "-") {
         let set = soInvMap.get(cached.docSO);
@@ -320,19 +325,24 @@ function dbRowsToFakturRecords(
     const pAt = (r.printed_at as string) || null;
     const pBy = (r.printed_by as string) || (extra.printed_by as string) || null;
     const isStale = isStalePrintTimestamp(pAt, date);
-    const isLocallyMarkedPrinted = Boolean(existingPrintedSet && existingPrintedSet.has(invKey));
+    const isLocallyMarkedPrinted = !isStale && Boolean(existingPrintedSet && existingPrintedSet.has(invKey));
     const hasPrintUser = Boolean(
       (pBy && String(pBy).trim() !== "" && String(pBy).trim() !== "-") ||
       isLocallyMarkedPrinted
     );
 
     // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
-    const isPrinted = isLocallyMarkedPrinted || (!isStale && Boolean(r.status_cetak) && hasPrintUser);
+    // Stempel cetak lampau (>24 jam sebelum order_date) WAJIB diabaikan (isStale = true)!
+    const isPrinted = !isStale && (isLocallyMarkedPrinted || (Boolean(r.status_cetak) && hasPrintUser));
 
     if (isPrinted) {
       printedSet.add(invKey);
       if (pAt) printedAtMap[invKey] = pAt;
       if (pBy) printedByMap[invKey] = pBy;
+    } else {
+      printedSet.delete(invKey);
+      delete printedAtMap[invKey];
+      delete printedByMap[invKey];
     }
 
     const docSO = String(r.no_sales_order || "").trim();
@@ -1998,20 +2008,24 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       const isPrintedLocally = isSameOrder && Boolean(
         docKey && printedInvoicesRef.current && printedInvoicesRef.current.has(docKey)
       );
-      const finalStatusCetak = isSameOrder ? Boolean(isPrintedLocally || prev.status_cetak || d.status_cetak) : Boolean(d.status_cetak);
+      const candidatePAt = isSameOrder ? (d.printed_at || prev.printed_at || (docKey ? printedAtMapRef.current?.[docKey] : null)) : null;
+      const isStale = isStalePrintTimestamp(candidatePAt, prev.order_date || d.order_date);
+      const finalStatusCetak = isSameOrder && !isStale ? Boolean(isPrintedLocally || prev.status_cetak || d.status_cetak) : Boolean(prev.status_cetak);
 
       map.set(d.id, {
-        ...prev,
         ...d,
-        no_sales_order: (d.no_sales_order && d.no_sales_order !== "-") ? d.no_sales_order : prev.no_sales_order,
-        customer_name: keepPrevCust ? prev.customer_name : (newCust && newCust !== "-" ? d.customer_name : prev.customer_name),
+        ...prev,
+        no_sales_order: (prev.no_sales_order && prev.no_sales_order !== "-") ? prev.no_sales_order : d.no_sales_order,
+        customer_name: keepPrevCust ? prev.customer_name : (prevCust && prevCust !== "-" ? prev.customer_name : d.customer_name),
+        order_date: prev.order_date && prev.order_date !== "-" ? prev.order_date : d.order_date,
+        transaction_date: prev.transaction_date && prev.transaction_date !== "-" ? prev.transaction_date : d.transaction_date,
         status_cetak: finalStatusCetak,
-        printed_at: finalStatusCetak ? (prev.status_cetak && isSameOrder ? prev.printed_at : (d.printed_at || prev.printed_at)) : null,
-        printed_by: finalStatusCetak ? (prev.status_cetak && isSameOrder ? prev.printed_by : (d.printed_by || prev.printed_by)) : null,
+        printed_at: finalStatusCetak ? (prev.printed_at || d.printed_at) : null,
+        printed_by: finalStatusCetak ? (prev.printed_by || d.printed_by) : null,
         extra: {
-          ...prev.extra,
           ...d.extra,
-          nama_pelanggan: keepPrevCust ? (prev.extra?.nama_pelanggan || prev.customer_name) : (d.extra?.nama_pelanggan || prev.extra?.nama_pelanggan),
+          ...prev.extra,
+          nama_pelanggan: keepPrevCust ? (prev.extra?.nama_pelanggan || prev.customer_name) : (prev.extra?.nama_pelanggan || d.extra?.nama_pelanggan),
           items: resolvedItems,
         },
       });
@@ -2490,10 +2504,19 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 const d = currentFakturDocsRef.current[i];
                 const k = getAuthoritativeDocKey(d);
                 if (k && mergedSet.has(k)) {
-                  if (!d.status_cetak) docRecordsCacheMap.delete(d);
-                  d.status_cetak = true;
-                  d.printed_at = d.printed_at || combinedAt[k] || null;
-                  d.printed_by = d.printed_by || combinedBy[k] || null;
+                  const candidatePAt = combinedAt[k] || d.printed_at;
+                  const isStale = isStalePrintTimestamp(candidatePAt, d.order_date || d.extra?.order_date);
+                  if (!isStale) {
+                    if (!d.status_cetak) docRecordsCacheMap.delete(d);
+                    d.status_cetak = true;
+                    d.printed_at = d.printed_at || candidatePAt || null;
+                    d.printed_by = d.printed_by || combinedBy[k] || null;
+                  } else {
+                    if (d.status_cetak) docRecordsCacheMap.delete(d);
+                    d.status_cetak = false;
+                    d.printed_at = null;
+                    d.printed_by = null;
+                  }
                 }
               }
             }
@@ -4389,13 +4412,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const pCandidate = (row.printed_at as string) || livePrintedAtMap[targetKey];
           const isExplicitlyPrinted = Boolean(row.status_cetak) || isLocallyMarked;
           const isStale = isStalePrintTimestamp(pCandidate, (row.order_date as string) || (extra.order_date as string));
-          // Mandat Mutlak User (LOCKED_RULES.md Sec 1.D): Sekali Done Print, dilarang di-unprint oleh upload!
-          const isDocPrinted = isLocallyMarked || (!isStale && isExplicitlyPrinted);
+          // Mandat Mutlak User (LOCKED_RULES.md Sec 1.D & Aturan 7): Stempel stale (>24 jam sebelum order_date) WAJIB diabaikan!
+          const isDocPrinted = !isStale && (isLocallyMarked || isExplicitlyPrinted);
           if (isDocPrinted) {
             livePrintedKeys.add(targetKey);
             if (!livePrintedAtMap[targetKey]) {
               livePrintedAtMap[targetKey] = pCandidate || new Date().toISOString();
             }
+          } else {
+            livePrintedKeys.delete(targetKey);
+            delete livePrintedAtMap[targetKey];
           }
           const docPrintedAt = isDocPrinted
             ? (livePrintedAtMap[targetKey] || (row.printed_at as string) || null)
@@ -4483,13 +4509,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const pCandidate = doc.printed_at || livePrintedAtMap[k];
           const isExplicitlyPrinted = Boolean(doc.status_cetak) || isLocallyMarked;
           const isStale = isStalePrintTimestamp(pCandidate, doc.order_date || (doc.extra && (doc.extra.order_date as string)));
-          // Mandat Mutlak User (LOCKED_RULES.md Sec 1.D): Sekali Done Print, dilarang di-unprint oleh upload!
-          const isDocPrinted = isLocallyMarked || (!isStale && isExplicitlyPrinted);
+          // Mandat Mutlak User (LOCKED_RULES.md Sec 1.D & Aturan 7): Stempel stale (>24 jam sebelum order_date) WAJIB diabaikan!
+          const isDocPrinted = !isStale && (isLocallyMarked || isExplicitlyPrinted);
           if (isDocPrinted) {
             livePrintedKeys.add(k);
             if (!livePrintedAtMap[k]) {
               livePrintedAtMap[k] = pCandidate || new Date().toISOString();
             }
+          } else {
+            livePrintedKeys.delete(k);
+            delete livePrintedAtMap[k];
           }
           const docPAt = isDocPrinted
             ? (livePrintedAtMap[k] || doc.printed_at || null)
@@ -4694,10 +4723,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             printedAt = null;
             printedBy = null;
             newUnprintedKeysSet.add(targetKey);
-            if (!isExistingInDB) {
+            if (!isExistingInDB || !isSameSO) {
               brandNewUnprintedKeysSet.add(targetKey);
             }
-            // LOCKED_RULES.md Sec 1.D: Zero-Unprint Mandate! NEVER call delete on mergedPrintedSet or mergedPrintedAtMap!
+            if (isStale) {
+              mergedPrintedSet.delete(targetKey);
+              delete mergedPrintedAtMap[targetKey];
+            }
           }
 
           const rawCust = String(r.customerName || "-").trim();

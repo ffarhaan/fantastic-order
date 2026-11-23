@@ -1012,7 +1012,10 @@ export async function saveFaktursBatch(
       } else {
         item.status_cetak = false;
         item.printed_at = null;
-        // LOCKED_RULES.md Sec 1.D.3: DILARANG KERAS menghapus status cetak di saveFaktursBatch (Zero-Unprint on Upload)
+        if (isStale) {
+          unifiedPrintedSet.delete(key);
+          delete unifiedPrintedAtMap[key];
+        }
       }
     }
   }
