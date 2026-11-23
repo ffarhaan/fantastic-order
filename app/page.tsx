@@ -1978,13 +1978,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         ? d.extra.items
         : (isDiffMonth ? [] : (prev.extra?.items || []));
 
-      // LOCKED_RULES.md Sec 1.A & 1.D: Strict Key Isolation - DOO vs ORA (-1P) never cross-match!
-      // If invoice is currently marked printed in printedInvoicesRef.current, never let server delta revert it!
+      // LOCKED_RULES.md Sec 1.A, 1.B.6 & 1.D: Strict Key Isolation & Mandat Nomor SO Baru
+      // If order is brand-new (new SO or diff month), past print state MUST NOT contaminate it!
+      const isSameOrder = Boolean(
+        !isDiffMonth &&
+        (!d.no_sales_order || d.no_sales_order === "-" || !prev.no_sales_order || prev.no_sales_order === "-" || d.no_sales_order === prev.no_sales_order)
+      );
       const docKey = getAuthoritativeDocKey(d);
-      const isPrintedLocally = Boolean(
+      const isPrintedLocally = isSameOrder && Boolean(
         docKey && printedInvoicesRef.current && printedInvoicesRef.current.has(docKey)
       );
-      const finalStatusCetak = Boolean(isPrintedLocally || prev.status_cetak || d.status_cetak);
+      const finalStatusCetak = isSameOrder ? Boolean(isPrintedLocally || prev.status_cetak || d.status_cetak) : Boolean(d.status_cetak);
 
       map.set(d.id, {
         ...prev,
@@ -1992,8 +1996,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         no_sales_order: (d.no_sales_order && d.no_sales_order !== "-") ? d.no_sales_order : prev.no_sales_order,
         customer_name: keepPrevCust ? prev.customer_name : (newCust && newCust !== "-" ? d.customer_name : prev.customer_name),
         status_cetak: finalStatusCetak,
-        printed_at: prev.status_cetak ? prev.printed_at : (d.printed_at || prev.printed_at),
-        printed_by: prev.status_cetak ? prev.printed_by : (d.printed_by || prev.printed_by),
+        printed_at: finalStatusCetak ? (prev.status_cetak && isSameOrder ? prev.printed_at : (d.printed_at || prev.printed_at)) : null,
+        printed_by: finalStatusCetak ? (prev.status_cetak && isSameOrder ? prev.printed_by : (d.printed_by || prev.printed_by)) : null,
         extra: {
           ...prev.extra,
           ...d.extra,
@@ -2153,8 +2157,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
     };
 
-    // Responsive 15-second fallback interval to guarantee multi-device realtime synchronization
-    const interval = setInterval(syncNetTick, 15000);
+    // Responsive 4-second fallback interval to guarantee multi-device realtime synchronization
+    const interval = setInterval(syncNetTick, 4000);
 
     const onVisibility = () => {
       if (document.visibilityState === "visible" && Date.now() - lastSyncNetTickRef.ts >= 5000) {
@@ -2508,13 +2512,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
         }
 
-        // Real-time Upload Broadcast to all other devices (fresh & tolerant of up to 5 mins clock skew)
+        // Real-time Upload Broadcast to all other devices (fresh & tolerant of up to 10 mins clock skew)
         const uploadTs = uploadNotif?.uploadedAtMs || 0;
         const isPeerUploadRecent = Boolean(
           uploadNotif &&
           uploadNotif.uploaderId !== deviceIdRef.current &&
           uploadTs > 0 &&
-          Math.abs(Date.now() - uploadTs) < 300000
+          Math.abs(Date.now() - uploadTs) < 600000
         );
         const isNewNotif = isPeerUploadRecent && uploadTs !== lastProcessedUploadMsRef.current;
 
@@ -2533,6 +2537,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         // Only pull TiDB delta when metadata (`saveFaktursBatch`) is committed AFTER `syncFaktursToTiDB` finishes!
         if (reason === "meta" && isPeerUploadRecent) {
           performPeerSync(true);
+          setTimeout(() => performPeerSync(true), 1200);
         }
 
         if (reason === "print" || reason === "meta") {
@@ -2581,6 +2586,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       if (senderId && senderId === deviceIdRef.current) return;
       if (isUploadingRef.current) return;
       setTimeout(() => performPeerSync(true), 50);
+      setTimeout(() => performPeerSync(true), 1200);
+      setTimeout(() => performPeerSync(true), 2800);
     });
 
     // Subscribe to Real-Time Total Reset signal from Owner so ALL browsers/devices wipe to 0 immediately
@@ -2607,7 +2614,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     // Ultra-Fast Walkie-Talkie Print Signal (< 30ms sync between peer laptops!)
     const unsubPrintSignal = subscribeToPrintSignal((signal) => {
       if (signal.senderId && signal.senderId === deviceIdRef.current) return;
-      if (Date.now() - signal.ts > 60000) return;
 
       const { keys, status, printedAt, printedBy } = signal;
       if (!keys || keys.length === 0) return;
@@ -2665,6 +2671,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             }
           }
         }
+      }
+
+      const opName = printedBy || "Rekan";
+      if (status) {
+        showToast(`✓ ${opName} menandai ${keys.length === 1 ? `faktur ${keys[0]}` : `${keys.length} faktur`} selesai dicetak.`);
       }
     });
 

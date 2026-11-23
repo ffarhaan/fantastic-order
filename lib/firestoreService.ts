@@ -747,6 +747,7 @@ export async function broadcastPrintSignal(
       printedBy: printedBy || null,
       senderId,
       ts: Date.now(),
+      nonce: Math.random().toString(36).substring(2, 9),
     });
   } catch (err) {
     console.warn("[Print Signal] Broadcast warning:", err);
@@ -760,19 +761,31 @@ export function subscribeToPrintSignal(
   onSignal: (signal: PrintSignalPayload) => void
 ): Unsubscribe {
   const signalRef = doc(db, APP_DATA_COLLECTION, "print_signal");
+  let isInitial = true;
+  let lastHandledTs = 0;
   return onSnapshot(
     signalRef,
     (snap) => {
-      if (!snap.exists()) return;
+      if (!snap.exists()) {
+        isInitial = false;
+        return;
+      }
       const data = snap.data();
-      if (data && Array.isArray(data.keys) && data.keys.length > 0) {
+      const signalTs = Number(data?.ts || 0);
+      if (isInitial) {
+        lastHandledTs = signalTs;
+        isInitial = false;
+        return; // Ignore stale signal that was already there prior to loading
+      }
+      if (signalTs > 0 && signalTs !== lastHandledTs && data && Array.isArray(data.keys) && data.keys.length > 0) {
+        lastHandledTs = signalTs;
         onSignal({
           keys: data.keys as string[],
           status: Boolean(data.status),
           printedAt: (data.printedAt as string) || null,
           printedBy: (data.printedBy as string) || null,
           senderId: (data.senderId as string) || "",
-          ts: Number(data.ts || Date.now()),
+          ts: signalTs,
         });
       }
     },
