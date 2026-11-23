@@ -209,6 +209,27 @@ interface CachedGroupEntry {
 const docGroupCacheMap = new WeakMap<FakturRecord, CachedGroupEntry>();
 const unsyncedTiDBKeysSet = new Set<string>();
 
+// Authoritative Invoice Key Resolver (Strict LOCKED_RULES.md Enforcement):
+// DOO vs ORA (-1P) are 100% isolated. Never fall back bare cleanInv for ORA!
+function getAuthoritativeDocKey(d: FirestoreFakturDoc | Record<string, unknown>): string {
+  const rawKey = String((d as any).invoice_key || (d as any).id || "").trim();
+  const rawInv = String((d as any).no_faktur || "").trim();
+  if (rawKey && rawKey !== "undefined" && rawKey !== "null" && (rawKey.includes("__") || rawKey.includes("#") || rawKey.startsWith("MAI-") || rawKey.endsWith("-1P"))) {
+    return rawKey;
+  }
+  const isMai = Boolean((d as any).entity === "MAI" || rawKey.startsWith("MAI-") || rawInv.startsWith("MAI-"));
+  const cleanInv = rawInv.replace(/^MAI-/i, "").replace(/-1P$/i, "");
+  const cust = String((d as any).customer_name || ((d as any).extra && (d as any).extra.nama_pelanggan) || "");
+  const isOra = Boolean(
+    (d as any).jenis_transaksi === "ORA" ||
+    rawKey.endsWith("-1P") ||
+    rawInv.endsWith("-1P") ||
+    isOraCustomer(cust)
+  );
+  const baseKey = isOra ? `${cleanInv}-1P` : cleanInv;
+  return isMai ? `MAI-${baseKey}` : baseKey;
+}
+
 function dbRowsToFakturRecords(
   rows: Array<Record<string, unknown>>,
   productOverrides?: Record<string, string>,
@@ -1667,7 +1688,7 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
           const d = currentFakturDocsRef.current[i];
           const dCust = String(d.customer_name || d.extra?.nama_pelanggan || "").trim();
           const dNormCust = dCust ? normalize(dCust) : "";
-          const dKey = String(d.id || d.no_faktur || "");
+          const dKey = getAuthoritativeDocKey(d);
           const isMatch =
             dKey === invoiceKey ||
             d.no_faktur === cleanInv ||
@@ -1742,7 +1763,7 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
           const d = currentFakturDocsRef.current[i];
           const dCust = String(d.customer_name || d.extra?.nama_pelanggan || "").trim();
           const dNormCust = dCust ? normalize(dCust) : "";
-          const dKey = String(d.id || d.no_faktur || "");
+          const dKey = getAuthoritativeDocKey(d);
           const isMatch =
             dKey === invoiceKey ||
             d.no_faktur === cleanInv ||
@@ -1862,7 +1883,7 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
 function sanitizeDuplicateCompositeDocs(docs: FirestoreFakturDoc[]): FirestoreFakturDoc[] {
   const byKey = new Map<string, FirestoreFakturDoc>();
   for (const d of docs) {
-    const k = d?.id || d?.no_faktur;
+    const k = getAuthoritativeDocKey(d);
     if (k && !k.startsWith("TEST-")) byKey.set(k, d);
   }
 
@@ -1870,7 +1891,7 @@ function sanitizeDuplicateCompositeDocs(docs: FirestoreFakturDoc[]): FirestoreFa
   const migratedDocs: FirestoreFakturDoc[] = [];
 
   for (const d of byKey.values()) {
-    const k = String(d.id || d.no_faktur || "");
+    const k = getAuthoritativeDocKey(d);
     if (!k.includes("__")) continue;
 
     const [prefix] = k.split("__");
@@ -1959,7 +1980,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
       // LOCKED_RULES.md Sec 1.A & 1.D: Strict Key Isolation - DOO vs ORA (-1P) never cross-match!
       // If invoice is currently marked printed in printedInvoicesRef.current, never let server delta revert it!
-      const docKey = d.id || d.no_faktur;
+      const docKey = getAuthoritativeDocKey(d);
       const isPrintedLocally = Boolean(
         docKey && printedInvoicesRef.current && printedInvoicesRef.current.has(docKey)
       );
@@ -2052,7 +2073,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           if (!d?.id) continue;
           const prev = existingMap.get(d.id);
           // LOCKED_RULES.md Sec 1.A & 1.D: Strict Key Isolation - DOO vs ORA (-1P) never cross-match!
-          const docKey = d.id || d.no_faktur;
+          const docKey = getAuthoritativeDocKey(d);
           const isLocallyPrinted = Boolean(
             docKey && printedInvoicesRef.current && printedInvoicesRef.current.has(docKey)
           );
@@ -2228,7 +2249,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const combinedKeys = new Set<string>(docPrintedSet);
           if (cached.fakturs) {
             for (const d of cached.fakturs) {
-              const k = d.id || d.no_faktur;
+              const k = getAuthoritativeDocKey(d);
               if (k && !d.status_cetak) {
                 combinedKeys.delete(k);
                 if (d.id) combinedKeys.delete(d.id);
@@ -2406,6 +2427,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           productOverridesRef.current = prodOverrides;
         }
 
+        // Anti-Flapping Echo Guard:
+        // Individual print toggles are ALREADY synchronously handled by togglePrint (locally in 0ms)
+        // and broadcasted via subscribeToPrintSignal (<20ms).
+        // Background partition echo snapshots MUST NOT loop over all documents or mutate printedInvoices!
+        if (reason === "print") {
+          setLoading(false);
+          return;
+        }
+
         if (printState) {
           const newKeys = printState.printedKeys || [];
           const newMap = printState.printedAtMap || {};
@@ -2419,7 +2449,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           if (currentFakturDocsRef.current) {
             for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
               const d = currentFakturDocsRef.current[i];
-              const k = d.id || d.no_faktur;
+              const k = getAuthoritativeDocKey(d);
               if (!k) continue;
               if (d.status_cetak) {
                 mergedSet.add(k);
@@ -2460,7 +2490,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             if (currentFakturDocsRef.current) {
               for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
                 const d = currentFakturDocsRef.current[i];
-                const k = d.id || d.no_faktur;
+                const k = getAuthoritativeDocKey(d);
                 if (k && mergedSet.has(k)) {
                   if (!d.status_cetak) docRecordsCacheMap.delete(d);
                   d.status_cetak = true;
@@ -2620,7 +2650,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         const keySet = new Set(keys);
         for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
           const d = currentFakturDocsRef.current[i];
-          const k = d.id || d.no_faktur;
+          const k = getAuthoritativeDocKey(d);
           if (k && keySet.has(k)) {
             d.status_cetak = status;
             d.printed_at = status ? printedAt : null;
@@ -2730,7 +2760,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const unifiedPrintedKeys = new Set(docPrintedSet);
           if (merged) {
             for (const d of merged) {
-              const k = d.id || d.no_faktur;
+              const k = getAuthoritativeDocKey(d);
               if (k && !d.status_cetak) {
                 unifiedPrintedKeys.delete(k);
                 if (d.id) unifiedPrintedKeys.delete(d.id);
@@ -2780,7 +2810,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         const unifiedPrintedKeys = new Set(docPrintedSet);
         if (merged) {
           for (const d of merged) {
-            const k = d.id || d.no_faktur;
+            const k = getAuthoritativeDocKey(d);
             if (k && !d.status_cetak) {
               unifiedPrintedKeys.delete(k);
               if (d.id) unifiedPrintedKeys.delete(d.id);
@@ -2890,7 +2920,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
       if (currentFakturDocsRef.current) {
         currentFakturDocsRef.current.forEach((d) => {
-          const k = d.id || d.no_faktur;
+          const k = getAuthoritativeDocKey(d);
           if (k === targetKey) {
             d.status_cetak = willBePrinted;
             d.printed_at = willBePrinted ? nowIso : null;
@@ -3918,7 +3948,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     const targetSet = new Set(targetKeys);
     if (currentFakturDocsRef.current) {
       currentFakturDocsRef.current.forEach((d) => {
-        const k = d.id || d.no_faktur;
+        const k = getAuthoritativeDocKey(d);
         if (k && targetSet.has(k)) {
           d.status_cetak = true;
           d.printed_at = nowIso;
@@ -4294,11 +4324,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         // Unify with current in-memory documents to guarantee zero data loss between fast consecutive uploads
         const combinedExistingMap = new Map<string, FirestoreFakturDoc>();
         currentFakturDocsRef.current.forEach((d) => {
-          const k = d.id || d.no_faktur;
+          const k = getAuthoritativeDocKey(d);
           if (k) combinedExistingMap.set(k, d);
         });
         existingDBDocs.forEach((d) => {
-          const k = d.id || d.no_faktur;
+          const k = getAuthoritativeDocKey(d);
           if (k) combinedExistingMap.set(k, d);
         });
         const existingDBDocsUnified = sanitizeDuplicateCompositeDocs(Array.from(combinedExistingMap.values()));
@@ -5082,12 +5112,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               }
             });
             for (const d of dirtyUploadedDocs) {
-              const k = d.id || d.no_faktur;
+              const k = getAuthoritativeDocKey(d);
               if (k) unsyncedTiDBKeysSet.delete(k);
             }
           } catch (dbErr) {
             for (const d of dirtyUploadedDocs) {
-              const k = d.id || d.no_faktur;
+              const k = getAuthoritativeDocKey(d);
               if (k) unsyncedTiDBKeysSet.add(k);
             }
             console.error("[Upload] TiDB save failed:", dbErr);

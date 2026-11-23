@@ -175,6 +175,27 @@ export function isStalePrintTimestamp(
   return pDate.getTime() < oDate.getTime() - 24 * 60 * 60 * 1000;
 }
 
+// Authoritative Invoice Key Resolver (Strict LOCKED_RULES.md Enforcement):
+// DOO vs ORA (-1P) are 100% isolated. Never fall back bare cleanInv for ORA!
+function getAuthoritativeDocKey(d: FirestoreFakturDoc | Record<string, unknown>): string {
+  const rawKey = String((d as any).invoice_key || (d as any).id || "").trim();
+  const rawInv = String((d as any).no_faktur || "").trim();
+  if (rawKey && rawKey !== "undefined" && rawKey !== "null" && (rawKey.includes("__") || rawKey.includes("#") || rawKey.startsWith("MAI-") || rawKey.endsWith("-1P"))) {
+    return rawKey;
+  }
+  const isMai = Boolean((d as any).entity === "MAI" || rawKey.startsWith("MAI-") || rawInv.startsWith("MAI-"));
+  const cleanInv = rawInv.replace(/^MAI-/i, "").replace(/-1P$/i, "");
+  const cust = String((d as any).customer_name || ((d as any).extra && (d as any).extra.nama_pelanggan) || "");
+  const isOra = Boolean(
+    (d as any).jenis_transaksi === "ORA" ||
+    rawKey.endsWith("-1P") ||
+    rawInv.endsWith("-1P") ||
+    isOraCustomer(cust)
+  );
+  const baseKey = isOra ? `${cleanInv}-1P` : cleanInv;
+  return isMai ? `MAI-${baseKey}` : baseKey;
+}
+
 /**
  * Universal print key variant resolver: registers key in cache.
  */
@@ -388,7 +409,7 @@ export function subscribeToFakturs(
     // Always merge print keys directly from documents so that any printed invoice in chunks is NEVER lost
     // even if partitions are still streaming or incomplete!
     for (const d of allDocs) {
-      const key = d.id || d.no_faktur;
+      const key = getAuthoritativeDocKey(d);
       if (key && d.status_cetak) {
         registerPrintKeyVariants(key, d.printed_at || undefined, printedSet, pMap);
         if (d.printed_by && !pByMap[key]) pByMap[key] = d.printed_by;
@@ -399,9 +420,7 @@ export function subscribeToFakturs(
     currentPrintState.printedByMap = pByMap;
 
     for (const d of allDocs) {
-      const isMai = Boolean(d.entity === "MAI" || d.id?.startsWith("MAI-") || d.no_faktur?.startsWith("MAI-"));
-      const rawK = d.id || d.no_faktur;
-      const key = isMai && !rawK?.startsWith("MAI-") ? `MAI-${rawK}` : rawK;
+      const key = getAuthoritativeDocKey(d);
       const cleanKey = key.replace(/^MAI-/i, "").replace(/-1P$/i, "");
       const candidatePAt = pMap[key] || d.printed_at || null;
       const isExplicitlyPrinted = Boolean(d.status_cetak);
@@ -825,7 +844,7 @@ export async function getExistingFakturs(): Promise<{
   const printedSet = combinedPrintKeys;
   const pMap = combinedPrintMap;
   for (const d of docs) {
-    const key = d.id || d.no_faktur;
+    const key = getAuthoritativeDocKey(d);
     if (!key) continue;
     const isPrinted = printedSet.has(key);
     d.status_cetak = isPrinted;
