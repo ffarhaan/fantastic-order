@@ -1957,13 +1957,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         ? d.extra.items
         : (isDiffMonth ? [] : (prev.extra?.items || []));
 
-      // LOCKED_RULES.md Sec 1.D & 1.G: Local Print State Protection
+      // LOCKED_RULES.md Sec 1.A & 1.D: Strict Key Isolation - DOO vs ORA (-1P) never cross-match!
       // If invoice is currently marked printed in printedInvoicesRef.current, never let server delta revert it!
+      const docKey = d.id || d.no_faktur;
       const isPrintedLocally = Boolean(
-        printedInvoicesRef.current && (
-          printedInvoicesRef.current.has(d.id) ||
-          (d.no_faktur && printedInvoicesRef.current.has(d.no_faktur))
-        )
+        docKey && printedInvoicesRef.current && printedInvoicesRef.current.has(docKey)
       );
       const finalStatusCetak = Boolean(isPrintedLocally || prev.status_cetak || d.status_cetak);
 
@@ -2053,9 +2051,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         for (const d of deltaDocs) {
           if (!d?.id) continue;
           const prev = existingMap.get(d.id);
+          // LOCKED_RULES.md Sec 1.A & 1.D: Strict Key Isolation - DOO vs ORA (-1P) never cross-match!
+          const docKey = d.id || d.no_faktur;
           const isLocallyPrinted = Boolean(
-            printedInvoicesRef.current?.has(d.id) ||
-            (d.no_faktur && printedInvoicesRef.current?.has(d.no_faktur))
+            docKey && printedInvoicesRef.current && printedInvoicesRef.current.has(docKey)
           );
           const effectiveDeltaStatus = isLocallyPrinted ? true : Boolean(d.status_cetak);
           const effectivePrevStatus = isLocallyPrinted ? true : Boolean(prev?.status_cetak);
@@ -2133,11 +2132,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
     };
 
-    // Ultra-conservative 5-minute fallback interval (primary realtime updates arrive <50ms via Firestore WebSocket signals)
-    const interval = setInterval(syncNetTick, 300000);
+    // Responsive 15-second fallback interval to guarantee multi-device realtime synchronization
+    const interval = setInterval(syncNetTick, 15000);
 
     const onVisibility = () => {
-      if (document.visibilityState === "visible" && Date.now() - lastSyncNetTickRef.ts >= 90000) {
+      if (document.visibilityState === "visible" && Date.now() - lastSyncNetTickRef.ts >= 5000) {
         syncNetTick();
       }
     };
@@ -2465,13 +2464,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
         }
 
-        // Real-time Upload Broadcast to all other devices (strictly deduplicated & fresh < 60s)
+        // Real-time Upload Broadcast to all other devices (fresh & tolerant of up to 5 mins clock skew)
         const uploadTs = uploadNotif?.uploadedAtMs || 0;
         const isPeerUploadRecent = Boolean(
           uploadNotif &&
           uploadNotif.uploaderId !== deviceIdRef.current &&
           uploadTs > 0 &&
-          Math.abs(Date.now() - uploadTs) < 60000
+          Math.abs(Date.now() - uploadTs) < 300000
         );
         const isNewNotif = isPeerUploadRecent && uploadTs !== lastProcessedUploadMsRef.current;
 
