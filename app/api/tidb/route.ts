@@ -3759,9 +3759,27 @@ export async function POST(req: Request) {
             ),
             kategori = VALUES(kategori),
             kategori_produk = IF(VALUES(items_json) IS NOT NULL, VALUES(kategori_produk), fakturs_archive.kategori_produk),
-            status_cetak = IF(fakturs_archive.status_cetak = 1, 1, VALUES(status_cetak)),
-            printed_at = IF(fakturs_archive.status_cetak = 1, fakturs_archive.printed_at, VALUES(printed_at)),
-            printed_by = IF(fakturs_archive.status_cetak = 1, fakturs_archive.printed_by, VALUES(printed_by)),
+            status_cetak = IF(
+              fakturs_archive.no_sales_order = VALUES(no_sales_order) 
+              AND fakturs_archive.order_date = VALUES(order_date) 
+              AND fakturs_archive.status_cetak = 1, 
+              1, 
+              VALUES(status_cetak)
+            ),
+            printed_at = IF(
+              fakturs_archive.no_sales_order = VALUES(no_sales_order) 
+              AND fakturs_archive.order_date = VALUES(order_date) 
+              AND fakturs_archive.status_cetak = 1, 
+              fakturs_archive.printed_at, 
+              VALUES(printed_at)
+            ),
+            printed_by = IF(
+              fakturs_archive.no_sales_order = VALUES(no_sales_order) 
+              AND fakturs_archive.order_date = VALUES(order_date) 
+              AND fakturs_archive.status_cetak = 1, 
+              fakturs_archive.printed_by, 
+              VALUES(printed_by)
+            ),
             total_harga = IF(VALUES(items_json) IS NOT NULL OR VALUES(total_harga) <> 0, VALUES(total_harga), fakturs_archive.total_harga),
             items_json = IF(
               LOCATE('__', fakturs_archive.invoice_key) = 0 AND SUBSTRING(fakturs_archive.order_date, 4, 7) <> SUBSTRING(VALUES(order_date), 4, 7) AND CHAR_LENGTH(fakturs_archive.order_date) >= 10 AND CHAR_LENGTH(VALUES(order_date)) >= 10,
@@ -4039,9 +4057,27 @@ export async function POST(req: Request) {
           ON DUPLICATE KEY UPDATE
             no_sales_order = VALUES(no_sales_order),
             customer_name = VALUES(customer_name),
-            status_cetak = IF(fakturs_archive.status_cetak = 1, 1, VALUES(status_cetak)),
-            printed_at = COALESCE(fakturs_archive.printed_at, VALUES(printed_at)),
-            printed_by = COALESCE(fakturs_archive.printed_by, VALUES(printed_by)),
+            status_cetak = IF(
+              fakturs_archive.no_sales_order = VALUES(no_sales_order) 
+              AND fakturs_archive.order_date = VALUES(order_date) 
+              AND fakturs_archive.status_cetak = 1, 
+              1, 
+              VALUES(status_cetak)
+            ),
+            printed_at = IF(
+              fakturs_archive.no_sales_order = VALUES(no_sales_order) 
+              AND fakturs_archive.order_date = VALUES(order_date) 
+              AND fakturs_archive.status_cetak = 1, 
+              fakturs_archive.printed_at, 
+              VALUES(printed_at)
+            ),
+            printed_by = IF(
+              fakturs_archive.no_sales_order = VALUES(no_sales_order) 
+              AND fakturs_archive.order_date = VALUES(order_date) 
+              AND fakturs_archive.status_cetak = 1, 
+              fakturs_archive.printed_by, 
+              VALUES(printed_by)
+            ),
             total_harga = VALUES(total_harga),
             items_json = COALESCE(VALUES(items_json), fakturs_archive.items_json)`,
           [

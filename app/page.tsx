@@ -4519,15 +4519,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           );
           const isSameSO = Boolean(existingSO && existingSO !== "-" && incomingSO && incomingSO !== "-" && existingSO === incomingSO);
 
-          // Zero Collision Guarantee & Multi-Month Isolation (LOCKED_RULES A.8):
-          // ONLY allocate a composite __ key if it is a genuinely DIFFERENT SO (not same SO, and not a multi-SO line on the same ORA invoice in the same upload)
-          // OR if it is a DIFFERENT month with a different SO!
+          const isDifferentDate = Boolean(
+            existingDate && incomingDate &&
+            existingDate !== incomingDate
+          );
+
+          // Zero Collision Guarantee & Multi-Date/SO Isolation:
+          // ONLY allocate a composite __ key if it is a genuinely DIFFERENT SO
+          // with a different date/month, ensuring the old done-print invoice is preserved intact!
           if (
             !isSameSO &&
             !touchedInvoiceInThisUpload.has(baseTargetKey) &&
             incomingSO &&
             incomingSO !== "-" &&
-            isDifferentMonth &&
+            (isDifferentMonth || isDifferentDate) &&
+            existingSO &&
+            existingSO !== "-" &&
             existingSO !== incomingSO
           ) {
             targetKey = `${baseTargetKey}__${incomingSO}`;
@@ -4561,16 +4568,28 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           // wajib dievaluasi tanpa terkecuali (isStale = true) dan faktur baru wajib dipaksa berstatus Belum Terprint.
           const isStale = isStalePrintTimestamp(candidatePAt, r.orderDate);
 
-          const hasDifferentSO = Boolean(
-            existingSO && existingSO !== "-" &&
-            incomingSO && incomingSO !== "-" &&
-            existingSO !== incomingSO
+          const existingCust = String(
+            (existingEntry && (existingEntry.customer_name || existingEntry.extra?.nama_pelanggan)) ||
+            (prevInfo && (prevInfo.customer_name || prevInfo.nama_pelanggan)) ||
+            ""
+          ).trim();
+          const targetCust = String(r.customerName || "").trim();
+
+          // Mandat Mutlak User:
+          // Jika nomor faktur sama, evaluasi 3 dimensi:
+          // 1. Nomor SO (no_sales_order)
+          // 2. Nama Apotek (customer_name)
+          // 3. Tanggal Order / Faktur (order_date)
+          const isSameTransaction = Boolean(
+            isSameSO &&
+            (!existingDate || !incomingDate || existingDate === incomingDate) &&
+            (!existingCust || !targetCust || normalize(existingCust) === normalize(targetCust) || isOraCustomer(targetCust))
           );
 
           // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
-          // Faktur HANYA berstatus cetak jika record tersebut sudah eksplisit dicetak oleh user di database
-          // dan bukan stempel cetak stale dari masa lampau.
-          const wasPrinted = !hasDifferentSO && !isStale && isExplicitlyPrinted;
+          // Faktur HANYA berstatus cetak jika ini adalah transaksi yang persis sama (isSameTransaction)
+          // dan sudah eksplisit dicetak oleh user di database, serta bukan stempel cetak stale dari masa lampau.
+          const wasPrinted = isSameTransaction && !isStale && isExplicitlyPrinted;
 
           if (wasPrinted) {
             // Permanently preserve printed status (Anti-Reappearance Guaranteed)
