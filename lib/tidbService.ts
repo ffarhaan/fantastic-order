@@ -32,53 +32,57 @@ export async function syncFaktursToTiDB(
       printed_at: f.printed_at || null,
       printed_by: f.printed_by || null,
       total_harga: Number(f.extra?.total_harga || 0),
-      items: f.extra?.items || [],
+      items: (f.extra?.items || []).map((it: any) => ({
+        item_code: String(it.item_code || "").trim(),
+        item_description: String(it.item_description || "").trim(),
+        qty: Number(it.qty || 0),
+        uom: String(it.uom || "").trim(),
+        lot_number: String(it.lot_number || "").trim(),
+        total_harga: Number(it.total_harga || 0),
+        order_number: String(it.order_number || "-").trim(),
+        kategori_produk: String(it.kategori_produk || "FARMA").trim(),
+      })),
     }));
 
-    // ULTRA-FAST & SAFE STREAMING UPSERT: 200 items per slice with 3 concurrent pipelines
-    // Completes typical delta/dirty uploads in 1 single roundtrip (< 150ms) with 0% TiDB write conflict risk!
-    const CHUNK_SIZE = 200;
+    // SAFE & RELIABLE STREAMING UPSERT: 60 items per slice to avoid 413 Payload Too Large / Gateway Timeout
+    const CHUNK_SIZE = 60;
     const slices: typeof payload[] = [];
     for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
       slices.push(payload.slice(i, i + CHUNK_SIZE));
     }
 
-    const CONCURRENCY = 3;
     let processedCount = 0;
     let lastErrorText = "";
-    for (let i = 0; i < slices.length; i += CONCURRENCY) {
-      const batch = slices.slice(i, i + CONCURRENCY);
-      await Promise.all(
-        batch.map(async (slice) => {
-          let attempts = 0;
-          while (attempts < 2) {
-            try {
-              const res = await fetch("/api/tidb", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  action: "upsert_batch",
-                  fakturs: slice,
-                }),
-              });
-              if (res.ok) {
-                processedCount += slice.length;
-                if (onProgress) {
-                  onProgress(Math.min(processedCount, payload.length), payload.length);
-                }
-                break;
-              }
-              lastErrorText = `HTTP ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}`;
-              console.error(`[TiDB Sync] Upsert attempt ${attempts + 1} rejected:`, lastErrorText);
-            } catch (err) {
-              lastErrorText = String(err);
-              console.warn(`[TiDB Sync] Upsert attempt ${attempts + 1} failed:`, err);
+    for (const slice of slices) {
+      let attempts = 0;
+      let success = false;
+      while (attempts < 3) {
+        try {
+          const res = await fetch("/api/tidb", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "upsert_batch",
+              fakturs: slice,
+            }),
+          });
+          if (res.ok) {
+            processedCount += slice.length;
+            if (onProgress) {
+              onProgress(Math.min(processedCount, payload.length), payload.length);
             }
-            attempts++;
-            if (attempts < 2) await new Promise((r) => setTimeout(r, 250));
+            success = true;
+            break;
           }
-        })
-      );
+          lastErrorText = `HTTP ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}`;
+          console.warn(`[TiDB Sync] Upsert attempt ${attempts + 1} rejected:`, lastErrorText);
+        } catch (err) {
+          lastErrorText = String(err);
+          console.warn(`[TiDB Sync] Upsert attempt ${attempts + 1} failed:`, err);
+        }
+        attempts++;
+        if (attempts < 3) await new Promise((r) => setTimeout(r, attempts * 500));
+      }
     }
     // Notify all connected browsers/devices that TiDB has finished writing all chunks!
     await broadcastRealtimeSignal("fakturs");
