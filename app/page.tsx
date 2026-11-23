@@ -242,7 +242,7 @@ function dbRowsToFakturRecords(
   printedByMap: Record<string, string>;
 } {
   const records: FakturRecord[] = [];
-  const printedSet = new Set<string>();
+  const printedSet = new Set<string>(existingPrintedSet || []);
   const printedAtMap: Record<string, string> = {};
   const printedByMap: Record<string, string> = {};
   const overrides = catOverrides || {};
@@ -259,8 +259,9 @@ function dbRowsToFakturRecords(
       const cachedDate = String(cached.recs[0]?.orderDate || "");
       const pAt = (r.printed_at as string) || cached.pAt || null;
       const isStale = isStalePrintTimestamp(pAt, cachedDate);
+      const isLocallyMarkedPrinted = Boolean(existingPrintedSet && existingPrintedSet.has(cached.invKey));
       // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
-      const isPrinted = !isStale && Boolean(r.status_cetak);
+      const isPrinted = isLocallyMarkedPrinted || (!isStale && Boolean(r.status_cetak));
       const pBy = (r.printed_by as string) || cached.pBy || null;
       if (isPrinted) {
         printedSet.add(cached.invKey);
@@ -314,9 +315,10 @@ function dbRowsToFakturRecords(
     const pAt = (r.printed_at as string) || null;
     const pBy = (r.printed_by as string) || (extra.printed_by as string) || null;
     const isStale = isStalePrintTimestamp(pAt, date);
+    const isLocallyMarkedPrinted = Boolean(existingPrintedSet && existingPrintedSet.has(invKey));
 
     // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
-    const isPrinted = !isStale && Boolean(r.status_cetak);
+    const isPrinted = isLocallyMarkedPrinted || (!isStale && Boolean(r.status_cetak));
 
     if (isPrinted) {
       printedSet.add(invKey);
@@ -1955,6 +1957,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   for (const d of incoming) {
     if (!d?.id || d.id.startsWith("TEST-")) continue;
     if (!map.has(d.id)) {
+      const docKey = getAuthoritativeDocKey(d);
+      const isPrintedLocally = Boolean(
+        docKey && printedInvoicesRef.current && printedInvoicesRef.current.has(docKey)
+      );
+      if (isPrintedLocally) {
+        d.status_cetak = true;
+        d.printed_at = d.printed_at || printedAtMapRef.current?.[docKey] || new Date().toISOString();
+        d.printed_by = d.printed_by || printedByMapRef.current?.[docKey] || null;
+      }
       map.set(d.id, d);
     } else {
       const prev = map.get(d.id)!;
@@ -2446,10 +2457,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const newByMap = printState.printedByMap || {};
           // Permanent Print Retention (LOCKED_RULES.md Sec 1.D & 1.G):
           // Merge printState keys with authoritative in-memory state and TiDB status_cetak
-          // so streaming partitions NEVER unprint printed invoices!
-          // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
-          // Dokumen yang status_cetak === false di database MUTLAK dilarang masuk ke mergedSet!
-          const mergedSet = new Set<string>(printedInvoicesRef.current || []);
+          // so streaming partitions and listeners NEVER unprint printed invoices!
+          const mergedSet = new Set<string>([
+            ...(printedInvoicesRef.current || []),
+            ...newKeys,
+          ]);
+
           if (currentFakturDocsRef.current) {
             for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
               const d = currentFakturDocsRef.current[i];
@@ -2457,16 +2470,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               if (!k) continue;
               if (d.status_cetak) {
                 mergedSet.add(k);
-              } else {
-                mergedSet.delete(k);
-                if (d.id) mergedSet.delete(d.id);
-                if (d.no_faktur) {
-                  mergedSet.delete(d.no_faktur);
-                  mergedSet.delete(`${d.no_faktur}-1P`);
-                  mergedSet.delete(`MAI-${d.no_faktur}`);
-                  mergedSet.delete(`MAI-${d.no_faktur}-1P`);
-                }
               }
+              // LOCKED_RULES.md Sec 1.D: Zero-Unprint Mandate! NEVER delete from mergedSet!
             }
           }
 
@@ -4620,17 +4625,31 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
           const candidatePAt = (existingEntry && existingEntry.printed_at) ||
             mergedPrintedAtMap[targetKey] ||
+            (printedAtMapRef.current && printedAtMapRef.current[targetKey]) ||
             (prevInfo && prevInfo.printed_at) ||
             (isSameSO ? (
               (existingEntryCandidate && existingEntryCandidate.printed_at) ||
               mergedPrintedAtMap[baseTargetKey] ||
               (prevInfoCandidate && prevInfoCandidate.printed_at)
             ) : null);
+
+          // Check if invoice was already marked Done Print locally or in database
+          const isAlreadyPrintedLocally = Boolean(
+            mergedPrintedSet.has(targetKey) ||
+            (printedInvoicesRef.current && printedInvoicesRef.current.has(targetKey))
+          );
+
           // If invoice is explicitly printed in DB (for this key or same SO), it is PERMANENTLY PRINTED!
           const isExplicitlyPrinted = Boolean(
+            isAlreadyPrintedLocally ||
             (existingEntry && existingEntry.status_cetak) ||
             (prevInfo && prevInfo.status_cetak) ||
-            (isSameSO && ((existingEntryCandidate && existingEntryCandidate.status_cetak) || (prevInfoCandidate && prevInfoCandidate.status_cetak)))
+            (isSameSO && (
+              (existingEntryCandidate && existingEntryCandidate.status_cetak) ||
+              (prevInfoCandidate && prevInfoCandidate.status_cetak) ||
+              mergedPrintedSet.has(baseTargetKey) ||
+              (printedInvoicesRef.current && printedInvoicesRef.current.has(baseTargetKey))
+            ))
           );
 
           // Mandat LOCKED_RULES.md Aturan 7: Stempel cetak lampau (>24 jam sebelum order_date)
@@ -4656,9 +4675,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           );
 
           // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
-          // Faktur HANYA berstatus cetak jika ini adalah transaksi yang persis sama (isSameTransaction)
-          // dan sudah eksplisit dicetak oleh user di database, serta bukan stempel cetak stale dari masa lampau.
-          const wasPrinted = isSameTransaction && !isStale && isExplicitlyPrinted;
+          // Faktur HANYA berstatus cetak jika sudah pernah dicetak oleh user secara lokal/memori,
+          // atau transaksi persis sama di database dan bukan stempel cetak stale dari masa lampau.
+          const wasPrinted = isAlreadyPrintedLocally || (isSameTransaction && !isStale && isExplicitlyPrinted);
 
           if (wasPrinted) {
             // Permanently preserve printed status (Anti-Reappearance Guaranteed)
@@ -4681,8 +4700,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             if (!isExistingInDB) {
               brandNewUnprintedKeysSet.add(targetKey);
             }
-            mergedPrintedSet.delete(targetKey);
-            delete mergedPrintedAtMap[targetKey];
+            // LOCKED_RULES.md Sec 1.D: Zero-Unprint Mandate! NEVER call delete on mergedPrintedSet or mergedPrintedAtMap!
           }
 
           const rawCust = String(r.customerName || "-").trim();
@@ -4755,12 +4773,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
           entry.extra.total_harga = (entry.extra.total_harga || 0) + (r.totalHarga || 0);
 
-          if (isFirstTouchForTarget) {
-            entry.status_cetak = isPrinted;
-            entry.printed_at = printedAt;
+          const wasAlreadyPrintedOnEntry = Boolean(
+            entry.status_cetak ||
+            mergedPrintedSet.has(targetKey) ||
+            (printedInvoicesRef.current && printedInvoicesRef.current.has(targetKey))
+          );
+          if (wasAlreadyPrintedOnEntry || isPrinted) {
+            entry.status_cetak = true;
+            entry.printed_at = entry.printed_at || printedAt || new Date().toISOString();
           } else {
-            entry.status_cetak = entry.status_cetak || isPrinted;
-            entry.printed_at = entry.printed_at || printedAt;
+            entry.status_cetak = false;
+            entry.printed_at = null;
           }
           if (r.noInvoiceCetakan && entry.extra) {
             (entry.extra as any).no_invoice_cetakan = r.noInvoiceCetakan;
@@ -4982,9 +5005,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           updatedAt: new Date().toLocaleTimeString("id-ID"),
         };
 
-        // Mandat Mutlak User: finalPrintedSet HANYA berisi dokumen yang eksplisit status_cetak === true!
-        const finalPrintedSet = new Set<string>();
-        const finalPrintedAtMap: Record<string, string> = {};
+        // Mandat Mutlak User: finalPrintedSet selalu kumulatif (mergedPrintedSet + dokumen aktif status_cetak === true)
+        const finalPrintedSet = new Set<string>(mergedPrintedSet);
+        const finalPrintedAtMap: Record<string, string> = { ...mergedPrintedAtMap };
         const finalPrintedByMap: Record<string, string> = {};
         invMap.forEach((doc, k) => {
           if (doc.status_cetak) {

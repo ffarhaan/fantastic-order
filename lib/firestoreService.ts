@@ -423,7 +423,8 @@ export function subscribeToFakturs(
       const key = getAuthoritativeDocKey(d);
       const cleanKey = key.replace(/^MAI-/i, "").replace(/-1P$/i, "");
       const candidatePAt = pMap[key] || d.printed_at || null;
-      const isExplicitlyPrinted = Boolean(d.status_cetak);
+      const isPrintedInPartition = Boolean(pMap[key] || printedSet.has(key));
+      const isExplicitlyPrinted = Boolean(d.status_cetak || isPrintedInPartition);
       const isStale = isStalePrintTimestamp(candidatePAt, d.order_date || (d.extra && (d.extra.order_date as string)));
       // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
       const isPrinted = !isStale && isExplicitlyPrinted;
@@ -432,11 +433,9 @@ export function subscribeToFakturs(
       d.printed_by = isPrinted ? (pByMap[key] || d.printed_by || null) : null;
       if (isPrinted && key) {
         printedSet.add(key);
-      } else if (key) {
-        printedSet.delete(key);
-        delete pMap[key];
-        delete pByMap[key];
+        if (candidatePAt && !pMap[key]) pMap[key] = candidatePAt;
       }
+      // LOCKED_RULES.md Sec 1.D: Zero-Unprint Mandate! NEVER delete from printedSet or pMap in emitData!
 
       // Apply customer/invoice category override if available
       const cust = String(d.customer_name || d.extra?.nama_pelanggan || "").trim();
@@ -1000,7 +999,7 @@ export async function saveFaktursBatch(
     const key = isMai && !rawK?.startsWith("MAI-") ? `MAI-${rawK}` : rawK;
     if (key) {
       const candidatePAt = unifiedPrintedAtMap[key] || item.printed_at;
-      const isExplicitlyPrinted = Boolean(item.status_cetak);
+      const isExplicitlyPrinted = Boolean(item.status_cetak || unifiedPrintedSet.has(key));
       const isStale = isStalePrintTimestamp(candidatePAt, item.order_date || (item.extra && (item.extra.order_date as string)));
 
       // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
