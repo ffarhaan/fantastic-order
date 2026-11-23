@@ -267,11 +267,11 @@ function dbRowsToFakturRecords(
       );
       // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
       const isPrinted = isLocallyMarkedPrinted || (!isStale && Boolean(r.status_cetak) && hasPrintUser);
-      const pBy = (r.printed_by as string) || cached.pBy || (printedByMapRef.current && printedByMapRef.current[cached.invKey]) || null;
+      const pBy = (r.printed_by as string) || cached.pBy || null;
       if (isPrinted) {
         printedSet.add(cached.invKey);
-        printedAtMap[cached.invKey] = pAt || (printedAtMapRef.current && printedAtMapRef.current[cached.invKey]) || new Date().toISOString();
-        printedByMap[cached.invKey] = pBy || "Admin";
+        if (pAt) printedAtMap[cached.invKey] = pAt;
+        if (pBy) printedByMap[cached.invKey] = pBy;
       }
       if (cached.docSO && cached.docSO !== "-") {
         let set = soInvMap.get(cached.docSO);
@@ -318,7 +318,7 @@ function dbRowsToFakturRecords(
     const baseKat = (r.kategori as "1P" | "2P" | "3P") || (isOra ? "1P" : categorize(cleanJenis, cust, cleanJenis, undefined, undefined, entity));
     const kategori = (overriddenKat as "1P" | "2P" | "3P") || baseKat || "3P";
     const pAt = (r.printed_at as string) || null;
-    const pBy = (r.printed_by as string) || (extra.printed_by as string) || (printedByMapRef.current && printedByMapRef.current[invKey]) || null;
+    const pBy = (r.printed_by as string) || (extra.printed_by as string) || null;
     const isStale = isStalePrintTimestamp(pAt, date);
     const isLocallyMarkedPrinted = Boolean(existingPrintedSet && existingPrintedSet.has(invKey));
     const hasPrintUser = Boolean(
@@ -331,8 +331,8 @@ function dbRowsToFakturRecords(
 
     if (isPrinted) {
       printedSet.add(invKey);
-      printedAtMap[invKey] = pAt || (printedAtMapRef.current && printedAtMapRef.current[invKey]) || new Date().toISOString();
-      printedByMap[invKey] = pBy || "Admin";
+      if (pAt) printedAtMap[invKey] = pAt;
+      if (pBy) printedByMap[invKey] = pBy;
     }
 
     const docSO = String(r.no_sales_order || "").trim();
@@ -1222,6 +1222,36 @@ export default function Home() {
     }
   }, [qcOrders]);
 
+  // Instant Report QC Merge Helper (Preserves live WebSocket additions against DB overwrite)
+  const mergeQcItems = useCallback((prev: any[], incoming: any[]) => {
+    const map = new Map<string, any>();
+    for (const item of incoming) {
+      if (item && item.so_number) map.set(item.so_number.trim(), item);
+    }
+    for (const p of prev) {
+      if (!p || !p.so_number) continue;
+      const k = p.so_number.trim();
+      const existing = map.get(k);
+      if (!existing) {
+        map.set(k, p);
+      } else {
+        map.set(k, {
+          ...existing,
+          ...p,
+          customer_name: (p.customer_name && p.customer_name !== "-") ? p.customer_name : existing.customer_name,
+          checker_name: (p.checker_name && p.checker_name !== "-") ? p.checker_name : existing.checker_name,
+          packer_name: (p.packer_name && p.packer_name !== "-") ? p.packer_name : existing.packer_name,
+          picker_name: (p.picker_name && p.picker_name !== "-") ? p.picker_name : existing.picker_name,
+          no_do: (p.no_do && p.no_do !== "-") ? p.no_do : existing.no_do,
+          waktu_kirim: (p.waktu_kirim && p.waktu_kirim !== "-") ? p.waktu_kirim : existing.waktu_kirim,
+          barang_catatan: p.barang_catatan !== undefined ? p.barang_catatan : existing.barang_catatan,
+          noted_items: p.noted_items || existing.noted_items,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, []);
+
   // Fetch QC Reports (GSheet Rekap Lengkap / Rekap SO queue waiting for Oracle invoice)
   const lastQcSigRef = useRef<Record<string, string>>({});
   const fetchingQcRef = useRef<Record<string, boolean>>({});
@@ -1248,7 +1278,7 @@ export default function Home() {
           const changed = lastQcSigRef.current[wh] !== sig;
           if (changed) {
             lastQcSigRef.current[wh] = sig;
-            setQcOrders(d.data);
+            setQcOrders((prev) => mergeQcItems(prev, d.data));
           }
           if (fresh) {
             showToast(
@@ -1409,42 +1439,6 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
     } catch {}
 
     // 3. Instant Report QC Direct Push via Firestore WebSocket (<100ms sync, 0 bytes on Vercel)
-    const mergeQcItems = (prev: any[], incoming: any[]) => {
-      const prevMap = new Map<string, any>();
-      for (const p of prev) {
-        if (p.so_number) prevMap.set(p.so_number.trim(), p);
-      }
-      for (const item of incoming) {
-        if (!item.so_number) continue;
-        const soKey = item.so_number.trim();
-        const existing = prevMap.get(soKey);
-        if (!existing) {
-          prevMap.set(soKey, item);
-        } else {
-          prevMap.set(soKey, {
-            ...existing,
-            ...item,
-            customer_name: item.customer_name || existing.customer_name || "-",
-            checker_name: (item.checker_name && item.checker_name !== "-") ? item.checker_name : existing.checker_name,
-            packer_name: item.packer_name || existing.packer_name,
-            picker_name: item.picker_name || existing.picker_name,
-            no_do: item.no_do || existing.no_do,
-            waktu_kirim: item.waktu_kirim || existing.waktu_kirim,
-            so_date: item.so_date || existing.so_date,
-            kategori: item.kategori || existing.kategori,
-            kategori_produk: item.kategori_produk || existing.kategori_produk,
-            total_item: (item.total_item && Number(item.total_item) > 0) ? Number(item.total_item) : existing.total_item,
-            total_qty: (item.total_qty && Number(item.total_qty) > 0) ? Number(item.total_qty) : existing.total_qty,
-            barang_catatan: (item.barang_catatan !== undefined && item.barang_catatan !== null && item.barang_catatan !== "")
-              ? (Number(item.barang_catatan) || 0)
-              : (existing.barang_catatan !== undefined ? existing.barang_catatan : 0),
-            sheet_row: (item.sheet_row && Number(item.sheet_row) > 0) ? Number(item.sheet_row) : existing.sheet_row,
-          });
-        }
-      }
-      return Array.from(prevMap.values());
-    };
-
     const unsubQcRecentMbi = subscribeToQcRecent((items) => {
       if (selectedWarehouseRef.current === "MBI" && Array.isArray(items) && items.length > 0) {
         setQcOrders((prev) => mergeQcItems(prev, items));
@@ -2821,8 +2815,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         setRecords(recs);
         setLocalCachedFakturs(merged, newMax, {
           printedKeys: Array.from(unifiedPrintedKeys),
-          printedAtMap: { ...(printState?.printedAtMap || {}), ...docPrintedAtMap },
-          printedByMap: { ...(printState?.printedByMap || {}), ...docPrintedByMap },
+          printedAtMap: unifiedAtMap,
+          printedByMap: unifiedByMap,
         });
         showToast(`✓ Berhasil menyinkronkan ${deltaDocs.length} pembaruan dari TiDB.`);
       } else {
@@ -3578,6 +3572,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   // Pending QC Queue: Orders physically checked in warehouse (GSheet Rekap Lengkap)
   // that do NOT yet have an Oracle invoice uploaded in the current warehouse.
   const pendingQcList = useMemo(() => {
+    // If base faktur records are still loading, avoid temporary false flash of historical QC orders!
+    if (records.length === 0 && loading) return [];
+
     const normalizeSO = (soStr: string) => soStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
     return qcOrders.filter((qc) => {
       if (!qc.so_number || qc.so_number.trim().length < 3 || qc.so_number === "-" || qc.so_number === "#N/A") return false;
@@ -3596,7 +3593,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       if (cleanDo && cleanDo !== "-" && (existingSOSet.has(cleanDo) || existingSOSet.has(normDo))) return false;
       return true;
     });
-  }, [qcOrders, existingSOSet, selectedWarehouse]);
+  }, [qcOrders, existingSOSet, selectedWarehouse, records.length, loading]);
   // SO to Full Details Map: Instant O(1) lookup for Report QC
   const soDetailsMap = useMemo(() => {
     const map = new Map<string, {
