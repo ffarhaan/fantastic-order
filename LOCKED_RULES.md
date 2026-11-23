@@ -65,8 +65,15 @@ Dokumen ini adalah acuan baku dan permanen untuk seluruh pengembangan, pemelihar
      - DILARANG memecah satu nomor faktur pada bulan yang sama menjadi dua baris terpisah.
    - **Kepatuhan Mutlak**: Seluruh modul aplikasi (`lib/parser.ts`, `app/page.tsx`, `lib/firestoreService.ts`, `app/api/tidb/route.ts`) WAJIB tunduk 100% pada aturan yang telah ditetapkan di `LOCKED_RULES.md`.
 
-#### B. Jaminan Status Faktur Baru & Retensi Faktur Belum Dicetak (Unprinted Guarantee - LOCKED TOTAL)
-1. **Aturan Mutlak Faktur Baru**:
+#### B. Jaminan Status Faktur Baru & Mandat Zero System-Print (LOCKED TOTAL)
+1. **Mandat Mutlak: Sistem DILARANG Menandai Done Print**:
+   - Sistem, algoritma upload, sinkronisasi listener (`subscribeToFakturs`), maupun merge delta **DILARANG KERAS MENANDAI DONE PRINT PADA FAKTUR**.
+   - HANYA user/operator yang secara fisik boleh menandai Done Print pada faktur.
+   - Walaupun nomor faktur pernah ada di masa lampau (1 bulan, 3 bulan, atau 1 tahun lalu), faktur baru atau faktur yang belum ditandai oleh user **WAJIB 100% berstatus Belum Terprint (`status_cetak: false`, `printed_at: null`, `printed_by: null`)**.
+   - Sistem dilarang mengasumsikan atau menyalin status cetak hanya karena nomor faktur cocok dengan partisi cetak masa lampau.
+2. **Kekebalan Cetak Permanen (Anti-Unprint)**:
+   - Sekali faktur ditandai `Done Print` (`status_cetak: true`) oleh user, status tersebut bersifat permanen dan **TIDAK DAPAT DI-UNPRINT**.
+3. **Aturan Mutlak Faktur Baru**:
    - Seluruh faktur baru yang **belum pernah terdaftar di database** (`existingEntry === undefined` & `prevInfo === undefined`) **WAJIB 100% berstatus Belum Dicetak (`status_cetak: false`, `printed_at: null`)** dan langsung dimasukkan ke `newUnprintedKeysSet` untuk ditampilkan di tab **"Belum Terprint"**.
    - **LARANGAN MUTLAK LOGIKA `isHistorical` (`num <= prevMaxNum`)**: DILARANG KERAS mengasumsikan faktur baru sebagai "sudah tercetak" hanya karena nomor invoicenya lebih kecil atau sama dengan nomor invoice yang sudah ada di database. Setiap faktur baru wajib diverifikasi fisik oleh operator sampai tombol Done Print diklik.
 2. **Retensi Mutlak Faktur Belum Dicetak (Anti-Accidental Print)**:

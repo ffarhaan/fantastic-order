@@ -238,10 +238,8 @@ function dbRowsToFakturRecords(
       const cachedDate = String(cached.recs[0]?.orderDate || "");
       const pAt = (r.printed_at as string) || cached.pAt || null;
       const isStale = isStalePrintTimestamp(pAt, cachedDate);
-      const isPrinted = !isStale && Boolean(
-        r.status_cetak ||
-        (existingPrintedSet && existingPrintedSet.has(cached.invKey))
-      );
+      // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
+      const isPrinted = !isStale && Boolean(r.status_cetak);
       const pBy = (r.printed_by as string) || cached.pBy || null;
       if (isPrinted) {
         printedSet.add(cached.invKey);
@@ -296,12 +294,8 @@ function dbRowsToFakturRecords(
     const pBy = (r.printed_by as string) || (extra.printed_by as string) || null;
     const isStale = isStalePrintTimestamp(pAt, date);
 
-    // Strict Anti-Reappearance Guarantee: Respect both DB flag and live print set (LOCKED)
-    // Anti-Stale Guard: Stale timestamps from past cycles (>24h prior to orderDate) must NOT mark new orders as printed!
-    const isPrinted = !isStale && Boolean(
-      r.status_cetak ||
-      (existingPrintedSet && existingPrintedSet.has(invKey))
-    );
+    // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
+    const isPrinted = !isStale && Boolean(r.status_cetak);
 
     if (isPrinted) {
       printedSet.add(invKey);
@@ -2808,7 +2802,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         showToast("⚠️ Akses Terbatas: Anda tidak memiliki izin untuk mengubah status cetak faktur.");
         return;
       }
-      const willBePrinted = !group.allPrinted;
+      // Mandat Mutlak User: Ketika sudah done print oleh user, TIDAK BISA di-unprint!
+      if (group.allPrinted) {
+        showToast(`🔒 Faktur ${group.invoiceKey} sudah Done Print dan tidak dapat di-unprint.`);
+        return;
+      }
+      const willBePrinted = true;
       lastPrintActionTimeRef.current = Date.now();
       // Strict Key Isolation: use group.invoiceKey directly (DOO uses '20078', ORA uses '20078-1P')
       const targetKey = group.invoiceKey;
@@ -4324,11 +4323,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const pCandidate = (row.printed_at as string) || livePrintedAtMap[targetKey];
           const isExplicitlyPrinted = Boolean(row.status_cetak);
           const isStale = isStalePrintTimestamp(pCandidate, (row.order_date as string) || (extra.order_date as string));
-          const isDocPrinted = !isStale && (isExplicitlyPrinted || livePrintedKeys.has(targetKey));
+          // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA jika row eksplisit berstatus cetak oleh user!
+          const isDocPrinted = !isStale && isExplicitlyPrinted;
           if (isDocPrinted) {
             livePrintedKeys.add(targetKey);
             livePrintedAtMap[targetKey] = pCandidate || new Date().toISOString();
-          } else if (isStale) {
+          } else {
             livePrintedKeys.delete(targetKey);
             delete livePrintedAtMap[targetKey];
           }
@@ -4414,11 +4414,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const pCandidate = doc.printed_at || livePrintedAtMap[k];
           const isExplicitlyPrinted = Boolean(doc.status_cetak);
           const isStale = isStalePrintTimestamp(pCandidate, doc.order_date || (doc.extra && (doc.extra.order_date as string)));
-          const isDocPrinted = !isStale && (isExplicitlyPrinted || livePrintedKeys.has(k));
+          // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA jika doc eksplisit berstatus cetak oleh user!
+          const isDocPrinted = !isStale && isExplicitlyPrinted;
           if (isDocPrinted) {
             livePrintedKeys.add(k);
             livePrintedAtMap[k] = pCandidate || new Date().toISOString();
-          } else if (isStale) {
+          } else {
             livePrintedKeys.delete(k);
             delete livePrintedAtMap[k];
           }
@@ -4553,13 +4554,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             existingSO !== incomingSO
           );
 
-          // PERMANENT PRINT RETENTION & UNPRINTED GUARANTEE (LOCKED_RULES.md Sec 1.B & 1.D & Aturan 7):
-          // Faktur dengan print timestamp lampau / beda siklus dilarang menandai faktur baru sebagai tercetak!
-          const wasPrinted = !hasDifferentSO && !isStale && (
-            isExplicitlyPrinted ||
-            mergedPrintedSet.has(targetKey) ||
-            (isSameSO && mergedPrintedSet.has(baseTargetKey))
-          );
+          // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
+          // Faktur HANYA berstatus cetak jika record tersebut sudah eksplisit dicetak oleh user di database
+          // dan bukan stempel cetak stale dari masa lampau.
+          const wasPrinted = !hasDifferentSO && !isStale && isExplicitlyPrinted;
 
           if (wasPrinted) {
             // Permanently preserve printed status (Anti-Reappearance Guaranteed)
@@ -7813,7 +7811,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                   currentUser?.role === "readonly"
                                     ? "Akses Stranger (Hanya Lihat)"
                                     : g.allPrinted
-                                    ? "Sudah Dicetak (Klik untuk batalkan/unprint)"
+                                    ? "✓ Sudah Dicetak (Terkunci permanen, tidak dapat di-unprint)"
                                     : "Belum Dicetak (Klik untuk tandai selesai cetak)"
                                 }
                               >
@@ -8328,19 +8326,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                                     )}
                                   </div>
                                   {!g.isQcQueue && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        togglePrint(g);
-                                      }}
-                                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                                        g.allPrinted
-                                          ? (isDarkMode ? "bg-orange-950/80 text-orange-300 border border-orange-800 hover:bg-orange-900" : "bg-orange-100 text-orange-800 hover:bg-orange-200")
-                                          : "bg-emerald-600 text-white hover:bg-emerald-700"
-                                      }`}
-                                    >
-                                      {g.allPrinted ? "↩ Batalkan Print" : "✓ Tandai Selesai Print"}
-                                    </button>
+                                    g.allPrinted ? (
+                                      <span className={`px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border select-none ${
+                                        isDarkMode ? "bg-emerald-950/60 text-emerald-300 border-emerald-800" : "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                      }`}>
+                                        🔒 Selesai Cetak (Terkunci)
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          togglePrint(g);
+                                        }}
+                                        className="px-3 py-1 rounded-lg text-xs font-bold transition-colors bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+                                      >
+                                        ✓ Tandai Selesai Print
+                                      </button>
+                                    )
                                   )}
                                 </div>
 

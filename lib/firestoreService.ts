@@ -406,14 +406,14 @@ export function subscribeToFakturs(
       const candidatePAt = pMap[key] || d.printed_at || null;
       const isExplicitlyPrinted = Boolean(d.status_cetak);
       const isStale = isStalePrintTimestamp(candidatePAt, d.order_date || (d.extra && (d.extra.order_date as string)));
-      // LOCKED_RULES.md Sec 1.B.5: A stale print timestamp from a past cycle MUST NOT mark a new invoice as printed!
-      const isPrinted = !isStale && (isExplicitlyPrinted || printedSet.has(key));
+      // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
+      const isPrinted = !isStale && isExplicitlyPrinted;
       d.status_cetak = isPrinted;
       d.printed_at = isPrinted ? candidatePAt : null;
       d.printed_by = isPrinted ? (pByMap[key] || d.printed_by || null) : null;
       if (isPrinted && key) {
         printedSet.add(key);
-      } else if (isStale && key) {
+      } else if (key) {
         printedSet.delete(key);
         delete pMap[key];
         delete pByMap[key];
@@ -971,8 +971,8 @@ export async function saveFaktursBatch(
       const isExplicitlyPrinted = Boolean(item.status_cetak);
       const isStale = isStalePrintTimestamp(candidatePAt, item.order_date || (item.extra && (item.extra.order_date as string)));
 
-      // LOCKED_RULES.md Sec 1.B.5 & 1.B.6: If print timestamp is stale (>24h prior to order date), force unprinted!
-      const isPrinted = !isStale && (isExplicitlyPrinted || unifiedPrintedSet.has(key));
+      // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
+      const isPrinted = !isStale && isExplicitlyPrinted;
 
       if (isPrinted) {
         item.status_cetak = true;

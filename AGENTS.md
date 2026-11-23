@@ -9,10 +9,10 @@ Setiap kali pengguna meminta perbaikan, optimasi performa, atau fitur baru pada 
    - **Gudang MBI vs Gudang MAI**: Faktur MBI menggunakan `${baseKey}`, sedangkan faktur MAI wajib menggunakan prefix `MAI-${baseKey}` (`MAI-${cleanInv}` untuk DOO, `MAI-${cleanInv}-1P` untuk ORA).
    - **Kunci Komposit (`__`)**: Kunci komposit `${baseTargetKey}__${cleanSO}` **HANYA** boleh dialokasikan jika terjadi tabrakan nomor faktur dengan **Tanggal Order (`order_date`) berbeda bulan** (`isDifferentMonth`) dan No SO berbeda. **DILARANG KERAS** memecah faktur pada bulan yang sama menjadi baris duplikat `__`, dan **DILARANG KERAS** menebak/memaksa pembuatan key `__` berdasarkan rentang angka nomor faktur.
 
-2. **DILARANG KERAS Mengubah Logika Status Cetak Permanen (`status_cetak`)**:
-   - Sekali faktur ditandai `Done Print` (`status_cetak: true`), status tersebut bersifat **permanen** di `print_state_partitions`, chunk Firestore, TiDB, dan memori lokal.
-   - Upload file baru, sinkronisasi listener (`subscribeToFakturs`), maupun merge delta **DILARANG KERAS** me-reset, menghapus (`delete`), atau mengembalikan faktur yang sudah dicetak ke status `Belum Terprint`.
-   - Sebaliknya, faktur baru yang belum pernah ada di database wajib 100% berstatus `Belum Terprint` (`status_cetak: false`), dan faktur yang sedang menunggu dicetak dilarang berubah menjadi sudah tercetak secara tidak sengaja.
+2. **DILARANG KERAS Mengubah Logika Status Cetak Permanen (`status_cetak`) & Mandat Zero System-Print**:
+   - Sekali faktur ditandai `Done Print` (`status_cetak: true`) oleh user, status tersebut bersifat **permanen** di `print_state_partitions`, chunk Firestore, TiDB, dan memori lokal, serta **TIDAK BISA DI-UNPRINT**.
+   - **SISTEM DILARANG KERAS MENANDAI DONE PRINT PADA FAKTUR**: Hanya user/operator yang secara fisik boleh menandai Done Print. Upload file baru, sinkronisasi listener (`subscribeToFakturs`), maupun merge delta **DILARANG KERAS** mengasumsikan atau menandai faktur sebagai print hanya karena partisi cetak masa lampau atau nomor faktur kembar.
+   - Faktur baru atau faktur yang belum pernah ditandai Done Print oleh user wajib 100% berstatus `Belum Terprint` (`status_cetak: false`), dan faktur yang sedang menunggu dicetak dilarang berubah menjadi sudah tercetak secara tidak sengaja.
 
 3. **DILARANG KERAS Mengubah Cara Pembacaan File Upload (`Full-Read & Zero-Assumption Mandate`)**:
    - Wajib membaca 100% utuh seluruh *sheet* (multi-sheet workbook), baris, dan kolom dari file yang diupload tanpa memotong pembacaan atau berasumsi/menebak data.
