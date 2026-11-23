@@ -4514,14 +4514,34 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
         const newUnprintedKeysSet = new Set<string>();
         const brandNewUnprintedKeysSet = new Set<string>();
-        // Preserve all existing unprinted invoices from database strictly for current warehouse ONLY if not printed!
+        // Preserve all existing unprinted invoices from database strictly for current warehouse & active month ONLY if not printed!
         invMap.forEach((doc, k) => {
           const docWh = doc.entity || (k.startsWith("MAI-") ? "MAI" : "MBI");
           if (docWh === currentWh) {
             // Mandat Mutlak User: Hanya jika doc.status_cetak bernilai true!
             const isPrinted = Boolean(doc.status_cetak);
             if (!isPrinted) {
-              newUnprintedKeysSet.add(k);
+              // Abaikan faktur arsip masa lampau dari bulan sebelumnya (LOCKED_RULES.md Sec 1.A.8)
+              // agar angka Belum Terprint tidak melonjak karena transaksi kuno September/Oktober
+              const dStr = String(doc.order_date || (doc.extra && doc.extra.order_date) || "").trim();
+              let isPastHistoricalMonth = false;
+              if (dStr && dStr !== "-" && dStr !== "#N/A") {
+                let m = 0, y = 0;
+                if (/^\d{4}-\d{2}-\d{2}/.test(dStr)) {
+                  y = parseInt(dStr.slice(0, 4), 10);
+                  m = parseInt(dStr.slice(5, 7), 10);
+                } else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(dStr)) {
+                  const parts = dStr.split(/[\/\-]/);
+                  m = parseInt(parts[1], 10);
+                  y = parseInt(parts[2], 10);
+                }
+                if (m && y && (y < currentYear || (y === currentYear && m < currentMonth))) {
+                  isPastHistoricalMonth = true;
+                }
+              }
+              if (!isPastHistoricalMonth) {
+                newUnprintedKeysSet.add(k);
+              }
             }
           }
         });
