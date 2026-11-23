@@ -2225,10 +2225,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           setRecords(recs);
 
           // Restore authoritative print state instantly at 0ms!
-          const combinedKeys = new Set<string>([
-            ...Array.from(docPrintedSet),
-            ...(cached.printState?.printedKeys || []),
-          ]);
+          // Mandat Mutlak User: Hanya dokumen yang eksplisit status_cetak === true yang boleh masuk!
+          const combinedKeys = new Set<string>(docPrintedSet);
+          if (cached.fakturs) {
+            for (const d of cached.fakturs) {
+              const k = d.id || d.no_faktur;
+              if (k && !d.status_cetak) {
+                combinedKeys.delete(k);
+              }
+            }
+          }
           setPrintedInvoices(combinedKeys);
           printedInvoicesRef.current = combinedKeys;
 
@@ -2401,7 +2407,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           // Permanent Print Retention (LOCKED_RULES.md Sec 1.D & 1.G):
           // Merge printState keys with authoritative in-memory state and TiDB status_cetak
           // so streaming partitions NEVER unprint printed invoices!
-          const mergedSet = new Set<string>([...(printedInvoicesRef.current || []), ...newKeys]);
+          // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
+          // Dokumen yang status_cetak === false di database MUTLAK dilarang masuk ke mergedSet!
+          const mergedSet = new Set<string>(printedInvoicesRef.current || []);
           if (currentFakturDocsRef.current) {
             for (let i = 0; i < currentFakturDocsRef.current.length; i++) {
               const d = currentFakturDocsRef.current[i];
@@ -2409,6 +2417,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               if (!k) continue;
               if (d.status_cetak) {
                 mergedSet.add(k);
+              } else {
+                mergedSet.delete(k);
               }
             }
           }
@@ -2703,12 +2713,18 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             printedInvoicesRef.current,
             categoryOverridesRef.current
           );
-          const unifiedPrintedKeys = new Set([
-            ...(printState?.printedKeys || []),
-            ...Array.from(docPrintedSet),
-          ]);
-          const unifiedAtMap = { ...(printState?.printedAtMap || {}), ...docPrintedAtMap };
-          const unifiedByMap = { ...(printState?.printedByMap || {}), ...docPrintedByMap };
+          // Mandat Mutlak User: HANYA faktur yang eksplisit status_cetak === true di database yang masuk!
+          const unifiedPrintedKeys = new Set(docPrintedSet);
+          if (merged) {
+            for (const d of merged) {
+              const k = d.id || d.no_faktur;
+              if (k && !d.status_cetak) {
+                unifiedPrintedKeys.delete(k);
+              }
+            }
+          }
+          const unifiedAtMap = { ...docPrintedAtMap };
+          const unifiedByMap = { ...docPrintedByMap };
           setPrintedInvoices(unifiedPrintedKeys);
           printedInvoicesRef.current = unifiedPrintedKeys;
           setPrintedAtMap(unifiedAtMap);
@@ -2740,19 +2756,19 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           printedInvoicesRef.current,
           categoryOverridesRef.current
         );
-        const unifiedPrintedKeys = new Set([
-          ...(printState?.printedKeys || []),
-          ...Array.from(docPrintedSet),
-        ]);
+        // Mandat Mutlak User: HANYA faktur yang eksplisit status_cetak === true di database yang masuk!
+        const unifiedPrintedKeys = new Set(docPrintedSet);
+        if (merged) {
+          for (const d of merged) {
+            const k = d.id || d.no_faktur;
+            if (k && !d.status_cetak) {
+              unifiedPrintedKeys.delete(k);
+            }
+          }
+        }
         setPrintedInvoices(unifiedPrintedKeys);
-        setPrintedAtMap({
-          ...(printState?.printedAtMap || {}),
-          ...docPrintedAtMap,
-        });
-        setPrintedByMap({
-          ...(printState?.printedByMap || {}),
-          ...docPrintedByMap,
-        });
+        setPrintedAtMap({ ...docPrintedAtMap });
+        setPrintedByMap({ ...docPrintedByMap });
         setRecords(recs);
         setLocalCachedFakturs(merged, newMax, {
           printedKeys: Array.from(unifiedPrintedKeys),
@@ -4450,10 +4466,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         invMap.forEach((doc, k) => {
           const docWh = doc.entity || (k.startsWith("MAI-") ? "MAI" : "MBI");
           if (docWh === currentWh) {
-            const isPrinted = Boolean(
-              doc.status_cetak ||
-              mergedPrintedSet.has(k)
-            );
+            // Mandat Mutlak User: Hanya jika doc.status_cetak bernilai true!
+            const isPrinted = Boolean(doc.status_cetak);
             if (!isPrinted) {
               newUnprintedKeysSet.add(k);
             }
@@ -4881,11 +4895,16 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           updatedAt: new Date().toLocaleTimeString("id-ID"),
         };
 
-        const finalPrintedSet = new Set<string>(mergedPrintedSet);
-        const finalPrintedAtMap = { ...mergedPrintedAtMap };
-        brandNewUnprintedKeysSet.forEach((k) => {
-          finalPrintedSet.delete(k);
-          delete finalPrintedAtMap[k];
+        // Mandat Mutlak User: finalPrintedSet HANYA berisi dokumen yang eksplisit status_cetak === true!
+        const finalPrintedSet = new Set<string>();
+        const finalPrintedAtMap: Record<string, string> = {};
+        const finalPrintedByMap: Record<string, string> = {};
+        invMap.forEach((doc, k) => {
+          if (doc.status_cetak) {
+            finalPrintedSet.add(k);
+            if (doc.printed_at) finalPrintedAtMap[k] = doc.printed_at;
+            if (doc.printed_by) finalPrintedByMap[k] = doc.printed_by;
+          }
         });
 
         // 5. Update Local State Instantly (Yield to main thread to guarantee smooth 60fps & no lag)
