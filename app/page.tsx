@@ -1920,8 +1920,10 @@ function sanitizeDuplicateCompositeDocs(docs: FirestoreFakturDoc[]): FirestoreFa
       const compDate = String(d.order_date || d.transaction_date || d.extra?.order_date || "").trim();
       const isDiffMonth = Boolean(baseDate.length >= 7 && compDate.length >= 7 && baseDate.slice(-7) !== compDate.slice(-7));
 
-      // If same SO OR same month, this __ entry is a redundant ghost duplicate of canonicalBaseKey!
-      if (baseSO === compSO || !isDiffMonth) {
+      // Only treat __ entry as a redundant ghost duplicate if it has the EXACT same SO,
+      // OR if one of them has no SO ('-') in the same month. NEVER delete distinct valid SOs!
+      const hasBothValidSOs = Boolean(baseSO && baseSO !== "-" && compSO && compSO !== "-");
+      if (baseSO === compSO || (!hasBothValidSOs && !isDiffMonth)) {
         keysToRemove.add(k);
         // Zero System-Print Mandate: Hanya wariskan status cetak JIKA No SO sama persis dan ada user cetak sah!
         if (baseSO === compSO && d.status_cetak && d.printed_by && String(d.printed_by).trim() !== "" && String(d.printed_by).trim() !== "-") {
@@ -5168,6 +5170,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                   })
                   .catch((retryErr) => {
                     console.warn("[Upload] TiDB background retry also failed:", retryErr);
+                    showToast("⚠️ Sebagian faktur gagal tersimpan ke TiDB. Klik Refresh (↻) untuk menyinkronkan ulang.");
                   });
               }, 2000);
             });
