@@ -601,19 +601,41 @@ export function subscribeToFakturs(
 
   const unsubRecentSync = onSnapshot(
     doc(db, APP_DATA_COLLECTION, "recent_sync"),
-    (snap) => {
+    async (snap) => {
       if (snap.exists()) {
         const data = snap.data();
         if (Array.isArray(data.docs) && data.docs.length > 0) {
-          const syncDocs = data.docs as FirestoreFakturDoc[];
+          let syncDocs = [...(data.docs as FirestoreFakturDoc[])];
+          const extraPacketCount = Number(data.extraPacketCount || 0);
+          const syncId = data.syncId || "";
+          if (extraPacketCount > 0) {
+            try {
+              const extraSnaps = await Promise.all(
+                Array.from({ length: extraPacketCount }, (_, idx) =>
+                  getDoc(doc(db, APP_DATA_COLLECTION, `recent_sync_${idx + 1}`))
+                )
+              );
+              for (const es of extraSnaps) {
+                if (es.exists()) {
+                  const ed = es.data();
+                  if ((!syncId || ed.syncId === syncId) && Array.isArray(ed.docs)) {
+                    syncDocs = syncDocs.concat(ed.docs as FirestoreFakturDoc[]);
+                  }
+                }
+              }
+            } catch (err) {
+              console.warn("Extra recent_sync packet fetch warning:", err);
+            }
+          }
           const uploadedAtMs = data.uploadedAt ? new Date(data.uploadedAt).getTime() : Date.now();
           const inferredWh: "MBI" | "MAI" = (data.warehouse as "MBI" | "MAI") || (syncDocs[0]?.entity === "MAI" ? "MAI" : "MBI");
+          const totalItemsSum = syncDocs.reduce((acc, d) => acc + Math.max(1, d.extra?.items?.length || 0), 0);
           const syncNotif: UploadNotification = {
             warehouse: inferredWh,
             fileName: data.fileName || "File Upload",
             uploaderId: data.uploaderId || "",
             newUnprinted: data.newUnprintedCount || syncDocs.length,
-            totalItems: data.totalItems || syncDocs.length,
+            totalItems: data.totalItems || totalItemsSum,
             totalInvoices: data.totalInvoices || syncDocs.length,
             time: data.uploadedAt ? new Date(data.uploadedAt).toLocaleTimeString("id-ID") : new Date().toLocaleTimeString("id-ID"),
             uploadedAtMs,
@@ -713,23 +735,53 @@ export async function broadcastRecentUpload(
       return parseInvoiceNumberForSort(bKey) - parseInvoiceNumberForSort(aKey); // highest invoice numbers first!
     });
 
-    // 2. Keep 100% full items per invoice (never slice items!), and trim trailing docs only if payload approaches Firestore's 1MB limit
-    const prunedDocs = sortedDocs.slice(0, 800).map(pruneDocForBroadcast);
-    let approxBytes = JSON.stringify(prunedDocs).length;
-    while (prunedDocs.length > 1 && approxBytes > 800000) {
-      const removed = prunedDocs.pop();
-      approxBytes -= removed ? JSON.stringify(removed).length + 1 : 500;
+    // 2. Keep 100% full items per invoice (never slice items!) and split into ~450KB packets
+    // so even 800+ fakturs with thousands of items broadcast in parallel in <150ms without hitting Firestore's 1MB limit
+    const prunedDocs = sortedDocs.slice(0, 1200).map(pruneDocForBroadcast);
+    const packets: FirestoreFakturDoc[][] = [];
+    let currentPacket: FirestoreFakturDoc[] = [];
+    let currentBytes = 0;
+    for (const d of prunedDocs) {
+      const docBytes = JSON.stringify(d).length + 2;
+      if (currentPacket.length > 0 && currentBytes + docBytes > 450000) {
+        packets.push(currentPacket);
+        currentPacket = [d];
+        currentBytes = docBytes;
+      } else {
+        currentPacket.push(d);
+        currentBytes += docBytes;
+      }
+    }
+    if (currentPacket.length > 0) packets.push(currentPacket);
+
+    const syncId = `sync_${Date.now()}_${uploaderId}`;
+    const uploadedAtIso = new Date().toISOString();
+    const totalItemsSum = prunedDocs.reduce((acc, d) => acc + Math.max(1, d.extra?.items?.length || 0), 0);
+
+    // Write extra packets (1..N) FIRST in parallel so packet 0 triggers peers only when all packets are ready!
+    if (packets.length > 1) {
+      await Promise.all(
+        packets.slice(1).map((pkt, idx) =>
+          setDoc(doc(db, APP_DATA_COLLECTION, `recent_sync_${idx + 1}`), {
+            syncId,
+            docs: pkt,
+          })
+        )
+      );
     }
 
     await setDoc(syncDocRef, {
-      syncId: `sync_${Date.now()}_${uploaderId}`,
+      syncId,
       uploaderId,
-      uploadedAt: new Date().toISOString(),
+      uploadedAt: uploadedAtIso,
       warehouse: wh,
       fileName,
       newUnprintedCount,
+      totalInvoices: prunedDocs.length,
+      totalItems: totalItemsSum,
+      extraPacketCount: Math.max(0, packets.length - 1),
       progression,
-      docs: prunedDocs,
+      docs: packets[0] || [],
     });
   } catch (err) {
     console.warn("Broadcast recent upload warning:", err);

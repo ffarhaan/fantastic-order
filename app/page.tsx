@@ -2576,8 +2576,14 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         if (docs.length > 0) {
           const curDocs = currentFakturDocsRef.current || [];
 
-          // Only merge recent_sync docs if this is a fresh peer upload (or initial empty state)
-          if (curDocs.length >= 1000 && !isPeerUploadRecent) {
+          // On cold start (< 1000 docs while TiDB archive is still loading), stage recent_sync docs in memory
+          // without prematurely rendering partial counts (which would flash inflated REPORT QC) or closing loading.
+          if (curDocs.length < 1000) {
+            currentFakturDocsRef.current = mergeKumulatifDocs(curDocs, docs);
+            return;
+          }
+
+          if (!isPeerUploadRecent) {
             setLoading(false);
             return;
           }
