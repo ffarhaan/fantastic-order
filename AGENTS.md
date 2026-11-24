@@ -34,6 +34,12 @@ Setiap kali pengguna meminta perbaikan, optimasi performa, atau fitur baru pada 
    - Penentuan status cetak saat upload (`wasPrinted`) wajib mengevaluasi `!isStalePrintTimestamp`. Stempel cetak lampau (>24 jam sebelum `order_date`) wajib diabaikan (`isStale = true`) dan faktur baru wajib dipaksa berstatus `Belum Terprint`.
    - Standar Kolom `No Invoice Cetakan`: Wajib membaca kolom `No Invoice Cetakan` pada file XXCUST. Segmen 1 (`MBI/` vs `MAI/`) mengunci gudang, segmen 3 (`CFO` vs `DOO`) mengunci ORA vs DOO. DILARANG KERAS men-strip prefix `MAI-` saat menyimpan atau membaca status cetak di partisi Firestore (`print_state_partitions`), TiDB, dan memori.
 
+8. **DILARANG KERAS Menggunakan Asumsi Waktu & Mandat Validasi 3 Dimensi (No SO + Tanggal SO + Nama Apotek)**:
+   - Dilarang berasumsi atau membatasi logika berdasarkan rentang waktu 1 bulan, 3 bulan, atau 1 tahun.
+   - Status cetak hanya boleh diwarisi jika memenuhi validasi 3 dimensi: **Nomor SO sama persis, Tanggal SO sama persis, dan Nama Apotek sama persis**.
+   - Jika ada perbedaan salah satu dari 3 dimensi tersebut, faktur baru **MUTLAK 100% BERSTATUS BELUM TERPRINT (`status_cetak: false`, `printed_at: null`, `printed_by: null`)**.
+   - Setiap SO yang ada di Report QC (menunggu faktur) wajib 100% langsung mengalir masuk ke tab Belum Terprint begitu fakturnya diupload. DILARANG KERAS menandai Done sendiri tanpa user!
+
 ## Kewajiban Saat Perbaikan, Optimasi Performa, atau Fitur Baru
    - Selalu baca [`LOCKED_RULES.md`](./LOCKED_RULES.md) sebelum merancang atau menulis perubahan kode pada `lib/parser.ts`, `app/page.tsx`, `lib/firestoreService.ts`, maupun `app/api/tidb/route.ts`.
    - Segala bentuk perubahan terhadap aturan di atas **DILARANG KERAS** dilakukan tanpa izin eksplisit dari pengguna.

@@ -1039,7 +1039,7 @@ function parseHTMLTable(html: string): FakturRecord[] {
     dataStartIdx = 1;
   }
 
-  if (!headerCells.length) throw new Error("Header tabel tidak ditemukan di file export.");
+  if (!headerCells.length) return [];
 
   const colMap: Record<string, number> = {};
   headerCells.forEach((h, i) => {

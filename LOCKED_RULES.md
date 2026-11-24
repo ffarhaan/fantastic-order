@@ -108,6 +108,20 @@ Dokumen ini adalah acuan baku dan permanen untuk seluruh pengembangan, pemelihar
      - Faktur MBI wajib menggunakan kunci MBI murni/terisolasi (misal `39204`).
      - **DILARANG KERAS melakukan stripping prefix `MAI-`** saat menyimpan atau membaca status cetak di partisi Firestore (`print_state_partitions`), TiDB, maupun cache memori lokal.
      - Status cetak pada faktur MAI HANYA berlaku untuk MAI dan DILARANG KERAS menulari faktur MBI, begitu pun sebaliknya.
+8. **Mandat Validasi 3 Dimensi Otentikasi Cetak & Nol Asumsi Rentang Waktu (LOCKED TOTAL)**:
+   - **Penghapusan Total Logika Rentang Waktu (Zero Time-Window Assumption)**:
+     - Sistem **DILARANG KERAS** menggunakan asumsi waktu buatan (seperti batasan 1 bulan, 3 bulan, atau 1 tahun) untuk menentukan status cetak.
+     - Setiap baris transaksi yang diunggah hari ini adalah entitas mandiri yang tidak boleh diasumsikan selesai cetak oleh sistem.
+   - **Pengecekan Wajib 3 Dimensi (No SO + Tanggal SO + Nama Apotek)**:
+     - Jika nomor invoice yang diunggah kebetulan pernah tercatat di database masa lalu, sistem **WAJIB** mengevaluasi 3 dimensi fisik:
+       1. **Nomor SO (`no_sales_order`)**: Wajib persis sama.
+       2. **Tanggal SO (`order_date`)**: Wajib persis sama.
+       3. **Nama Apotek (`customer_name`)**: Wajib persis sama.
+     - **Jika salah satu saja dari 3 dimensi tersebut berbeda** (misalnya No SO-nya baru, atau tanggalnya beda hari, atau nama apoteknya beda), transaksi tersebut adalah **TRANSAKSI BARU**.
+     - Transaksi baru tersebut **MUTLAK 100% BERSTATUS BELUM TERPRINT (`status_cetak: false`, `printed_at: null`, `printed_by: null`)** dan DILARANG KERAS tertular stempel cetak masa lalu!
+   - **Aliran Report QC ke Belum Terprint**:
+     - Setiap Nomor SO yang ada di Report QC (menunggu faktur / belum terbit invoice), begitu fakturnya terbit di file upload, **WAJIB 100% langsung masuk ke antrean BELUM TERPRINT**.
+     - Sistem dilarang keras melompati antrean atau langsung menandai Done hanya karena nomor invoicenya kembar dengan faktur masa lalu.
 
 #### C. Logika Done Print & Realtime Multi-Device Sync
 - **Kecepatan & Keandalan**:

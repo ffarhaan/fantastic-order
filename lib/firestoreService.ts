@@ -425,15 +425,21 @@ export function subscribeToFakturs(
       const candidatePAt = pMap[key] || d.printed_at || null;
       const isPrintedInPartition = Boolean(pMap[key] || printedSet.has(key));
       const isExplicitlyPrinted = Boolean(d.status_cetak || isPrintedInPartition);
+      const candidatePBy = pByMap[key] || d.printed_by || null;
       const isStale = isStalePrintTimestamp(candidatePAt, d.order_date || (d.extra && (d.extra.order_date as string)));
-      // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
-      const isPrinted = !isStale && isExplicitlyPrinted;
+      const hasValidUser = Boolean(candidatePBy && String(candidatePBy).trim() !== "" && String(candidatePBy).trim() !== "-");
+      // Mandat Mutlak User (LOCKED_RULES.md Butir 8): Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
+      const isPrinted = !isStale && hasValidUser && isExplicitlyPrinted;
       d.status_cetak = isPrinted;
       d.printed_at = isPrinted ? candidatePAt : null;
-      d.printed_by = isPrinted ? (pByMap[key] || d.printed_by || null) : null;
+      d.printed_by = isPrinted ? candidatePBy : null;
       if (isPrinted && key) {
         printedSet.add(key);
         if (candidatePAt && !pMap[key]) pMap[key] = candidatePAt;
+      } else if (key && isStale) {
+        printedSet.delete(key);
+        delete pMap[key];
+        delete pByMap[key];
       }
       // LOCKED_RULES.md Sec 1.D: Zero-Unprint Mandate! NEVER delete from printedSet or pMap in emitData!
 
@@ -999,15 +1005,18 @@ export async function saveFaktursBatch(
     const key = isMai && !rawK?.startsWith("MAI-") ? `MAI-${rawK}` : rawK;
     if (key) {
       const candidatePAt = unifiedPrintedAtMap[key] || item.printed_at;
+      const candidatePBy = (existingPrintState?.printedByMap && existingPrintState.printedByMap[key]) || item.printed_by || null;
       const isExplicitlyPrinted = Boolean(item.status_cetak || unifiedPrintedSet.has(key));
       const isStale = isStalePrintTimestamp(candidatePAt, item.order_date || (item.extra && (item.extra.order_date as string)));
+      const hasValidUser = Boolean(candidatePBy && String(candidatePBy).trim() !== "" && String(candidatePBy).trim() !== "-");
 
-      // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
-      const isPrinted = !isStale && isExplicitlyPrinted;
+      // Mandat Mutlak User (LOCKED_RULES.md Butir 8): Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
+      const isPrinted = !isStale && hasValidUser && isExplicitlyPrinted;
 
       if (isPrinted) {
         item.status_cetak = true;
         item.printed_at = candidatePAt || new Date().toISOString();
+        item.printed_by = candidatePBy || null;
         registerPrintKeyVariants(key, item.printed_at, unifiedPrintedSet, unifiedPrintedAtMap);
       } else {
         item.status_cetak = false;

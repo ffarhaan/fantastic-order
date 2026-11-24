@@ -262,12 +262,12 @@ function dbRowsToFakturRecords(
       const isLocallyMarkedPrinted = !isStale && Boolean(existingPrintedSet && existingPrintedSet.has(cached.invKey));
       const hasPrintUser = Boolean(
         (r.printed_by && String(r.printed_by).trim() !== "" && String(r.printed_by).trim() !== "-") ||
-        (cached?.pBy && String(cached.pBy).trim() !== "" && String(cached.pBy).trim() !== "-") ||
-        isLocallyMarkedPrinted
+        (cached?.pBy && String(cached.pBy).trim() !== "" && String(cached.pBy).trim() !== "-")
       );
       // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
       // Stempel cetak lampau (>24 jam sebelum order_date) WAJIB diabaikan (isStale = true)!
-      const isPrinted = !isStale && (isLocallyMarkedPrinted || (Boolean(r.status_cetak) && hasPrintUser));
+      // TANPA NAMA USER SAH (hasPrintUser), FAKTUR MUTLAK 100% BELUM TERPRINT (isPrinted = false)!
+      const isPrinted = !isStale && hasPrintUser && (isLocallyMarkedPrinted || Boolean(r.status_cetak));
       const pBy = isPrinted ? ((r.printed_by as string) || cached.pBy || null) : null;
       if (isPrinted) {
         printedSet.add(cached.invKey);
@@ -327,13 +327,13 @@ function dbRowsToFakturRecords(
     const isStale = isStalePrintTimestamp(pAt, date);
     const isLocallyMarkedPrinted = !isStale && Boolean(existingPrintedSet && existingPrintedSet.has(invKey));
     const hasPrintUser = Boolean(
-      (pBy && String(pBy).trim() !== "" && String(pBy).trim() !== "-") ||
-      isLocallyMarkedPrinted
+      (pBy && String(pBy).trim() !== "" && String(pBy).trim() !== "-")
     );
 
     // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
     // Stempel cetak lampau (>24 jam sebelum order_date) WAJIB diabaikan (isStale = true)!
-    const isPrinted = !isStale && (isLocallyMarkedPrinted || (Boolean(r.status_cetak) && hasPrintUser));
+    // TANPA NAMA USER SAH (hasPrintUser), FAKTUR MUTLAK 100% BELUM TERPRINT (isPrinted = false)!
+    const isPrinted = !isStale && hasPrintUser && (isLocallyMarkedPrinted || Boolean(r.status_cetak));
 
     if (isPrinted) {
       printedSet.add(invKey);
@@ -1923,11 +1923,15 @@ function sanitizeDuplicateCompositeDocs(docs: FirestoreFakturDoc[]): FirestoreFa
       // If same SO OR same month, this __ entry is a redundant ghost duplicate of canonicalBaseKey!
       if (baseSO === compSO || !isDiffMonth) {
         keysToRemove.add(k);
-        if (d.status_cetak && !existingBase.status_cetak) {
-          existingBase.status_cetak = true;
-          existingBase.printed_at = existingBase.printed_at || d.printed_at || new Date().toISOString();
-          existingBase.printed_by = existingBase.printed_by || d.printed_by || null;
-          docRecordsCacheMap.delete(existingBase);
+        // Zero System-Print Mandate: Hanya wariskan status cetak JIKA No SO sama persis dan ada user cetak sah!
+        if (baseSO === compSO && d.status_cetak && d.printed_by && String(d.printed_by).trim() !== "" && String(d.printed_by).trim() !== "-") {
+          const isStale = isStalePrintTimestamp(d.printed_at, existingBase.order_date || baseDate);
+          if (!isStale) {
+            existingBase.status_cetak = true;
+            existingBase.printed_at = existingBase.printed_at || d.printed_at;
+            existingBase.printed_by = existingBase.printed_by || d.printed_by;
+            docRecordsCacheMap.delete(existingBase);
+          }
         }
         if ((!baseSO || baseSO === "-") && compSO && compSO !== "-") {
           existingBase.no_sales_order = compSO;
@@ -1967,14 +1971,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     if (!d?.id || d.id.startsWith("TEST-")) continue;
     if (!map.has(d.id)) {
       const docKey = getAuthoritativeDocKey(d);
-      const isPrintedLocally = Boolean(
-        docKey && printedInvoicesRef.current && printedInvoicesRef.current.has(docKey)
-      );
-      if (isPrintedLocally) {
-        d.status_cetak = true;
-        d.printed_at = d.printed_at || printedAtMapRef.current?.[docKey] || new Date().toISOString();
-        d.printed_by = d.printed_by || printedByMapRef.current?.[docKey] || null;
-      }
+      const pBy = d.printed_by || printedByMapRef.current?.[docKey] || null;
+      const pAt = d.printed_at || printedAtMapRef.current?.[docKey] || null;
+      const isStale = isStalePrintTimestamp(pAt, d.order_date || d.extra?.order_date);
+      const hasValidUser = Boolean(pBy && String(pBy).trim() !== "" && String(pBy).trim() !== "-");
+      // Zero System-Print Mandate: DILARANG berasumsi done jika tidak ada user sah atau stempel usang!
+      const isPrinted = !isStale && hasValidUser && Boolean(d.status_cetak);
+      d.status_cetak = isPrinted;
+      d.printed_at = isPrinted ? pAt : null;
+      d.printed_by = isPrinted ? pBy : null;
       map.set(d.id, d);
     } else {
       const prev = map.get(d.id)!;
@@ -1983,34 +1988,31 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       const isGeneric = (n: string) => !n || n === "-" || n === "1001" || n.toUpperCase().includes("HELIOS");
       const keepPrevCust = isGeneric(newCust) && !isGeneric(prevCust);
 
-      // Multi-Month & Cross-Cycle Anti-Contamination (LOCKED_RULES A.8):
-      // If previous row had a different month or date than incoming authoritative row,
-      // never retain contaminated items from a different month!
       const prevDate = String(prev.order_date || prev.transaction_date || prev.extra?.order_date || "");
       const newDate = String(d.order_date || d.transaction_date || d.extra?.order_date || "");
-      const isDiffMonth = Boolean(
-        prevDate && newDate &&
-        prevDate.length >= 7 && newDate.length >= 7 &&
-        prevDate.slice(-7) !== newDate.slice(-7)
-      );
+
+      const prevSO = String(prev.no_sales_order || "").trim();
+      const newSO = String(d.no_sales_order || "").trim();
+      const hasSO = Boolean(prevSO && prevSO !== "-" && newSO && newSO !== "-");
+      const isSameSO = hasSO ? (prevSO === newSO) : false;
+      const isSameDate = Boolean(prevDate && newDate && prevDate === newDate);
+      const isSameCust = Boolean(prevCust && newCust && (normalize(prevCust) === normalize(newCust) || isOraCustomer(newCust)));
+
+      // LOCKED_RULES.md Butir 8: Mandat Validasi 3 Dimensi (No SO + Tanggal SO + Nama Apotek)
+      // Jika salah satu dari 3 dimensi berbeda, transaksi ini WAJIB 100% Belum Terprint!
+      const isSameTransaction = isSameSO && isSameDate && isSameCust;
+
+      const docKey = getAuthoritativeDocKey(d);
+      const candidatePBy = isSameTransaction ? (d.printed_by || prev.printed_by || (docKey ? printedByMapRef.current?.[docKey] : null)) : null;
+      const candidatePAt = isSameTransaction ? (d.printed_at || prev.printed_at || (docKey ? printedAtMapRef.current?.[docKey] : null)) : null;
+      const isStale = isStalePrintTimestamp(candidatePAt, prev.order_date || d.order_date);
+      const hasValidUser = Boolean(candidatePBy && String(candidatePBy).trim() !== "" && String(candidatePBy).trim() !== "-");
+
+      const finalStatusCetak = isSameTransaction && !isStale && hasValidUser && Boolean(prev.status_cetak || d.status_cetak);
 
       const resolvedItems = (d.extra?.items && d.extra.items.length > 0)
         ? d.extra.items
-        : (isDiffMonth ? [] : (prev.extra?.items || []));
-
-      // LOCKED_RULES.md Sec 1.A, 1.B.6 & 1.D: Strict Key Isolation & Mandat Nomor SO Baru
-      // If order is brand-new (new SO or diff month), past print state MUST NOT contaminate it!
-      const isSameOrder = Boolean(
-        !isDiffMonth &&
-        (!d.no_sales_order || d.no_sales_order === "-" || !prev.no_sales_order || prev.no_sales_order === "-" || d.no_sales_order === prev.no_sales_order)
-      );
-      const docKey = getAuthoritativeDocKey(d);
-      const isPrintedLocally = isSameOrder && Boolean(
-        docKey && printedInvoicesRef.current && printedInvoicesRef.current.has(docKey)
-      );
-      const candidatePAt = isSameOrder ? (d.printed_at || prev.printed_at || (docKey ? printedAtMapRef.current?.[docKey] : null)) : null;
-      const isStale = isStalePrintTimestamp(candidatePAt, prev.order_date || d.order_date);
-      const finalStatusCetak = isSameOrder && !isStale ? Boolean(isPrintedLocally || prev.status_cetak || d.status_cetak) : Boolean(prev.status_cetak);
+        : (isSameTransaction ? (prev.extra?.items || []) : []);
 
       map.set(d.id, {
         ...d,
@@ -2020,8 +2022,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         order_date: prev.order_date && prev.order_date !== "-" ? prev.order_date : d.order_date,
         transaction_date: prev.transaction_date && prev.transaction_date !== "-" ? prev.transaction_date : d.transaction_date,
         status_cetak: finalStatusCetak,
-        printed_at: finalStatusCetak ? (prev.printed_at || d.printed_at) : null,
-        printed_by: finalStatusCetak ? (prev.printed_by || d.printed_by) : null,
+        printed_at: finalStatusCetak ? candidatePAt : null,
+        printed_by: finalStatusCetak ? candidatePBy : null,
         extra: {
           ...d.extra,
           ...prev.extra,
@@ -2505,12 +2507,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 const k = getAuthoritativeDocKey(d);
                 if (k && mergedSet.has(k)) {
                   const candidatePAt = combinedAt[k] || d.printed_at;
+                  const candidatePBy = combinedBy[k] || d.printed_by;
+                  const hasValidUser = Boolean(candidatePBy && String(candidatePBy).trim() !== "" && String(candidatePBy).trim() !== "-");
                   const isStale = isStalePrintTimestamp(candidatePAt, d.order_date || d.extra?.order_date);
-                  if (!isStale) {
+                  // Zero System-Print Mandate: Faktur HANYA boleh Done jika TIDAK stale DAN ada nama user fisik sah!
+                  if (!isStale && hasValidUser) {
                     if (!d.status_cetak) docRecordsCacheMap.delete(d);
                     d.status_cetak = true;
                     d.printed_at = d.printed_at || candidatePAt || null;
-                    d.printed_by = d.printed_by || combinedBy[k] || null;
+                    d.printed_by = candidatePBy;
                   } else {
                     if (d.status_cetak) docRecordsCacheMap.delete(d);
                     d.status_cetak = false;
@@ -2784,13 +2789,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             printedInvoicesRef.current,
             categoryOverridesRef.current
           );
-          // Mandat Mutlak User (LOCKED_RULES.md Sec 1.D.3): Status cetak bersifat kumulatif & dilarang di-unprint!
+          // Mandat Mutlak User (LOCKED_RULES.md Sec 1.D.3): Status cetak terotentikasi penuh dari dbRowsToFakturRecords
           const unifiedPrintedKeys = new Set(docPrintedSet);
-          if (printedInvoicesRef.current) {
-            printedInvoicesRef.current.forEach((k) => unifiedPrintedKeys.add(k));
-          }
-          const unifiedAtMap = { ...docPrintedAtMap, ...(printedAtMapRef.current || {}) };
-          const unifiedByMap = { ...docPrintedByMap, ...(printedByMapRef.current || {}) };
+          const unifiedAtMap = { ...docPrintedAtMap };
+          const unifiedByMap = { ...docPrintedByMap };
           setPrintedInvoices(unifiedPrintedKeys);
           printedInvoicesRef.current = unifiedPrintedKeys;
           setPrintedAtMap(unifiedAtMap);
@@ -2822,13 +2824,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           printedInvoicesRef.current,
           categoryOverridesRef.current
         );
-        // Mandat Mutlak User (LOCKED_RULES.md Sec 1.D.3): Status cetak bersifat kumulatif & dilarang di-unprint!
+        // Mandat Mutlak User (LOCKED_RULES.md Sec 1.D.3): Status cetak terotentikasi penuh dari dbRowsToFakturRecords
         const unifiedPrintedKeys = new Set(docPrintedSet);
-        if (printedInvoicesRef.current) {
-          printedInvoicesRef.current.forEach((k) => unifiedPrintedKeys.add(k));
-        }
-        const unifiedAtMap = { ...docPrintedAtMap, ...(printedAtMapRef.current || {}) };
-        const unifiedByMap = { ...docPrintedByMap, ...(printedByMapRef.current || {}) };
+        const unifiedAtMap = { ...docPrintedAtMap };
+        const unifiedByMap = { ...docPrintedByMap };
         setPrintedInvoices(unifiedPrintedKeys);
         printedInvoicesRef.current = unifiedPrintedKeys;
         setPrintedAtMap(unifiedAtMap);
@@ -3195,8 +3194,19 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     const hasDkLkOverrides = Object.keys(dklkOverrides).length > 0;
 
     return baseGroups.map((g) => {
-      const isPrinted = printedInvoices.has(g.key);
-      const pAt = isPrinted ? (printedAtMap[g.key] || null) : null;
+      const candidatePAt = printedAtMap[g.key] || g.printedAt || null;
+      const candidatePBy = printedByMap[g.key] || g.printedBy || null;
+
+      // STRICT MANDAT USER & VALIDASI 3 DIMENSI (LOCKED_RULES.md Butir 8):
+      // Status cetak HANYA sah jika:
+      // 1. Terdaftar di printedInvoices
+      // 2. Bukan stempel cetak lampau (!isStale) berdasarkan orderDate / transactionDate
+      // 3. Memiliki tanda tangan user fisik sah (hasValidUser: bukan null / '-' / kosong)
+      const isStale = isStalePrintTimestamp(candidatePAt, g.orderDate || g.transactionDate);
+      const hasValidUser = Boolean(candidatePBy && String(candidatePBy).trim() !== "" && String(candidatePBy).trim() !== "-");
+
+      const isPrinted = !isStale && hasValidUser && printedInvoices.has(g.key);
+      const pAt = isPrinted ? candidatePAt : null;
       let kat = g.kategori;
       let dklk = g.dklk;
       if (hasCatOverrides || hasDkLkOverrides) {
@@ -3213,7 +3223,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         }
       }
 
-      const pBy = isPrinted ? (printedByMap[g.key] || null) : null;
+      const pBy = isPrinted ? candidatePBy : null;
 
       // Ultra-fast reference reuse: if nothing changed for this invoice, return g directly (0ms)
       if (
@@ -4261,45 +4271,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           return;
         }
 
-        // DATE WINDOW GUARD (Pencegahan File Lampau / Tertukar Bulan di Awal Bulan)
-        const nowDate = new Date();
-        const currentYear = nowDate.getFullYear();
-        const currentMonth = nowDate.getMonth() + 1; // 1-12
-        let pastMonthCount = 0;
-        let currentMonthCount = 0;
-
-        for (const r of parsed) {
-          const dStr = r.orderDate || r.transactionDate;
-          if (!dStr || dStr === "-" || dStr === "#N/A") continue;
-          let m = 0, y = 0;
-          if (/^\d{4}-\d{2}-\d{2}/.test(dStr)) {
-            y = parseInt(dStr.slice(0, 4), 10);
-            m = parseInt(dStr.slice(5, 7), 10);
-          } else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(dStr)) {
-            const parts = dStr.split(/[\/\-]/);
-            m = parseInt(parts[1], 10);
-            y = parseInt(parts[2], 10);
-          }
-          if (m && y) {
-            if (y === currentYear && m === currentMonth) {
-              currentMonthCount++;
-            } else if (y < currentYear || (y === currentYear && m < currentMonth)) {
-              pastMonthCount++;
-            }
-          }
-        }
-
-        if (pastMonthCount > 0 && currentMonthCount === 0 && nowDate.getDate() > 3) {
-          const confirmPast = window.confirm(
-            `⚠️ PERINGATAN TANGGAL FILE:\nFile "${fileNames.join(", ")}" yang Anda unggah berisi ${pastMonthCount} transaksi dari bulan lampau, bukan bulan berjalan (${currentMonth}/${currentYear}).\n\nApakah Anda yakin ingin tetap memproses file ini?`
-          );
-          if (!confirmPast) {
-            isUploadingRef.current = false;
-            setLoading(false);
-            return;
-          }
-        }
-
         const importedAt = new Date().toISOString();
 
         // 1. Authoritative complete live printed keys from remote Firestore partitions, module caches, and refs
@@ -4550,27 +4521,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             // Mandat Mutlak User: Hanya jika doc.status_cetak bernilai true!
             const isPrinted = Boolean(doc.status_cetak);
             if (!isPrinted) {
-              // Abaikan faktur arsip masa lampau dari bulan sebelumnya (LOCKED_RULES.md Sec 1.A.8)
-              // agar angka Belum Terprint tidak melonjak karena transaksi kuno September/Oktober
-              const dStr = String(doc.order_date || (doc.extra && doc.extra.order_date) || "").trim();
-              let isPastHistoricalMonth = false;
-              if (dStr && dStr !== "-" && dStr !== "#N/A") {
-                let m = 0, y = 0;
-                if (/^\d{4}-\d{2}-\d{2}/.test(dStr)) {
-                  y = parseInt(dStr.slice(0, 4), 10);
-                  m = parseInt(dStr.slice(5, 7), 10);
-                } else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(dStr)) {
-                  const parts = dStr.split(/[\/\-]/);
-                  m = parseInt(parts[1], 10);
-                  y = parseInt(parts[2], 10);
-                }
-                if (m && y && (y < currentYear || (y === currentYear && m < currentMonth))) {
-                  isPastHistoricalMonth = true;
-                }
-              }
-              if (!isPastHistoricalMonth) {
-                newUnprintedKeysSet.add(k);
-              }
+              newUnprintedKeysSet.add(k);
             }
           }
         });
@@ -4669,10 +4620,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               (prevInfoCandidate && (prevInfoCandidate as any).printed_by)
             ) : null);
 
-          // Mandat LOCKED_RULES.md Sec 1.B: Hanya cetak resmi oleh user (memiliki printed_by valid atau ditandai di sesi aktif)
+          // Mandat LOCKED_RULES.md Sec 1.B: Hanya cetak resmi oleh user fisik (wajib memiliki printed_by valid)
           const hasValidUserPrint = Boolean(
-            (candidatePBy && String(candidatePBy).trim() !== "" && String(candidatePBy).trim() !== "-") ||
-            (printedInvoicesRef.current && printedInvoicesRef.current.has(targetKey))
+            candidatePBy && String(candidatePBy).trim() !== "" && String(candidatePBy).trim() !== "-"
           );
 
           // Mandat LOCKED_RULES.md Aturan 7: Stempel cetak lampau (>24 jam sebelum order_date)
@@ -4686,16 +4636,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           ).trim();
           const targetCust = String(r.customerName || "").trim();
 
-          // Mandat Mutlak User (LOCKED_RULES.md Sec 1.A.8 & 1.B.6):
-          // Evaluasi 3 dimensi:
+          // Mandat Mutlak User (LOCKED_RULES.md Butir 8):
+          // Evaluasi Validasi 3 Dimensi:
           // 1. Nomor SO (no_sales_order): SO baru WAJIB Belum Terprint!
-          // 2. Nama Apotek (customer_name)
-          // 3. Tanggal Order / Faktur (order_date)
-          const isSameTransaction = Boolean(
-            isSameSO &&
-            (!existingDate || !incomingDate || existingDate === incomingDate) &&
-            (!existingCust || !targetCust || normalize(existingCust) === normalize(targetCust) || isOraCustomer(targetCust))
-          );
+          // 2. Tanggal Order / Faktur (order_date)
+          // 3. Nama Apotek (customer_name)
+          const hasBothSO = Boolean(existingSO && existingSO !== "-" && incomingSO && incomingSO !== "-");
+          const isSameSOExact = hasBothSO ? (existingSO === incomingSO) : false;
+          const isSameDateExact = Boolean(existingDate && incomingDate && existingDate === incomingDate);
+          const isSameCustExact = Boolean(existingCust && targetCust && (normalize(existingCust) === normalize(targetCust) || isOraCustomer(targetCust)));
+
+          const isSameTransaction = isSameSOExact && isSameDateExact && isSameCustExact;
 
           // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
           // Faktur HANYA berstatus cetak jika ini adalah transaksi yang persis sama (isSameTransaction),
@@ -4723,13 +4674,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             printedAt = null;
             printedBy = null;
             newUnprintedKeysSet.add(targetKey);
-            if (!isExistingInDB || !isSameSO) {
-              brandNewUnprintedKeysSet.add(targetKey);
-            }
-            if (isStale) {
-              mergedPrintedSet.delete(targetKey);
-              delete mergedPrintedAtMap[targetKey];
-            }
+            brandNewUnprintedKeysSet.add(targetKey);
+            mergedPrintedSet.delete(targetKey);
+            delete mergedPrintedAtMap[targetKey];
+            printedInvoicesRef.current.delete(targetKey);
+            if (printedAtMapRef.current) delete printedAtMapRef.current[targetKey];
+            if (printedByMapRef.current) delete printedByMapRef.current[targetKey];
           }
 
           const rawCust = String(r.customerName || "-").trim();
