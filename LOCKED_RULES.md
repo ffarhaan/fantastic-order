@@ -113,15 +113,22 @@ Dokumen ini adalah acuan baku dan permanen untuk seluruh pengembangan, pemelihar
      - Sistem **DILARANG KERAS** menggunakan asumsi waktu buatan (seperti batasan 1 bulan, 3 bulan, atau 1 tahun) untuk menentukan status cetak.
      - Setiap baris transaksi yang diunggah hari ini adalah entitas mandiri yang tidak boleh diasumsikan selesai cetak oleh sistem.
    - **Pengecekan Wajib 3 Dimensi (No SO + Tanggal SO + Nama Apotek)**:
-     - Jika nomor invoice yang diunggah kebetulan pernah tercatat di database masa lalu, sistem **WAJIB** mengevaluasi 3 dimensi fisik:
+     - Jika nomor invoice yang diunggah kebetulan pernah tercatat di database masa lalu (misal nomor faktur kembar `41260`, `41259`, `41247`, `41246` yang pernah dicetak 07 November kemudian terbit kembali untuk SO baru pada 24 November), sistem **WAJIB** mengevaluasi 3 dimensi fisik:
        1. **Nomor SO (`no_sales_order`)**: Wajib persis sama.
        2. **Tanggal SO (`order_date`)**: Wajib persis sama.
        3. **Nama Apotek (`customer_name`)**: Wajib persis sama.
      - **Jika salah satu saja dari 3 dimensi tersebut berbeda** (misalnya No SO-nya baru, atau tanggalnya beda hari, atau nama apoteknya beda), transaksi tersebut adalah **TRANSAKSI BARU**.
      - Transaksi baru tersebut **MUTLAK 100% BERSTATUS BELUM TERPRINT (`status_cetak: false`, `printed_at: null`, `printed_by: null`)** dan DILARANG KERAS tertular stempel cetak masa lalu!
-   - **Aliran Report QC ke Belum Terprint**:
+   - **Pencegahan Kebocoran Stale Partition di Seluruh Layer (`grouped`, `subscribeToFakturs`, `handleUpload`)**:
+     - Pada proyeksi grup tampilan (`grouped`), dilarang keras hanya mencocokkan `printedInvoices.has(g.key)`. Wajib mengevaluasi `!isStalePrintTimestamp(candidatePAt, g.orderDate)` dan keabsahan user fisik `hasValidUser`.
+     - Stempel cetak lampau (>24 jam sebelum `order_date`) MUTLAK dianggap usang (`isStale = true`) dan faktur baru WAJIB tampil di tab Belum Terprint!
+   - **Mandat User Fisik Sah (`hasValidUser`)**:
+     - Sistem dilarang menandai Done otomatis tanpa operator.
+     - Untuk transaksi baru, status Done Print hanya sah jika terdapat nama user fisik (`printed_by !== null` dan bukan `"-"`).
+   - **Aliran Report QC ke Belum Terprint & Korelasi Faktur Retur**:
      - Setiap Nomor SO yang ada di Report QC (menunggu faktur / belum terbit invoice), begitu fakturnya terbit di file upload, **WAJIB 100% langsung masuk ke antrean BELUM TERPRINT**.
-     - Sistem dilarang keras melompati antrean atau langsung menandai Done hanya karena nomor invoicenya kembar dengan faktur masa lalu.
+     - **Faktur Retur / Credit Memo Independen dari Report QC**: Faktur retur (nominal negatif / jenis transaksi retur) tidak pernah discan oleh tim gudang di DO Checker sehingga **TIDAK PERNAH masuk antrean Report QC**.
+     - Penurunan antrean Report QC saat upload HANYA dikurangi oleh faktur penjualan normal yang SO-nya cocok ($\text{Pengurangan QC} = \text{Total Faktur Baru} - \text{Faktur Retur}$). Dilarang menuntut faktur retur mengurangi Report QC.
 
 #### C. Logika Done Print & Realtime Multi-Device Sync
 - **Kecepatan & Keandalan**:

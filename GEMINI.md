@@ -38,7 +38,9 @@ Setiap kali pengguna meminta perbaikan, optimasi performa, atau fitur baru pada 
    - Dilarang berasumsi atau membatasi logika berdasarkan rentang waktu 1 bulan, 3 bulan, atau 1 tahun.
    - Status cetak hanya boleh diwarisi jika memenuhi validasi 3 dimensi: **Nomor SO sama persis, Tanggal SO sama persis, dan Nama Apotek sama persis**.
    - Jika ada perbedaan salah satu dari 3 dimensi tersebut, faktur baru **MUTLAK 100% BERSTATUS BELUM TERPRINT (`status_cetak: false`, `printed_at: null`, `printed_by: null`)**.
+   - **Pemberangusan Stale Partition di Layer UI (`grouped`)**: Pada layer rendering grup tabel (`grouped`), dilarang hanya mengecek `printedInvoices.has(g.key)`. Wajib mengevaluasi `!isStalePrintTimestamp` dan `hasValidUser`. Stempel cetak lampau (>24 jam sebelum order_date) MUTLAK diabaikan (`isStale = true`) dan faktur baru WAJIB tampil di Belum Terprint!
    - Setiap SO yang ada di Report QC (menunggu faktur) wajib 100% langsung mengalir masuk ke tab Belum Terprint begitu fakturnya diupload. DILARANG KERAS menandai Done sendiri tanpa user!
+   - **Korelasi Faktur Retur & Report QC**: Faktur retur/credit memo (nominal negatif) bukan pesanan baru gudang dan TIDAK PERNAH masuk antrean Report QC. Pengurangan Report QC saat upload HANYA dikurangi oleh faktur penjualan normal yang SO-nya cocok.
 
 ## Kewajiban Saat Perbaikan, Optimasi Performa, atau Fitur Baru
    - Selalu baca [`LOCKED_RULES.md`](./LOCKED_RULES.md) sebelum merancang atau menulis perubahan kode pada `lib/parser.ts`, `app/page.tsx`, `lib/firestoreService.ts`, maupun `app/api/tidb/route.ts`.
