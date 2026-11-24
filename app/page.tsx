@@ -2010,9 +2010,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
       const finalStatusCetak = isSameTransaction && !isStale && hasValidUser && Boolean(prev.status_cetak || d.status_cetak);
 
-      const resolvedItems = (d.extra?.items && d.extra.items.length > 0)
-        ? d.extra.items
-        : (isSameTransaction ? (prev.extra?.items || []) : []);
+      const incomingItems = d.extra?.items || [];
+      const prevItems = isSameTransaction ? (prev.extra?.items || []) : [];
+      const resolvedItems = incomingItems.length >= prevItems.length
+        ? (incomingItems.length > 0 ? incomingItems : prevItems)
+        : prevItems;
 
       map.set(d.id, {
         ...d,
@@ -2210,9 +2212,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
       // Step 1: Read local IndexedDB cache INSTANTLY (0–10ms!)
       try {
-        if (typeof window !== "undefined" && localStorage.getItem("faktur_cache_schema_v") !== "tidb_clean_v4_20261106") {
+        if (typeof window !== "undefined" && localStorage.getItem("faktur_cache_schema_v") !== "tidb_clean_v5_20261125") {
           await clearLocalCachedFakturs().catch(() => {});
-          localStorage.setItem("faktur_cache_schema_v", "tidb_clean_v4_20261106");
+          localStorage.setItem("faktur_cache_schema_v", "tidb_clean_v5_20261125");
         }
         const cached = await getLocalCachedFakturs();
         if (cached && cached.fakturs && cached.fakturs.length > 0 && isMounted) {
@@ -2362,8 +2364,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               printedByMap: printedByMapRef.current || {},
             });
           }
-          if (isMounted) setLoading(false);
-          return;
+          const currentLen = currentFakturDocsRef.current?.length || 0;
+          const stillMissingRows = Boolean(check && check.totalCount > 0 && currentLen < check.totalCount);
+          if (!stillMissingRows) {
+            if (isMounted) setLoading(false);
+            return;
+          }
         }
 
         // Cold start (completely 0 local docs): fetch archive

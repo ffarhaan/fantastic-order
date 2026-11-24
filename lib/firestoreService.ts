@@ -670,7 +670,7 @@ function pruneDocForBroadcast(doc: FirestoreFakturDoc): FirestoreFakturDoc {
       kategori: doc.extra?.kategori || doc.kategori || "3P",
       entity: entityVal,
       total_harga: Number(doc.extra?.total_harga || 0),
-      items: (doc.extra?.items || []).slice(0, 10).map((it) => ({
+      items: (doc.extra?.items || []).map((it) => ({
         item_code: it.item_code || "",
         item_description: it.item_description || "",
         kategori_produk: it.kategori_produk || "FARMA",
@@ -713,8 +713,13 @@ export async function broadcastRecentUpload(
       return parseInvoiceNumberForSort(bKey) - parseInvoiceNumberForSort(aKey); // highest invoice numbers first!
     });
 
-    // 2. Prune items to lightweight structures (~300 bytes/doc) so up to 800 docs safely use ~300-600 KB (< 1MB Firestore limit)
+    // 2. Keep 100% full items per invoice (never slice items!), and trim trailing docs only if payload approaches Firestore's 1MB limit
     const prunedDocs = sortedDocs.slice(0, 800).map(pruneDocForBroadcast);
+    let approxBytes = JSON.stringify(prunedDocs).length;
+    while (prunedDocs.length > 1 && approxBytes > 800000) {
+      const removed = prunedDocs.pop();
+      approxBytes -= removed ? JSON.stringify(removed).length + 1 : 500;
+    }
 
     await setDoc(syncDocRef, {
       syncId: `sync_${Date.now()}_${uploaderId}`,
