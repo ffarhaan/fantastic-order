@@ -2775,7 +2775,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         productOverridesRef.current = prodOverrides;
       }
 
-      if (check && check.totalCount > 1000 && currentCount > check.totalCount && currentFakturDocsRef.current.length > check.totalCount) {
+      if (check && check.totalCount > 1000 && (currentCount !== check.totalCount || unsyncedTiDBKeysSet.size > 0) && currentFakturDocsRef.current.length > 0) {
         await syncMissingFaktursToTiDB(currentFakturDocsRef.current);
       }
 

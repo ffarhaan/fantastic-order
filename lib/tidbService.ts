@@ -44,11 +44,23 @@ export async function syncFaktursToTiDB(
       })),
     }));
 
-    // SAFE & RELIABLE STREAMING UPSERT: 60 items per slice to avoid 413 Payload Too Large / Gateway Timeout
-    const CHUNK_SIZE = 60;
+    // SAFE & RELIABLE STREAMING UPSERT: max 25 fakturs & max 300KB per slice to avoid 413 / Vercel timeout
     const slices: typeof payload[] = [];
-    for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
-      slices.push(payload.slice(i, i + CHUNK_SIZE));
+    let currentSlice: typeof payload = [];
+    let currentSliceBytes = 0;
+    for (const p of payload) {
+      const pBytes = JSON.stringify(p).length + 2;
+      if (currentSlice.length > 0 && (currentSlice.length >= 25 || currentSliceBytes + pBytes > 300000)) {
+        slices.push(currentSlice);
+        currentSlice = [p];
+        currentSliceBytes = pBytes;
+      } else {
+        currentSlice.push(p);
+        currentSliceBytes += pBytes;
+      }
+    }
+    if (currentSlice.length > 0) {
+      slices.push(currentSlice);
     }
 
     let processedCount = 0;
