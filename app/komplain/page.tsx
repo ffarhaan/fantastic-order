@@ -63,7 +63,21 @@ interface ReturnProductItem {
   note: string;
 }
 
+const IS_KOMPLAIN_MAINTENANCE = true;
+
 export default function KomplainPage() {
+  if (IS_KOMPLAIN_MAINTENANCE) {
+    return (
+      <MaintenanceScreen
+        pageName="Layanan Pengajuan Komplain & Retur"
+        targetTime="Segera Kembali"
+      />
+    );
+  }
+  return <KomplainPageContent />;
+}
+
+function KomplainPageContent() {
   const [headerData, setHeaderData] = useState({
     pbf: "MBI",
     customer_name: "",

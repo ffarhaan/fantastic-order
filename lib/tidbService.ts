@@ -309,34 +309,45 @@ export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFaktur
       let maxUpdated = Number(firstData.maxUpdated || 0);
       const totalCount = Number(firstData.totalCount || 0);
 
-      // Step 2: Lightning-Fast Parallel Fetch (< 600ms total!)
+      // Step 2: Reliable Batched Fetch with 3x Retry (never silently drop a page!)
       if (totalCount > PAGE_SIZE) {
         const remainingOffsets: number[] = [];
         for (let offset = PAGE_SIZE; offset < totalCount; offset += PAGE_SIZE) {
           remainingOffsets.push(offset);
         }
 
-        const remainingResults = await Promise.all(
-          remainingOffsets.map(async (offset) => {
+        const fetchPageWithRetry = async (offset: number): Promise<FirestoreFakturDoc[] | null> => {
+          for (let attempt = 0; attempt < 3; attempt++) {
             try {
               const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=${offset}`);
-              if (!res.ok) return [];
-              const data = await res.json();
-              if (data.success && Array.isArray(data.fakturs)) {
-                if (Number(data.maxUpdated || 0) > maxUpdated) {
-                  maxUpdated = Number(data.maxUpdated);
+              if (res.ok) {
+                const data = await res.json();
+                if (data.success && Array.isArray(data.fakturs)) {
+                  if (Number(data.maxUpdated || 0) > maxUpdated) {
+                    maxUpdated = Number(data.maxUpdated);
+                  }
+                  return data.fakturs as FirestoreFakturDoc[];
                 }
-                return data.fakturs as FirestoreFakturDoc[];
               }
-              return [];
             } catch {
-              return [];
+              // retry
             }
-          })
-        );
+            if (attempt < 2) await new Promise((r) => setTimeout(r, (attempt + 1) * 500));
+          }
+          return null;
+        };
 
-        for (const chunk of remainingResults) {
-          allFakturs.push(...chunk);
+        // Fetch in batches of 3 to avoid saturating browser/Vercel connections
+        for (let i = 0; i < remainingOffsets.length; i += 3) {
+          const batchOffsets = remainingOffsets.slice(i, i + 3);
+          const batchResults = await Promise.all(batchOffsets.map(fetchPageWithRetry));
+          for (const chunk of batchResults) {
+            if (chunk === null) {
+              console.error("[TiDB Read] A page failed after 3 retries; aborting partial archive save.");
+              return null;
+            }
+            allFakturs.push(...chunk);
+          }
         }
       }
 

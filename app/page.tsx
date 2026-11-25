@@ -2377,6 +2377,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         // Cold start (completely 0 local docs): fetch archive
         const result = await fetchFaktursFromTiDB();
         if (!isMounted) return;
+        if (!result) {
+          showToast("⚠️ Gagal memuat arsip lengkap dari TiDB. Klik tombol Refresh (↻) di kanan atas.");
+        }
         if (result && result.fakturs && result.fakturs.length > 0) {
           const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], result.fakturs);
           currentFakturDocsRef.current = merged;
