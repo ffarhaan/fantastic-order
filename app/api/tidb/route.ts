@@ -1961,11 +1961,16 @@ export async function GET(req: Request) {
         row_updated?: number | string;
       }>;
 
-      const resultMeta = (await conn.execute(
-        "SELECT COUNT(*) as total_count, UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
-      )) as Array<{ total_count: number | string; max_updated: number | null }>;
-      const totalCount = Number(resultMeta[0]?.total_count || 0);
-      const maxUpdated = Number(resultMeta[0]?.max_updated || 0);
+      const skipCount = searchParams.get("skipCount") === "1";
+      let totalCount = 0;
+      let maxUpdated = 0;
+      if (!skipCount) {
+        const resultMeta = (await conn.execute(
+          "SELECT COUNT(*) as total_count, UNIX_TIMESTAMP(MAX(updated_at)) as max_updated FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
+        )) as Array<{ total_count: number | string; max_updated: number | null }>;
+        totalCount = Number(resultMeta[0]?.total_count || 0);
+        maxUpdated = Number(resultMeta[0]?.max_updated || 0);
+      }
 
       const docs = rows.map((r) => {
         let parsedItems: unknown[] = [];

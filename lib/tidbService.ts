@@ -298,8 +298,8 @@ export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFaktur
 
   activeFetchFaktursPromise = (async () => {
     try {
-      const PAGE_SIZE = 3500;
-      // Step 1: Fetch Page 0 (gets docs + exact totalCount in ~200ms)
+      const PAGE_SIZE = 1500;
+      // Step 1: Fetch Page 0 (gets docs + exact totalCount in ~150ms)
       const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=0`);
       if (!firstRes.ok) return null;
       const firstData = await firstRes.json();
@@ -319,7 +319,7 @@ export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFaktur
         const fetchPageWithRetry = async (offset: number): Promise<FirestoreFakturDoc[] | null> => {
           for (let attempt = 0; attempt < 3; attempt++) {
             try {
-              const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=${offset}`);
+              const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=${offset}&skipCount=1`);
               if (res.ok) {
                 const data = await res.json();
                 if (data.success && Array.isArray(data.fakturs)) {
@@ -337,9 +337,9 @@ export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFaktur
           return null;
         };
 
-        // Fetch in batches of 3 to avoid saturating browser/Vercel connections
-        for (let i = 0; i < remainingOffsets.length; i += 3) {
-          const batchOffsets = remainingOffsets.slice(i, i + 3);
+        // Fetch in batches of 2 to avoid saturating browser/Vercel connections & payload limits
+        for (let i = 0; i < remainingOffsets.length; i += 2) {
+          const batchOffsets = remainingOffsets.slice(i, i + 2);
           const batchResults = await Promise.all(batchOffsets.map(fetchPageWithRetry));
           for (const chunk of batchResults) {
             if (chunk === null) {

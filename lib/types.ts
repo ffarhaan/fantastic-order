@@ -2,6 +2,7 @@ export interface FakturRecord {
   orderDate: string;
   transactionDate?: string;
   orderNumber: string;
+  referenceOrderNumber?: string;
   invoiceNumber: string;
   invoiceKey: string;
   jenisTransaksi: "ORA" | "DOO";
@@ -57,6 +58,7 @@ export interface FirestoreFakturDoc {
       lot_number: string;
       total_harga: number;
       order_number?: string;
+      reference_order_number?: string;
       klasifikasi_obat?: string;
       [key: string]: unknown;
     }>;

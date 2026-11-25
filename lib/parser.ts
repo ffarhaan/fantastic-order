@@ -727,6 +727,7 @@ function parseXXCUST(
 
   const records: FakturRecord[] = [];
   let lastOrderNumber = "";
+  let lastReferenceOrderNumber = "";
   let lastInvoiceNumber = "";
   let lastCustomerName = "";
   let lastCustomerCode = "";
@@ -740,10 +741,9 @@ function parseXXCUST(
     const val = (cIdx: number | undefined) => (cIdx !== undefined && cIdx >= 0 ? String(row[cIdx] ?? "").trim() : "");
     const rawVal = (cIdx: number | undefined) => (cIdx !== undefined && cIdx >= 0 ? row[cIdx] : undefined);
 
-    let orderNumber = val(idx.orderNumber);
-    if (!orderNumber && idx.referenceOrderNumber !== undefined) {
-      orderNumber = val(idx.referenceOrderNumber);
-    }
+    const rawOrderNum = val(idx.orderNumber);
+    let referenceOrderNumber = idx.referenceOrderNumber !== undefined ? val(idx.referenceOrderNumber) : "";
+    let orderNumber = rawOrderNum || referenceOrderNumber;
     let invoiceNumber = val(idx.invoiceNumber);
     const cetakanRaw = val(idx.noInvoiceCetakan);
     let cetakanEntity: "MAI" | "MBI" | null = null;
@@ -820,6 +820,9 @@ function parseXXCUST(
     if (!orderNumber && invoiceNumber && invoiceNumber === lastInvoiceNumber && lastOrderNumber && lastOrderNumber !== "-") {
       orderNumber = lastOrderNumber;
     }
+    if ((!referenceOrderNumber || referenceOrderNumber === "-") && invoiceNumber && invoiceNumber === lastInvoiceNumber && lastReferenceOrderNumber && lastReferenceOrderNumber !== "-") {
+      referenceOrderNumber = lastReferenceOrderNumber;
+    }
 
     if (!orderNumber && invoiceNumber) {
       orderNumber = "-";
@@ -871,6 +874,11 @@ function parseXXCUST(
     if (orderNumber && orderNumber !== "-") {
       lastOrderNumber = orderNumber;
     }
+    if (referenceOrderNumber && referenceOrderNumber !== "-") {
+      lastReferenceOrderNumber = referenceOrderNumber;
+    } else if (invoiceNumber !== lastInvoiceNumber) {
+      lastReferenceOrderNumber = "";
+    }
     lastInvoiceNumber = invoiceNumber;
     lastCustomerName = customerName;
     lastCustomerCode = customerCode;
@@ -912,6 +920,7 @@ function parseXXCUST(
       orderDate: orderDate || "-",
       transactionDate: txDate,
       orderNumber: orderNumber || "-",
+      ...(referenceOrderNumber && referenceOrderNumber !== "-" && referenceOrderNumber !== orderNumber ? { referenceOrderNumber } : {}),
       invoiceNumber: invoiceNumber || "-",
       invoiceKey,
       jenisTransaksi,

@@ -381,6 +381,7 @@ function dbRowsToFakturRecords(
             ? "OOT"
             : undefined;
         const itSO = String(it.order_number || "").trim();
+        const itRefSO = String(it.reference_order_number || "").trim();
         const isNovSO = itSO.startsWith("170") || itSO.startsWith("171");
         // Strict Isolation per LOCKED_RULES.md A.8: Never allow a November SO to contaminate an October transaction!
         const validSO = (isOctDate && isNovSO && isDocNotNovSO)
@@ -401,6 +402,7 @@ function dbRowsToFakturRecords(
           orderDate: date,
           transactionDate: txDate,
           orderNumber: validSO || "-",
+          ...(itRefSO && itRefSO !== "-" && itRefSO !== validSO ? { referenceOrderNumber: itRefSO } : {}),
           invoiceNumber: cleanInv,
           invoiceKey: invKey,
           jenisTransaksi: cleanJenis,
@@ -486,6 +488,7 @@ function dbRowsToFakturRecords(
 export default function Home() {
   const [records, setRecords] = useState<FakturRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isArchiveReady, setIsArchiveReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mainView, setMainView] = useState<"workspace" | "dashboard" | "returns" | "customers">("dashboard");
   const [hasVisitedReturns, setHasVisitedReturns] = useState(false);
@@ -1575,6 +1578,7 @@ const handleCancelQcOrder = useCallback(async (soNum: string) => {
   const currentFakturDocsRef = useRef<FirestoreFakturDoc[]>([]);
   const clientUpdatedRef = useRef<number>(0);
   const isPeerSyncingRef = useRef(false);
+  const initialArchiveFailedRef = useRef(false);
   const pendingPeerSyncRef = useRef(false);
 
   // Smooth & lag-free keyboard navigation refs
@@ -2168,7 +2172,44 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       fetchQcOrders(selectedWarehouseRef.current);
 
       // 2. Detect peer uploads in TiDB only when server maxUpdated advances or server count increases
-      if (!isUploadingRef.current && !isPeerSyncingRef.current && currentFakturDocsRef.current?.length > 0) {
+      // Also auto-recover cold-start failures when currentFakturDocsRef is still empty!
+      if (!isUploadingRef.current && !isPeerSyncingRef.current && currentFakturDocsRef.current?.length === 0 && initialArchiveFailedRef.current) {
+        isPeerSyncingRef.current = true;
+        try {
+          const retryRes = await fetchFaktursFromTiDB();
+          if (retryRes && retryRes.fakturs && retryRes.fakturs.length > 0) {
+            const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], retryRes.fakturs);
+            currentFakturDocsRef.current = merged;
+            clientUpdatedRef.current = retryRes.maxUpdated;
+            const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
+              merged as unknown as Array<Record<string, unknown>>,
+              productOverridesRef.current,
+              printedInvoicesRef.current,
+              categoryOverridesRef.current
+            );
+            const nextPrinted = new Set([...Array.from(printedInvoicesRef.current || []), ...Array.from(docPrintedSet)]);
+            const nextAtMap = { ...(printedAtMapRef.current || {}), ...docPrintedAtMap };
+            const nextByMap = { ...(printedByMapRef.current || {}), ...docPrintedByMap };
+            setRecords(recs);
+            setPrintedInvoices(nextPrinted);
+            printedInvoicesRef.current = nextPrinted;
+            setPrintedAtMap(nextAtMap);
+            printedAtMapRef.current = nextAtMap;
+            setPrintedByMap(nextByMap);
+            printedByMapRef.current = nextByMap;
+            initialArchiveFailedRef.current = false;
+            setIsArchiveReady(true);
+            setLoading(false);
+            setLocalCachedFakturs(merged, retryRes.maxUpdated, {
+              printedKeys: Array.from(nextPrinted),
+              printedAtMap: nextAtMap,
+              printedByMap: nextByMap,
+            });
+          }
+        } catch {} finally {
+          isPeerSyncingRef.current = false;
+        }
+      } else if (!isUploadingRef.current && !isPeerSyncingRef.current && currentFakturDocsRef.current?.length > 0) {
         try {
           const curCount = currentFakturDocsRef.current.length;
           const curUpdated = clientUpdatedRef.current || 0;
@@ -2303,6 +2344,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           setPrintedByMap(combinedByMap);
           printedByMapRef.current = combinedByMap;
 
+          setIsArchiveReady(true);
+          initialArchiveFailedRef.current = false;
           setLoading(false); // Instantly render UI without delay!
         }
       } catch (err) {
@@ -2329,6 +2372,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               setPrintedAtMap({});
               setPrintedByMap({});
               setInvoiceProgression(null);
+              initialArchiveFailedRef.current = false;
+              setIsArchiveReady(true);
               setLoading(false);
             }
             return;
@@ -2378,9 +2423,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         const result = await fetchFaktursFromTiDB();
         if (!isMounted) return;
         if (!result) {
-          showToast("⚠️ Gagal memuat arsip lengkap dari TiDB. Klik tombol Refresh (↻) di kanan atas.");
+          initialArchiveFailedRef.current = true;
+          showToast("⚠️ Gagal memuat arsip lengkap dari TiDB. Mencoba sinkronisasi ulang otomatis...");
         }
         if (result && result.fakturs && result.fakturs.length > 0) {
+          initialArchiveFailedRef.current = false;
+          setIsArchiveReady(true);
           const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], result.fakturs);
           currentFakturDocsRef.current = merged;
           clientUpdatedRef.current = result.maxUpdated;
@@ -2409,6 +2457,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         }
       } catch (err) {
         console.warn("TiDB background sync error:", err);
+        if (currentFakturDocsRef.current?.length === 0) {
+          initialArchiveFailedRef.current = true;
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -3123,6 +3174,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         if (r.orderNumber && r.orderNumber !== "-" && r.orderNumber !== g.so) {
           itemText += ` ${r.orderNumber}`;
         }
+        if (r.referenceOrderNumber && r.referenceOrderNumber !== "-" && r.referenceOrderNumber !== g.so && r.referenceOrderNumber !== r.orderNumber) {
+          itemText += ` ${r.referenceOrderNumber}`;
+        }
       }
 
       if (g.totalHarga < 0) g.isRetur = true;
@@ -3604,6 +3658,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               const normIt = normalizeSO(rawItSO);
               if (normIt) set.add(normIt);
             }
+            const itRefSO = it.referenceOrderNumber;
+            if (itRefSO && itRefSO !== "-") {
+              const rawItRefSO = String(itRefSO).trim().toUpperCase();
+              set.add(rawItRefSO);
+              const normItRef = normalizeSO(rawItRefSO);
+              if (normItRef) set.add(normItRef);
+            }
             const itAny = it as any;
             const itDo = itAny.deliveryOrder || itAny.noDo;
             if (itDo && itDo !== "-") {
@@ -3622,8 +3683,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   // Pending QC Queue: Orders physically checked in warehouse (GSheet Rekap Lengkap)
   // that do NOT yet have an Oracle invoice uploaded in the current warehouse.
   const pendingQcList = useMemo(() => {
-    // If base faktur records are still loading, avoid temporary false flash of historical QC orders!
-    if (records.length === 0 && loading) return [];
+    // If base faktur records are still loading or initial TiDB archive hasn't completed, avoid temporary false flash of historical QC orders!
+    if (records.length === 0 && (loading || !isArchiveReady)) return [];
 
     const normalizeSO = (soStr: string) => soStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
     return qcOrders.filter((qc) => {
@@ -4846,6 +4907,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               lot_number: r.lotNumber || "-",
               total_harga: r.totalHarga || 0,
               order_number: r.orderNumber || "-",
+              ...(r.referenceOrderNumber ? { reference_order_number: r.referenceOrderNumber } : {}),
             });
           }
         }
