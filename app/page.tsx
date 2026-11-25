@@ -2228,11 +2228,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
     };
 
-    // Responsive 4-second fallback interval to guarantee multi-device realtime synchronization
-    const interval = setInterval(syncNetTick, 4000);
+    // RU-efficient 30-second fallback interval (instant sync is handled by Firebase Firestore & RTDB WebSockets)
+    const interval = setInterval(syncNetTick, 30000);
 
     const onVisibility = () => {
-      if (document.visibilityState === "visible" && Date.now() - lastSyncNetTickRef.ts >= 5000) {
+      if (document.visibilityState === "visible" && Date.now() - lastSyncNetTickRef.ts >= 15000) {
         syncNetTick();
       }
     };
