@@ -2424,29 +2424,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
         }
 
-        // Cold start (completely 0 local docs): fetch archive (CDN-shared via _v=${check?.maxUpdated})
-        const result = await fetchFaktursFromTiDB(check?.maxUpdated, (partialDocs) => {
-          if (!isMounted || partialDocs.length === 0) return;
-          const mergedPartial = mergeKumulatifDocs(currentFakturDocsRef.current || [], partialDocs);
-          currentFakturDocsRef.current = mergedPartial;
-          const { records: partialRecs, printedSet: partialPrintedSet, printedAtMap: partialAtMap, printedByMap: partialByMap } = dbRowsToFakturRecords(
-            mergedPartial as unknown as Array<Record<string, unknown>>,
-            productOverridesRef.current,
-            printedInvoicesRef.current,
-            categoryOverridesRef.current
-          );
-          const nextPrinted = new Set([...Array.from(printedInvoicesRef.current || []), ...Array.from(partialPrintedSet)]);
-          const nextAtMap = { ...(printedAtMapRef.current || {}), ...partialAtMap };
-          const nextByMap = { ...(printedByMapRef.current || {}), ...partialByMap };
-          setRecords(partialRecs);
-          setPrintedInvoices(nextPrinted);
-          printedInvoicesRef.current = nextPrinted;
-          setPrintedAtMap(nextAtMap);
-          printedAtMapRef.current = nextAtMap;
-          setPrintedByMap(nextByMap);
-          printedByMapRef.current = nextByMap;
-          setLoading(false);
-        });
+        // Cold start (completely 0 local docs): fetch archive once (CDN-shared via _v=${check?.maxUpdated}) without mid-download re-render lag
+        const result = await fetchFaktursFromTiDB(check?.maxUpdated);
         if (!isMounted) return;
         if (!result) {
           initialArchiveFailedRef.current = true;
@@ -2665,7 +2644,24 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             return;
           }
 
-          if (!isPeerUploadRecent) {
+          // Always merge recent_sync docs across all laptops (even if >10 mins old) so every device converges to identical counts!
+          const curMap = new Map<string, FirestoreFakturDoc>();
+          for (const d of curDocs) {
+            const k = getAuthoritativeDocKey(d);
+            if (k) curMap.set(k, d);
+          }
+          let hasNewOrUpdatedSyncDoc = false;
+          for (const d of docs) {
+            const k = getAuthoritativeDocKey(d);
+            if (!k) continue;
+            const prev = curMap.get(k);
+            if (!prev || prev.no_sales_order !== d.no_sales_order || prev.customer_name !== d.customer_name || (d.extra?.items?.length || 0) > (prev.extra?.items?.length || 0)) {
+              hasNewOrUpdatedSyncDoc = true;
+              break;
+            }
+          }
+
+          if (!isPeerUploadRecent && !hasNewOrUpdatedSyncDoc) {
             if (curDocs.length > 0) setLoading(false);
             return;
           }

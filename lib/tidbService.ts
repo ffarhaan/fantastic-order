@@ -292,8 +292,7 @@ export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreF
 let activeFetchFaktursPromise: Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> | null = null;
 
 export async function fetchFaktursFromTiDB(
-  versionTag?: number | string,
-  onProgress?: (accumulatedDocs: FirestoreFakturDoc[], totalCount: number) => void
+  versionTag?: number | string
 ): Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> {
   if (activeFetchFaktursPromise) {
     return activeFetchFaktursPromise;
@@ -301,7 +300,7 @@ export async function fetchFaktursFromTiDB(
 
   activeFetchFaktursPromise = (async () => {
     try {
-      const PAGE_SIZE = 1500;
+      const PAGE_SIZE = 2000;
       const vQuery = versionTag ? `&_v=${encodeURIComponent(String(versionTag))}` : "";
       // Step 1: Fetch Page 0 (gets docs + exact totalCount in ~150ms, CDN-shared via _v)
       const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=0${vQuery}`);
@@ -312,9 +311,6 @@ export async function fetchFaktursFromTiDB(
       const allFakturs: FirestoreFakturDoc[] = [...firstData.fakturs];
       let maxUpdated = Number(firstData.maxUpdated || 0);
       const totalCount = Number(firstData.totalCount || 0);
-      if (onProgress && allFakturs.length > 0) {
-        onProgress([...allFakturs], totalCount);
-      }
 
       // Step 2: Reliable Batched Fetch with 3x Retry (never silently drop a page!)
       if (totalCount > PAGE_SIZE) {
@@ -344,7 +340,7 @@ export async function fetchFaktursFromTiDB(
           return null;
         };
 
-        // Fetch in batches of 4 for fast cold-start (~5-8s total) while streaming progressively to UI
+        // Fetch in batches of 4 for fast cold-start without progressive UI re-render lag
         for (let i = 0; i < remainingOffsets.length; i += 4) {
           const batchOffsets = remainingOffsets.slice(i, i + 4);
           const batchResults = await Promise.all(batchOffsets.map(fetchPageWithRetry));
@@ -354,9 +350,6 @@ export async function fetchFaktursFromTiDB(
               return null;
             }
             allFakturs.push(...chunk);
-          }
-          if (onProgress) {
-            onProgress([...allFakturs], totalCount);
           }
         }
       }
