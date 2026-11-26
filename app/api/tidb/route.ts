@@ -3747,11 +3747,11 @@ export async function POST(req: Request) {
               IF(
                 VALUES(customer_name) IS NOT NULL AND CHAR_LENGTH(VALUES(customer_name)) > 1
                   AND NOT (
-                    (UPPER(VALUES(customer_name)) LIKE _utf8mb4 '%HELIOS%' COLLATE utf8mb4_unicode_ci OR VALUES(customer_name) = _utf8mb4 '1001' COLLATE utf8mb4_unicode_ci)
+                    (UPPER(VALUES(customer_name)) LIKE '%HELIOS%' OR VALUES(customer_name) = '1001')
                     AND fakturs_archive.customer_name IS NOT NULL
                     AND CHAR_LENGTH(fakturs_archive.customer_name) > 1
-                    AND UPPER(fakturs_archive.customer_name) NOT LIKE _utf8mb4 '%HELIOS%' COLLATE utf8mb4_unicode_ci
-                    AND fakturs_archive.customer_name <> _utf8mb4 '1001' COLLATE utf8mb4_unicode_ci
+                    AND UPPER(fakturs_archive.customer_name) NOT LIKE '%HELIOS%'
+                    AND fakturs_archive.customer_name <> '1001'
                   ),
                 VALUES(customer_name),
                 fakturs_archive.customer_name
