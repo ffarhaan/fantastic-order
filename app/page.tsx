@@ -262,14 +262,13 @@ function dbRowsToFakturRecords(
       const isLocallyMarkedPrinted = !isStale && Boolean(existingPrintedSet && existingPrintedSet.has(cached.invKey));
       const hasPrintUser = Boolean(
         (r.printed_by && String(r.printed_by).trim() !== "" && String(r.printed_by).trim() !== "-") ||
-        (cached?.pBy && String(cached.pBy).trim() !== "" && String(cached.pBy).trim() !== "-") ||
-        Boolean(r.status_cetak)
+        (cached?.pBy && String(cached.pBy).trim() !== "" && String(cached.pBy).trim() !== "-")
       );
       // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
       // Stempel cetak lampau (>24 jam sebelum order_date) WAJIB diabaikan (isStale = true)!
       // TANPA NAMA USER SAH (hasPrintUser), FAKTUR MUTLAK 100% BELUM TERPRINT (isPrinted = false)!
       const isPrinted = !isStale && hasPrintUser && (isLocallyMarkedPrinted || Boolean(r.status_cetak));
-      const pBy = isPrinted ? ((r.printed_by as string) || cached.pBy || "Admin (Legacy)") : null;
+      const pBy = isPrinted ? ((r.printed_by as string) || cached.pBy || null) : null;
       if (isPrinted) {
         printedSet.add(cached.invKey);
         if (pAt) printedAtMap[cached.invKey] = pAt;
@@ -324,19 +323,17 @@ function dbRowsToFakturRecords(
     const baseKat = (r.kategori as "1P" | "2P" | "3P") || (isOra ? "1P" : categorize(cleanJenis, cust, cleanJenis, undefined, undefined, entity));
     const kategori = (overriddenKat as "1P" | "2P" | "3P") || baseKat || "3P";
     const pAt = (r.printed_at as string) || null;
-    const pByCandidate = (r.printed_by as string) || (extra.printed_by as string) || (Boolean(r.status_cetak) ? "Admin (Legacy)" : null);
+    const pBy = (r.printed_by as string) || (extra.printed_by as string) || null;
     const isStale = isStalePrintTimestamp(pAt, date);
     const isLocallyMarkedPrinted = !isStale && Boolean(existingPrintedSet && existingPrintedSet.has(invKey));
     const hasPrintUser = Boolean(
-      (pByCandidate && String(pByCandidate).trim() !== "" && String(pByCandidate).trim() !== "-") ||
-      Boolean(r.status_cetak)
+      (pBy && String(pBy).trim() !== "" && String(pBy).trim() !== "-")
     );
 
     // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
     // Stempel cetak lampau (>24 jam sebelum order_date) WAJIB diabaikan (isStale = true)!
     // TANPA NAMA USER SAH (hasPrintUser), FAKTUR MUTLAK 100% BELUM TERPRINT (isPrinted = false)!
     const isPrinted = !isStale && hasPrintUser && (isLocallyMarkedPrinted || Boolean(r.status_cetak));
-    const pBy = isPrinted ? (pByCandidate || "Admin (Legacy)") : null;
 
     if (isPrinted) {
       printedSet.add(invKey);
@@ -2408,7 +2405,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
 
 
-        if (clientCount > 0) {
+        const isCacheIncomplete = Boolean(check && check.totalCount > 1000 && clientCount < (check.totalCount - 50));
+
+        if (clientCount > 0 && !isCacheIncomplete) {
           // If local IndexedDB has MORE rows than TiDB (e.g. previous upload failed to reach TiDB),
           // automatically push those missing rows into TiDB once so all laptops converge to the exact same count!
           if (check && check.totalCount > 0 && clientCount > check.totalCount && currentFakturDocsRef.current?.length > 0) {

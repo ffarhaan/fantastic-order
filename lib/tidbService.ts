@@ -305,7 +305,7 @@ export async function fetchFaktursFromTiDB(
 
   activeFetchFaktursPromise = (async () => {
     try {
-      const PAGE_SIZE = 5000;
+      const PAGE_SIZE = 1200;
       const vQuery = versionTag ? `&_v=${encodeURIComponent(String(versionTag))}` : "";
       const allFakturs: FirestoreFakturDoc[] = [];
       let cursor = "";
@@ -335,11 +335,7 @@ export async function fetchFaktursFromTiDB(
         }
 
         if (!pageData) {
-          console.error(`[TiDB Read] Page ${pageCount} failed after 3 attempts.`);
-          if (allFakturs.length > 0) {
-            // Partial resilience: return accumulated documents rather than aborting cold-start entirely
-            break;
-          }
+          console.error(`[TiDB Read] Page ${pageCount} failed after 3 attempts; aborting partial archive save.`);
           return null;
         }
 
