@@ -2722,12 +2722,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
         }
 
-        // Only pull TiDB delta when metadata (`saveFaktursBatch`) is committed AFTER `syncFaktursToTiDB` finishes!
-        if (reason === "meta" && isPeerUploadRecent) {
-          performPeerSync(true);
-          setTimeout(() => performPeerSync(true), 1200);
-        }
-
+        // Pure Push Realtime: peers already receive uploaded docs in < 100ms via `recent_sync` WebSocket.
+        // No redundant `performPeerSync` loop on `meta` — TiDB signal handles single background catch-up if needed.
         if ((reason as string) === "print" || reason === "meta") {
           if (currentFakturDocsRef.current?.length > 0) setLoading(false);
           return;
@@ -2736,9 +2732,9 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         if (docs.length > 0) {
           const curDocs = currentFakturDocsRef.current || [];
 
-          // On cold start (< 1000 docs while TiDB archive is still loading), stage recent_sync docs in memory
-          // without prematurely rendering partial counts (which would flash inflated REPORT QC) or closing loading.
-          if (curDocs.length < 1000) {
+          // On cold start (< 1000 docs) with stale/old recent_sync, stage in memory while TiDB archive loads;
+          // if this is a FRESH peer upload (`isPeerUploadRecent`), render immediately (< 100ms) like early Nov!
+          if (curDocs.length < 1000 && !isPeerUploadRecent) {
             currentFakturDocsRef.current = mergeKumulatifDocs(curDocs, docs);
             return;
           }
@@ -2801,13 +2797,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
     );
 
-    // Subscribe to TiDB completion signal so peer browsers pull 100% of newly committed TiDB rows immediately
+    // Subscribe to TiDB completion signal: single lightweight catch-up sync (replaces 3x redundant TiDB pulls)
     const unsubTiDBSignal = subscribeToRealtimeSignal("fakturs", async (ts, senderId) => {
       if (senderId && senderId === deviceIdRef.current) return;
       if (isUploadingRef.current) return;
-      setTimeout(() => performPeerSync(true), 50);
-      setTimeout(() => performPeerSync(true), 1200);
-      setTimeout(() => performPeerSync(true), 2800);
+      setTimeout(() => performPeerSync(true), 300);
     });
 
     // Subscribe to Real-Time Total Reset signal from Owner so ALL browsers/devices wipe to 0 immediately

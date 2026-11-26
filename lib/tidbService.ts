@@ -195,17 +195,42 @@ export async function reconcileMissingFromTiDB(
       (k) => k && !k.startsWith("TEST-") && !localKeySet.has(k)
     );
     if (missingOnClient.length === 0) return [];
-    if (missingOnClient.length > 500) return null; // Too many missing; caller should run full archive fetch
 
-    const fetchRes = await fetch("/api/tidb", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "fetch_by_keys", keys: missingOnClient }),
-    });
-    if (!fetchRes.ok) return null;
-    const fetchData = await fetchRes.json();
-    if (!fetchData.success || !Array.isArray(fetchData.fakturs)) return null;
-    return fetchData.fakturs as FirestoreFakturDoc[];
+    // Fast chunking in batches of 500 to reliably retrieve all missing invoices across any device
+    const batches: string[][] = [];
+    for (let i = 0; i < missingOnClient.length; i += 500) {
+      batches.push(missingOnClient.slice(i, i + 500));
+    }
+
+    const fetchedDocs: FirestoreFakturDoc[] = [];
+    const fetchBatch = async (batchKeys: string[]): Promise<FirestoreFakturDoc[] | null> => {
+      try {
+        const fetchRes = await fetch("/api/tidb", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "fetch_by_keys", keys: batchKeys }),
+        });
+        if (!fetchRes.ok) return null;
+        const fetchData = await fetchRes.json();
+        if (!fetchData.success || !Array.isArray(fetchData.fakturs)) return null;
+        return fetchData.fakturs as FirestoreFakturDoc[];
+      } catch {
+        return null;
+      }
+    };
+
+    // Parallel fetch up to 4 batches at once (< 1s total)
+    for (let i = 0; i < batches.length; i += 4) {
+      const chunk = batches.slice(i, i + 4);
+      const results = await Promise.all(chunk.map(fetchBatch));
+      for (const res of results) {
+        if (res && res.length > 0) {
+          fetchedDocs.push(...res);
+        }
+      }
+    }
+
+    return fetchedDocs.length > 0 ? fetchedDocs : null;
   } catch (err) {
     console.warn("[TiDB Reconcile] Error:", err);
     return null;

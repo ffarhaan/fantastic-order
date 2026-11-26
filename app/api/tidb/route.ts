@@ -1384,31 +1384,23 @@ export async function GET(req: Request) {
       let totalCount = 0;
       let maxUpdated = 0;
 
-      if (memoryCheckCache && (now - memoryCheckCache.ts < 30000)) {
+      // Ultra-short 2s memory cache to prevent TiDB connection spam while maintaining instant multi-device sync
+      if (memoryCheckCache && (now - memoryCheckCache.ts < 2000)) {
         totalCount = memoryCheckCache.payload.totalCount;
         maxUpdated = memoryCheckCache.payload.maxUpdated;
       } else {
-        // Fast 1-row index lookup (0.001 RU vs 28.2k row full scan)
+        // Fast index lookup for max_updated
         const maxRes = (await conn.execute(
           "SELECT UNIX_TIMESTAMP(updated_at) as max_updated FROM fakturs_archive ORDER BY updated_at DESC LIMIT 1;"
         )) as Array<{ max_updated: number | null }>;
         maxUpdated = Number(maxRes[0]?.max_updated || 0);
 
-        const clientCount = Number(searchParams.get("count") || 0);
-        const clientUpdated = Number(searchParams.get("updated") || 0);
+        // Always fetch authoritative count directly from database (prevents out-of-sync devices from being misled)
+        const countRes = (await conn.execute(
+          "SELECT COUNT(*) as count FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
+        )) as Array<{ count: number }>;
+        totalCount = Number(countRes[0]?.count || 0);
 
-        if (clientUpdated > 0 && maxUpdated > 0 && maxUpdated <= clientUpdated && clientCount > 0) {
-          // Zero-RU Short Circuit: If maxUpdated is not newer than client's updated timestamp,
-          // no row was inserted or updated, so total count is mathematically identical to clientCount!
-          totalCount = clientCount;
-        } else if (memoryCheckCache && memoryCheckCache.payload.maxUpdated === maxUpdated && memoryCheckCache.payload.totalCount > 0) {
-          totalCount = memoryCheckCache.payload.totalCount;
-        } else {
-          const countRes = (await conn.execute(
-            "SELECT COUNT(*) as count FROM fakturs_archive;"
-          )) as Array<{ count: number }>;
-          totalCount = Number(countRes[0]?.count || 0);
-        }
         memoryCheckCache = { payload: { totalCount, maxUpdated }, ts: now };
       }
 
@@ -1425,9 +1417,9 @@ export async function GET(req: Request) {
           maxUpdated,
         },
         {
-          "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
-          "CDN-Cache-Control": "public, s-maxage=10",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=10",
+          "Cache-Control": "private, no-cache, no-store, must-revalidate",
+          "CDN-Cache-Control": "private, no-cache",
+          "Vercel-CDN-Cache-Control": "private, no-cache",
         }
       );
     }
@@ -3859,7 +3851,7 @@ export async function POST(req: Request) {
     }
 
     if (action === "fetch_by_keys") {
-      const keys: string[] = (body.keys || []).map((k: string) => String(k).trim()).filter(Boolean).slice(0, 500);
+      const keys: string[] = (body.keys || []).map((k: string) => String(k).trim()).filter(Boolean).slice(0, 1000);
       if (keys.length === 0) {
         return Response.json({ success: true, fakturs: [] });
       }
