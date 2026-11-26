@@ -2150,15 +2150,18 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         }
       }
 
-      // 3. Centralized Parity Reconciler: when triggered by a peer signal (forceSync) and local count still lags TiDB,
-      // fetch ONLY the missing keys (<20KB) so every connected device converges to 100% identical counts!
+      // 3. Centralized Parity Reconciler: when triggered by a peer signal (forceSync) and local count still lags or leads TiDB,
+      // reconcile immediately (<20KB) so every connected device converges to 100% identical counts!
       if (forceSync) {
         const afterLen = currentFakturDocsRef.current?.length || 0;
         const serverCheck = await checkTiDBUpdates(afterLen, clientUpdatedRef.current || 0);
-        if (serverCheck && serverCheck.totalCount > afterLen) {
+        if (serverCheck && serverCheck.totalCount !== afterLen) {
           const reconciled = await reconcileMissingFromTiDB(currentFakturDocsRef.current || []);
-          if (reconciled && reconciled.length > 0) {
-            const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], reconciled);
+          const isLengthChanged = (currentFakturDocsRef.current?.length || 0) !== afterLen;
+          if ((reconciled && reconciled.length > 0) || isLengthChanged) {
+            const merged = (reconciled && reconciled.length > 0)
+              ? mergeKumulatifDocs(currentFakturDocsRef.current || [], reconciled)
+              : (currentFakturDocsRef.current || []);
             currentFakturDocsRef.current = merged;
             if (serverCheck.maxUpdated > (clientUpdatedRef.current || 0)) {
               clientUpdatedRef.current = serverCheck.maxUpdated;
@@ -3055,10 +3058,13 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       // Parity Reconciler on Manual Refresh: If client still lags TiDB count (e.g. missed an older packet),
       // immediately fetch missing rows directly so laptop counts converge to 100% identical!
       let curLen = currentFakturDocsRef.current?.length || 0;
-      if (check && check.totalCount > 0 && curLen < check.totalCount) {
+      if (check && check.totalCount > 0 && curLen !== check.totalCount) {
         const reconciled = await reconcileMissingFromTiDB(currentFakturDocsRef.current || []);
-        if (reconciled && reconciled.length > 0) {
-          const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], reconciled);
+        const isLenChanged = (currentFakturDocsRef.current?.length || 0) !== curLen;
+        if ((reconciled && reconciled.length > 0) || isLenChanged) {
+          const merged = (reconciled && reconciled.length > 0)
+            ? mergeKumulatifDocs(currentFakturDocsRef.current || [], reconciled)
+            : (currentFakturDocsRef.current || []);
           currentFakturDocsRef.current = merged;
           curLen = merged.length;
           const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(

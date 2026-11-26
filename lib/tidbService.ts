@@ -156,14 +156,16 @@ export async function searchFaktursInTiDB(
 export async function syncMissingFaktursToTiDB(localFakturs: FirestoreFakturDoc[]): Promise<number> {
   if (!localFakturs || localFakturs.length === 0) return 0;
   try {
-    const res = await fetch("/api/tidb?action=keys");
+    const res = await fetch(`/api/tidb?action=keys&_t=${Date.now()}`);
     if (!res.ok) return 0;
     const data = await res.json();
     if (!data.success || !Array.isArray(data.keys)) return 0;
     const serverKeySet = new Set<string>(data.keys);
     const missing = localFakturs.filter((f) => {
-      const k = String(f.id || f.no_faktur || "").trim();
-      return k && !k.startsWith("TEST-") && !serverKeySet.has(k);
+      const k = String((f as any).invoice_key || f.id || f.no_faktur || "").trim();
+      // Strictly prevent pushing phantom composite rows '__' or test rows back to TiDB
+      if (!k || k.startsWith("TEST-") || k.includes("__")) return false;
+      return !serverKeySet.has(k);
     });
     if (missing.length > 0) {
       await syncFaktursToTiDB(missing);
@@ -184,6 +186,22 @@ export async function reconcileMissingFromTiDB(
     if (!res.ok) return null;
     const data = await res.json();
     if (!data.success || !Array.isArray(data.keys)) return null;
+
+    const serverKeySet = new Set<string>(data.keys);
+
+    // Self-Prune: If local memory holds deleted phantom composite duplicates '__', prune them immediately!
+    if (Array.isArray(localFakturs) && localFakturs.length > 0) {
+      const validLocal = localFakturs.filter((f) => {
+        const rawKey = String((f as any).invoice_key || f.id || "").trim();
+        if (rawKey && rawKey.includes("__") && !serverKeySet.has(rawKey)) {
+          return false; // Removed from server, prune locally
+        }
+        return true;
+      });
+      if (validLocal.length !== localFakturs.length) {
+        localFakturs.splice(0, localFakturs.length, ...validLocal);
+      }
+    }
 
     const localKeySet = new Set<string>();
     for (const f of localFakturs || []) {
