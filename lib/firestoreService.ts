@@ -177,7 +177,7 @@ export function isStalePrintTimestamp(
 
 // Authoritative Invoice Key Resolver (Strict LOCKED_RULES.md Enforcement):
 // DOO vs ORA (-1P) are 100% isolated. Never fall back bare cleanInv for ORA!
-function getAuthoritativeDocKey(d: FirestoreFakturDoc | Record<string, unknown>): string {
+export function getAuthoritativeDocKey(d: FirestoreFakturDoc | Record<string, unknown>): string {
   const rawKey = String((d as any).invoice_key || (d as any).id || "").trim();
   const rawInv = String((d as any).no_faktur || "").trim();
   if (rawKey && rawKey !== "undefined" && rawKey !== "null" && (rawKey.includes("__") || rawKey.includes("#") || rawKey.startsWith("MAI-") || rawKey.endsWith("-1P"))) {

@@ -9,7 +9,7 @@
  */
 
 import { FirestoreFakturDoc } from "./types";
-import { broadcastRealtimeSignal } from "./firestoreService";
+import { broadcastRealtimeSignal, getAuthoritativeDocKey } from "./firestoreService";
 import { calculateDominantCategory } from "./parser";
 
 export async function syncFaktursToTiDB(
@@ -162,7 +162,7 @@ export async function syncMissingFaktursToTiDB(localFakturs: FirestoreFakturDoc[
     if (!data.success || !Array.isArray(data.keys)) return 0;
     const serverKeySet = new Set<string>(data.keys);
     const missing = localFakturs.filter((f) => {
-      const k = String((f as any).invoice_key || f.id || f.no_faktur || "").trim();
+      const k = getAuthoritativeDocKey(f) || String((f as any).invoice_key || f.id || "").trim();
       // Strictly prevent pushing phantom composite rows '__' or test rows back to TiDB
       if (!k || k.startsWith("TEST-") || k.includes("__")) return false;
       return !serverKeySet.has(k);
@@ -205,11 +205,10 @@ export async function reconcileMissingFromTiDB(
 
     const localKeySet = new Set<string>();
     for (const f of localFakturs || []) {
+      const authKey = getAuthoritativeDocKey(f);
+      if (authKey) localKeySet.add(authKey);
       const rawKey = String((f as any).invoice_key || f.id || "").trim();
-      const rawInv = String(f.no_faktur || "").trim();
-      if (rawKey) localKeySet.add(rawKey);
-      if (rawInv) localKeySet.add(rawInv);
-      if (rawInv && !rawInv.endsWith("-1P")) localKeySet.add(`${rawInv}-1P`);
+      if (rawKey && rawKey !== "undefined" && rawKey !== "null") localKeySet.add(rawKey);
     }
 
     const missingOnClient = (data.keys as string[]).filter(
