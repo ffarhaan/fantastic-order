@@ -3747,11 +3747,11 @@ export async function POST(req: Request) {
               IF(
                 VALUES(customer_name) IS NOT NULL AND CHAR_LENGTH(VALUES(customer_name)) > 1
                   AND NOT (
-                    (UPPER(VALUES(customer_name)) LIKE '%HELIOS%' OR VALUES(customer_name) = '1001')
+                    (UPPER(VALUES(customer_name)) LIKE _utf8mb4 '%HELIOS%' COLLATE utf8mb4_unicode_ci OR VALUES(customer_name) = _utf8mb4 '1001' COLLATE utf8mb4_unicode_ci)
                     AND fakturs_archive.customer_name IS NOT NULL
                     AND CHAR_LENGTH(fakturs_archive.customer_name) > 1
-                    AND UPPER(fakturs_archive.customer_name) NOT LIKE '%HELIOS%'
-                    AND fakturs_archive.customer_name <> '1001'
+                    AND UPPER(fakturs_archive.customer_name) NOT LIKE _utf8mb4 '%HELIOS%' COLLATE utf8mb4_unicode_ci
+                    AND fakturs_archive.customer_name <> _utf8mb4 '1001' COLLATE utf8mb4_unicode_ci
                   ),
                 VALUES(customer_name),
                 fakturs_archive.customer_name
@@ -3769,10 +3769,10 @@ export async function POST(req: Request) {
               AND fakturs_archive.order_date = VALUES(order_date) 
               AND (
                 fakturs_archive.customer_name = VALUES(customer_name)
-                OR VALUES(customer_name) LIKE '%ORANG TUA%'
-                OR VALUES(customer_name) LIKE '%EXPORT%'
-                OR VALUES(customer_name) LIKE '%PT. ORA%'
-                OR LOCATE('1P', fakturs_archive.invoice_key) > 0
+                OR VALUES(customer_name) LIKE _utf8mb4 '%ORANG TUA%' COLLATE utf8mb4_unicode_ci
+                OR VALUES(customer_name) LIKE _utf8mb4 '%EXPORT%' COLLATE utf8mb4_unicode_ci
+                OR VALUES(customer_name) LIKE _utf8mb4 '%PT. ORA%' COLLATE utf8mb4_unicode_ci
+                OR LOCATE(_utf8mb4 '1P' COLLATE utf8mb4_unicode_ci, fakturs_archive.invoice_key) > 0
               )
               AND fakturs_archive.status_cetak = 1, 
               1, 
@@ -3783,10 +3783,10 @@ export async function POST(req: Request) {
               AND fakturs_archive.order_date = VALUES(order_date) 
               AND (
                 fakturs_archive.customer_name = VALUES(customer_name)
-                OR VALUES(customer_name) LIKE '%ORANG TUA%'
-                OR VALUES(customer_name) LIKE '%EXPORT%'
-                OR VALUES(customer_name) LIKE '%PT. ORA%'
-                OR LOCATE('1P', fakturs_archive.invoice_key) > 0
+                OR VALUES(customer_name) LIKE _utf8mb4 '%ORANG TUA%' COLLATE utf8mb4_unicode_ci
+                OR VALUES(customer_name) LIKE _utf8mb4 '%EXPORT%' COLLATE utf8mb4_unicode_ci
+                OR VALUES(customer_name) LIKE _utf8mb4 '%PT. ORA%' COLLATE utf8mb4_unicode_ci
+                OR LOCATE(_utf8mb4 '1P' COLLATE utf8mb4_unicode_ci, fakturs_archive.invoice_key) > 0
               )
               AND fakturs_archive.status_cetak = 1, 
               fakturs_archive.printed_at, 
@@ -3797,10 +3797,10 @@ export async function POST(req: Request) {
               AND fakturs_archive.order_date = VALUES(order_date) 
               AND (
                 fakturs_archive.customer_name = VALUES(customer_name)
-                OR VALUES(customer_name) LIKE '%ORANG TUA%'
-                OR VALUES(customer_name) LIKE '%EXPORT%'
-                OR VALUES(customer_name) LIKE '%PT. ORA%'
-                OR LOCATE('1P', fakturs_archive.invoice_key) > 0
+                OR VALUES(customer_name) LIKE _utf8mb4 '%ORANG TUA%' COLLATE utf8mb4_unicode_ci
+                OR VALUES(customer_name) LIKE _utf8mb4 '%EXPORT%' COLLATE utf8mb4_unicode_ci
+                OR VALUES(customer_name) LIKE _utf8mb4 '%PT. ORA%' COLLATE utf8mb4_unicode_ci
+                OR LOCATE(_utf8mb4 '1P' COLLATE utf8mb4_unicode_ci, fakturs_archive.invoice_key) > 0
               )
               AND fakturs_archive.status_cetak = 1, 
               fakturs_archive.printed_by, 
@@ -4088,10 +4088,10 @@ export async function POST(req: Request) {
               AND fakturs_archive.order_date = VALUES(order_date) 
               AND (
                 fakturs_archive.customer_name = VALUES(customer_name)
-                OR VALUES(customer_name) LIKE '%ORANG TUA%'
-                OR VALUES(customer_name) LIKE '%EXPORT%'
-                OR VALUES(customer_name) LIKE '%PT. ORA%'
-                OR LOCATE('1P', fakturs_archive.invoice_key) > 0
+                OR VALUES(customer_name) LIKE _utf8mb4 '%ORANG TUA%' COLLATE utf8mb4_unicode_ci
+                OR VALUES(customer_name) LIKE _utf8mb4 '%EXPORT%' COLLATE utf8mb4_unicode_ci
+                OR VALUES(customer_name) LIKE _utf8mb4 '%PT. ORA%' COLLATE utf8mb4_unicode_ci
+                OR LOCATE(_utf8mb4 '1P' COLLATE utf8mb4_unicode_ci, fakturs_archive.invoice_key) > 0
               )
               AND fakturs_archive.status_cetak = 1, 
               1, 
@@ -4102,10 +4102,10 @@ export async function POST(req: Request) {
               AND fakturs_archive.order_date = VALUES(order_date) 
               AND (
                 fakturs_archive.customer_name = VALUES(customer_name)
-                OR VALUES(customer_name) LIKE '%ORANG TUA%'
-                OR VALUES(customer_name) LIKE '%EXPORT%'
-                OR VALUES(customer_name) LIKE '%PT. ORA%'
-                OR LOCATE('1P', fakturs_archive.invoice_key) > 0
+                OR VALUES(customer_name) LIKE _utf8mb4 '%ORANG TUA%' COLLATE utf8mb4_unicode_ci
+                OR VALUES(customer_name) LIKE _utf8mb4 '%EXPORT%' COLLATE utf8mb4_unicode_ci
+                OR VALUES(customer_name) LIKE _utf8mb4 '%PT. ORA%' COLLATE utf8mb4_unicode_ci
+                OR LOCATE(_utf8mb4 '1P' COLLATE utf8mb4_unicode_ci, fakturs_archive.invoice_key) > 0
               )
               AND fakturs_archive.status_cetak = 1, 
               fakturs_archive.printed_at, 
@@ -4116,10 +4116,10 @@ export async function POST(req: Request) {
               AND fakturs_archive.order_date = VALUES(order_date) 
               AND (
                 fakturs_archive.customer_name = VALUES(customer_name)
-                OR VALUES(customer_name) LIKE '%ORANG TUA%'
-                OR VALUES(customer_name) LIKE '%EXPORT%'
-                OR VALUES(customer_name) LIKE '%PT. ORA%'
-                OR LOCATE('1P', fakturs_archive.invoice_key) > 0
+                OR VALUES(customer_name) LIKE _utf8mb4 '%ORANG TUA%' COLLATE utf8mb4_unicode_ci
+                OR VALUES(customer_name) LIKE _utf8mb4 '%EXPORT%' COLLATE utf8mb4_unicode_ci
+                OR VALUES(customer_name) LIKE _utf8mb4 '%PT. ORA%' COLLATE utf8mb4_unicode_ci
+                OR LOCATE(_utf8mb4 '1P' COLLATE utf8mb4_unicode_ci, fakturs_archive.invoice_key) > 0
               )
               AND fakturs_archive.status_cetak = 1, 
               fakturs_archive.printed_by, 
