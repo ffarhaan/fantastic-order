@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { FirestoreFakturDoc, PrintState, InvoiceProgression, UploadNotification, ActiveUserPresence, PrintSignalPayload } from "./types";
-import { normalize } from "./parser";
+import { normalize, isOraCustomer } from "./parser";
 
 export type { FirestoreFakturDoc, PrintState, InvoiceProgression, UploadNotification, ActiveUserPresence, PrintSignalPayload };
 

@@ -230,6 +230,58 @@ function getAuthoritativeDocKey(d: FirestoreFakturDoc | Record<string, unknown>)
   return isMai ? `MAI-${baseKey}` : baseKey;
 }
 
+function buildItemsFromRaw(
+  firstRec: FakturRecord,
+  rawItems: Array<Record<string, unknown>> | undefined,
+  productOverrides?: Record<string, string>
+): FakturRecord[] {
+  if (!rawItems || rawItems.length === 0) {
+    return [firstRec];
+  }
+  const hasProdOverrides = Boolean(productOverrides && Object.keys(productOverrides).length > 0);
+  return rawItems.map((it, idx) => {
+    const itemCode = String(it.item_code || "-");
+    const itemDesc = String(it.item_description || "-");
+    let katProd = String(it.kategori_produk || "").trim().toUpperCase();
+    if (hasProdOverrides && productOverrides) {
+      const normDesc = itemDesc ? normalize(itemDesc) : "";
+      if (productOverrides[itemCode] || (normDesc && productOverrides[normDesc]) || productOverrides[itemDesc]) {
+        katProd = getProductCategory(itemCode, itemDesc, productOverrides);
+      }
+    }
+    if (!katProd) katProd = "FARMA";
+    const itemPrice = parseNumeric(it.total_harga);
+    const itSO = String(it.order_number || "").trim();
+    const itRefSO = String(it.reference_order_number || "").trim();
+    return {
+      orderDate: firstRec.orderDate,
+      transactionDate: firstRec.transactionDate,
+      orderNumber: (itSO && itSO !== "-") ? itSO : firstRec.orderNumber,
+      ...(itRefSO && itRefSO !== "-" && itRefSO !== firstRec.orderNumber ? { referenceOrderNumber: itRefSO } : {}),
+      invoiceNumber: firstRec.invoiceNumber,
+      invoiceKey: firstRec.invoiceKey,
+      jenisTransaksi: firstRec.jenisTransaksi,
+      customerName: firstRec.customerName,
+      itemCode,
+      itemDescription: itemDesc,
+      qty: (it.qty as number | string) || 0,
+      uom: String(it.uom || "-"),
+      lotNumber: String(it.lot_number || "-"),
+      totalHarga: itemPrice,
+      kategori: firstRec.kategori,
+      kategoriProduk: katProd,
+      klasifikasiObat: katProd === "PREKURSOR" ? "Prekursor" : katProd === "OOT" ? "OOT" : undefined,
+      entity: firstRec.entity,
+      isDoubleInv: firstRec.isDoubleInv,
+      isRetur: itemPrice < 0 || itemDesc.toUpperCase().includes("RETUR"),
+      status_cetak: firstRec.status_cetak,
+      printed_at: firstRec.printed_at,
+      printed_by: firstRec.printed_by,
+      rowIndex: idx,
+    };
+  });
+}
+
 function dbRowsToFakturRecords(
   rows: Array<Record<string, unknown>>,
   productOverrides?: Record<string, string>,
@@ -246,56 +298,9 @@ function dbRowsToFakturRecords(
   const printedAtMap: Record<string, string> = {};
   const printedByMap: Record<string, string> = {};
   const overrides = catOverrides || {};
-  const hasProdOverrides = Boolean(productOverrides && Object.keys(productOverrides).length > 0);
   const soInvMap = new Map<string, Set<string>>();
 
   for (const r of rows) {
-    const cached = docRecordsCacheMap.get(r);
-    if (
-      cached &&
-      cached.prodOverridesRef === productOverrides &&
-      cached.catOverridesRef === catOverrides
-    ) {
-      const cachedDate = String(cached.recs[0]?.orderDate || "");
-      const pAt = (r.printed_at as string) || cached.pAt || null;
-      const isStale = isStalePrintTimestamp(pAt, cachedDate);
-      const isLocallyMarkedPrinted = !isStale && Boolean(existingPrintedSet && existingPrintedSet.has(cached.invKey));
-      const hasPrintUser = Boolean(
-        (r.printed_by && String(r.printed_by).trim() !== "" && String(r.printed_by).trim() !== "-") ||
-        (cached?.pBy && String(cached.pBy).trim() !== "" && String(cached.pBy).trim() !== "-")
-      );
-      // Mandat Mutlak User: Sistem DILARANG menandai done. HANYA user yang boleh menandai done!
-      // Stempel cetak lampau (>24 jam sebelum order_date) WAJIB diabaikan (isStale = true)!
-      // TANPA NAMA USER SAH (hasPrintUser), FAKTUR MUTLAK 100% BELUM TERPRINT (isPrinted = false)!
-      const isPrinted = !isStale && hasPrintUser && (isLocallyMarkedPrinted || Boolean(r.status_cetak));
-      const pBy = isPrinted ? ((r.printed_by as string) || cached.pBy || null) : null;
-      if (isPrinted) {
-        printedSet.add(cached.invKey);
-        if (pAt) printedAtMap[cached.invKey] = pAt;
-        if (pBy) printedByMap[cached.invKey] = pBy;
-      } else {
-        printedSet.delete(cached.invKey);
-        delete printedAtMap[cached.invKey];
-        delete printedByMap[cached.invKey];
-      }
-      if (cached.docSO && cached.docSO !== "-") {
-        let set = soInvMap.get(cached.docSO);
-        if (!set) {
-          set = new Set();
-          soInvMap.set(cached.docSO, set);
-        }
-        set.add(cached.cleanInv);
-      }
-      for (let i = 0; i < cached.recs.length; i++) {
-        const rec = cached.recs[i];
-        rec.status_cetak = isPrinted;
-        rec.printed_at = isPrinted ? pAt : null;
-        rec.printed_by = isPrinted ? pBy : null;
-        records.push(rec);
-      }
-      continue;
-    }
-
     const rawInv = String(r.no_faktur || "");
     if (!rawInv || rawInv.startsWith("TEST-")) continue;
     const extra = (r.extra as Record<string, unknown>) || {};
@@ -319,7 +324,6 @@ function dbRowsToFakturRecords(
       : (entity === "MAI" ? `MAI-${baseKey}` : baseKey);
     const cleanJenis: "DOO" | "ORA" = isOra ? "ORA" : "DOO";
     const overriddenKat = overrides[normCust] || overrides[cust] || overrides[cleanInv] || overrides[invKey] || (extra.kategori as string);
-    // Anti-lag: Skip expensive categorize() regex if r.kategori is already cached/saved!
     const baseKat = (r.kategori as "1P" | "2P" | "3P") || (isOra ? "1P" : categorize(cleanJenis, cust, cleanJenis, undefined, undefined, entity));
     const kategori = (overriddenKat as "1P" | "2P" | "3P") || baseKat || "3P";
     const pAt = (r.printed_at as string) || null;
@@ -355,39 +359,37 @@ function dbRowsToFakturRecords(
       set.add(cleanInv);
     }
 
-    const docRecs: FakturRecord[] = [];
+    let docAmount = 0;
+    let isReturDoc = false;
+    let hasPrekursor = false;
+    let hasOOT = false;
+    let hasCCP = false;
+    let hasAlkes = false;
+    let hasFarma = false;
+    let itemSearchParts = "";
+
+    const isOctDate = date.includes("/10/") || txDate.includes("/10/");
+    const isDocNotNovSO = Boolean(docSO && !docSO.startsWith("170") && !docSO.startsWith("171"));
+    let firstItemSO = docSO;
 
     if (items.length > 0) {
-      const isOctDate = date.includes("/10/") || txDate.includes("/10/");
-      const isDocNotNovSO = Boolean(docSO && !docSO.startsWith("170") && !docSO.startsWith("171"));
       for (let idx = 0; idx < items.length; idx++) {
         const it = items[idx];
-        const itemCode = String(it.item_code || "");
-        const itemDesc = String(it.item_description || "");
-        let katProd = String(it.kategori_produk || "").trim().toUpperCase();
-        if (hasProdOverrides && productOverrides) {
-          const normDesc = itemDesc ? normalize(itemDesc) : "";
-          if (productOverrides[itemCode] || (normDesc && productOverrides[normDesc]) || productOverrides[itemDesc]) {
-            katProd = getProductCategory(itemCode, itemDesc, productOverrides);
-          }
-        }
-        if (!katProd) {
-          katProd = getProductCategory(itemCode, itemDesc, productOverrides) || "FARMA";
-        }
-        const klasObat =
-          katProd === "PREKURSOR"
-            ? "Prekursor"
-            : katProd === "OOT"
-            ? "OOT"
-            : undefined;
-        const itSO = String(it.order_number || "").trim();
-        const itRefSO = String(it.reference_order_number || "").trim();
-        const isNovSO = itSO.startsWith("170") || itSO.startsWith("171");
-        // Strict Isolation per LOCKED_RULES.md A.8: Never allow a November SO to contaminate an October transaction!
-        const validSO = (isOctDate && isNovSO && isDocNotNovSO)
-          ? docSO
-          : (itSO || docSO || "-");
+        const itPrice = parseNumeric(it.total_harga);
+        docAmount += itPrice;
+        const itDesc = String(it.item_description || "");
+        if (itPrice < 0 || itDesc.toUpperCase().includes("RETUR")) isReturDoc = true;
+        const kat = String(it.kategori_produk || "").trim().toUpperCase();
+        if (kat === "PREKURSOR") hasPrekursor = true;
+        else if (kat === "OOT") hasOOT = true;
+        else if (kat === "CCP") hasCCP = true;
+        else if (kat === "ALKES") hasAlkes = true;
+        else hasFarma = true;
 
+        const itSO = String(it.order_number || "").trim();
+        const isNovSO = itSO.startsWith("170") || itSO.startsWith("171");
+        const validSO = (isOctDate && isNovSO && isDocNotNovSO) ? docSO : (itSO || docSO || "-");
+        if (idx === 0 && validSO && validSO !== "-") firstItemSO = validSO;
         if (validSO && validSO !== "-" && validSO !== docSO) {
           let set = soInvMap.get(validSO);
           if (!set) {
@@ -396,80 +398,61 @@ function dbRowsToFakturRecords(
           }
           set.add(cleanInv);
         }
-
-        const itemPrice = parseNumeric(it.total_harga);
-        const rec: FakturRecord = {
-          orderDate: date,
-          transactionDate: txDate,
-          orderNumber: validSO || "-",
-          ...(itRefSO && itRefSO !== "-" && itRefSO !== validSO ? { referenceOrderNumber: itRefSO } : {}),
-          invoiceNumber: cleanInv,
-          invoiceKey: invKey,
-          jenisTransaksi: cleanJenis,
-          customerName: cust,
-          itemCode,
-          itemDescription: itemDesc,
-          qty: (it.qty as number | string) || 0,
-          uom: String(it.uom || "-"),
-          lotNumber: String(it.lot_number || "-"),
-          totalHarga: itemPrice,
-          kategori,
-          kategoriProduk: katProd,
-          klasifikasiObat: klasObat,
-          entity,
-          isDoubleInv: false,
-          isRetur: itemPrice < 0 || itemDesc.toUpperCase().includes("RETUR") || cleanInv.toUpperCase().includes("RETUR") || String(extra.jenis_transaksi || "").toUpperCase().includes("RETUR"),
-          status_cetak: isPrinted,
-          printed_at: isPrinted ? pAt : null,
-          printed_by: isPrinted ? pBy : null,
-          rowIndex: idx,
-        };
-        docRecs.push(rec);
-        records.push(rec);
+        if (it.item_code && it.item_code !== "-") itemSearchParts += " " + it.item_code;
+        if (itDesc && itDesc !== "-") itemSearchParts += " " + itDesc;
       }
     } else {
-      const docAmount = parseNumeric(extra.total_harga);
-      const rec: FakturRecord = {
-        orderDate: date,
-        transactionDate: txDate,
-        orderNumber: docSO || "-",
-        invoiceNumber: cleanInv,
-        invoiceKey: invKey,
-        jenisTransaksi: cleanJenis,
-        customerName: cust,
-        itemCode: "-",
-        itemDescription: "-",
-        qty: 1,
-        uom: "-",
-        lotNumber: "-",
-        totalHarga: docAmount,
-        kategori,
-        kategoriProduk: (r.kategori_produk as string) || (extra.kategori_produk as string) || "FARMA",
-        entity,
-        isDoubleInv: false,
-        isRetur: docAmount < 0 || cleanInv.toUpperCase().includes("RETUR") || String(extra.jenis_transaksi || "").toUpperCase().includes("RETUR"),
-        status_cetak: isPrinted,
-        printed_at: isPrinted ? pAt : null,
-        printed_by: isPrinted ? pBy : null,
-        rowIndex: 0,
-      };
-      docRecs.push(rec);
-      records.push(rec);
+      docAmount = parseNumeric(extra.total_harga);
+      if (docAmount < 0 || cleanInv.toUpperCase().includes("RETUR") || String(extra.jenis_transaksi || "").toUpperCase().includes("RETUR")) {
+        isReturDoc = true;
+      }
+      const k = String(r.kategori_produk || extra.kategori_produk || "FARMA").toUpperCase();
+      if (k === "ALKES") hasAlkes = true;
+      else hasFarma = true;
     }
 
-    docRecordsCacheMap.set(r, {
-      prodOverridesRef: productOverrides,
-      catOverridesRef: catOverrides,
-      invKey,
-      cleanInv,
-      docSO,
-      pAt,
-      pBy,
-      recs: docRecs,
-    });
+    const dominantKat = (r.kategori_produk as string) || (extra.kategori_produk as string) || (hasAlkes ? "ALKES" : "FARMA");
+
+    const primaryRec: FakturRecord = {
+      orderDate: date,
+      transactionDate: txDate,
+      orderNumber: firstItemSO || docSO || "-",
+      invoiceNumber: cleanInv,
+      invoiceKey: invKey,
+      jenisTransaksi: cleanJenis,
+      customerName: cust,
+      itemCode: items[0] ? String(items[0].item_code || "-") : "-",
+      itemDescription: items[0] ? String(items[0].item_description || "-") : "-",
+      qty: items.length || 1,
+      uom: items[0] ? String(items[0].uom || "-") : "-",
+      lotNumber: items[0] ? String(items[0].lot_number || "-") : "-",
+      totalHarga: docAmount,
+      kategori,
+      kategoriProduk: dominantKat,
+      klasifikasiObat: hasPrekursor ? "Prekursor" : hasOOT ? "OOT" : undefined,
+      entity,
+      isDoubleInv: false,
+      isRetur: isReturDoc,
+      status_cetak: isPrinted,
+      printed_at: isPrinted ? pAt : null,
+      printed_by: isPrinted ? pBy : null,
+      rowIndex: 0,
+    };
+
+    (primaryRec as any)._rawItems = items;
+    (primaryRec as any)._rawRow = r;
+    (primaryRec as any)._hasPrekursor = hasPrekursor;
+    (primaryRec as any)._hasOOT = hasOOT;
+    (primaryRec as any)._hasCCP = hasCCP;
+    (primaryRec as any)._hasAlkes = hasAlkes;
+    (primaryRec as any)._hasFarma = hasFarma;
+    (primaryRec as any)._itemSearchParts = itemSearchParts;
+    (primaryRec as any)._totalItems = items.length || 1;
+
+    records.push(primaryRec);
   }
 
-  // Fast double-invoice detection: only mark records whose SO actually has > 1 distinct invoice
+  // Fast double-invoice detection on invoice records in O(N)
   const doubleSOSet = new Set<string>();
   soInvMap.forEach((invSet, so) => {
     if (invSet.size > 1) doubleSOSet.add(so);
@@ -2699,7 +2682,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                     d.status_cetak = true;
                     d.printed_at = d.printed_at || candidatePAt || null;
                     d.printed_by = candidatePBy;
-                    combinedBy[k] = candidatePBy;
+                    combinedBy[k] = candidatePBy || "";
                   } else if (!d.status_cetak) {
                     d.status_cetak = false;
                     d.printed_at = null;
@@ -2745,7 +2728,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           setTimeout(() => performPeerSync(true), 1200);
         }
 
-        if (reason === "print" || reason === "meta") {
+        if ((reason as string) === "print" || reason === "meta") {
           if (currentFakturDocsRef.current?.length > 0) setLoading(false);
           return;
         }
@@ -3219,132 +3202,78 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   }, []);
 
   // 1. Base invoice groups (Depends ONLY on records and productOverrides)
-  // Uses WeakMap per-invoice caching (`docGroupCacheMap`) so unchanged invoices reuse their FakturGroup in O(1) (<2ms)
+  // Lightning-fast O(N) evaluation (<10ms) with lazy on-demand items instantiation
   const baseGroups = useMemo<FakturGroup[]>(() => {
-    const itemsByKey = new Map<string, FakturRecord[]>();
-    const hasProdOverrides = Boolean(productOverrides && Object.keys(productOverrides).length > 0);
-
-    for (let i = 0; i < records.length; i++) {
-      const r = records[i];
-      const key = r.invoiceKey || r.invoiceNumber;
-      if (!key || key.startsWith("TEST-") || String(r.invoiceNumber || "").startsWith("TEST-")) continue;
-      let list = itemsByKey.get(key);
-      if (!list) {
-        list = [r];
-        itemsByKey.set(key, list);
-      } else {
-        list.push(r);
-      }
-    }
-
     const result: FakturGroup[] = [];
 
-    for (const [key, groupItems] of itemsByKey) {
-      const firstRec = groupItems[0];
-      const isGroupDouble = groupItems.some((it) => Boolean(it.isDoubleInv));
-      const cached = docGroupCacheMap.get(firstRec);
-      if (
-        cached &&
-        cached.count === groupItems.length &&
-        cached.prodOverridesRef === productOverrides &&
-        cached.isDoubleInv === isGroupDouble
-      ) {
-        result.push(cached.group);
-        continue;
-      }
+    for (let i = 0; i < records.length; i++) {
+      const rec = records[i];
+      const key = rec.invoiceKey || rec.invoiceNumber;
+      if (!key || key.startsWith("TEST-") || String(rec.invoiceNumber || "").startsWith("TEST-")) continue;
 
-      const cleanInv = firstRec.invoiceNumber.replace(/-1P$/i, "");
-      const rawCust = String(firstRec.customerName || "").trim();
+      const cleanInv = rec.invoiceNumber.replace(/-1P$/i, "");
+      const rawCust = String(rec.customerName || "").trim();
       const normCust = rawCust ? normalize(rawCust) : "";
-      const rEntity = (firstRec.entity as "MBI" | "MAI") || selectedWarehouseRef.current;
+      const rEntity = (rec.entity as "MBI" | "MAI") || selectedWarehouseRef.current;
       const resolvedDkLk =
         dklkOverridesRef.current[normCust] ||
         dklkOverridesRef.current[rawCust] ||
         dklkOverridesRef.current[cleanInv] ||
-        firstRec.dklk ||
-        getDkLk(firstRec.customerName, rEntity) ||
+        rec.dklk ||
+        getDkLk(rec.customerName, rEntity) ||
         "-";
+
+      const rawItems = (rec as any)._rawItems as Array<Record<string, unknown>> | undefined;
+      const totalItemsCount = (rec as any)._totalItems || (rawItems ? rawItems.length : 1);
+      const isGroupDouble = Boolean(rec.isDoubleInv);
 
       const g: FakturGroup = {
         key,
-        invoiceNumber: firstRec.invoiceNumber,
+        invoiceNumber: rec.invoiceNumber,
         invoiceKey: key,
-        so: firstRec.orderNumber,
-        items: groupItems,
-        orderDate: firstRec.orderDate,
-        transactionDate: firstRec.transactionDate || firstRec.orderDate,
-        jenisTransaksi: firstRec.jenisTransaksi,
-        customerName: firstRec.customerName,
+        so: rec.orderNumber,
+        items: [] as FakturRecord[], // Lazy property defined below
+        orderDate: rec.orderDate,
+        transactionDate: rec.transactionDate || rec.orderDate,
+        jenisTransaksi: rec.jenisTransaksi,
+        customerName: rec.customerName,
         normCust,
         cleanInv,
-        kategori: firstRec.kategori,
+        kategori: rec.kategori,
         dklk: resolvedDkLk,
-        kategoriProduk: firstRec.kategoriProduk || "FARMA",
-        entity: firstRec.entity || "MBI",
-        hasPrekursor: false,
-        hasOOT: false,
-        hasCCP: false,
-        hasAlkes: false,
-        hasFarma: false,
+        kategoriProduk: rec.kategoriProduk || "FARMA",
+        entity: rec.entity || "MBI",
+        hasPrekursor: Boolean((rec as any)._hasPrekursor),
+        hasOOT: Boolean((rec as any)._hasOOT),
+        hasCCP: Boolean((rec as any)._hasCCP),
+        hasAlkes: Boolean((rec as any)._hasAlkes),
+        hasFarma: Boolean((rec as any)._hasFarma),
         isDoubleInv: isGroupDouble,
-        isRetur: false,
-        totalHarga: 0,
-        totalItems: groupItems.length,
+        isRetur: Boolean(rec.isRetur),
+        totalHarga: rec.totalHarga,
+        totalItems: totalItemsCount,
         allPrinted: false,
         printedAt: null,
         printedBy: null,
       };
 
-      let itemText = "";
-      for (let j = 0; j < groupItems.length; j++) {
-        const r = groupItems[j];
-        g.totalHarga += r.totalHarga;
-        if ((!g.so || g.so === "-") && r.orderNumber && r.orderNumber !== "-") {
-          g.so = r.orderNumber;
-        }
-        if (r.isRetur || r.totalHarga < 0) g.isRetur = true;
-
-        let kat = (r.kategoriProduk || "FARMA").toUpperCase();
-        if (hasProdOverrides && productOverrides) {
-          const normDesc = r.itemDescription ? normalize(r.itemDescription) : "";
-          if (productOverrides[r.itemCode] || (normDesc && productOverrides[normDesc]) || productOverrides[r.itemDescription]) {
-            kat = getProductCategory(r.itemCode, r.itemDescription, productOverrides).toUpperCase();
-          }
-        }
-        r.kategoriProduk = kat;
-        if (kat === "PREKURSOR" || r.klasifikasiObat === "Prekursor") g.hasPrekursor = true;
-        if (kat === "OOT" || r.klasifikasiObat === "OOT") g.hasOOT = true;
-        if (kat === "CCP") g.hasCCP = true;
-        if (kat === "ALKES") g.hasAlkes = true;
-        if (kat === "FARMA") g.hasFarma = true;
-
-        if (r.itemCode !== "-" || r.itemDescription !== "-") {
-          itemText += ` ${r.itemCode} ${r.itemDescription}`;
-        }
-        if (r.orderNumber && r.orderNumber !== "-" && r.orderNumber !== g.so) {
-          itemText += ` ${r.orderNumber}`;
-        }
-        if (r.referenceOrderNumber && r.referenceOrderNumber !== "-" && r.referenceOrderNumber !== g.so && r.referenceOrderNumber !== r.orderNumber) {
-          itemText += ` ${r.referenceOrderNumber}`;
-        }
-      }
-
-      if (g.totalHarga < 0) g.isRetur = true;
-
-      if (groupItems.length === 1) {
-        g.kategoriProduk = groupItems[0]?.kategoriProduk || "FARMA";
-      } else {
-        g.kategoriProduk = calculateDominantCategory(groupItems as unknown as Array<{ kategoriProduk?: string }>);
-      }
-
-      g.searchStr = `${g.so} ${g.invoiceNumber} ${g.customerName} ${g.transactionDate || ""} ${g.orderDate} ${g.kategori} ${g.kategoriProduk} ${g.isRetur ? "retur" : ""}${itemText}`.toLowerCase();
+      const itemSearch = (rec as any)._itemSearchParts || "";
+      g.searchStr = `${g.so} ${g.invoiceNumber} ${g.customerName} ${g.transactionDate || ""} ${g.orderDate} ${g.kategori} ${g.kategoriProduk} ${g.isRetur ? "retur" : ""}${itemSearch}`.toLowerCase();
       g.invNum = parseInvNum(g.invoiceNumber);
 
-      docGroupCacheMap.set(firstRec, {
-        count: groupItems.length,
-        prodOverridesRef: productOverrides,
-        isDoubleInv: isGroupDouble,
-        group: g,
+      let _lazyItems: FakturRecord[] | null = null;
+      Object.defineProperty(g, "items", {
+        enumerable: true,
+        configurable: true,
+        get() {
+          if (!_lazyItems) {
+            _lazyItems = buildItemsFromRaw(rec, rawItems, productOverrides);
+          }
+          return _lazyItems;
+        },
+        set(val) {
+          _lazyItems = val;
+        }
       });
 
       result.push(g);
@@ -4532,6 +4461,49 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
         }
 
+        // ── GAP DETECTION ──────────────────────────────────────────────────────────
+        // Jika memori lokal jauh di bawah TiDB total count (device baru buka / data
+        // belum selesai di-load), fetch delta TiDB SEBELUM merge agar invMap tidak
+        // kehilangan ribuan faktur yang belum ada di memori.  Ini mencegah
+        // "count berkurang" setelah upload (27938 → 27683, dsb.)
+        try {
+          const checkRes = await fetch("/api/tidb?action=check&clientCount=0&clientUpdated=0").catch(() => null);
+          if (checkRes && checkRes.ok) {
+            const checkData = await checkRes.json().catch(() => null);
+            const tidbTotal: number = checkData?.totalCount ?? 0;
+            const localTotal = existingDBDocs.length;
+            // Jika ada gap lebih dari 50 baris → fetch delta untuk menutup gap
+            if (tidbTotal > 0 && localTotal < tidbTotal - 50) {
+              console.info(`[Upload] Gap detected: local=${localTotal} tidb=${tidbTotal}. Fetching delta to close gap before merge…`);
+              const deltaRes = await fetchTiDBDelta(0).catch(() => null);
+              if (deltaRes && deltaRes.length > 0) {
+                // Merge delta ke existingDBDocs (non-destructive)
+                const tmpMap = new Map<string, FirestoreFakturDoc>();
+                existingDBDocs.forEach((d) => { const k = getAuthoritativeDocKey(d); if (k) tmpMap.set(k, d); });
+                deltaRes.forEach((d) => { const k = getAuthoritativeDocKey(d); if (k && !tmpMap.has(k)) tmpMap.set(k, d); });
+                existingDBDocs = Array.from(tmpMap.values());
+                currentFakturDocsRef.current = existingDBDocs;
+                console.info(`[Upload] After delta merge: local=${existingDBDocs.length}`);
+              }
+              // Jika gap masih besar, coba reconcile missing keys
+              if (existingDBDocs.length < tidbTotal - 200) {
+                const reconciledDocs = await reconcileMissingFromTiDB(existingDBDocs).catch(() => null);
+                if (reconciledDocs && reconciledDocs.length > 0) {
+                  const tmpMap2 = new Map<string, FirestoreFakturDoc>();
+                  existingDBDocs.forEach((d) => { const k = getAuthoritativeDocKey(d); if (k) tmpMap2.set(k, d); });
+                  reconciledDocs.forEach((d) => { const k = getAuthoritativeDocKey(d); if (k && !tmpMap2.has(k)) tmpMap2.set(k, d); });
+                  existingDBDocs = Array.from(tmpMap2.values());
+                  currentFakturDocsRef.current = existingDBDocs;
+                  console.info(`[Upload] After reconcile: local=${existingDBDocs.length}`);
+                }
+              }
+            }
+          }
+        } catch (gapErr) {
+          console.warn("[Upload] Gap detection failed (non-critical):", gapErr);
+        }
+        // ────────────────────────────────────────────────────────────────────────────
+
         // Unify with current in-memory documents to guarantee zero data loss between fast consecutive uploads
         const combinedExistingMap = new Map<string, FirestoreFakturDoc>();
         currentFakturDocsRef.current.forEach((d) => {
@@ -4859,7 +4831,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
           const existingCust = String(
             (existingEntry && (existingEntry.customer_name || existingEntry.extra?.nama_pelanggan)) ||
-            (prevInfo && (prevInfo.customer_name || prevInfo.nama_pelanggan)) ||
+            (prevInfo && ((prevInfo as any).customer_name || (prevInfo as any).nama_pelanggan)) ||
             ""
           ).trim();
           const targetCust = String(r.customerName || "").trim();
@@ -5235,7 +5207,24 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         printedAtMapRef.current = finalPrintedAtMap;
 
         currentFakturDocsRef.current = payload;
-        setRecords(localRecs);
+
+        // ── DELTA-MERGE RECORDS (ANTI COUNT-DECREASE) ─────────────────────────────
+        // Setelah upload, jika invMap hanya berisi sebagian data (memori lokal tidak
+        // lengkap saat upload dimulai), jangan replace seluruh records state dengan
+        // localRecs yang lebih sedikit.  Merge records lama dengan yang baru dari
+        // upload sehingga total faktur TIDAK PERNAH berkurang.
+        setRecords((prevRecs) => {
+          // Build key-index dari localRecs (faktur yang di-touch pada upload ini)
+          const uploadedKeySet = new Set<string>(localRecs.map((rec) => rec.invoiceKey || rec.invoiceNumber));
+          // Pertahankan records lama yang TIDAK masuk dalam upload ini
+          const survivingOld = prevRecs.filter((rec) => {
+            const k = rec.invoiceKey || rec.invoiceNumber;
+            return Boolean(k) && !uploadedKeySet.has(k);
+          });
+          // Merge: data lama yang tidak di-touch + data baru/updated dari upload
+          // Hasilnya: total count TIDAK PERNAH berkurang dibanding sebelum upload
+          return [...survivingOld, ...localRecs];
+        });
         setPrintedInvoices(finalPrintedSet);
         setPrintedAtMap(finalPrintedAtMap);
         const notifPayload: UploadNotification = {
