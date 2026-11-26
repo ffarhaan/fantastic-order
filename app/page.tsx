@@ -2226,7 +2226,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     const recoverColdStart = async () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       if (isUploadingRef.current || isPeerSyncingRef.current) return;
-      if (currentFakturDocsRef.current?.length === 0 && initialArchiveFailedRef.current) {
+      if (initialArchiveFailedRef.current) {
         isPeerSyncingRef.current = true;
         try {
           const check = await checkTiDBUpdates(0, 0);
@@ -2275,7 +2275,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       if (elapsed < 120000) return; // Only catch up if tab was away >= 2 minutes
       lastSyncNetTickRef.ts = Date.now();
       fetchQcOrders(selectedWarehouseRef.current);
-      if (currentFakturDocsRef.current?.length === 0 && initialArchiveFailedRef.current) {
+      if (initialArchiveFailedRef.current) {
         recoverColdStart();
         return;
       }
