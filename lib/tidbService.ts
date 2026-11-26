@@ -292,7 +292,8 @@ export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreF
 let activeFetchFaktursPromise: Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> | null = null;
 
 export async function fetchFaktursFromTiDB(
-  versionTag?: number | string
+  versionTag?: number | string,
+  onProgress?: (accumulatedDocs: FirestoreFakturDoc[], totalCount: number) => void
 ): Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> {
   if (activeFetchFaktursPromise) {
     return activeFetchFaktursPromise;
@@ -311,6 +312,9 @@ export async function fetchFaktursFromTiDB(
       const allFakturs: FirestoreFakturDoc[] = [...firstData.fakturs];
       let maxUpdated = Number(firstData.maxUpdated || 0);
       const totalCount = Number(firstData.totalCount || 0);
+      if (onProgress && allFakturs.length > 0) {
+        onProgress([...allFakturs], totalCount);
+      }
 
       // Step 2: Reliable Batched Fetch with 3x Retry (never silently drop a page!)
       if (totalCount > PAGE_SIZE) {
@@ -340,9 +344,9 @@ export async function fetchFaktursFromTiDB(
           return null;
         };
 
-        // Fetch in batches of 2 to avoid saturating browser/Vercel connections & payload limits
-        for (let i = 0; i < remainingOffsets.length; i += 2) {
-          const batchOffsets = remainingOffsets.slice(i, i + 2);
+        // Fetch in batches of 4 for fast cold-start (~5-8s total) while streaming progressively to UI
+        for (let i = 0; i < remainingOffsets.length; i += 4) {
+          const batchOffsets = remainingOffsets.slice(i, i + 4);
           const batchResults = await Promise.all(batchOffsets.map(fetchPageWithRetry));
           for (const chunk of batchResults) {
             if (chunk === null) {
@@ -350,6 +354,9 @@ export async function fetchFaktursFromTiDB(
               return null;
             }
             allFakturs.push(...chunk);
+          }
+          if (onProgress) {
+            onProgress([...allFakturs], totalCount);
           }
         }
       }

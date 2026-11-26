@@ -2425,7 +2425,28 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         }
 
         // Cold start (completely 0 local docs): fetch archive (CDN-shared via _v=${check?.maxUpdated})
-        const result = await fetchFaktursFromTiDB(check?.maxUpdated);
+        const result = await fetchFaktursFromTiDB(check?.maxUpdated, (partialDocs) => {
+          if (!isMounted || partialDocs.length === 0) return;
+          const mergedPartial = mergeKumulatifDocs(currentFakturDocsRef.current || [], partialDocs);
+          currentFakturDocsRef.current = mergedPartial;
+          const { records: partialRecs, printedSet: partialPrintedSet, printedAtMap: partialAtMap, printedByMap: partialByMap } = dbRowsToFakturRecords(
+            mergedPartial as unknown as Array<Record<string, unknown>>,
+            productOverridesRef.current,
+            printedInvoicesRef.current,
+            categoryOverridesRef.current
+          );
+          const nextPrinted = new Set([...Array.from(printedInvoicesRef.current || []), ...Array.from(partialPrintedSet)]);
+          const nextAtMap = { ...(printedAtMapRef.current || {}), ...partialAtMap };
+          const nextByMap = { ...(printedByMapRef.current || {}), ...partialByMap };
+          setRecords(partialRecs);
+          setPrintedInvoices(nextPrinted);
+          printedInvoicesRef.current = nextPrinted;
+          setPrintedAtMap(nextAtMap);
+          printedAtMapRef.current = nextAtMap;
+          setPrintedByMap(nextByMap);
+          printedByMapRef.current = nextByMap;
+          setLoading(false);
+        });
         if (!isMounted) return;
         if (!result) {
           initialArchiveFailedRef.current = true;
@@ -2630,7 +2651,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         }
 
         if (reason === "print" || reason === "meta") {
-          setLoading(false);
+          if (currentFakturDocsRef.current?.length > 0) setLoading(false);
           return;
         }
 
@@ -2645,7 +2666,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
 
           if (!isPeerUploadRecent) {
-            setLoading(false);
+            if (curDocs.length > 0) setLoading(false);
             return;
           }
 
