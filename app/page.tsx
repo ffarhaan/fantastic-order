@@ -2249,13 +2249,27 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
     };
 
-    // Cold-start recovery check every 15s (no-op once archive is loaded!)
-    const interval = setInterval(recoverColdStart, 15000);
+    // Background Parity Heartbeat every 20s: keeps all laptops converged to 100% identical row counts
+    const parityHeartbeat = async () => {
+      if (isUploadingRef.current || isPeerSyncingRef.current) return;
+      const curCount = currentFakturDocsRef.current?.length || 0;
+      if (curCount < 1000) {
+        recoverColdStart();
+        return;
+      }
+      try {
+        const check = await checkTiDBUpdates(curCount, clientUpdatedRef.current || 0);
+        if (check && check.totalCount > curCount) {
+          performPeerSync(true);
+        }
+      } catch {}
+    };
+    const interval = setInterval(parityHeartbeat, 20000);
 
     const onVisibility = async () => {
       if (document.visibilityState !== "visible") return;
       const elapsed = Date.now() - lastSyncNetTickRef.ts;
-      if (elapsed < 120000) return; // Only catch up if tab was away >= 2 minutes
+      if (elapsed < 5000) return; // Catch up if tab was away >= 5s
       lastSyncNetTickRef.ts = Date.now();
       fetchQcOrders(selectedWarehouseRef.current);
       if (initialArchiveFailedRef.current) {
@@ -2269,7 +2283,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           const check = await checkTiDBUpdates(curCount, curUpdated);
           if (check) {
             const hasNewerTimestamp = check.maxUpdated > curUpdated && check.maxUpdated > lastSyncedServerUpdatedRef.current;
-            const hasMoreServerRows = check.totalCount > curCount && check.totalCount !== lastSyncedServerCountRef.current;
+            const hasMoreServerRows = check.totalCount > curCount;
             if (hasNewerTimestamp || hasMoreServerRows) {
               lastSyncedServerCountRef.current = check.totalCount;
               lastSyncedServerUpdatedRef.current = Math.max(curUpdated, check.maxUpdated || 0);
@@ -3036,7 +3050,43 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           printedByMap: unifiedByMap,
         });
         showToast(`✓ Berhasil menyinkronkan ${deltaDocs.length} pembaruan dari TiDB.`);
-      } else {
+      }
+
+      // Parity Reconciler on Manual Refresh: If client still lags TiDB count (e.g. missed an older packet),
+      // immediately fetch missing rows directly so laptop counts converge to 100% identical!
+      let curLen = currentFakturDocsRef.current?.length || 0;
+      if (check && check.totalCount > 0 && curLen < check.totalCount) {
+        const reconciled = await reconcileMissingFromTiDB(currentFakturDocsRef.current || []);
+        if (reconciled && reconciled.length > 0) {
+          const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], reconciled);
+          currentFakturDocsRef.current = merged;
+          curLen = merged.length;
+          const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
+            merged as unknown as Array<Record<string, unknown>>,
+            prodOverrides || productOverridesRef.current,
+            printedInvoicesRef.current,
+            categoryOverridesRef.current
+          );
+          const unifiedPrintedKeys = new Set(docPrintedSet);
+          const unifiedAtMap = { ...docPrintedAtMap };
+          const unifiedByMap = { ...docPrintedByMap };
+          setPrintedInvoices(unifiedPrintedKeys);
+          printedInvoicesRef.current = unifiedPrintedKeys;
+          setPrintedAtMap(unifiedAtMap);
+          printedAtMapRef.current = unifiedAtMap;
+          setPrintedByMap(unifiedByMap);
+          printedByMapRef.current = unifiedByMap;
+          setRecords(recs);
+          setLocalCachedFakturs(merged, check.maxUpdated || currentUpdated, {
+            printedKeys: Array.from(unifiedPrintedKeys),
+            printedAtMap: unifiedAtMap,
+            printedByMap: unifiedByMap,
+          });
+          showToast(`✓ Berhasil menyinkronkan ${reconciled.length} faktur yang tertinggal (${curLen.toLocaleString("id-ID")} total).`);
+        } else {
+          showToast(`✓ Data sudah paling baru (${curLen.toLocaleString("id-ID")} faktur sinkron).`);
+        }
+      } else if (!deltaDocs || deltaDocs.length === 0) {
         showToast(`✓ Data sudah paling baru (${currentCount.toLocaleString("id-ID")} faktur sinkron).`);
       }
 
