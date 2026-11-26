@@ -2390,7 +2390,18 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         const isCacheIncomplete = Boolean(check && check.totalCount > 1000 && clientCount < (check.totalCount - 500));
 
         if (clientCount > 0 && !isCacheIncomplete) {
-          // If `/api/tidb?action=check` (CDN-cached 30s) already confirms local cache is 100% up-to-date, skip delta call!
+          // If local IndexedDB has MORE rows than TiDB (e.g. previous upload failed to reach TiDB),
+          // automatically push those missing rows into TiDB once so all laptops converge to the exact same count!
+          if (check && check.totalCount > 0 && clientCount > check.totalCount && currentFakturDocsRef.current?.length > 0) {
+            syncMissingFaktursToTiDB(currentFakturDocsRef.current)
+              .then((pushed) => {
+                if (pushed > 0) {
+                  broadcastRealtimeSignal("fakturs", deviceIdRef.current);
+                }
+              })
+              .catch(() => {});
+          }
+          // If `/api/tidb?action=check` already confirms local cache is 100% up-to-date, skip delta call!
           if (check && check.upToDate && clientCount >= check.totalCount) {
             if (isMounted) setLoading(false);
             return;

@@ -40,6 +40,7 @@ export async function syncFaktursToTiDB(
         lot_number: String(it.lot_number || "").trim(),
         total_harga: Number(it.total_harga || 0),
         order_number: String(it.order_number || "-").trim(),
+        ...(it.reference_order_number ? { reference_order_number: String(it.reference_order_number).trim() } : {}),
         kategori_produk: String(it.kategori_produk || "FARMA").trim(),
       })),
     }));
@@ -65,9 +66,8 @@ export async function syncFaktursToTiDB(
 
     let processedCount = 0;
     let lastErrorText = "";
-    for (const slice of slices) {
+    const upsertSliceWithRetry = async (slice: typeof payload) => {
       let attempts = 0;
-      let success = false;
       while (attempts < 3) {
         try {
           const res = await fetch("/api/tidb", {
@@ -83,8 +83,7 @@ export async function syncFaktursToTiDB(
             if (onProgress) {
               onProgress(Math.min(processedCount, payload.length), payload.length);
             }
-            success = true;
-            break;
+            return true;
           }
           lastErrorText = `HTTP ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}`;
           console.warn(`[TiDB Sync] Upsert attempt ${attempts + 1} rejected:`, lastErrorText);
@@ -95,6 +94,12 @@ export async function syncFaktursToTiDB(
         attempts++;
         if (attempts < 3) await new Promise((r) => setTimeout(r, attempts * 500));
       }
+      return false;
+    };
+
+    // Run 2 slices in parallel so large uploads commit 2x faster before tab close/refresh
+    for (let i = 0; i < slices.length; i += 2) {
+      await Promise.all(slices.slice(i, i + 2).map(upsertSliceWithRetry));
     }
     // Notify all connected browsers/devices that TiDB has finished writing all chunks!
     await broadcastRealtimeSignal("fakturs");
