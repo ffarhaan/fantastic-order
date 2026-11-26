@@ -291,7 +291,9 @@ export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreF
 
 let activeFetchFaktursPromise: Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> | null = null;
 
-export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> {
+export async function fetchFaktursFromTiDB(
+  versionTag?: number | string
+): Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> {
   if (activeFetchFaktursPromise) {
     return activeFetchFaktursPromise;
   }
@@ -299,8 +301,9 @@ export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFaktur
   activeFetchFaktursPromise = (async () => {
     try {
       const PAGE_SIZE = 1500;
-      // Step 1: Fetch Page 0 (gets docs + exact totalCount in ~150ms)
-      const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=0`);
+      const vQuery = versionTag ? `&_v=${encodeURIComponent(String(versionTag))}` : "";
+      // Step 1: Fetch Page 0 (gets docs + exact totalCount in ~150ms, CDN-shared via _v)
+      const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=0${vQuery}`);
       if (!firstRes.ok) return null;
       const firstData = await firstRes.json();
       if (!firstData.success || !Array.isArray(firstData.fakturs)) return null;
@@ -319,7 +322,7 @@ export async function fetchFaktursFromTiDB(): Promise<{ fakturs: FirestoreFaktur
         const fetchPageWithRetry = async (offset: number): Promise<FirestoreFakturDoc[] | null> => {
           for (let attempt = 0; attempt < 3; attempt++) {
             try {
-              const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=${offset}&skipCount=1`);
+              const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=${offset}&skipCount=1${vQuery}`);
               if (res.ok) {
                 const data = await res.json();
                 if (data.success && Array.isArray(data.fakturs)) {

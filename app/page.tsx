@@ -2159,24 +2159,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     }
   }, []);
 
-  // HIGH-SPEED REALTIME SYNC NET (Smooth 4s interval + Zero Redundant Re-Renders):
-  // Continuously polls Report QC and checks TiDB for peer uploads without blocking main thread.
+  // EVENT-DRIVEN REALTIME SYNC (Zero Routine Polling for 50+ Concurrent Users):
+  // Instant updates arrive via Firebase Firestore & RTDB WebSockets (<100ms, 0 TiDB RU, 0 Fast Origin).
+  // Background timer ONLY runs cold-start auto-recovery if initial archive load failed;
+  // tab wake-up after >=2 mins hidden performs a lightweight catch-up check.
   useEffect(() => {
     fetchQcOrders(selectedWarehouseRef.current);
 
     const lastSyncNetTickRef = { ts: Date.now() };
-    const syncNetTick = async () => {
+    const recoverColdStart = async () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-      lastSyncNetTickRef.ts = Date.now();
-      // 1. Pull Report QC updates (only triggers React state update if data signature changed)
-      fetchQcOrders(selectedWarehouseRef.current);
-
-      // 2. Detect peer uploads in TiDB only when server maxUpdated advances or server count increases
-      // Also auto-recover cold-start failures when currentFakturDocsRef is still empty!
-      if (!isUploadingRef.current && !isPeerSyncingRef.current && currentFakturDocsRef.current?.length === 0 && initialArchiveFailedRef.current) {
+      if (isUploadingRef.current || isPeerSyncingRef.current) return;
+      if (currentFakturDocsRef.current?.length === 0 && initialArchiveFailedRef.current) {
         isPeerSyncingRef.current = true;
         try {
-          const retryRes = await fetchFaktursFromTiDB();
+          const check = await checkTiDBUpdates(0, 0);
+          const retryRes = await fetchFaktursFromTiDB(check?.maxUpdated);
           if (retryRes && retryRes.fakturs && retryRes.fakturs.length > 0) {
             const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], retryRes.fakturs);
             currentFakturDocsRef.current = merged;
@@ -2209,7 +2207,23 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         } catch {} finally {
           isPeerSyncingRef.current = false;
         }
-      } else if (!isUploadingRef.current && !isPeerSyncingRef.current && currentFakturDocsRef.current?.length > 0) {
+      }
+    };
+
+    // Cold-start recovery check every 15s (no-op once archive is loaded!)
+    const interval = setInterval(recoverColdStart, 15000);
+
+    const onVisibility = async () => {
+      if (document.visibilityState !== "visible") return;
+      const elapsed = Date.now() - lastSyncNetTickRef.ts;
+      if (elapsed < 120000) return; // Only catch up if tab was away >= 2 minutes
+      lastSyncNetTickRef.ts = Date.now();
+      fetchQcOrders(selectedWarehouseRef.current);
+      if (currentFakturDocsRef.current?.length === 0 && initialArchiveFailedRef.current) {
+        recoverColdStart();
+        return;
+      }
+      if (!isUploadingRef.current && !isPeerSyncingRef.current && currentFakturDocsRef.current?.length > 0) {
         try {
           const curCount = currentFakturDocsRef.current.length;
           const curUpdated = clientUpdatedRef.current || 0;
@@ -2225,15 +2239,6 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             }
           }
         } catch {}
-      }
-    };
-
-    // RU-efficient 30-second fallback interval (instant sync is handled by Firebase Firestore & RTDB WebSockets)
-    const interval = setInterval(syncNetTick, 30000);
-
-    const onVisibility = () => {
-      if (document.visibilityState === "visible" && Date.now() - lastSyncNetTickRef.ts >= 15000) {
-        syncNetTick();
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -2419,8 +2424,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
         }
 
-        // Cold start (completely 0 local docs): fetch archive
-        const result = await fetchFaktursFromTiDB();
+        // Cold start (completely 0 local docs): fetch archive (CDN-shared via _v=${check?.maxUpdated})
+        const result = await fetchFaktursFromTiDB(check?.maxUpdated);
         if (!isMounted) return;
         if (!result) {
           initialArchiveFailedRef.current = true;
