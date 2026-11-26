@@ -2470,6 +2470,15 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             printedAtMap: nextAtMap,
             printedByMap: nextByMap,
           });
+          if (check && check.totalCount > 0 && merged.length > check.totalCount) {
+            syncMissingFaktursToTiDB(merged)
+              .then((pushed) => {
+                if (pushed > 0) {
+                  broadcastRealtimeSignal("fakturs", deviceIdRef.current);
+                }
+              })
+              .catch(() => {});
+          }
         }
       } catch (err) {
         console.warn("TiDB background sync error:", err);
