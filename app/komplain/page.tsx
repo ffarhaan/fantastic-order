@@ -63,7 +63,7 @@ interface ReturnProductItem {
   note: string;
 }
 
-const IS_KOMPLAIN_MAINTENANCE = true;
+const IS_KOMPLAIN_MAINTENANCE = false;
 
 export default function KomplainPage() {
   if (IS_KOMPLAIN_MAINTENANCE) {
