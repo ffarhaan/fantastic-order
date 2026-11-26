@@ -3858,6 +3858,65 @@ export async function POST(req: Request) {
       return Response.json({ success: true, updated: keys.length });
     }
 
+    if (action === "fetch_by_keys") {
+      const keys: string[] = (body.keys || []).map((k: string) => String(k).trim()).filter(Boolean).slice(0, 500);
+      if (keys.length === 0) {
+        return Response.json({ success: true, fakturs: [] });
+      }
+      const inPlaceholders = keys.map(() => "?").join(", ");
+      const rows = (await conn.execute(
+        `SELECT
+           invoice_key, no_faktur, no_sales_order, customer_name,
+           order_date, transaction_date, jenis_transaksi, kategori,
+           kategori_produk, status_cetak, printed_at, printed_by,
+           total_harga, items_json, UNIX_TIMESTAMP(updated_at) as row_updated
+         FROM fakturs_archive
+         WHERE invoice_key IN (${inPlaceholders});`,
+        keys
+      )) as Array<Record<string, any>>;
+
+      const docs = rows.map((r) => {
+        let parsedItems: unknown[] = [];
+        if (r.items_json) {
+          try {
+            const parsed = typeof r.items_json === "string" ? JSON.parse(r.items_json) : r.items_json;
+            parsedItems = Array.isArray(parsed) ? parsed : [];
+          } catch {
+            parsedItems = [];
+          }
+        }
+        const rowUpdatedNum = Number(r.row_updated || 0);
+        const rowUpdatedIso = rowUpdatedNum > 0 ? new Date(rowUpdatedNum * 1000).toISOString() : new Date().toISOString();
+        return {
+          id: r.invoice_key,
+          no_faktur: r.no_faktur,
+          no_sales_order: r.no_sales_order || "-",
+          customer_name: r.customer_name || "-",
+          order_date: r.order_date || "-",
+          transaction_date: r.transaction_date || r.order_date || "-",
+          jenis_transaksi: r.jenis_transaksi || "DOO",
+          kategori: r.kategori || "3P",
+          status_cetak: Number(r.status_cetak) === 1,
+          printed_at: r.printed_at || null,
+          printed_by: r.printed_by || null,
+          row_updated: rowUpdatedNum,
+          updated_at: rowUpdatedIso,
+          extra: {
+            nama_pelanggan: r.customer_name || "-",
+            order_date: r.order_date || "-",
+            transaction_date: r.transaction_date || r.order_date || "-",
+            jenis_transaksi: r.jenis_transaksi || "DOO",
+            kategori: r.kategori || "3P",
+            total_harga: Number(r.total_harga || 0),
+            row_updated: rowUpdatedNum,
+            updated_at: rowUpdatedIso,
+            items: parsedItems,
+          },
+        };
+      });
+      return Response.json({ success: true, fakturs: docs });
+    }
+
     // ==========================================
     // 7. PENGAJUAN RETUR (SUBMIT & UPDATE STATUS)
     // ==========================================

@@ -49,7 +49,7 @@ import {
 import { playShipmentChime, isShipmentSoundEnabled, setShipmentSoundEnabled } from "@/lib/soundEffects";
 import { subscribeToDoCheckerLive } from "@/lib/doCheckerService";
 import { extractNotedItems } from "@/lib/qcParser";
-import { syncFaktursToTiDB, syncFaktursToTiDBBackground, syncMissingFaktursToTiDB, syncPrintStatusToTiDBBackground, fetchFaktursFromTiDB, getLocalCachedFakturs, setLocalCachedFakturs, setLocalCachedPrintState, clearLocalCachedFakturs, clearAllFaktursInTiDB, checkTiDBUpdates, fetchTiDBDelta } from "@/lib/tidbService";
+import { syncFaktursToTiDB, syncFaktursToTiDBBackground, syncMissingFaktursToTiDB, reconcileMissingFromTiDB, syncPrintStatusToTiDBBackground, fetchFaktursFromTiDB, getLocalCachedFakturs, setLocalCachedFakturs, setLocalCachedPrintState, clearLocalCachedFakturs, clearAllFaktursInTiDB, checkTiDBUpdates, fetchTiDBDelta } from "@/lib/tidbService";
 import MasterApotekModal from "@/components/MasterApotekModal";
 import MasterProductModal from "@/components/MasterProductModal";
 import LoginModal, { AppUser } from "@/components/LoginModal";
@@ -2166,6 +2166,44 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           });
         }
       }
+
+      // 3. Centralized Parity Reconciler: when triggered by a peer signal (forceSync) and local count still lags TiDB,
+      // fetch ONLY the missing keys (<20KB) so every connected device converges to 100% identical counts!
+      if (forceSync) {
+        const afterLen = currentFakturDocsRef.current?.length || 0;
+        const serverCheck = await checkTiDBUpdates(afterLen, clientUpdatedRef.current || 0);
+        if (serverCheck && serverCheck.totalCount > afterLen) {
+          const reconciled = await reconcileMissingFromTiDB(currentFakturDocsRef.current || []);
+          if (reconciled && reconciled.length > 0) {
+            const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], reconciled);
+            currentFakturDocsRef.current = merged;
+            if (serverCheck.maxUpdated > (clientUpdatedRef.current || 0)) {
+              clientUpdatedRef.current = serverCheck.maxUpdated;
+            }
+            const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
+              merged as unknown as Array<Record<string, unknown>>,
+              productOverridesRef.current,
+              printedInvoicesRef.current,
+              categoryOverridesRef.current
+            );
+            const nextPrinted = new Set([...Array.from(printedInvoicesRef.current || []), ...Array.from(docPrintedSet)]);
+            const nextAtMap = { ...(printedAtMapRef.current || {}), ...docPrintedAtMap };
+            const nextByMap = { ...(printedByMapRef.current || {}), ...docPrintedByMap };
+            setRecords(recs);
+            setPrintedInvoices(nextPrinted);
+            printedInvoicesRef.current = nextPrinted;
+            setPrintedAtMap(nextAtMap);
+            printedAtMapRef.current = nextAtMap;
+            setPrintedByMap(nextByMap);
+            printedByMapRef.current = nextByMap;
+            setLocalCachedFakturs(merged, clientUpdatedRef.current || 0, {
+              printedKeys: Array.from(nextPrinted),
+              printedAtMap: nextAtMap,
+              printedByMap: nextByMap,
+            });
+          }
+        }
+      }
     } catch (err) {
       console.warn("[PeerSync] Error during peer sync:", err);
     } finally {
@@ -2454,7 +2492,37 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               printedByMap: nextByMap,
             });
           }
-          const currentLen = currentFakturDocsRef.current?.length || 0;
+          let currentLen = currentFakturDocsRef.current?.length || 0;
+          if (check && check.totalCount > 0 && currentLen < check.totalCount && currentLen >= (check.totalCount - 500)) {
+            const reconciled = await reconcileMissingFromTiDB(currentFakturDocsRef.current || []);
+            if (!isMounted) return;
+            if (reconciled && reconciled.length > 0) {
+              const merged = mergeKumulatifDocs(currentFakturDocsRef.current || [], reconciled);
+              currentFakturDocsRef.current = merged;
+              currentLen = merged.length;
+              const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
+                merged as unknown as Array<Record<string, unknown>>,
+                productOverridesRef.current,
+                printedInvoicesRef.current,
+                categoryOverridesRef.current
+              );
+              const nextPrinted = new Set([...Array.from(printedInvoicesRef.current || []), ...Array.from(docPrintedSet)]);
+              const nextAtMap = { ...(printedAtMapRef.current || {}), ...docPrintedAtMap };
+              const nextByMap = { ...(printedByMapRef.current || {}), ...docPrintedByMap };
+              setRecords(recs);
+              setPrintedInvoices(nextPrinted);
+              printedInvoicesRef.current = nextPrinted;
+              setPrintedAtMap(nextAtMap);
+              printedAtMapRef.current = nextAtMap;
+              setPrintedByMap(nextByMap);
+              printedByMapRef.current = nextByMap;
+              setLocalCachedFakturs(merged, clientUpdatedRef.current || check.maxUpdated || 0, {
+                printedKeys: Array.from(nextPrinted),
+                printedAtMap: nextAtMap,
+                printedByMap: nextByMap,
+              });
+            }
+          }
           const stillMissingRows = Boolean(check && check.totalCount > 0 && currentLen < (check.totalCount - 50));
           if (!stillMissingRows) {
             if (isMounted) setLoading(false);
@@ -2911,7 +2979,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
 
       if (check && check.totalCount > 1000 && (currentCount !== check.totalCount || unsyncedTiDBKeysSet.size > 0) && currentFakturDocsRef.current.length > 0) {
-        await syncMissingFaktursToTiDB(currentFakturDocsRef.current);
+        const pushed = await syncMissingFaktursToTiDB(currentFakturDocsRef.current);
+        if (pushed > 0) {
+          broadcastRealtimeSignal("fakturs", deviceIdRef.current);
+        }
       }
 
       if (check && check.upToDate && currentCount >= check.totalCount) {
@@ -5322,7 +5393,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           broadcastRealtimeSignal("fakturs", deviceIdRef.current);
         }
 
-        const uploadMaxUpdated = Math.floor(Date.now() / 1000);
+        const uploadMaxUpdated = Math.max(0, Math.floor(Date.now() / 1000) - 60);
         clientUpdatedRef.current = Math.max(clientUpdatedRef.current || 0, uploadMaxUpdated);
         setLocalCachedFakturs(payload, uploadMaxUpdated, {
           printedKeys: Array.from(finalPrintedSet),

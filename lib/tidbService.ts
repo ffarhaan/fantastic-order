@@ -176,6 +176,42 @@ export async function syncMissingFaktursToTiDB(localFakturs: FirestoreFakturDoc[
   }
 }
 
+export async function reconcileMissingFromTiDB(
+  localFakturs: FirestoreFakturDoc[]
+): Promise<FirestoreFakturDoc[] | null> {
+  try {
+    const res = await fetch("/api/tidb?action=keys");
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.success || !Array.isArray(data.keys)) return null;
+
+    const localKeySet = new Set<string>();
+    for (const f of localFakturs || []) {
+      const k = String(f.id || f.no_faktur || "").trim();
+      if (k) localKeySet.add(k);
+    }
+
+    const missingOnClient = (data.keys as string[]).filter(
+      (k) => k && !k.startsWith("TEST-") && !localKeySet.has(k)
+    );
+    if (missingOnClient.length === 0) return [];
+    if (missingOnClient.length > 500) return null; // Too many missing; caller should run full archive fetch
+
+    const fetchRes = await fetch("/api/tidb", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "fetch_by_keys", keys: missingOnClient }),
+    });
+    if (!fetchRes.ok) return null;
+    const fetchData = await fetchRes.json();
+    if (!fetchData.success || !Array.isArray(fetchData.fakturs)) return null;
+    return fetchData.fakturs as FirestoreFakturDoc[];
+  } catch (err) {
+    console.warn("[TiDB Reconcile] Error:", err);
+    return null;
+  }
+}
+
 export function syncPrintStatusToTiDBBackground(
   keys: string[],
   isPrinted: boolean,
