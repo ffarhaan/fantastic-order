@@ -1373,8 +1373,9 @@ export async function GET(req: Request) {
         req,
         { success: true, count: allKeys.length, keys: allKeys },
         {
-          "CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+          "Cache-Control": "private, no-cache, no-store, must-revalidate",
+          "CDN-Cache-Control": "private, no-cache",
+          "Vercel-CDN-Cache-Control": "private, no-cache",
         }
       );
     }

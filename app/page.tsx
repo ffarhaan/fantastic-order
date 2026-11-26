@@ -2426,7 +2426,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
 
 
-        const isCacheIncomplete = Boolean(check && check.totalCount > 1000 && clientCount < (check.totalCount - 50));
+        const isCacheIncomplete = Boolean(check && check.totalCount > 1000 && clientCount < (check.totalCount - 500));
 
         if (clientCount > 0 && !isCacheIncomplete) {
           // If local IndexedDB has MORE rows than TiDB (e.g. previous upload failed to reach TiDB),
@@ -2476,7 +2476,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             });
           }
           let currentLen = currentFakturDocsRef.current?.length || 0;
-          if (check && check.totalCount > 0 && currentLen < check.totalCount && currentLen >= (check.totalCount - 500)) {
+          if (check && check.totalCount > 0 && currentLen < check.totalCount) {
             const reconciled = await reconcileMissingFromTiDB(currentFakturDocsRef.current || []);
             if (!isMounted) return;
             if (reconciled && reconciled.length > 0) {
@@ -2506,7 +2506,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               });
             }
           }
-          const stillMissingRows = Boolean(check && check.totalCount > 0 && currentLen < (check.totalCount - 50));
+          const stillMissingRows = Boolean(check && check.totalCount > 0 && currentLen < (check.totalCount - 500));
           if (!stillMissingRows) {
             if (isMounted) setLoading(false);
             return;
@@ -5202,23 +5202,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
 
         currentFakturDocsRef.current = payload;
 
-        // ── DELTA-MERGE RECORDS (ANTI COUNT-DECREASE) ─────────────────────────────
-        // Setelah upload, jika invMap hanya berisi sebagian data (memori lokal tidak
-        // lengkap saat upload dimulai), jangan replace seluruh records state dengan
-        // localRecs yang lebih sedikit.  Merge records lama dengan yang baru dari
-        // upload sehingga total faktur TIDAK PERNAH berkurang.
-        setRecords((prevRecs) => {
-          // Build key-index dari localRecs (faktur yang di-touch pada upload ini)
-          const uploadedKeySet = new Set<string>(localRecs.map((rec) => rec.invoiceKey || rec.invoiceNumber));
-          // Pertahankan records lama yang TIDAK masuk dalam upload ini
-          const survivingOld = prevRecs.filter((rec) => {
-            const k = rec.invoiceKey || rec.invoiceNumber;
-            return Boolean(k) && !uploadedKeySet.has(k);
-          });
-          // Merge: data lama yang tidak di-touch + data baru/updated dari upload
-          // Hasilnya: total count TIDAK PERNAH berkurang dibanding sebelum upload
-          return [...survivingOld, ...localRecs];
-        });
+        // ── STRICT ZERO PHANTOM DUPLICATE & ANTI-GLITCH (LOCKED_RULES.md Sec 1.A & 1.G) ──
+        // `payload` sudah dipastikan 100% lengkap melalui gap detection & reconciliation sebelum merge.
+        // Langsung assign `localRecs` utuh tanpa append `survivingOld` agar tidak pernah memicu lonjakan angka semu (misal 27.968).
+        setRecords(localRecs);
         setPrintedInvoices(finalPrintedSet);
         setPrintedAtMap(finalPrintedAtMap);
         const notifPayload: UploadNotification = {

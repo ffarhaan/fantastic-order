@@ -180,15 +180,18 @@ export async function reconcileMissingFromTiDB(
   localFakturs: FirestoreFakturDoc[]
 ): Promise<FirestoreFakturDoc[] | null> {
   try {
-    const res = await fetch("/api/tidb?action=keys");
+    const res = await fetch(`/api/tidb?action=keys&_t=${Date.now()}`);
     if (!res.ok) return null;
     const data = await res.json();
     if (!data.success || !Array.isArray(data.keys)) return null;
 
     const localKeySet = new Set<string>();
     for (const f of localFakturs || []) {
-      const k = String(f.id || f.no_faktur || "").trim();
-      if (k) localKeySet.add(k);
+      const rawKey = String((f as any).invoice_key || f.id || "").trim();
+      const rawInv = String(f.no_faktur || "").trim();
+      if (rawKey) localKeySet.add(rawKey);
+      if (rawInv) localKeySet.add(rawInv);
+      if (rawInv && !rawInv.endsWith("-1P")) localKeySet.add(`${rawInv}-1P`);
     }
 
     const missingOnClient = (data.keys as string[]).filter(
