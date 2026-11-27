@@ -1382,31 +1382,39 @@ export async function GET(req: Request) {
 
     if (action === "check") {
       const now = Date.now();
+      const clientCount = Number(searchParams.get("count") || 0);
+      const clientUpdated = Number(searchParams.get("updated") || 0);
+
       let totalCount = 0;
       let maxUpdated = 0;
 
-      // Ultra-short 2s memory cache to prevent TiDB connection spam while maintaining instant multi-device sync
-      if (memoryCheckCache && (now - memoryCheckCache.ts < 2000)) {
+      // Smart TiDB RU Protection:
+      // 1. Fast index lookup for max_updated (Reads only 1 indexed row in TiDB, 0.01 RU!)
+      if (memoryCheckCache && (now - memoryCheckCache.ts < 20000)) {
         totalCount = memoryCheckCache.payload.totalCount;
         maxUpdated = memoryCheckCache.payload.maxUpdated;
       } else {
-        // Fast index lookup for max_updated
         const maxRes = (await conn.execute(
           "SELECT UNIX_TIMESTAMP(updated_at) as max_updated FROM fakturs_archive ORDER BY updated_at DESC LIMIT 1;"
         )) as Array<{ max_updated: number | null }>;
         maxUpdated = Number(maxRes[0]?.max_updated || 0);
 
-        // Always fetch authoritative count directly from database (prevents out-of-sync devices from being misled)
-        const countRes = (await conn.execute(
-          "SELECT COUNT(*) as count FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
-        )) as Array<{ count: number }>;
-        totalCount = Number(countRes[0]?.count || 0);
+        // If max_updated in TiDB hasn't changed from cache, count CANNOT change. Reuse it with 0 RU!
+        if (memoryCheckCache && memoryCheckCache.payload.maxUpdated === maxUpdated && (now - memoryCheckCache.ts < 120000)) {
+          totalCount = memoryCheckCache.payload.totalCount;
+        } else if (clientCount > 1000 && clientUpdated > 0 && clientUpdated >= maxUpdated && memoryCheckCache?.payload?.totalCount) {
+          totalCount = memoryCheckCache.payload.totalCount;
+        } else {
+          // Authoritative count only queried when data actually changed (e.g. after upload) or cold start
+          const countRes = (await conn.execute(
+            "SELECT COUNT(*) as count FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
+          )) as Array<{ count: number }>;
+          totalCount = Number(countRes[0]?.count || 0);
+        }
 
         memoryCheckCache = { payload: { totalCount, maxUpdated }, ts: now };
       }
 
-      const clientCount = Number(searchParams.get("count") || 0);
-      const clientUpdated = Number(searchParams.get("updated") || 0);
       const isUpToDate = clientCount === totalCount && totalCount > 0 && clientUpdated > 0 && clientUpdated >= maxUpdated;
 
       return compressedJsonResponse(

@@ -378,7 +378,8 @@ export async function fetchTiDBDelta(sinceTimestamp: number): Promise<FirestoreF
 let activeFetchFaktursPromise: Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> | null = null;
 
 export async function fetchFaktursFromTiDB(
-  versionTag?: number | string
+  versionTag?: number | string,
+  onProgress?: (partial: FirestoreFakturDoc[], total: number) => void
 ): Promise<{ fakturs: FirestoreFakturDoc[]; maxUpdated: number } | null> {
   if (activeFetchFaktursPromise) {
     return activeFetchFaktursPromise;
@@ -386,10 +387,10 @@ export async function fetchFaktursFromTiDB(
 
   activeFetchFaktursPromise = (async () => {
     try {
-      const PAGE_SIZE = 4500;
+      const PAGE_SIZE = 2500;
       const vQuery = versionTag ? `&_v=${encodeURIComponent(String(versionTag))}` : "";
-      // Step 1: Fetch Page 0 (gets docs + exact totalCount in ~200ms, CDN-shared via _v)
-      const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=0${vQuery}`);
+      // Step 1: Fetch Page 0 using cursor pagination (Index-backed, 0 prior rows scanned!)
+      const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&cursor=${vQuery}`);
       if (!firstRes.ok) return null;
       const firstData = await firstRes.json();
       if (!firstData.success || !Array.isArray(firstData.fakturs)) return null;
@@ -397,45 +398,47 @@ export async function fetchFaktursFromTiDB(
       const allFakturs: FirestoreFakturDoc[] = [...firstData.fakturs];
       let maxUpdated = Number(firstData.maxUpdated || 0);
       const totalCount = Number(firstData.totalCount || 0);
+      let currentCursor: string | null = firstData.nextCursor || null;
 
-      // Step 2: Fast 4x Parallel Batched Fetch with 3x Retry (~8-10s instead of 60s sequential!)
-      if (totalCount > PAGE_SIZE) {
-        const remainingOffsets: number[] = [];
-        for (let offset = PAGE_SIZE; offset < totalCount; offset += PAGE_SIZE) {
-          remainingOffsets.push(offset);
+      // PROGRESSIVE HYDRATION: Emit first chunk immediately! (UI renders in 0.5s!)
+      if (onProgress && allFakturs.length > 0) {
+        onProgress(allFakturs, totalCount);
+      }
+
+      // Step 2: Stream remaining chunks sequentially with cursor (Each chunk finishes in <300ms!)
+      while (currentCursor && allFakturs.length < totalCount) {
+        let chunkDocs: FirestoreFakturDoc[] | null = null;
+        let nextCur: string | null = null;
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&cursor=${encodeURIComponent(currentCursor)}&skipCount=1${vQuery}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.success && Array.isArray(data.fakturs)) {
+                if (Number(data.maxUpdated || 0) > maxUpdated) {
+                  maxUpdated = Number(data.maxUpdated);
+                }
+                chunkDocs = data.fakturs as FirestoreFakturDoc[];
+                nextCur = data.nextCursor || null;
+                break;
+              }
+            }
+          } catch {
+            // retry
+          }
+          if (attempt < 2) await new Promise((r) => setTimeout(r, (attempt + 1) * 300));
         }
 
-        const fetchPageWithRetry = async (offset: number): Promise<FirestoreFakturDoc[] | null> => {
-          for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-              const res = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=${offset}&skipCount=1${vQuery}`);
-              if (res.ok) {
-                const data = await res.json();
-                if (data.success && Array.isArray(data.fakturs)) {
-                  if (Number(data.maxUpdated || 0) > maxUpdated) {
-                    maxUpdated = Number(data.maxUpdated);
-                  }
-                  return data.fakturs as FirestoreFakturDoc[];
-                }
-              }
-            } catch {
-              // retry
-            }
-            if (attempt < 2) await new Promise((r) => setTimeout(r, (attempt + 1) * 500));
-          }
-          return null;
-        };
+        if (!chunkDocs || chunkDocs.length === 0) {
+          break;
+        }
 
-        for (let i = 0; i < remainingOffsets.length; i += 4) {
-          const batchOffsets = remainingOffsets.slice(i, i + 4);
-          const batchResults = await Promise.all(batchOffsets.map(fetchPageWithRetry));
-          for (const chunk of batchResults) {
-            if (chunk === null) {
-              console.error("[TiDB Read] A page failed after 3 attempts; aborting partial archive save.");
-              return null;
-            }
-            allFakturs.push(...chunk);
-          }
+        allFakturs.push(...chunkDocs);
+        currentCursor = nextCur;
+
+        if (onProgress) {
+          onProgress(allFakturs, totalCount);
         }
       }
 

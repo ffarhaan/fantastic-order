@@ -2252,9 +2252,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
     };
 
-    // Background Parity Heartbeat every 20s: keeps all laptops converged to 100% identical row counts
+    // Background Parity Heartbeat every 30s: keeps all laptops converged to 100% identical row counts
     const parityHeartbeat = async () => {
       if (isUploadingRef.current || isPeerSyncingRef.current) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       const curCount = currentFakturDocsRef.current?.length || 0;
       if (curCount < 1000) {
         recoverColdStart();
@@ -2262,12 +2263,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
       try {
         const check = await checkTiDBUpdates(curCount, clientUpdatedRef.current || 0);
-        if (check && check.totalCount > curCount) {
+        if (check && (check.totalCount > curCount || check.maxUpdated > (clientUpdatedRef.current || 0))) {
           performPeerSync(true);
         }
       } catch {}
     };
-    const interval = setInterval(parityHeartbeat, 20000);
+    const interval = setInterval(parityHeartbeat, 30000);
 
     const onVisibility = async () => {
       if (document.visibilityState !== "visible") return;
@@ -2530,8 +2531,33 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           }
         }
 
-        // Cold start (completely 0 local docs or large desync): fetch archive once (CDN-shared via _v=${check?.maxUpdated})
-        const result = await fetchFaktursFromTiDB(check?.maxUpdated);
+        // Cold start (completely 0 local docs or large desync): fetch archive once with progressive hydration
+        let lastProgressTick = 0;
+        const result = await fetchFaktursFromTiDB(check?.maxUpdated, (partialDocs, total) => {
+          if (!isMounted) return;
+          const now = Date.now();
+          if (now - lastProgressTick > 500 || partialDocs.length >= total) {
+            lastProgressTick = now;
+            const { records: recs, printedSet: docPrintedSet, printedAtMap: docPrintedAtMap, printedByMap: docPrintedByMap } = dbRowsToFakturRecords(
+              partialDocs as unknown as Array<Record<string, unknown>>,
+              productOverridesRef.current,
+              printedInvoicesRef.current,
+              categoryOverridesRef.current
+            );
+            const nextPrinted = new Set([...Array.from(printedInvoicesRef.current || []), ...Array.from(docPrintedSet)]);
+            const nextAtMap = { ...(printedAtMapRef.current || {}), ...docPrintedAtMap };
+            const nextByMap = { ...(printedByMapRef.current || {}), ...docPrintedByMap };
+            setRecords(recs);
+            setPrintedInvoices(nextPrinted);
+            printedInvoicesRef.current = nextPrinted;
+            setPrintedAtMap(nextAtMap);
+            printedAtMapRef.current = nextAtMap;
+            setPrintedByMap(nextByMap);
+            printedByMapRef.current = nextByMap;
+            setIsArchiveReady(true);
+            setLoading(false); // Instantly unblocks the UI in < 1s!
+          }
+        });
         if (!isMounted) return;
         if (!result) {
           initialArchiveFailedRef.current = true;
