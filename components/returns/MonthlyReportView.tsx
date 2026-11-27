@@ -151,6 +151,11 @@ export default function MonthlyReportView({
   const [modalSearch, setModalSearch] = useState("");
   const [modalFilterCat, setModalFilterCat] = useState<"ALL" | "OPERATIONAL" | "ED" | "DAMAGE" | "REJECT">("ALL");
 
+  // State untuk Tren Progres Shipment Error (Murni Operasional)
+  const [chartPbf, setChartPbf] = useState<"ALL" | "MBI" | "MAI">("ALL");
+  const [chartMetric, setChartMetric] = useState<"count" | "rate">("count");
+  const [hoveredMonth, setHoveredMonth] = useState<number | null>(null);
+
   // ─── HITUNG DATA BULANAN 100% DINAMIS DARI DATA KASUS RIIL ───
   const { monthlyData, monthCasesMap, overallStats } = useMemo(() => {
     // Inisialisasi struktur data bulan 1..12
@@ -405,6 +410,49 @@ export default function MonthlyReportView({
     return monthlyData.find((m) => m.month === curMonthNum) || monthlyData[10]; // November fallback
   }, [monthlyData]);
 
+  // Perhitungan Data Grafik SVG Murni Operasional (Non-ED & Non-Damage)
+  const chartData = useMemo(() => {
+    const points = monthlyData.map((d) => {
+      const mbiVal = chartMetric === "count" ? d.mbi_operational : (d.mbi_inv > 0 ? (d.mbi_operational / d.mbi_inv) * 100 : 0);
+      const maiVal = chartMetric === "count" ? d.mai_operational : (d.mai_inv > 0 ? (d.mai_operational / d.mai_inv) * 100 : 0);
+      const totVal = chartMetric === "count"
+        ? (d.mbi_operational + d.mai_operational)
+        : ((d.mbi_inv + d.mai_inv > 0) ? ((d.mbi_operational + d.mai_operational) / (d.mbi_inv + d.mai_inv)) * 100 : 0);
+
+      const activeVal = chartPbf === "ALL" ? totVal : (chartPbf === "MBI" ? mbiVal : maiVal);
+      return {
+        month: d.month,
+        name: d.name.slice(0, 3),
+        fullName: d.name,
+        mbiVal,
+        maiVal,
+        totVal,
+        activeVal,
+        mbiOp: d.mbi_operational,
+        maiOp: d.mai_operational,
+        totOp: d.mbi_operational + d.mai_operational,
+        mbiRate: d.mbi_inv > 0 ? (d.mbi_operational / d.mbi_inv) * 100 : 0,
+        maiRate: d.mai_inv > 0 ? (d.mai_operational / d.mai_inv) * 100 : 0,
+        totRate: (d.mbi_inv + d.mai_inv > 0) ? ((d.mbi_operational + d.mai_operational) / (d.mbi_inv + d.mai_inv)) * 100 : 0,
+      };
+    });
+
+    const activeMax = Math.max(...points.map((p) => p.activeVal), chartMetric === "count" ? 20 : 1);
+    const yMax = Math.ceil(activeMax * 1.15) || (chartMetric === "count" ? 200 : 3);
+
+    const activeMonths = points.filter((p) => p.month <= 11 && p.activeVal > 0);
+    const lastM = activeMonths[activeMonths.length - 1];
+    const prevM = activeMonths[activeMonths.length - 2];
+    let trendPct = 0;
+    let isBetter = true;
+    if (lastM && prevM && prevM.activeVal > 0) {
+      trendPct = ((lastM.activeVal - prevM.activeVal) / prevM.activeVal) * 100;
+      isBetter = trendPct <= 0;
+    }
+
+    return { points, yMax, trendPct, isBetter, lastM, prevM };
+  }, [monthlyData, chartPbf, chartMetric]);
+
   return (
     <div className="space-y-6">
       {/* ─── 1. HEADER & FILTER KENDALA (PEMISAHAN ED & DAMAGE) ─── */}
@@ -644,6 +692,282 @@ export default function MonthlyReportView({
           </div>
         </div>
       )}
+
+      {/* ─── 2.5. TREN PROGRES SHIPMENT ERROR BULANAN (MURNI OPERASIONAL GUDANG) ─── */}
+      <div className="p-4 sm:p-5 rounded-2xl border border-zinc-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 shadow-xs space-y-4">
+        {/* Chart Header & Controls */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-200 dark:border-slate-800">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+              <h3 className="text-sm sm:text-base font-black text-zinc-900 dark:text-white flex items-center gap-1.5">
+                <TrendingDown className="w-4 h-4 text-emerald-500" />
+                <span>Tren Progres Shipment Error: Murni Operasional Gudang (Jan–Des)</span>
+              </h3>
+            </div>
+            <p className="text-xs text-zinc-500 dark:text-slate-400 mt-0.5">
+              Khusus evaluasi kesalahan fisik picking, packing, salah SKU &amp; kuantitas — <strong className="text-amber-600 dark:text-amber-400">Kasus ED &amp; Damage 100% tidak dimasukkan</strong>
+            </p>
+          </div>
+
+          {/* Toggle PBF & Metric Controls */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {/* PBF Filter */}
+            <div className="flex items-center p-0.5 rounded-xl bg-zinc-100 dark:bg-slate-950 border border-zinc-200 dark:border-slate-800 text-[11px] font-bold">
+              {(["ALL", "MBI", "MAI"] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setChartPbf(p)}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    chartPbf === p
+                      ? "bg-indigo-600 text-white shadow-xs font-black"
+                      : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+                  }`}
+                >
+                  {p === "ALL" ? "Semua PBF" : p === "MBI" ? "MBI (Biru)" : "MAI (Merah)"}
+                </button>
+              ))}
+            </div>
+
+            {/* Metric Switcher: Count vs Rate */}
+            <div className="flex items-center p-0.5 rounded-xl bg-zinc-100 dark:bg-slate-950 border border-zinc-200 dark:border-slate-800 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setChartMetric("count")}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  chartMetric === "count"
+                    ? "bg-slate-900 text-white dark:bg-slate-700 shadow-xs font-black"
+                    : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+                }`}
+              >
+                Jml Kasus
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartMetric("rate")}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  chartMetric === "rate"
+                    ? "bg-slate-900 text-white dark:bg-slate-700 shadow-xs font-black"
+                    : "text-zinc-600 dark:text-slate-400 hover:text-black dark:hover:text-white"
+                }`}
+              >
+                Error Rate %
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Dynamic Insight Banner */}
+        <div className={`flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl border text-xs ${
+          chartData.isBetter
+            ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-900 dark:text-emerald-200"
+            : "bg-amber-500/10 border-amber-500/25 text-amber-900 dark:text-amber-200"
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className="font-black text-sm flex items-center gap-1">
+              {chartData.isBetter ? "↓ PROGRES MEMBAIK:" : "↑ PERLU PERHATIAN:"}
+            </span>
+            <span>
+              Kesalahan murni operasional gudang {chartData.prevM?.fullName || "bulan lalu"} ({chartData.prevM ? Math.round(chartData.prevM.activeVal) : 0}) ke {chartData.lastM?.fullName || "bulan ini"} ({chartData.lastM ? Math.round(chartData.lastM.activeVal) : 0}) mengalami perubahan:
+            </span>
+          </div>
+          <span className="font-mono font-bold text-[11px] px-2 py-0.5 rounded-full bg-white/40 dark:bg-black/20">
+            {chartData.trendPct > 0 ? `+${chartData.trendPct.toFixed(1)}%` : `${chartData.trendPct.toFixed(1)}%`} Kasus Operasional
+          </span>
+        </div>
+
+        {/* SVG Interactive Line Chart */}
+        <div className="relative w-full h-56 pt-2 select-none">
+          <svg viewBox="0 0 600 180" className="w-full h-full overflow-visible">
+            <defs>
+              <linearGradient id="opGradMbi" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.4" />
+                <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
+              </linearGradient>
+              <linearGradient id="opGradMai" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#ef4444" stopOpacity="0.4" />
+                <stop offset="100%" stopColor="#ef4444" stopOpacity="0.0" />
+              </linearGradient>
+              <linearGradient id="opGradAll" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#6366f1" stopOpacity="0.4" />
+                <stop offset="100%" stopColor="#6366f1" stopOpacity="0.0" />
+              </linearGradient>
+            </defs>
+
+            {/* Horizontal Grid lines */}
+            {[0.25, 0.5, 0.75, 1].map((ratio, gIdx) => {
+              const yPos = 145 - ratio * 125;
+              const yVal = Math.round(ratio * chartData.yMax * 10) / 10;
+              return (
+                <g key={gIdx}>
+                  <line
+                    x1="45"
+                    y1={yPos}
+                    x2="575"
+                    y2={yPos}
+                    stroke="currentColor"
+                    className="text-zinc-200 dark:text-slate-800"
+                    strokeDasharray="3 3"
+                    strokeWidth="1"
+                  />
+                  <text
+                    x="40"
+                    y={yPos + 3}
+                    textAnchor="end"
+                    fontSize="9"
+                    className="fill-zinc-400 dark:fill-slate-500 font-mono"
+                  >
+                    {chartMetric === "rate" ? `${yVal}%` : yVal}
+                  </text>
+                </g>
+              );
+            })}
+            <text x="40" y="148" textAnchor="end" fontSize="9" className="fill-zinc-400 dark:fill-slate-500 font-mono">
+              0
+            </text>
+
+            {/* Compute SVG Path */}
+            {(() => {
+              const pts = chartData.points;
+              const coords = pts.map((p, i) => {
+                const x = 45 + i * (530 / 11);
+                const y = 145 - (p.activeVal / (chartData.yMax || 1)) * 125;
+                return { x, y, p, i };
+              });
+
+              const lineD = coords.reduce((acc, c, i) => (i === 0 ? `M ${c.x},${c.y}` : `${acc} L ${c.x},${c.y}`), "");
+              const areaD = `${lineD} L ${coords[coords.length - 1].x},145 L ${coords[0].x},145 Z`;
+              const colorStroke = chartPbf === "MBI" ? "#3b82f6" : chartPbf === "MAI" ? "#ef4444" : "#6366f1";
+              const gradId = chartPbf === "MBI" ? "url(#opGradMbi)" : chartPbf === "MAI" ? "url(#opGradMai)" : "url(#opGradAll)";
+
+              return (
+                <>
+                  <path d={areaD} fill={gradId} className="transition-all duration-300" />
+                  <path
+                    d={lineD}
+                    fill="none"
+                    stroke={colorStroke}
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="transition-all duration-300"
+                  />
+
+                  {/* Month Points & Click Target */}
+                  {coords.map((c) => {
+                    const isHovered = hoveredMonth === c.i;
+                    return (
+                      <g key={c.i} className="cursor-pointer" onClick={() => setInspectModal({
+                        isOpen: true,
+                        month: c.p.month,
+                        pbf: chartPbf,
+                        name: c.p.fullName,
+                      })}>
+                        <circle
+                          cx={c.x}
+                          cy={c.y}
+                          r={isHovered ? 6 : 4}
+                          fill={colorStroke}
+                          stroke="#ffffff"
+                          strokeWidth="2"
+                          className="transition-all duration-200"
+                          onMouseEnter={() => setHoveredMonth(c.i)}
+                          onMouseLeave={() => setHoveredMonth(null)}
+                        />
+                        {/* Month Label on X axis */}
+                        <text
+                          x={c.x}
+                          y="162"
+                          textAnchor="middle"
+                          fontSize="9"
+                          className={`font-mono transition-colors ${
+                            isHovered
+                              ? "fill-indigo-600 dark:fill-indigo-400 font-bold"
+                              : "fill-zinc-500 dark:fill-slate-400"
+                          }`}
+                        >
+                          {c.p.name}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </>
+              );
+            })()}
+          </svg>
+
+          {/* Floating Hover Tooltip */}
+          {hoveredMonth !== null && chartData.points[hoveredMonth] && (
+            <div
+              className="absolute z-20 top-2 left-1/2 -translate-x-1/2 p-2.5 rounded-xl bg-slate-900/95 text-white border border-slate-700 shadow-xl text-xs font-mono pointer-events-none flex items-center gap-3 backdrop-blur-md"
+            >
+              <div>
+                <span className="font-bold text-indigo-300 uppercase">
+                  {chartData.points[hoveredMonth].fullName}
+                </span>
+                <div className="text-[11px] text-slate-300 mt-0.5">
+                  <span className={chartPbf === "MBI" ? "text-blue-400 font-bold" : ""}>
+                    MBI: <strong>{chartData.points[hoveredMonth].mbiOp} kasus</strong> ({chartData.points[hoveredMonth].mbiRate.toFixed(2)}%)
+                  </span>
+                  {" · "}
+                  <span className={chartPbf === "MAI" ? "text-red-400 font-bold" : ""}>
+                    MAI: <strong>{chartData.points[hoveredMonth].maiOp} kasus</strong> ({chartData.points[hoveredMonth].maiRate.toFixed(2)}%)
+                  </span>
+                </div>
+              </div>
+              <div className="pl-2.5 border-l border-slate-700 text-right">
+                <div className="text-[10px] text-slate-400 uppercase font-semibold">
+                  {chartPbf === "MBI"
+                    ? "MBI Operasional:"
+                    : chartPbf === "MAI"
+                    ? "MAI Operasional:"
+                    : "Total Operasional:"}
+                </div>
+                <div className="text-sm font-black text-emerald-400">
+                  {chartMetric === "count"
+                    ? `${
+                        chartPbf === "MBI"
+                          ? chartData.points[hoveredMonth].mbiOp
+                          : chartPbf === "MAI"
+                          ? chartData.points[hoveredMonth].maiOp
+                          : chartData.points[hoveredMonth].totOp
+                      } kasus`
+                    : `${(
+                        chartPbf === "MBI"
+                          ? chartData.points[hoveredMonth].mbiRate
+                          : chartPbf === "MAI"
+                          ? chartData.points[hoveredMonth].maiRate
+                          : chartData.points[hoveredMonth].totRate
+                      ).toFixed(2)}%`}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Legend Footer */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-zinc-200 dark:border-slate-800 text-xs">
+          <div className="flex items-center gap-4 text-[11px]">
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-1 bg-indigo-500 rounded-full" />
+              <span className="font-bold text-zinc-800 dark:text-zinc-200">Semua PBF</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-1 bg-blue-500 rounded-full" />
+              <span className="text-zinc-600 dark:text-slate-400">MBI Saja</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-1 bg-rose-500 rounded-full" />
+              <span className="text-zinc-600 dark:text-slate-400">MAI Saja</span>
+            </div>
+          </div>
+          <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>100% Murni Evaluasi Performa Gudang (ED &amp; Damage Dieksklusi)</span>
+          </div>
+        </div>
+      </div>
 
       {/* ─── 3. GRID MONTHLY CARDS (MAI RED & MBI BLUE) ─── */}
       <div className="space-y-5">

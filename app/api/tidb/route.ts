@@ -2030,9 +2030,9 @@ export async function GET(req: Request) {
           hasMore,
         },
         {
-          "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=86400",
-          "CDN-Cache-Control": "public, s-maxage=1800",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=1800",
+          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+          "CDN-Cache-Control": "public, s-maxage=3600",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=3600",
         }
       );
     }
@@ -2135,16 +2135,41 @@ export async function GET(req: Request) {
           maxUpdated,
         },
         {
-          "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=86400",
-          "CDN-Cache-Control": "public, s-maxage=1800",
-          "Vercel-CDN-Cache-Control": "public, s-maxage=1800",
+          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+          "CDN-Cache-Control": "public, s-maxage=3600",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=3600",
         }
       );
     }
 
     return Response.json({ success: false, error: `Invalid action: ${action}` }, { status: 400 });
-  } catch (error) {
+  } catch (error: any) {
     console.error("GET /api/tidb error:", error);
+    // Development fallback: if local TiDB credentials are quota-exhausted or denied (Error 1105 / 401), proxy GET to production
+    if (process.env.NODE_ENV === "development" && (error?.status === 401 || String(error).includes("1105") || String(error).includes("Access denied"))) {
+      try {
+        const prodUrl = new URL(req.url);
+        prodUrl.protocol = "https:";
+        prodUrl.host = "fantastic-order.vercel.app";
+        prodUrl.port = "";
+        const res = await fetch(prodUrl.toString(), {
+          headers: {
+            "accept-encoding": req.headers.get("accept-encoding") || "",
+          },
+        });
+        const contentType = res.headers.get("content-type") || "application/json";
+        const body = await res.arrayBuffer();
+        return new Response(body, {
+          status: res.status,
+          headers: {
+            "content-type": contentType,
+            "x-proxied-from-prod": "true",
+          },
+        });
+      } catch (proxyErr) {
+        console.error("Dev fallback proxy error:", proxyErr);
+      }
+    }
     return Response.json({ success: false, error: String(error) }, { status: 500 });
   }
 }

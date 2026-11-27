@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { CustomerRecord } from "@/lib/types";
 import { broadcastRealtimeSignal, subscribeToRealtimeSignal, isSuperAdminUser } from "@/lib/firestoreService";
 import { AppUser } from "@/components/LoginModal";
@@ -115,29 +115,57 @@ export function parseToDateInputValue(val: any): string {
   return "";
 }
 
-// 8 Kolom Resmi Sesuai Regulasi ISDP & UU PDP
+export function getDaysUntilExpired(val: any): number | null {
+  if (!val || val === "-" || val === "null" || val === "undefined") return null;
+  const s = String(val).trim();
+  if (!s || s === "-") return null;
+
+  let d: Date | null = null;
+  const num = Number(s);
+  if (!isNaN(num) && num > 20000 && num < 80000) {
+    d = new Date(Math.round((num - 25569) * 86400 * 1000));
+  } else if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(s)) {
+    d = new Date(s);
+  } else if (/^\d{1,2}[-/]\d{1,2}[-/]\d{4}/.test(s)) {
+    const parts = s.split(/[-/]/);
+    d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+  } else {
+    const parsed = new Date(s);
+    if (!isNaN(parsed.getTime())) d = parsed;
+  }
+
+  if (!d || isNaN(d.getTime())) return null;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+// 10 Kolom Resmi Master Customer
 export const AUTHORIZED_COLUMNS = [
   { id: "id", label: "ID", locked: true },
-  { id: "oracle", label: "Customer ID Oracle" },
-  { id: "name", label: "Nama Apotek / Merchant" },
+  { id: "oracle", label: "ID Customer" },
+  { id: "name", label: "Nama Apotek" },
   { id: "status", label: "Status Merchant" },
-  { id: "apj", label: "Nama Apoteker PJ (APJ)" },
-  { id: "sipa", label: "Masa Berlaku SIPA (Expired)" },
-  { id: "sia", label: "Masa Berlaku SIA (Expired)" },
+  { id: "address", label: "Default Billing Address" },
+  { id: "sia_number", label: "NO SIA" },
+  { id: "sipa_number", label: "NO SIPA" },
+  { id: "sipa", label: "Masa Berlaku SIPA" },
+  { id: "sia", label: "Masa Berlaku SIA" },
   { id: "order_status", label: "Status Riwayat Order" },
 ];
 
 interface CustomersViewProps {
   onSelectCustomerForFilter?: (name: string) => void;
   currentUser?: AppUser | null;
-  initialWarehouse?: "MBI" | "MAI";
+  initialWarehouse?: "ALL" | "MBI" | "MAI";
 }
 
 export default function CustomersView({ onSelectCustomerForFilter, currentUser, initialWarehouse }: CustomersViewProps) {
   const isSuper = isSuperAdminUser(currentUser?.name) || isSuperAdminUser(currentUser?.email);
   const canEditCustomers = isSuper || Boolean(currentUser?.permissions?.can_edit_customers);
 
-  const [selectedWarehouse, setSelectedWarehouse] = useState<"MBI" | "MAI">(initialWarehouse || "MBI");
+  const [selectedWarehouse, setSelectedWarehouse] = useState<"ALL" | "MBI" | "MAI">(initialWarehouse || "ALL");
   const [warehouseCounts, setWarehouseCounts] = useState<{ MBI: number; MAI: number }>({ MBI: 3613, MAI: 4531 });
 
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
@@ -146,6 +174,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [orderStatusFilter, setOrderStatusFilter] = useState("ALL");
+  const [licenseFilter, setLicenseFilter] = useState<"ALL" | "EXPIRING" | "EXPIRED">("ALL");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
 
@@ -213,7 +242,9 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
       name: cust.name,
       customer_id_oracle: cust.customer_id_oracle,
       status_merchant: cust.status_merchant || "ACTIVE",
-      apj_name: cust.apj_name,
+      address: cust.address,
+      sia_number: cust.sia_number,
+      sipa_number: cust.sipa_number,
       sipa_expired: parseToDateInputValue(cust.sipa_expired),
       sia_expired: parseToDateInputValue(cust.sia_expired),
       order_status: cust.order_status || "BELUM PERNAH ORDER",
@@ -244,7 +275,9 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
           name: editForm.name,
           customer_id_oracle: editForm.customer_id_oracle,
           status_merchant: editForm.status_merchant,
-          apj_name: editForm.apj_name,
+          address: editForm.address,
+          sia_number: editForm.sia_number,
+          sipa_number: editForm.sipa_number,
           sipa_expired: editForm.sipa_expired,
           sia_expired: editForm.sia_expired,
           order_status: editForm.order_status,
@@ -414,11 +447,69 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
 
   const totalPages = Math.ceil(total / limit);
 
+  const displayedCustomers = useMemo(() => {
+    if (licenseFilter === "EXPIRING") {
+      return customers.filter((c) => {
+        const sipaDays = getDaysUntilExpired(c.sipa_expired);
+        const siaDays = getDaysUntilExpired(c.sia_expired);
+        const sipaExp = sipaDays !== null && sipaDays >= 0 && sipaDays <= 90;
+        const siaExp = siaDays !== null && siaDays >= 0 && siaDays <= 90;
+        return sipaExp || siaExp;
+      });
+    }
+    if (licenseFilter === "EXPIRED") {
+      return customers.filter((c) => {
+        const sipaDays = getDaysUntilExpired(c.sipa_expired);
+        const siaDays = getDaysUntilExpired(c.sia_expired);
+        return (sipaDays !== null && sipaDays < 0) || (siaDays !== null && siaDays < 0);
+      });
+    }
+    return customers;
+  }, [customers, licenseFilter]);
+
+  const { expiringCount, expiredCount, safeCount } = useMemo(() => {
+    let exp = 0;
+    let expired = 0;
+    let safe = 0;
+    for (const c of customers) {
+      const sipaDays = getDaysUntilExpired(c.sipa_expired);
+      const siaDays = getDaysUntilExpired(c.sia_expired);
+      const isExp = (sipaDays !== null && sipaDays < 0) || (siaDays !== null && siaDays < 0);
+      const isWarn = (sipaDays !== null && sipaDays >= 0 && sipaDays <= 90) || (siaDays !== null && siaDays >= 0 && siaDays <= 90);
+      if (isExp) expired++;
+      else if (isWarn) exp++;
+      else safe++;
+    }
+    return { expiringCount: exp, expiredCount: expired, safeCount: safe };
+  }, [customers]);
+
   return (
     <div className="space-y-4">
-      {/* ─── PBF Switcher (MBI vs MAI - 100% Terpisah & Independen) ─── */}
+      {/* ─── PBF Switcher (Semua Gudang MBI+MAI vs MBI vs MAI) ─── */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-2 rounded-2xl bg-white dark:bg-[#0c0d14] border border-zinc-200 dark:border-zinc-800 shadow-xs">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedWarehouse !== "ALL") {
+                setSelectedWarehouse("ALL");
+                setPage(0);
+              }
+            }}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              selectedWarehouse === "ALL"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
+                : "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+            }`}
+          >
+            <span>🏢 Semua Gudang (Gabungan MBI + MAI)</span>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
+              selectedWarehouse === "ALL" ? "bg-white/20 text-white" : "bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+            }`}>
+              {((warehouseCounts.MBI || 0) + (warehouseCounts.MAI || 0)).toLocaleString("id-ID")}
+            </span>
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -427,14 +518,13 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
                 setPage(0);
               }
             }}
-            className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               selectedWarehouse === "MBI"
                 ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
                 : "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
             }`}
           >
-            <span className="text-sm">🏢</span>
-            <span>PBF MBI (Gudang MBI)</span>
+            <span>🔵 MBI Saja</span>
             <span className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
               selectedWarehouse === "MBI" ? "bg-white/20 text-white" : "bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
             }`}>
@@ -450,14 +540,13 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
                 setPage(0);
               }
             }}
-            className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               selectedWarehouse === "MAI"
                 ? "bg-purple-600 text-white shadow-md shadow-purple-500/20"
                 : "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
             }`}
           >
-            <span className="text-sm">🏢</span>
-            <span>PBF MAI (Gudang MAI)</span>
+            <span>🔴 MAI Saja</span>
             <span className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
               selectedWarehouse === "MAI" ? "bg-white/20 text-white" : "bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
             }`}>
@@ -468,8 +557,107 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
 
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-500 dark:text-zinc-400">
           <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-          <span>Data Terisolasi PBF {selectedWarehouse} • 8 Atribut Resmi ISDP / UU PDP</span>
+          <span>{selectedWarehouse === "ALL" ? "Gabungan MBI + MAI" : `PBF ${selectedWarehouse}`} • 10 Kolom Resmi Master Customer</span>
         </div>
+      </div>
+
+      {/* ─── 3 KPI WARNING CARDS: SIA & SIPA EXPIRED DETECTOR (THRESHOLD: 3 BULAN / 90 HARI) ─── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Card 1: Mau Habis (≤ 3 Bulan / 90 Hari) */}
+        <button
+          type="button"
+          onClick={() => {
+            setLicenseFilter(licenseFilter === "EXPIRING" ? "ALL" : "EXPIRING");
+            setPage(0);
+          }}
+          className={`p-3 rounded-2xl border text-left transition-all cursor-pointer shadow-xs flex flex-col justify-between ${
+            licenseFilter === "EXPIRING"
+              ? "bg-amber-500/20 border-amber-500 ring-2 ring-amber-400/50"
+              : "bg-amber-500/10 border-amber-500/30 hover:border-amber-400/60 dark:bg-amber-950/20"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+              <span>⚠️ SIA / SIPA Mau Habis</span>
+            </span>
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/30">
+              ≤ 3 Bulan (90 Hari)
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline justify-between">
+            <div className="text-2xl font-black font-mono text-amber-600 dark:text-amber-400">
+              {expiringCount}{" "}
+              <span className="text-xs font-semibold text-zinc-500 font-sans">Apotek di Halaman Ini</span>
+            </div>
+            <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:underline">
+              {licenseFilter === "EXPIRING" ? "● Aktif Filter" : "Klik untuk Filter ↗"}
+            </span>
+          </div>
+        </button>
+
+        {/* Card 2: Sudah Expired */}
+        <button
+          type="button"
+          onClick={() => {
+            setLicenseFilter(licenseFilter === "EXPIRED" ? "ALL" : "EXPIRED");
+            setPage(0);
+          }}
+          className={`p-3 rounded-2xl border text-left transition-all cursor-pointer shadow-xs flex flex-col justify-between ${
+            licenseFilter === "EXPIRED"
+              ? "bg-rose-500/20 border-rose-500 ring-2 ring-rose-400/50"
+              : "bg-rose-500/10 border-rose-500/30 hover:border-rose-400/60 dark:bg-rose-950/20"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+              <span>🚫 Izin Sudah Expired</span>
+            </span>
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-800 dark:text-rose-200 border border-rose-500/30">
+              Lewat Tanggal
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline justify-between">
+            <div className="text-2xl font-black font-mono text-rose-600 dark:text-rose-400">
+              {expiredCount}{" "}
+              <span className="text-xs font-semibold text-zinc-500 font-sans">Apotek di Halaman Ini</span>
+            </div>
+            <span className="text-[10px] font-bold text-rose-700 dark:text-rose-300 hover:underline">
+              {licenseFilter === "EXPIRED" ? "● Aktif Filter" : "Klik untuk Filter ↗"}
+            </span>
+          </div>
+        </button>
+
+        {/* Card 3: Izin Aktif Aman */}
+        <button
+          type="button"
+          onClick={() => {
+            setLicenseFilter("ALL");
+            setPage(0);
+          }}
+          className={`p-3 rounded-2xl border text-left transition-all cursor-pointer shadow-xs flex flex-col justify-between ${
+            licenseFilter === "ALL"
+              ? "bg-emerald-500/15 border-emerald-500 ring-2 ring-emerald-400/40"
+              : "bg-emerald-500/10 border-emerald-500/30 hover:border-emerald-400/60 dark:bg-emerald-950/20"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+              <span>✓ Izin Aktif Aman</span>
+            </span>
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-500/30">
+              Masa Berlaku Aman
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline justify-between">
+            <div className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+              {safeCount}{" "}
+              <span className="text-xs font-semibold text-zinc-500 font-sans">Apotek di Halaman Ini</span>
+            </div>
+            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+              {licenseFilter === "ALL" ? "● Menampilkan Semua" : "Reset Filter ↺"}
+            </span>
+          </div>
+        </button>
       </div>
       {/* ─── Header Info & Upload Tools ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -683,15 +871,15 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
         </div>
       </div>
 
-      {/* ─── Enterprise Data Grid (8 Authorized Columns) ─── */}
+      {/* ─── Enterprise Data Grid (10 Clean Master Customer Columns) ─── */}
       <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800/90 bg-white dark:bg-[#0a0f1c]/90 overflow-hidden shadow-xs">
         <div className="overflow-x-auto w-full">
-          <table className="w-full text-left text-xs border-collapse min-w-[950px]">
+          <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
             <thead>
               <tr className="bg-zinc-100 dark:bg-[#070b14] border-b-2 border-zinc-300 dark:border-zinc-800 text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider select-none">
-                {/* 1. ID (Primary / Locked) */}
+                {/* 1. ID */}
                 <th
-                  className={`py-3 px-3.5 w-28 min-w-[110px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
+                  className={`py-3 px-3.5 w-24 min-w-[90px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
                     effectiveFreezeLevel === "1" || effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
                       ? "sticky left-0 z-30 bg-zinc-100 dark:bg-[#070b14] border-r border-zinc-300 shadow-xs"
                       : ""
@@ -700,29 +888,29 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
                   ID *
                 </th>
 
-                {/* 2. Customer ID Oracle */}
+                {/* 2. ID Customer (Oracle) */}
                 {isColVisible("oracle") && (
                   <th
-                    className={`py-3 px-3 w-36 min-w-[130px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
+                    className={`py-3 px-3 w-32 min-w-[110px] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
                       effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
-                        ? "sticky left-[110px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r border-zinc-300 shadow-xs"
+                        ? "sticky left-[90px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r border-zinc-300 shadow-xs"
                         : ""
                     }`}
                   >
-                    Customer ID Oracle
+                    ID Customer
                   </th>
                 )}
 
-                {/* 3. Nama Apotek / Merchant */}
+                {/* 3. Nama Apotek */}
                 {isColVisible("name") && (
                   <th
-                    className={`py-3 px-4 min-w-[260px] border-r border-zinc-200 dark:border-zinc-800 ${
+                    className={`py-3 px-4 min-w-[240px] border-r border-zinc-200 dark:border-zinc-800 ${
                       effectiveFreezeLevel === "3"
-                        ? "sticky left-[240px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
+                        ? "sticky left-[200px] z-30 bg-zinc-100 dark:bg-[#070b14] border-r-2 border-r-blue-500 shadow-md"
                         : ""
                     }`}
                   >
-                    Nama Apotek / Merchant
+                    Nama Apotek
                   </th>
                 )}
 
@@ -733,30 +921,44 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
                   </th>
                 )}
 
-                {/* 5. Nama APJ */}
-                {isColVisible("apj") && (
-                  <th className="py-3 px-3.5 min-w-[180px] border-r border-zinc-200 dark:border-zinc-800">
-                    Nama Apoteker PJ (APJ)
+                {/* 5. Default Billing Address */}
+                {isColVisible("address") && (
+                  <th className="py-3 px-3.5 min-w-[200px] max-w-[280px] border-r border-zinc-200 dark:border-zinc-800">
+                    Default Billing Address
                   </th>
                 )}
 
-                {/* 6. SIPA Expired */}
+                {/* 6. NO SIA */}
+                {isColVisible("sia_number") && (
+                  <th className="py-3 px-3 w-36 min-w-[120px] text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Nomor Izin Apotek (NO SIA)">
+                    NO SIA
+                  </th>
+                )}
+
+                {/* 7. NO SIPA */}
+                {isColVisible("sipa_number") && (
+                  <th className="py-3 px-3 w-36 min-w-[120px] text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800" title="Nomor Izin Praktik Apoteker (NO SIPA)">
+                    NO SIPA
+                  </th>
+                )}
+
+                {/* 8. Masa Berlaku SIPA */}
                 {isColVisible("sipa") && (
-                  <th className="py-3 px-3 w-36 min-w-[130px] whitespace-nowrap text-center border-r border-zinc-200 dark:border-zinc-800" title="Masa Berlaku SIPA (Surat Izin Praktik Apoteker)">
+                  <th className="py-3 px-3 w-36 min-w-[130px] whitespace-nowrap text-center border-r border-zinc-200 dark:border-zinc-800" title="Masa Berlaku SIPA">
                     Masa Berlaku SIPA
                   </th>
                 )}
 
-                {/* 7. SIA Expired */}
+                {/* 9. Masa Berlaku SIA */}
                 {isColVisible("sia") && (
-                  <th className="py-3 px-3 w-36 min-w-[130px] whitespace-nowrap text-center border-r border-zinc-200 dark:border-zinc-800" title="Masa Berlaku SIA (Surat Izin Apotek)">
+                  <th className="py-3 px-3 w-36 min-w-[130px] whitespace-nowrap text-center border-r border-zinc-200 dark:border-zinc-800" title="Masa Berlaku SIA">
                     Masa Berlaku SIA
                   </th>
                 )}
 
-                {/* 8. Status Riwayat Order */}
+                {/* 10. Status Riwayat Order */}
                 {isColVisible("order_status") && (
-                  <th className="py-3 px-3 w-40 min-w-[140px] text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                  <th className="py-3 px-3 w-36 min-w-[130px] text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
                     Status Riwayat Order
                   </th>
                 )}
@@ -768,27 +970,29 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200/80 dark:divide-zinc-800/50 bg-white dark:bg-[#0a0f1c]">
-              {loading && customers.length === 0 ? (
+              {loading && displayedCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-400">
+                  <td colSpan={11} className="py-16 text-center text-slate-400">
                     <RefreshCw className="w-7 h-7 animate-spin mx-auto text-indigo-400 mb-2" />
                     <span className="font-semibold text-sm">Menghubungkan ke Direktori TiDB...</span>
                   </td>
                 </tr>
-              ) : customers.length === 0 ? (
+              ) : displayedCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-500">
+                  <td colSpan={11} className="py-16 text-center text-slate-500">
                     <Building2 className="w-10 h-10 mx-auto text-blue-500 mb-3 opacity-60" />
                     <p className="font-bold text-base text-zinc-800 dark:text-zinc-200">
                       Tidak ada merchant yang cocok
                     </p>
                     <p className="text-xs text-zinc-500 mt-1 max-w-md mx-auto">
-                      Coba gunakan kata kunci lain atau reset filter pencarian.
+                      {licenseFilter !== "ALL"
+                        ? "Tidak ada apotek pada kriteria peringatan izin terpilih."
+                        : "Coba gunakan kata kunci lain atau reset filter pencarian."}
                     </p>
                   </td>
                 </tr>
               ) : (
-                customers.map((c) => {
+                displayedCustomers.map((c: CustomerRecord) => {
                   const isSelected = showEditModal && editForm?.id === c.id;
 
                   return (
@@ -812,12 +1016,12 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
                         {c.id}
                       </td>
 
-                      {/* 2. Customer ID Oracle */}
+                      {/* 2. ID Customer (Oracle) */}
                       {isColVisible("oracle") && (
                         <td
                           className={`py-2.5 px-3 whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800 ${
                             effectiveFreezeLevel === "2" || effectiveFreezeLevel === "3"
-                              ? "sticky left-[110px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r border-zinc-300 shadow-xs"
+                              ? "sticky left-[90px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r border-zinc-300 shadow-xs"
                               : ""
                           }`}
                         >
@@ -827,21 +1031,32 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
                         </td>
                       )}
 
-                      {/* 3. Nama Apotek / Merchant */}
+                      {/* 3. Nama Apotek */}
                       {isColVisible("name") && (
                         <td
                           className={`py-2.5 px-4 font-bold border-r border-zinc-200 dark:border-zinc-800 ${
                             effectiveFreezeLevel === "3"
-                              ? "sticky left-[240px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
+                              ? "sticky left-[200px] z-20 bg-white dark:bg-[#0a0f1c] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 border-r-2 border-r-blue-500 shadow-md"
                               : ""
                           }`}
                         >
-                          <span
-                            className="text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors"
-                            title={c.name}
-                          >
-                            {c.name || "-"}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className="text-zinc-900 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-indigo-200 transition-colors"
+                              title={c.name}
+                            >
+                              {c.name || "-"}
+                            </span>
+                            {selectedWarehouse === "ALL" && c.warehouse && (
+                              <span className={`text-[9px] font-black px-1.5 py-0.2 rounded border ${
+                                c.warehouse.toUpperCase() === "MAI"
+                                  ? "bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800"
+                                  : "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800"
+                              }`}>
+                                {c.warehouse.toUpperCase()}
+                              </span>
+                            )}
+                          </div>
                         </td>
                       )}
 
@@ -865,30 +1080,98 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
                         </td>
                       )}
 
-                      {/* 5. Nama APJ */}
-                      {isColVisible("apj") && (
-                        <td className="py-2.5 px-3.5 min-w-[170px] max-w-[240px] border-r border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-slate-200 font-medium">
-                          <div className="leading-snug break-words whitespace-normal" title={c.apj_name}>
-                            {c.apj_name || "-"}
+                      {/* 5. Default Billing Address */}
+                      {isColVisible("address") && (
+                        <td className="py-2.5 px-3.5 min-w-[200px] max-w-[280px] border-r border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-slate-200 text-xs">
+                          <div className="leading-snug break-words whitespace-normal line-clamp-2" title={c.address}>
+                            {c.address || "-"}
                           </div>
                         </td>
                       )}
 
-                      {/* 6. SIPA Expired */}
+                      {/* 6. NO SIA */}
+                      {isColVisible("sia_number") && (
+                        <td className="py-2.5 px-3 whitespace-nowrap text-center border-r border-zinc-200 dark:border-zinc-800 font-mono text-[11px] text-zinc-700 dark:text-zinc-300">
+                          {c.sia_number || "-"}
+                        </td>
+                      )}
+
+                      {/* 7. NO SIPA */}
+                      {isColVisible("sipa_number") && (
+                        <td className="py-2.5 px-3 whitespace-nowrap text-center border-r border-zinc-200 dark:border-zinc-800 font-mono text-[11px] text-zinc-700 dark:text-zinc-300">
+                          {c.sipa_number || "-"}
+                        </td>
+                      )}
+
+                      {/* 8. Masa Berlaku SIPA */}
                       {isColVisible("sipa") && (
-                        <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-800 dark:text-zinc-300 whitespace-nowrap text-center font-medium border-r border-zinc-200 dark:border-zinc-800">
-                          {formatIndonesianDate(c.sipa_expired)}
+                        <td className="py-2.5 px-3 whitespace-nowrap text-center font-medium border-r border-zinc-200 dark:border-zinc-800">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="font-mono text-[11px] text-zinc-800 dark:text-zinc-300">
+                              {formatIndonesianDate(c.sipa_expired)}
+                            </span>
+                            {(() => {
+                              const d = getDaysUntilExpired(c.sipa_expired);
+                              if (d === null) return null;
+                              if (d < 0) {
+                                return (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+                                    Expired ({Math.abs(d)} hari)
+                                  </span>
+                                );
+                              }
+                              if (d <= 90) {
+                                return (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                                    Mau Habis ({d} hari)
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400">
+                                  Aman ({d} hari)
+                                </span>
+                              );
+                            })()}
+                          </div>
                         </td>
                       )}
 
-                      {/* 7. SIA Expired */}
+                      {/* 9. Masa Berlaku SIA */}
                       {isColVisible("sia") && (
-                        <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-800 dark:text-blue-300 whitespace-nowrap text-center font-medium border-r border-zinc-200 dark:border-zinc-800">
-                          {formatIndonesianDate(c.sia_expired)}
+                        <td className="py-2.5 px-3 whitespace-nowrap text-center font-medium border-r border-zinc-200 dark:border-zinc-800">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="font-mono text-[11px] text-zinc-800 dark:text-blue-300">
+                              {formatIndonesianDate(c.sia_expired)}
+                            </span>
+                            {(() => {
+                              const d = getDaysUntilExpired(c.sia_expired);
+                              if (d === null) return null;
+                              if (d < 0) {
+                                return (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+                                    Expired ({Math.abs(d)} hari)
+                                  </span>
+                                );
+                              }
+                              if (d <= 90) {
+                                return (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                                    Mau Habis ({d} hari)
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400">
+                                  Aman ({d} hari)
+                                </span>
+                              );
+                            })()}
+                          </div>
                         </td>
                       )}
 
-                      {/* 8. Status Riwayat Order */}
+                      {/* 10. Status Riwayat Order */}
                       {isColVisible("order_status") && (
                         <td className="py-2.5 px-3 text-center whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
                           <span
@@ -912,7 +1195,7 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
                             handleOpenEdit(c);
                           }}
                           className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-slate-800 dark:hover:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-slate-700 text-[11px] font-bold transition-colors inline-flex items-center gap-1 shadow-2xs cursor-pointer"
-                          title="Edit 8 Atribut Resmi Mitra"
+                          title="Edit Data Pelanggan"
                         >
                           <Pencil className="w-3 h-3" />
                           <span>Edit</span>
@@ -1055,36 +1338,37 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
                         <option value="INACTIVE">INACTIVE</option>
                       </select>
                     </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Default Billing Address
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={editForm.address || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, address: e.target.value }))}
+                        placeholder="Alamat penagihan / billing..."
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
                   </div>
                 </div>
 
                 {/* 2. Legalitas Izin Farmasi (SIPA & SIA) */}
                 <div className="space-y-3 bg-zinc-50/80 dark:bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
                   <span className="font-bold text-[11px] uppercase tracking-wider text-cyan-700 dark:text-cyan-400 block">
-                    2. Legalitas Izin Farmasi (SIPA &amp; SIA)
+                    2. Legalitas Izin Farmasi (NO SIA &amp; NO SIPA)
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="sm:col-span-2">
+                    <div>
                       <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Nama Apoteker PJ (APJ)
+                        NO SIA
                       </label>
                       <input
                         type="text"
-                        value={editForm.apj_name || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, apj_name: e.target.value }))}
-                        placeholder="Nama Apoteker Penanggung Jawab"
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white focus:outline-none focus:border-cyan-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                        Masa Berlaku SIPA (Expired)
-                      </label>
-                      <input
-                        type="date"
-                        value={editForm.sipa_expired || ""}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, sipa_expired: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
+                        value={editForm.sia_number || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, sia_number: e.target.value }))}
+                        placeholder="Nomor Izin Apotek (NO SIA)"
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none focus:border-cyan-500"
                       />
                     </div>
                     <div>
@@ -1095,6 +1379,29 @@ export default function CustomersView({ onSelectCustomerForFilter, currentUser, 
                         type="date"
                         value={editForm.sia_expired || ""}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, sia_expired: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        NO SIPA
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.sipa_number || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, sipa_number: e.target.value }))}
+                        placeholder="Nomor Izin Praktik Apoteker (NO SIPA)"
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-mono focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                        Masa Berlaku SIPA (Expired)
+                      </label>
+                      <input
+                        type="date"
+                        value={editForm.sipa_expired || ""}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, sipa_expired: e.target.value }))}
                         className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
                       />
                     </div>

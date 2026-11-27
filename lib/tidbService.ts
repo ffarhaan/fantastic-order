@@ -387,7 +387,7 @@ export async function fetchFaktursFromTiDB(
 
   activeFetchFaktursPromise = (async () => {
     try {
-      const PAGE_SIZE = 2500;
+      const PAGE_SIZE = 3500;
       const vQuery = versionTag ? `&_v=${encodeURIComponent(String(versionTag))}` : "";
       // Step 1: Fetch Page 0 using cursor pagination (Index-backed, 0 prior rows scanned!)
       const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&cursor=${vQuery}`);

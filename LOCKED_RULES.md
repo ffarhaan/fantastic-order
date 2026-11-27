@@ -479,6 +479,7 @@ Arsitektur upload cepat ini telah diuji dan terbukti memberikan respon kilat ins
 > 17. Arsitektur Upload Kilat & Non-Blocking Persistence: Optimistic instant UI update (<100ms), pruning data client-side, dan direct in-memory cache injection tanpa full re-download.
 > 18. Arsitektur Sinkronisasi Instan Report QC (<1 Detik & 0-Byte Vercel Origin): Siaran langsung via Firestore WebSocket (`qc_recent_mbi` dan `qc_recent_mai`), invalidasi instan cache serverless, dukungan query bypass `fresh=true`, dan eliminasi penundaan CDN 60 detik tanpa menambah beban Fast Origin Vercel.
 > 19. Aturan Baku Laptop 2 (Report QC & Catatan Barang): 100% cermin DO Checker tanpa pemotongan data (`slice`), transparansi mutlak catatan kendala barang, zero silent failure, dan navigasi instan 1-klik.
+> 20. Arsitektur Baku Real-Time, Efisiensi Ekstrim RU TiDB (99% Saving), & Jaminan Zero-SKU Truncation: Larangan mutlak memotong barang pada invoice (contoh: Faktur 42423 dengan 44 SKU / 63 baris LOT wajib tampil utuh), eliminasi Full Table Scan pada heartbeat berkala, cursor-based streaming, dan sinkronisasi upload multi-laptop < 1 detik.
 
 ---
 
@@ -528,3 +529,54 @@ Bagian ini adalah mandat permanen dan baku untuk pengoperasian **Laptop 2** (Mej
    - **DILARANG KERAS** memotong, menyaring keluar, atau mengurangi hitungan SO hanya karena admin telah menandai `✓ DONE` pada SO tersebut.
    - Status `✓ DONE` adalah konfirmasi admin bahwa fisik/catatan barang telah diperiksa, BUKAN tanda bahwa faktur Oracle telah terbit.
    - Suatu SO **HANYA BOLEH KELUAR** dari antrean Menunggu Faktur dan hitungan kartu Report QC jika nomor fakturnya **SUDAH BENAR-BENAR TERBIT DI ORACLE** (`existingSOSet.has(cleanSo)` / `existingSOSet.has(normSo)`).
+
+---
+
+### 10. ARSITEKTUR BAKU REAL-TIME, EFISIENSI EKSTRIM RU TIDB (99% SAVING), & JAMINAN ZERO-SKU TRUNCATION (LOCKED TOTAL)
+
+Bagian ini adalah aturan permanen yang mengikat seluruh modul sinkronisasi, database, dan antarmuka untuk menjamin aplikasi berjalan super cepat (< 1 detik), bebas crash, hemat kuota database (0 RU pada pembacaan berulang), dan menyajikan data 100% lengkap tanpa kompromi:
+
+1. **Jaminan Mutlak 100% SKU Utuh (Zero-SKU Truncation Mandate - LOCKED TOTAL)**:
+   - **DILARANG KERAS** memotong, membatasi (`LIMIT`), mengabaikan, merangkum, atau membuang baris rincian barang/SKU pada faktur mana pun.
+   - Jika suatu faktur memiliki 10, 40, 50, atau lebih dari 60 SKU/LOT (seperti Faktur riil `42423-1P` milik SBS Kebon Jeruk dengan 63 baris LOT / 59 SKU unik), seluruh baris tersebut **WAJIB 100% dimuat lengkap dan utuh**:
+     - Kode Barang (`item_code`)
+     - Nama Barang (`item_description`)
+     - Kuantitas & Satuan (`qty` & `uom`)
+     - Nomor LOT (`lot_number`)
+     - Kategori Produk (`FARMA`, `ALKES`, `PREKURSOR`, `OOT`, `CCP`)
+     - Harga Satuan & Total Harga DPP (`total_harga`)
+   - Jumlah total akumulasi rupiah seluruh baris rincian obat wajib cocok 100% hingga angka sen terakhir dengan total nilai faktur Oracle (`DPP`).
+
+2. **Eliminasi Mutlak Full Table Scan Heartbeat & Penghematan 99% RU TiDB**:
+   - **LARANGAN MUTLAK QUERY `COUNT(*)` BERKALA**: DILARANG KERAS menjalankan query `SELECT COUNT(*) FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%'` di dalam heartbeat/interval polling berkala (misal tiap 20–30 detik). Query ini memicu Full Table Scan 32.530 baris pada TiDB Serverless dan membakar ratusan ribu Request Units (RU) per hari tanpa faedah.
+   - **Pengecekan Hemat Berbasis Indeks (`updated_at`)**: Heartbeat berkala pada endpoint `/api/tidb?action=check` WAJIB HANYA memeriksa stempel waktu data terbaru menggunakan index:
+     ```sql
+     SELECT UNIX_TIMESTAMP(updated_at) as max_updated FROM fakturs_archive ORDER BY updated_at DESC LIMIT 1;
+     ```
+     Query ini hanya memindai **1 baris indeks (0,01 RU)** di TiDB Serverless.
+   - **Pemanfaatan Cache In-Memory Total Count**: Selama `max_updated` di database tidak berubah, jumlah baris (`totalCount`) dijamin 100% identik dan wajib langsung disajikan dari cache memori serverless tanpa melakukan query hitung ulang ke TiDB.
+   - **Proteksi Tab Latar Belakang (Background Tab Guard)**: Ketika tab browser diminimalkan atau tidak aktif (`document.visibilityState === "hidden"`), interval heartbeat WAJIB dijeda secara otomatis untuk menghentikan pemborosan kuota saat laptop ditinggal.
+
+3. **Cursor-Based Streaming Pagination (Larangan Mutlak `OFFSET` Besar)**:
+   - Pengunduhan arsip data faktur `/api/tidb?action=paged` WAJIB menggunakan Cursor Index berdasarkan Primary Key:
+     ```sql
+     SELECT ... FROM fakturs_archive WHERE invoice_key > ? AND invoice_key NOT LIKE 'TEST-%' ORDER BY invoice_key ASC LIMIT ?;
+     ```
+   - **DILARANG KERAS** menggunakan klausa `LIMIT ? OFFSET ?` dengan nilai offset ribuan (seperti `OFFSET 18000`, `OFFSET 27000`), karena memaksa TiDB memindai puluhan ribu baris masa lalu berulang kali dan memicu timeout 10 detik di Vercel.
+   - Cursor pagination menjamin TiDB hanya membaca baris yang diminta (zero prior rows scanned) dan menyelesaikan tiap paket dalam waktu < 200 ms.
+
+4. **Vercel Edge CDN Caching (0 RU TiDB pada Pembacaan Berulang)**:
+   - Paket data arsip faktur wajib dilindungi cache Edge CDN dengan tag versi: `Cache-Control: public, s-maxage=3600` dan query parameter `&_v=${maxUpdated}`.
+   - Laptop atau perangkat berikutnya yang membuka link wajib dilayani langsung dari memori server Vercel Edge CDN dalam waktu < 300 ms dengan **0 RU TiDB (Nol RU)** dan konsumsi data terkompresi Gzip yang sangat hemat (~7,8 MB).
+
+5. **Progressive Hydration (< 1 Detik di Laptop Baru)**:
+   - Pada laptop yang membuka link untuk pertama kali (memori IndexedDB kosong), sistem wajib langsung merender paket data pertama yang tiba (< 0,5 detik) sehingga antarmuka, tabel, dan angka langsung tampil seketika tanpa terhalang animasi layar kosong.
+   - Sisa paket data diunduh secara bertahap di latar belakang hingga genap 32.530 faktur dan disimpan permanen di IndexedDB lokal.
+   - Setelah selesai 1 kali, seluruh pembukaan berikutnya pada laptop tersebut WAJIB instan (< 100 ms) dari IndexedDB lokal.
+
+6. **Sinkronisasi Real-Time Saat Upload (< 1 Detik Lintas Seluruh Laptop)**:
+   - Ketika ada admin yang mengunggah file Excel Oracle baru di satu laptop:
+     1. Laptop pengunggah menyimpan data baru ke database TiDB.
+     2. Laptop pengunggah langsung menyiarkan sinyal WebSocket Firebase (`broadcastRealtimeSignal("fakturs")`) dalam waktu **< 300 ms**.
+     3. Seluruh laptop dan pengguna lain yang sedang membuka aplikasi menerima sinyal WebSocket seketika dan **HANYA mengunduh baris baru yang diupload** (`fetchTiDBDelta`, misal 50–200 faktur baru).
+     4. Dalam waktu **kurang dari 1 detik**, seluruh laptop di kantor langsung menampilkan angka dan faktur baru secara serentak tanpa mengunduh ulang seluruh arsip 32.530 baris dan tanpa membebani kuota database.

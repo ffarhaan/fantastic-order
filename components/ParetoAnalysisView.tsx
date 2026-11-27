@@ -11,6 +11,10 @@ import {
   CheckCircle2,
   Building2,
   HelpCircle,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  ArrowRight,
 } from "lucide-react";
 
 export interface ParetoCategoryItem {
@@ -35,10 +39,18 @@ export interface ParetoProductItem {
   topCustomers: Array<{ name: string; qty: number }>;
 }
 
+export interface ParetoCustomerProduct {
+  code: string;
+  name: string;
+  qty: number;
+  uom: string;
+}
+
 export interface ParetoCustomerItem {
   name: string;
   count: number;
   totalQty?: number;
+  topProducts?: ParetoCustomerProduct[];
 }
 
 interface ParetoAnalysisViewProps {
@@ -47,6 +59,7 @@ interface ParetoAnalysisViewProps {
   topCustomers: ParetoCustomerItem[];
   warehouseFilter: "ALL" | "MBI" | "MAI";
   isDarkMode: boolean;
+  onSelectCustomer?: (customerName: string) => void;
 }
 
 export default function ParetoAnalysisView({
@@ -55,9 +68,11 @@ export default function ParetoAnalysisView({
   topCustomers = [],
   warehouseFilter,
   isDarkMode,
+  onSelectCustomer,
 }: ParetoAnalysisViewProps) {
   const [activeTab, setActiveTab] = useState<"category" | "product" | "customer">("category");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("ALL");
+  const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
 
   const filteredProducts = selectedCategoryFilter === "ALL"
     ? products
@@ -203,7 +218,7 @@ export default function ParetoAnalysisView({
                           <div className="text-[10px] text-zinc-500 font-semibold uppercase">Total Kuantitas Pesanan</div>
                           <div className="text-xl sm:text-2xl font-black font-mono text-zinc-900 dark:text-white">
                             {Math.round(c.totalQty).toLocaleString("id-ID")}{" "}
-                            <span className="text-xs font-medium text-zinc-500 font-sans">unit</span>
+                            <span className="text-xs font-bold text-indigo-500 font-sans">Total Qty</span>
                           </div>
                         </div>
                         <div className="text-right">
@@ -372,45 +387,155 @@ export default function ParetoAnalysisView({
         </div>
       )}
 
-      {/* ─── TAB 3: PARETO PELANGGAN UTAMA ─── */}
+      {/* ─── TAB 3: PARETO PELANGGAN UTAMA (OUTLET) ─── */}
       {activeTab === "customer" && (
         <div className="space-y-3">
+          <div className="flex items-center justify-between text-xs text-zinc-500 px-1">
+            <span>💡 Klik pada nama outlet untuk melihat rincian obat terbanyak yang dipesan beserta satuan resminya (UOM).</span>
+          </div>
+
           <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-slate-800">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-zinc-50 dark:bg-slate-900 text-zinc-500 uppercase text-[10px] tracking-wider font-bold border-b border-zinc-200 dark:border-slate-800">
                   <th className="py-2.5 px-3 w-12 text-center">Rank</th>
-                  <th className="py-2.5 px-3">Nama Outlet / Pelanggan</th>
+                  <th className="py-2.5 px-3">Nama Outlet / Apotek</th>
+                  <th className="py-2.5 px-3 text-right">Total Kuantitas</th>
                   <th className="py-2.5 px-3 text-right">Frekuensi Faktur</th>
-                  <th className="py-2.5 px-3 text-center">Aktivitas</th>
+                  <th className="py-2.5 px-3 text-center">Rincian Obat</th>
+                  <th className="py-2.5 px-3 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-slate-800 font-medium">
                 {topCustomers.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-8 text-center text-zinc-400 text-xs">
+                    <td colSpan={6} className="py-8 text-center text-zinc-400 text-xs">
                       Tidak ada data pelanggan pada rentang tanggal terpilih
                     </td>
                   </tr>
                 ) : (
-                  topCustomers.map((c, idx) => (
-                    <tr key={idx} className="hover:bg-zinc-50/80 dark:hover:bg-slate-800/40 transition">
-                      <td className="py-2.5 px-3 text-center font-mono font-bold text-zinc-400">
-                        {idx + 1}
-                      </td>
-                      <td className="py-2.5 px-3 font-semibold text-zinc-900 dark:text-white">
-                        {c.name}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
-                        {c.count.toLocaleString("id-ID")} Faktur
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                          Pelanggan Aktif
-                        </span>
-                      </td>
-                    </tr>
-                  ))
+                  topCustomers.map((c, idx) => {
+                    const isExpanded = expandedCustomer === c.name;
+                    return (
+                      <tbody key={idx} className="border-b border-zinc-100 dark:border-slate-800/80">
+                        <tr
+                          onClick={() => setExpandedCustomer(isExpanded ? null : c.name)}
+                          className={`hover:bg-zinc-50/80 dark:hover:bg-slate-800/40 transition cursor-pointer ${
+                            isExpanded ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""
+                          }`}
+                        >
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-zinc-400">
+                            {idx + 1}
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold text-zinc-900 dark:text-white">
+                            <div className="flex items-center gap-1.5">
+                              <span>{c.name}</span>
+                              {isExpanded ? (
+                                <ChevronUp className="w-3.5 h-3.5 text-indigo-500" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                            {Math.round(c.totalQty || 0).toLocaleString("id-ID")}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-semibold text-zinc-700 dark:text-zinc-300">
+                            {c.count.toLocaleString("id-ID")} Faktur
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              {c.topProducts && c.topProducts.length > 0
+                                ? `${c.topProducts.length} Produk Populer`
+                                : "Rincian"}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            {onSelectCustomer && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectCustomer(c.name);
+                                }}
+                                className="px-2 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-zinc-800 dark:text-zinc-200 text-[10px] font-bold inline-flex items-center gap-1 transition shadow-2xs cursor-pointer"
+                                title={`Lihat seluruh faktur ${c.name} di Daftar Faktur`}
+                              >
+                                <span>Daftar Faktur</span>
+                                <ExternalLink className="w-3 h-3 text-blue-500" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+
+                        {/* Expandable Top Products Drawer */}
+                        {isExpanded && (
+                          <tr className="bg-zinc-50/70 dark:bg-slate-900/60">
+                            <td colSpan={6} className="py-3 px-4">
+                              <div className="p-3 rounded-xl bg-white dark:bg-slate-950 border border-zinc-200 dark:border-slate-800 space-y-2.5 shadow-2xs">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <Package className="w-4 h-4 text-emerald-500" />
+                                    <span className="font-bold text-xs text-zinc-800 dark:text-zinc-200">
+                                      Produk / Obat Terbanyak Dipesan: <strong className="text-indigo-600 dark:text-indigo-400">{c.name}</strong>
+                                    </span>
+                                  </div>
+                                  {onSelectCustomer && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onSelectCustomer(c.name)}
+                                      className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <span>Buka Faktur Outlet Ini</span>
+                                      <ArrowRight className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+
+                                {c.topProducts && c.topProducts.length > 0 ? (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                                    {c.topProducts.map((p, pIdx) => (
+                                      <div
+                                        key={pIdx}
+                                        className="p-2 rounded-lg bg-zinc-50 dark:bg-slate-900 border border-zinc-200/80 dark:border-slate-800 text-xs flex flex-col justify-between"
+                                      >
+                                        <div className="flex items-start justify-between gap-1">
+                                          <span className="font-bold text-zinc-900 dark:text-zinc-100 truncate" title={p.name}>
+                                            {p.name}
+                                          </span>
+                                          <span className="text-[10px] font-mono text-zinc-400 shrink-0">
+                                            #{pIdx + 1}
+                                          </span>
+                                        </div>
+                                        {p.code && p.code !== "-" && (
+                                          <span className="text-[10px] font-mono text-zinc-400 mt-0.5">
+                                            {p.code}
+                                          </span>
+                                        )}
+                                        <div className="mt-2 flex items-baseline justify-between pt-1 border-t border-zinc-100 dark:border-slate-800">
+                                          <span className="text-[10px] text-zinc-400 uppercase font-semibold">Total Pesanan:</span>
+                                          <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-xs">
+                                            {Math.round(p.qty).toLocaleString("id-ID")}{" "}
+                                            <span className="text-[10px] font-bold text-zinc-500 font-sans">
+                                              {p.uom || "UNIT"}
+                                            </span>
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="py-2 text-center text-xs text-zinc-400">
+                                    Tidak ada rincian produk item untuk outlet ini
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    );
+                  })
                 )}
               </tbody>
             </table>

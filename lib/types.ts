@@ -219,6 +219,7 @@ export interface CustomerRecord {
   npwp_file_url?: string;
   coa_rec?: string;
   coa_rev?: string;
+  warehouse?: string;
   order_status?: string;
   doc_count?: number;
   created_at?: string;

@@ -3114,7 +3114,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
             printedAtMap: unifiedAtMap,
             printedByMap: unifiedByMap,
           });
-          showToast(`✓ Berhasil menyinkronkan ${reconciled.length} faktur yang tertinggal (${curLen.toLocaleString("id-ID")} total).`);
+          showToast(`✓ Berhasil menyinkronkan ${reconciled ? reconciled.length : 0} faktur yang tertinggal (${curLen.toLocaleString("id-ID")} total).`);
         } else {
           showToast(`✓ Data sudah paling baru (${curLen.toLocaleString("id-ID")} faktur sinkron).`);
         }
@@ -3561,7 +3561,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       katCounts: { "1P": 0, "2P": 0, "3P": 0, "DK": 0, "LK": 0 } as Record<string, number>,
       jenisCounts: { DOO: 0, ORA: 0 } as Record<"DOO" | "ORA", number>,
       prodCounts: { PREKURSOR: 0, OOT: 0, CCP: 0, ALKES: 0, FARMA: 0 } as Record<string, number>,
-      custMap: new Map<string, { count: number; totalRp: number; totalQty: number }>(),
+      custMap: new Map<string, {
+        count: number;
+        totalRp: number;
+        totalQty: number;
+        products: Map<string, { code: string; name: string; qty: number; uom: string }>;
+      }>(),
       categoryMap: new Map<string, { totalQty: number; orderCount: number; custQtyMap: Map<string, number> }>(),
       productMap: new Map<string, { code: string; name: string; category: string; totalQty: number; orderCount: number; custQtyMap: Map<string, number> }>(),
     });
@@ -3590,7 +3595,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       else b.prodCounts.FARMA++;
 
       const cName = g.customerName || "Tanpa Nama";
-      const existing = b.custMap.get(cName) || { count: 0, totalRp: 0, totalQty: 0 };
+      const existing = b.custMap.get(cName) || {
+        count: 0,
+        totalRp: 0,
+        totalQty: 0,
+        products: new Map<string, { code: string; name: string; qty: number; uom: string }>(),
+      };
       existing.count += 1;
       existing.totalRp += (g.totalHarga || 0);
 
@@ -3600,6 +3610,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         for (let j = 0; j < rawItems.length; j++) {
           const it = rawItems[j];
           const rawQty = typeof it.qty === "number" ? it.qty : parseFloat(String(it.qty).replace(/,/g, "")) || 1;
+          const rawUom = String(it.uom || (it as any).satuan || "BOX").toUpperCase().trim() || "BOX";
           const cat = String(it.kategori_produk || g.kategoriProduk || "FARMA").toUpperCase().trim() || "FARMA";
 
           // Category Map
@@ -3624,6 +3635,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           pData.totalQty += rawQty;
           pData.orderCount += 1;
           pData.custQtyMap.set(cName, (pData.custQtyMap.get(cName) || 0) + rawQty);
+
+          // Customer-specific ordered products
+          let custProd = existing.products.get(pKey);
+          if (!custProd) {
+            custProd = { code: pCode, name: pName, qty: 0, uom: rawUom };
+            existing.products.set(pKey, custProd);
+          }
+          custProd.qty += rawQty;
+          if (rawUom && rawUom !== "BOX" && custProd.uom === "BOX") {
+            custProd.uom = rawUom;
+          }
 
           existing.totalQty += rawQty;
         }
@@ -3742,11 +3764,21 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         };
       });
 
-      // 3. Top Outlets/Customers by Order Volume (Zero Monetary Rp)
+      // 3. Top Outlets/Customers by Order Volume with their top ordered products
       const topCustomers: ParetoCustomerItem[] = Array.from(b.custMap.entries())
-        .map(([name, data]) => ({ name, count: data.count, totalQty: data.totalQty || data.count }))
+        .map(([name, data]) => {
+          const topProducts = Array.from(data.products.values())
+            .sort((a, b) => b.qty - a.qty)
+            .slice(0, 6);
+          return {
+            name,
+            count: data.count,
+            totalQty: data.totalQty || data.count,
+            topProducts,
+          };
+        })
         .sort((a, b) => (b.totalQty || 0) - (a.totalQty || 0))
-        .slice(0, 10);
+        .slice(0, 15);
 
       const totalActiveCount = b.belumCount + b.sudahCount;
       return {
@@ -3850,7 +3882,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   // that do NOT yet have an Oracle invoice uploaded in the current warehouse.
   const pendingQcList = useMemo(() => {
     // If base faktur records are still loading or initial TiDB archive hasn't completed, avoid temporary false flash of historical QC orders!
-    if (records.length === 0 && (loading || !isArchiveReady)) return [];
+    if (loading || !isArchiveReady) return [];
 
     const normalizeSO = (soStr: string) => soStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
     return qcOrders.filter((qc) => {
@@ -3870,7 +3902,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       if (cleanDo && cleanDo !== "-" && (existingSOSet.has(cleanDo) || existingSOSet.has(normDo))) return false;
       return true;
     });
-  }, [qcOrders, existingSOSet, selectedWarehouse, records.length, loading]);
+  }, [qcOrders, existingSOSet, selectedWarehouse, records.length, loading, isArchiveReady]);
   // SO to Full Details Map: Instant O(1) lookup for Report QC
   const soDetailsMap = useMemo(() => {
     if ((filter as any) !== "report_qc") return new Map();
@@ -7008,6 +7040,10 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               topCustomers={dashboardStats.topCustomers}
               warehouseFilter={dashboardWarehouseFilter}
               isDarkMode={isDarkMode}
+              onSelectCustomer={(custName) => {
+                setMainView("workspace");
+                setSearch(custName);
+              }}
             />
           </div>
         ) : (
@@ -7048,7 +7084,11 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                 ? "bg-amber-950/60 border-amber-700/60 text-amber-300"
                 : "bg-amber-50 border-amber-300 text-amber-800"
             }`}>
-              {pendingQcList.length}
+              {!isArchiveReady ? (
+                <span className="text-[10px] animate-pulse">Sync...</span>
+              ) : (
+                pendingQcList.length
+              )}
             </div>
             <span className={`text-[9px] font-bold leading-none ${isDarkMode ? "text-amber-400/80" : "text-amber-700"}`}>
               {(filter as any) === "report_qc" ? "● Aktif" : "Menunggu Faktur"}
