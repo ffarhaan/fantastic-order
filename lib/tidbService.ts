@@ -386,7 +386,7 @@ export async function fetchFaktursFromTiDB(
 
   activeFetchFaktursPromise = (async () => {
     try {
-      const PAGE_SIZE = 1200;
+      const PAGE_SIZE = 4500;
       const vQuery = versionTag ? `&_v=${encodeURIComponent(String(versionTag))}` : "";
       // Step 1: Fetch Page 0 (gets docs + exact totalCount in ~200ms, CDN-shared via _v)
       const firstRes = await fetch(`/api/tidb?action=paged&limit=${PAGE_SIZE}&offset=0${vQuery}`);

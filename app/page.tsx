@@ -3307,6 +3307,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         printedBy: null,
       };
 
+      (g as any)._rawItems = rawItems;
+      (g as any)._rec = rec;
+      (g as any).docStatusCetak = Boolean(rec.status_cetak);
+      (g as any).docPrintedAt = rec.printed_at || null;
+      (g as any).docPrintedBy = rec.printed_by || null;
+
       const itemSearch = (rec as any)._itemSearchParts || "";
       g.searchStr = `${g.so} ${g.invoiceNumber} ${g.customerName} ${g.transactionDate || ""} ${g.orderDate} ${g.kategori} ${g.kategoriProduk} ${g.isRetur ? "retur" : ""}${itemSearch}`.toLowerCase();
       g.invNum = parseInvNum(g.invoiceNumber);
@@ -3394,18 +3400,22 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     const hasDkLkOverrides = Object.keys(dklkOverrides).length > 0;
 
     return baseGroups.map((g) => {
-      const candidatePAt = printedAtMap[g.key] || g.printedAt || g.items[0]?.printed_at || null;
-      const candidatePBy = printedByMap[g.key] || g.printedBy || g.items[0]?.printed_by || ((printedInvoices.has(g.key) || g.items[0]?.status_cetak) ? "Admin (Legacy)" : null);
+      const docPAt = (g as any).docPrintedAt || null;
+      const docPBy = (g as any).docPrintedBy || null;
+      const docStatusCetak = Boolean((g as any).docStatusCetak);
+
+      const candidatePAt = printedAtMap[g.key] || g.printedAt || docPAt || null;
+      const candidatePBy = printedByMap[g.key] || g.printedBy || docPBy || ((printedInvoices.has(g.key) || docStatusCetak) ? "Admin (Legacy)" : null);
 
       // STRICT MANDAT USER & VALIDASI 3 DIMENSI (LOCKED_RULES.md Butir 8):
       // Status cetak HANYA sah jika:
-      // 1. Terdaftar di printedInvoices ATAU g.items[0]?.status_cetak
+      // 1. Terdaftar di printedInvoices ATAU docStatusCetak
       // 2. Bukan stempel cetak lampau (!isStale) berdasarkan orderDate / transactionDate
       // 3. Memiliki tanda tangan user fisik sah (hasValidUser: bukan null / '-' / kosong)
       const isStale = isStalePrintTimestamp(candidatePAt, g.orderDate || g.transactionDate);
       const hasValidUser = Boolean(candidatePBy && String(candidatePBy).trim() !== "" && String(candidatePBy).trim() !== "-");
 
-      const isPrinted = !isStale && hasValidUser && (printedInvoices.has(g.key) || Boolean(g.items[0]?.status_cetak));
+      const isPrinted = !isStale && hasValidUser && (printedInvoices.has(g.key) || docStatusCetak);
       const pAt = isPrinted ? candidatePAt : null;
       let kat = g.kategori;
       let dklk = g.dklk;
@@ -3467,7 +3477,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       if (g.isDoubleInv) doubleCount++;
       if (g.isRetur) returCount++;
       if (g.so && g.so !== "-") soSet.add(g.so);
-      totalItems += (g.items?.length || g.totalItems || 1);
+      totalItems += (g.totalItems || 1);
     }
 
     return {
@@ -3559,11 +3569,12 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       existing.totalRp += (g.totalHarga || 0);
 
       // Detailed Category & Product aggregation for Pareto analysis (Quantity-driven)
-      if (g.items && g.items.length > 0) {
-        for (let j = 0; j < g.items.length; j++) {
-          const it = g.items[j];
+      const rawItems = (g as any)._rawItems as Array<Record<string, unknown>> | undefined;
+      if (rawItems && rawItems.length > 0) {
+        for (let j = 0; j < rawItems.length; j++) {
+          const it = rawItems[j];
           const rawQty = typeof it.qty === "number" ? it.qty : parseFloat(String(it.qty).replace(/,/g, "")) || 1;
-          const cat = (it.kategoriProduk || g.kategoriProduk || "FARMA").toUpperCase().trim() || "FARMA";
+          const cat = String(it.kategori_produk || g.kategoriProduk || "FARMA").toUpperCase().trim() || "FARMA";
 
           // Category Map
           let cData = b.categoryMap.get(cat);
@@ -3576,8 +3587,8 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           cData.custQtyMap.set(cName, (cData.custQtyMap.get(cName) || 0) + rawQty);
 
           // Product Map
-          const pCode = (it.itemCode || "-").trim();
-          const pName = (it.itemDescription || it.itemCode || "Tanpa Nama Produk").trim();
+          const pCode = String(it.item_code || "-").trim();
+          const pName = String(it.item_description || it.item_code || "Tanpa Nama Produk").trim();
           const pKey = pCode !== "-" ? pCode : pName;
           let pData = b.productMap.get(pKey);
           if (!pData) {
@@ -3776,26 +3787,26 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
           if (normDo) set.add(normDo);
         }
 
-        // Check item-level orderNumbers only when different from group SO
-        if (Array.isArray(g.items)) {
-          for (let j = 0; j < g.items.length; j++) {
-            const it = g.items[j];
-            const itSO = it.orderNumber;
+        // Check item-level orderNumbers only when different from group SO (using _rawItems to avoid memory expansion)
+        const rawItems = (g as any)._rawItems as Array<Record<string, unknown>> | undefined;
+        if (Array.isArray(rawItems)) {
+          for (let j = 0; j < rawItems.length; j++) {
+            const it = rawItems[j];
+            const itSO = it.order_number as string | undefined;
             if (itSO && itSO !== "-" && itSO !== g.so) {
               const rawItSO = String(itSO).trim().toUpperCase();
               set.add(rawItSO);
               const normIt = normalizeSO(rawItSO);
               if (normIt) set.add(normIt);
             }
-            const itRefSO = it.referenceOrderNumber;
+            const itRefSO = it.reference_order_number as string | undefined;
             if (itRefSO && itRefSO !== "-") {
               const rawItRefSO = String(itRefSO).trim().toUpperCase();
               set.add(rawItRefSO);
               const normItRef = normalizeSO(rawItRefSO);
               if (normItRef) set.add(normItRef);
             }
-            const itAny = it as any;
-            const itDo = itAny.deliveryOrder || itAny.noDo;
+            const itDo = (it.delivery_order || it.deliveryOrder || it.noDo) as string | undefined;
             if (itDo && itDo !== "-") {
               const rawItDo = String(itDo).trim().toUpperCase();
               set.add(rawItDo);
@@ -3836,6 +3847,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
   }, [qcOrders, existingSOSet, selectedWarehouse, records.length, loading]);
   // SO to Full Details Map: Instant O(1) lookup for Report QC
   const soDetailsMap = useMemo(() => {
+    if ((filter as any) !== "report_qc") return new Map();
     const map = new Map<string, {
       customerName: string;
       orderDate: string;
@@ -3850,17 +3862,18 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       const g = baseGroups[i];
       if ((g.entity || "MBI") === selectedWarehouse) {
         const inv = g.invoiceNumber || g.cleanInv || "";
+        const rawItems = (g as any)._rawItems as Array<Record<string, unknown>> | undefined;
         let totQty = 0;
-        if (Array.isArray(g.items)) {
-          for (let j = 0; j < g.items.length; j++) {
-            totQty += Number(g.items[j].qty) || 0;
+        if (Array.isArray(rawItems)) {
+          for (let j = 0; j < rawItems.length; j++) {
+            totQty += Number(rawItems[j].qty) || 0;
           }
         }
         const detail = {
           customerName: g.customerName || "-",
           orderDate: g.orderDate || "-",
           transactionDate: g.transactionDate || g.orderDate || "-",
-          totalItems: g.totalItems || (g.items ? g.items.length : 0),
+          totalItems: g.totalItems || (rawItems ? rawItems.length : 0),
           totalQty: totQty,
           invoiceNumber: inv,
         };
@@ -3890,18 +3903,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
         }
 
         // Also map item-level orderNumbers and DOs
-        if (Array.isArray(g.items)) {
-          for (let j = 0; j < g.items.length; j++) {
-            const it = g.items[j];
-            const itSO = it.orderNumber;
+        if (Array.isArray(rawItems)) {
+          for (let j = 0; j < rawItems.length; j++) {
+            const it = rawItems[j];
+            const itSO = it.order_number as string | undefined;
             if (itSO && itSO !== "-" && itSO !== g.so) {
               const rawItSO = String(itSO).trim().toUpperCase();
               map.set(rawItSO, detail);
               const normIt = normalizeSO(rawItSO);
               if (normIt) map.set(normIt, detail);
             }
-            const itAny = it as any;
-            const itDo = itAny.deliveryOrder || itAny.noDo;
+            const itDo = (it.delivery_order || it.deliveryOrder || it.noDo) as string | undefined;
             if (itDo && itDo !== "-") {
               const rawItDo = String(itDo).trim().toUpperCase();
               map.set(rawItDo, detail);
@@ -3913,7 +3925,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
       }
     }
     return map;
-  }, [baseGroups, selectedWarehouse]);
+  }, [baseGroups, selectedWarehouse, filter]);
 
 
   const pendingQcGroups = useMemo<FakturGroup[]>(() => {
@@ -4056,21 +4068,17 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
     else if (klasFilter === "farma") result = result.filter((g) => g.hasFarma);
 
     if (filter === "all") {
-      result = [...result].sort((a, b) => {
-        if (!a.allPrinted && b.allPrinted) return -1;
-        if (a.allPrinted && !b.allPrinted) return 1;
-
-        if (!a.allPrinted && !b.allPrinted) {
-          return (b.invNum || 0) - (a.invNum || 0);
-        }
-
-        const timeDiff = (b.printTimeMs || 0) - (a.printTimeMs || 0);
-        if (timeDiff !== 0) {
-          return timeDiff;
-        }
-
-        return (b.invNum || 0) - (a.invNum || 0);
-      });
+      const unprinted: FakturGroup[] = [];
+      const printed: FakturGroup[] = [];
+      for (let i = 0; i < result.length; i++) {
+        const item = result[i];
+        if (item.allPrinted) printed.push(item);
+        else unprinted.push(item);
+      }
+      if (unprinted.length > 0) {
+        unprinted.sort((a, b) => (b.invNum || 0) - (a.invNum || 0));
+        result = unprinted.concat(printed);
+      }
     }
 
     return result;
@@ -7758,7 +7766,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
                           {formatRupiah(Math.round(g.totalHarga * 1.11 * 100) / 100)}
                         </span>
                         <span className="text-[10px] text-zinc-500 ml-1.5 font-medium">
-                          ({g.items ? g.items.length : 0} item)
+                          ({g.totalItems || 1} item)
                         </span>
                       </div>
 
