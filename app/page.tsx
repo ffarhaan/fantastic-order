@@ -6112,7 +6112,7 @@ function mergeKumulatifDocs(existing: FirestoreFakturDoc[], incoming: FirestoreF
               </div>
               <ChevronsUpDown className={`hidden sm:inline-block w-3.5 h-3.5 shrink-0 ${isDarkMode ? "text-zinc-500" : "text-zinc-400"}`} />
               <span className={`hidden sm:inline ${isDarkMode ? "text-zinc-700" : "text-zinc-300"}`}>/</span>
-              <span className={`text-xs font-bold capitalize truncate max-w-[85px] sm:max-w-none ${isDarkMode ? "text-zinc-300" : "text-black"}`}>
+              <span className={`hidden sm:inline-block text-xs font-bold capitalize truncate max-w-[85px] sm:max-w-none ${isDarkMode ? "text-zinc-300" : "text-black"}`}>
                 {mainView === "workspace" ? "Daftar Faktur" : mainView === "dashboard" ? "Overview" : mainView === "returns" ? "Shipment Error" : "Master Customer"}
               </span>
 
