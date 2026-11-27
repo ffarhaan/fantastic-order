@@ -4074,8 +4074,20 @@ export async function POST(req: Request) {
     }
 
     if (action === "deduplicate_fakturs") {
+      const explicitKeys: string[] = (body?.keys || body?.targetKeys || []).map((k: string) => String(k).trim()).filter(Boolean);
+      if (explicitKeys.length > 0) {
+        const ph = explicitKeys.map(() => "?").join(", ");
+        await conn.execute(`DELETE FROM fakturs_archive WHERE invoice_key IN (${ph})`, explicitKeys);
+        memoryCheckCache = null;
+        return Response.json({
+          success: true,
+          deletedDuplicates: explicitKeys.length,
+          keys: explicitKeys,
+        });
+      }
+
       const allRows = (await conn.execute(
-        "SELECT invoice_key, no_faktur, no_sales_order, customer_name, order_date, transaction_date, jenis_transaksi, kategori, kategori_produk, status_cetak, printed_at, printed_by, total_harga, items_json FROM fakturs_archive WHERE invoice_key NOT LIKE 'TEST-%';"
+        "SELECT invoice_key, no_faktur, no_sales_order, customer_name, order_date, transaction_date, jenis_transaksi, kategori, kategori_produk, status_cetak, printed_at, printed_by, total_harga, items_json FROM fakturs_archive WHERE invoice_key LIKE '%__%';"
       )) as any[];
 
       const byKey = new Map<string, any>();
